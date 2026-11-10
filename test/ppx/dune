@@ -1,0 +1,12 @@
+(cram
+ (deps standalone.exe %{bin:ocamlformat}))
+
+(executable
+ (name standalone)
+ (modules standalone)
+ (libraries silica.ppx ppxlib))
+
+(test
+ (name svg_names_test)
+ (modules svg_names_test)
+ (libraries silica.ppx))

@@ -1,0 +1,222 @@
+{0 Machines and states}
+
+All behaviour in Silica is in machines. A machine is a statechart: a set of
+states, the events that each state accepts, and the commands that each step
+gives to the host. A machine is a plain value. It does not run by itself: a
+host (the browser, the server or the checker) runs it. See {!Silica.Machine}.
+
+{1:states States and snapshots}
+
+The states of a machine are the constructors of a GADT. The type index of a
+constructor is the type of the data that the state carries. The constructors
+must be constant: the data is not in the constructor, it goes next to it.
+
+[Machine.Make] takes the module of the states and gives the functions that
+build the machine. A snapshot is the value of the machine at one moment: one
+state and its data, written [At (state, data)].
+
+The example below is a field with a debounce. It has three states: [Empty],
+[Typing], which carries the text, and [Settled], which carries the text that
+stayed for half a second.
+
+{@mlx file=examples/shared/doc_debounce.mlx[
+open Silica
+
+type event = Typed of string | Settle | Clear
+
+module States = struct
+  type _ t = Empty : unit t | Typing : string t | Settled : string t
+end
+
+module M = Machine.Make (States)
+
+let typed = function "" -> M.goto Empty () | text -> M.reenter Typing text
+
+let machine =
+  M.make ~id:"debounce" ~init:(M.at Empty ())
+    [
+      M.state Empty "empty" ~to_:[ Typing ] (fun () -> function
+        | Typed text ->
+            typed text
+        | Settle | Clear ->
+            M.unhandled
+        );
+      M.state Typing "typing" ~to_:[ Empty; Settled ]
+        ~after:[ (500, Settle) ]
+        (fun text -> function
+          | Typed text ->
+              typed text
+          | Settle ->
+              M.goto Settled text
+          | Clear ->
+              M.unhandled
+          );
+      M.state Settled "settled" ~to_:[ Empty; Typing ] (fun _ -> function
+        | Typed text ->
+            typed text
+        | Settle | Clear ->
+            M.unhandled
+        );
+      M.always ~to_:[ Empty ] (function
+        | Clear ->
+            M.goto Empty ()
+        | Typed _ | Settle ->
+            M.unhandled
+        );
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  let text, note =
+    match snapshot with
+    | M.At (Empty, ()) ->
+        ("", "Type a word.")
+    | M.At (Typing, text) ->
+        (text, "Waiting for you to stop.")
+    | M.At (Settled, text) ->
+        (text, "You typed " ^ text ^ ".")
+  in
+  <div>
+    <input aria_label="Word" value=text on_input=(fun text -> Typed text) />
+    <button on_press=Clear disabled=(text = "")>"Clear"</button>
+    <p>(Node.text note)</p>
+  </div>
+
+let component = Component.make machine view
+]}
+
+{1:cases The table of cases}
+
+[M.make ~id ~init cases] makes the machine. [id] names the machine in the
+spec, in the checker and in the ids of timers and sources. [init] is the first
+snapshot. [?start] gives commands that run once, before the entry of [init].
+
+Each state has one case, made with [M.state state name handler]. The handler
+gets the data of the state and the event, and gives an outcome. The options
+of a case:
+
+{t
+| Option | Meaning |
+|--------|---------|
+| [to_] | The states that the handler can go to. Going to the current state needs no entry. |
+| [entry], [exit] | Commands to run when the machine enters or leaves the state. |
+| [after] | Timers, in milliseconds, with the event that each one raises. |
+| [invoke] | Sources: Remote calls, Live subscriptions and held resources. |
+| [final] | The machine stops here: a final state handles no event. |
+}
+
+Timers and sources belong to the state. They start when the machine enters
+the state and stop when it leaves the state, so a timer or an answer of a left
+state never arrives. See {!page-commands} for the sources.
+
+[M.always ~to_ handler] is a handler that every state that is not final tries
+after its own handler gives [unhandled]. In the example, [Clear] works in every
+state.
+
+A machine that the checker cannot reach is a bug. Two exceptions catch the
+most common ones when the machine is made or stepped:
+
+- {!Silica.Machine.Missing_case}: a state in [init] or in a [to_] list has no
+  case. [M.make] raises it.
+- {!Silica.Machine.Undeclared_target}: a handler went to a state that is not
+  in the [to_] list of its case. The step raises it.
+
+{@ocaml[
+# let broken () =
+    let open Doc_debounce in
+    M.make ~id:"broken" ~init:(M.at States.Empty ())
+      [ M.state States.Empty "empty" ~to_:[ States.Typing ] M.ignore ];;
+val broken : unit -> (Doc_debounce.M.snapshot, 'a) Silica.Machine.t = <fun>
+# broken ();;
+Exception: Silica.Machine.Missing_case {machine = "broken"; index = 1}.
+]}
+
+{1:outcomes Outcomes}
+
+{t
+| Outcome | Meaning |
+|---------|---------|
+| [M.goto state data] | Go to the state. To the current state, only the data changes: no exit, no entry, the timers and sources keep running. |
+| [M.reenter state data] | Like [goto], but exit and enter again, also to the current state. Timers and sources start again. |
+| [M.stay cmds] | Keep the snapshot and run the commands. |
+| [M.unhandled] | This state does not handle the event. The [always] handlers get it next. |
+}
+
+[goto] and [reenter] take [?cmds], the commands of the step. A debounce is
+[reenter] on a state with an [after] timer: each new text starts the timer
+again, so the timer fires only after the last key.
+
+{1:run Run a machine}
+
+{!Silica.Machine.start} gives the first snapshot and the commands of the start.
+{!Silica.Machine.send} gives the next snapshot, the commands and whether the
+event was handled. {!Silica.Machine.active} lists the timers and sources that
+the current state owns.
+
+{@ocaml[
+# let machine = Doc_debounce.machine;;
+val machine : (Doc_debounce.M.snapshot, Doc_debounce.event) Silica.Machine.t =
+  <abstr>
+# let snapshot, _ = Silica.Machine.start machine;;
+val snapshot : Doc_debounce.M.snapshot =
+  Doc_debounce.M.At (Doc_debounce.States.Empty, <poly>)
+# let snapshot, commands, _ =
+    Silica.Machine.send machine snapshot (Doc_debounce.Typed "oc");;
+val snapshot : Doc_debounce.M.snapshot =
+  Doc_debounce.M.At (Doc_debounce.States.Typing, <poly>)
+val commands : Doc_debounce.event Silica.Cmd.host list =
+  [Silica.Cmd.Start_timer
+    {Silica.Cmd.id = "debounce/typing/after0"; ms = 500;
+     event = Doc_debounce.Settle}]
+# Silica.Machine.active machine snapshot;;
+- : Silica.Machine.resource list =
+[Silica.Machine.Timer
+  {Silica.Machine.id = "debounce/typing/after0"; ms = 500}]
+]}
+
+A second text enters [Typing] again. The commands stop the old timer and start
+a new one:
+
+{@ocaml[
+# let snapshot, commands, _ =
+    Silica.Machine.send machine snapshot (Doc_debounce.Typed "ocaml");;
+val snapshot : Doc_debounce.M.snapshot =
+  Doc_debounce.M.At (Doc_debounce.States.Typing, <poly>)
+val commands : Doc_debounce.event Silica.Cmd.host list =
+  [Silica.Cmd.Stop "debounce/typing/after0";
+   Silica.Cmd.Start_timer
+    {Silica.Cmd.id = "debounce/typing/after0"; ms = 500;
+     event = Doc_debounce.Settle}]
+# let snapshot, _, _ = Silica.Machine.send machine snapshot Doc_debounce.Settle;;
+val snapshot : Doc_debounce.M.snapshot =
+  Doc_debounce.M.At (Doc_debounce.States.Settled, <poly>)
+# Silica.Machine.key machine snapshot;;
+- : string = "settled"
+]}
+
+{!Silica.Machine.step} is like [send], and also tells a host whether the step
+entered a state. {!Silica.Machine.map_snapshot} shows the same machine over
+another type of snapshot, for example a plain record.
+
+{1:spec The spec}
+
+{!Silica.Machine.spec} reads the shape of a machine without running a handler:
+its states, its edges (from the [to_] lists and [always]), its timers and its
+sources. {!Silica.Spec.lint} finds states that no path reaches and states that
+no edge leaves. The checker, the Quint export and the diagrams use the spec;
+see {!page-checker}.
+
+{@ocaml[
+# (Silica.Machine.spec Doc_debounce.machine).edges;;
+- : (string * string) list =
+[("empty", "empty"); ("empty", "typing"); ("settled", "empty");
+ ("settled", "typing"); ("typing", "empty"); ("typing", "settled");
+ ("typing", "typing")]
+# Silica.Spec.lint (Silica.Machine.spec Doc_debounce.machine);;
+- : Silica.Spec.issue list = []
+]}
+
+{1:next Next}
+
+- {!page-components}: the view, JSX and child components.
+- {!page-commands}: what a machine asks the host to do.
+- {!page-checker}: check every state that the machine can reach.

@@ -1,0 +1,201 @@
+{0 Theming}
+
+[silica-ui] (see {!page-ui}) ships a theme API in the module
+[Silica_ui.Theme]. It uses only
+the public API of Silica: a machine, two commands, a source and CSS. An app
+could write it, but it does not have to.
+
+{1:model Themes and tokens}
+
+A token is a CSS value with a name, such as the page background or the corner
+radius. A theme gives a value to each token and has a colour scheme ([Light] or
+[Dark]), which sets the CSS [color-scheme] of form controls and scroll bars.
+
+The tokens of [silica-ui] are the record [Silica_ui.Theme.tokens]. Because a
+theme is a record value, a theme without a token does not compile. Four themes
+come with the library: [light], [dark], [high-contrast] and [ocean]. A new theme
+starts from one of them:
+
+{@ocaml[
+# open Silica_ui;;
+# let paper =
+    Theme.make ~name:"paper" ~label:"Paper" ~scheme:Light
+      { (Theme.tokens Theme.light) with surface = "#fdfaf3"; raised = "#fffdf8" };;
+val paper : Theme.t = <abstr>
+# let set = Theme.set ~light:paper ~dark:Theme.dark [ paper; Theme.dark ];;
+val set : Theme.set = <abstr>
+]}
+
+[Silica_ui.Theme.set] names the two themes that [System] uses: one for a
+light system setting and one for a dark one. It checks the set and names the
+problem:
+
+{@ocaml[
+# Theme.set ~light:Theme.dark ~dark:Theme.dark [ Theme.dark ];;
+Exception:
+Invalid_argument
+ "Silica_ui.Theme: the light theme \"dark\" has a dark scheme".
+# Theme.make ~name:"system" ~scheme:Light (Theme.tokens Theme.light);;
+Exception: Invalid_argument "Silica_ui.Theme: bad theme name \"system\"".
+]}
+
+{1:css The CSS}
+
+[Silica_ui.Theme.stylesheet] gives the CSS of a set. It has one block per
+theme on the attribute [data-theme], one block for [System], and the Tailwind
+map of the tokens:
+
+{@ocaml[
+# Theme.stylesheet set
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> String.ends_with ~suffix:"{" line);;
+- : string list =
+["@theme inline {"; "[data-theme=\"paper\"] {"; "[data-theme=\"dark\"] {";
+ "[data-theme=\"system\"] {"; "@media (prefers-color-scheme: dark) {";
+ "  [data-theme=\"system\"] {"]
+]}
+
+An app writes the stylesheet to [themes.css] with a small executable and a
+dune rule, next to its Tailwind rule. Mini Linear has them in
+[linear/client]:
+
+From [linear/client/themes.ml]:
+{@ocaml skip[
+let () = print_string (Silica_ui.Theme.stylesheet Linear_theme.set)
+]}
+
+From [linear/client/dune]:
+{@dune skip[
+(executable
+ (name themes)
+ (modules themes)
+ (libraries silica-ui silica_linear_app_native))
+
+(rule
+ (with-stdout-to
+  themes.css
+  (run ./themes.exe)))
+]}
+
+The Tailwind rule depends on [themes.css] and the Tailwind input imports it
+(see {!page-recipes.tailwind}). A set that does not pass the checks of
+[Silica_ui.Theme.set] stops the build.
+
+The Tailwind names of the tokens are [ui-<token>] for colours ([bg-ui-surface],
+[text-ui-muted], [border-ui-border], [bg-ui-accent], [text-ui-accent-text]),
+[rounded-ui], [shadow-ui] and [font-ui]. The [spacing] token is the Tailwind
+unit, so [p-4] is four times it. The map uses [@theme inline]: a utility reads
+the CSS property ([var(--ui-surface)]) at the element itself, which a nested
+theme needs. [silica-ui.css] gives each element with [data-theme] the surface
+background, the text colour and the font.
+
+Use tokens, not the Tailwind [dark:] variant: [dark:] follows only the system
+setting and does not see the theme that the user chose.
+
+{1:choose Choose, switch and keep}
+
+The choice is [Silica_ui.Theme.choice]: [System], which follows the system
+setting live, or [Fixed theme]. The theme component holds it. At the start and
+at each change it sets [data-theme] on the [<html>] element with
+{!Silica.Cmd.Set_document_attribute}. A change made in the page is also stored
+in the cookie [silica-theme] for one year ({!Silica.Cmd.Set_cookie}).
+
+Put one theme component in the page, here in the mini Linear header:
+
+From [linear/app/shared/linear_app.mlx]:
+{@ocaml skip[
+      (Silica_ui.Theme.switcher
+         (Silica_ui.Theme.props ~id:"theme" Linear_theme.set theme)
+      )
+]}
+
+[Silica_ui.Theme.switcher] draws a [Silica_ui.Select] with [System] and each
+theme. [Silica_ui.Theme.provider] has no view: the app draws its own switcher,
+keeps the choice in its own state and gives it in the props. Both take
+[?on_change], which hears the theme in use after each change, also when the
+system setting changes under [System]. A component that needs the theme as a
+value (a chart that draws with colours) gets it there. Other components need
+nothing: the CSS changes.
+
+{1:first-paint The first paint}
+
+The server and the browser read the cookie before the first props, so both
+start the theme component with the same choice. The server render writes the
+[data-theme] of that choice on [<html>]:
+
+From [linear/server/linear_server.ml]:
+{@ocaml skip[
+        S.render_page_settled
+          (Linear_app.make
+             (Linear_theme.choice
+                (Silica_server.cookie page.context.request
+                   Silica_ui.Theme.cookie_name
+                )
+             )
+          )
+]}
+
+From [linear/client/client_main.ml]:
+{@ocaml skip[
+  Silica_browser.mount_app ~root:"silica-root"
+    (Linear_app.make
+       (Linear_theme.choice (Silica_browser.cookie Silica_ui.Theme.cookie_name))
+    )
+]}
+
+The server cannot know the system setting. For [System] the page has
+[data-theme="system"], and the CSS gives the light theme there, and the dark
+theme inside [@media (prefers-color-scheme: dark)]. So the first frame has the
+right colours with no script, and the page follows a change of the system
+setting with no script too. The Playwright tests of the site read the
+background of the first frame for both system settings, with and without
+JavaScript.
+
+A switch changes one attribute. The theme component handles one event, no
+other component gets new props, and the browser changes the colours.
+
+{1:scope A theme for a part of the page}
+
+[Silica_ui.Theme.scope] puts a part of the view in another theme. Each page
+of the component browser of the Silica site shows a story in each shipped
+theme side by side:
+
+{@ocaml[
+# Silica.Render.to_string (Theme.scope Theme.ocean [ Silica.Node.text "Ocean" ]);;
+- : string = "<div data-theme=\"ocean\">Ocean</div>"
+]}
+
+A popup in a scope (a dialog, popover, tooltip, menu, select, combobox or
+command menu) uses the theme of the scope. Its portal paints it at the end of
+the body, out of the scope element, so the browser renderer puts the
+[data-theme] of the nearest scope on the portal container.
+
+{1:tokens App tokens}
+
+An app adds its own tokens with [~extra]. Write them as a record, so that a
+theme without one does not compile, and turn the record into pairs in one
+function. Mini Linear adds a warning colour:
+
+From [linear/app/shared/linear_theme.ml]:
+{@ocaml skip[
+type warning = { warning : string; warning_surface : string }
+
+let with_warning theme { warning; warning_surface } =
+  Theme.make ~name:(Theme.name theme) ~label:(Theme.label theme)
+    ~scheme:(Theme.scheme theme)
+    ~extra:[ ("warning", warning); ("warning-surface", warning_surface) ]
+    (Theme.tokens theme)
+]}
+
+The CSS property of an app token is [--<name>]. The Tailwind input maps it:
+
+From [linear/client/input.css]:
+{@css skip[
+@theme inline {
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+}
+]}
+
+[Silica_ui.Theme.set] fails when a theme of the set does not have an app
+token that another theme has.

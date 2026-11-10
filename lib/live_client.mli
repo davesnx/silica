@@ -1,0 +1,59 @@
+(** One live subscription over a WebSocket, as Live protocol v1 describes it
+    ({!Protocol}). The client sends the hello, keeps the heartbeat, drops old
+    states, and connects again after a loss. It reaches the platform only
+    through {!Platform.type-io}. *)
+
+type config = { ping_ms : int; pong_ms : int }
+(** [ping_ms] is the wait before each ping. [pong_ms] is the wait for the pong
+    before the client closes the socket and connects again. *)
+
+val default_config : config
+(** The values of {!Protocol.ping_interval_ms} and {!Protocol.pong_timeout_ms}.
+*)
+
+type fatal =
+  | Close_code of int
+      (** The server closed the socket with {!Protocol.close_version},
+          {!Protocol.close_session}, {!Protocol.close_csrf} or
+          {!Protocol.close_unknown}. *)
+  | Server_error of string  (** The server sent an [Error] message. *)
+
+type t
+
+val start :
+  ?config:config ->
+  io:Platform.io ->
+  sub:Protocol.subscription ->
+  on_state:
+    (seq:int -> state:Silica_json.Json.t -> cmds:Protocol.host list -> unit) ->
+  on_down:(unit -> unit) ->
+  on_fatal:(fatal -> unit) ->
+  unit ->
+  t
+(** Connect with [io.connect] and keep the connection. [on_state] runs for each
+    state with a [seq] higher than the last one of the same socket. [on_down]
+    runs once when a socket that had no loss before is lost; the client then
+    connects again, and the next state runs [on_state]. [on_fatal] runs once,
+    and the client does not connect again. After a close with
+    {!Protocol.close_session}, [io.session_gone] runs first. After {!stop}, no
+    callback runs. *)
+
+val send_event : t -> 'e Codec.t -> 'e -> unit
+(** Send the event with the next event id. While the socket is not ready (no
+    [Hello_ok] yet, or lost), the event is dropped and uses no id. The ids
+    continue across reconnects. *)
+
+val stop : t -> unit
+(** Close the socket with code 1000, cancel all timers, and never connect again.
+*)
+
+val subscribe :
+  ?config:config ->
+  io:Platform.io ->
+  'a Topic.t ->
+  string ->
+  deliver:('a Topic.update -> unit) ->
+  unit ->
+  unit
+(** Subscribe to the topic under the key. [deliver] gets the updates that
+    {!Cmd.Start_live} describes. The result stops the subscription. *)

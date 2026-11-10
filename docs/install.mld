@@ -1,0 +1,141 @@
+{0 Install}
+
+This page sets up a project and makes a first component. The
+{{!page-tutorial}tutorial} then adds a Remote call, a client file and a server.
+
+{1:requirements Requirements}
+
+- OCaml 5.1 or later and dune 3.20 or later.
+- Melange 7 or later, for the code that runs in the browser.
+- mlx, the JSX syntax for OCaml: the opam packages [mlx] (the commands
+  [mlx-pp] and [ocamlmerlin-mlx]) and [ocamlformat-mlx].
+- [jsonkit] and [jsonkit-melange], when the app derives its codecs (see
+  {!page-recipes.json}).
+- Node.js, for esbuild and Tailwind in the client build.
+
+Silica is not on opam yet. Pin a checkout of the repository with
+[opam pin add silica <path>] (and the same for [silica-ui]), or put the
+checkout inside your dune workspace.
+
+{1:project The dune project}
+
+The project file declares the mlx dialect, so that dune reads [.mlx] files as
+OCaml with JSX:
+
+From [dune-project]:
+{@dune skip[
+(dialect
+ (name mlx)
+ (implementation
+  (extension mlx)
+  (merlin_reader mlx)
+  (format
+   (run ocamlformat-mlx %{input-file}))
+  (preprocess
+   (run mlx-pp %{input-file}))))
+]}
+
+It also needs [(using melange 1.0)] at the top.
+
+Code that the server and the browser share goes in one folder with no stanza.
+Two libraries copy it: one for native OCaml and one for Melange. The examples
+of this documentation use this setup. The native library:
+
+From [docs/examples/native/dune]:
+{@dune skip[
+(copy_files ../shared/*.{ml,mlx})
+
+(library
+ (name silica_docs_examples_native)
+ (wrapped false)
+ (modes byte native)
+ (libraries silica silica-ui)
+ (preprocess
+  (pps silica.ppx)))
+]}
+
+The Melange library is the same with [(modes melange)] and the preprocessors
+[silica.ppx melange.ppx]. The ppx [silica.ppx] turns the JSX elements into
+calls of {!Silica.Node.element} (see {!page-components.jsx}). An app that
+derives JSON codecs needs a different library for each side; see
+{!page-recipes.json}.
+
+The browser entry is a [melange.emit] stanza over the Melange library and
+[silica.browser]:
+
+{@dune file=examples/client/dune[
+(melange.emit
+ (target out)
+ (alias docs-examples-js)
+ (modules tutorial_client)
+ (module_systems
+  (esm mjs))
+ (libraries silica_docs_examples_melange silica.browser silica.json-melange))
+]}
+
+A bundler such as esbuild makes the file for the page from the output of this
+stanza. See [example/client/dune] in the repository for the esbuild rule, and
+{!page-recipes.hosting} for the server.
+
+{1:first A first component}
+
+A component is a machine and a view. This lamp has two states, [Off] and
+[On], and one event, [Toggle]. The view shows a text and a button for each
+state.
+
+{@mlx file=examples/shared/doc_lamp.mlx[
+open Silica
+
+type event = Toggle
+
+module States = struct
+  type _ t = Off : unit t | On : unit t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"lamp" ~init:(M.at Off ())
+    [
+      M.state Off "off" ~to_:[ On ] (fun () Toggle -> M.goto On ());
+      M.state On "on" ~to_:[ Off ] (fun () Toggle -> M.goto Off ());
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Off, ()) ->
+      <div>
+        <p>"The lamp is off."</p> <button on_press=Toggle>"Turn on"</button>
+      </div>
+  | M.At (On, ()) ->
+      <div>
+        <p>"The lamp is on."</p> <button on_press=Toggle>"Turn off"</button>
+      </div>
+
+let component = Component.make machine view
+]}
+
+The same code runs on native OCaml. A test can step the machine and print the
+HTML of the view:
+
+{@ocaml[
+# let lamp = Doc_lamp.machine;;
+val lamp : (Doc_lamp.M.snapshot, Doc_lamp.event) Silica.Machine.t = <abstr>
+# let snapshot, _ = Silica.Machine.start lamp;;
+val snapshot : Doc_lamp.M.snapshot =
+  Doc_lamp.M.At (Doc_lamp.States.Off, <poly>)
+# let snapshot, _, _ = Silica.Machine.send lamp snapshot Doc_lamp.Toggle;;
+val snapshot : Doc_lamp.M.snapshot =
+  Doc_lamp.M.At (Doc_lamp.States.On, <poly>)
+# Silica.Render.to_string (Doc_lamp.view snapshot);;
+- : string = "<div><p>The lamp is on.</p><button>Turn off</button></div>"
+]}
+
+In the browser, one call of {!Silica_browser.mount} paints it into an element
+of the page. The {{!page-tutorial.browser}tutorial} shows the client file.
+
+{1:next Next}
+
+- {!page-tutorial}: a counter, then a machine with a Remote call, a client file
+  and a server.
+- {!page-machines} and {!page-components}: the two parts of a component.

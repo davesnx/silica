@@ -1,0 +1,15 @@
+open Silica_ui
+
+let render ~id _values =
+  <form class_="flex flex-col gap-3">
+    (Switch.make
+       (Switch.props ~id:(id ^ "-location") ~label:"Location" ~checked:true
+          ~name:"location" ~classes:Style.switch ()
+       )
+    )
+    (Switch.make
+       (Switch.props ~id:(id ^ "-bluetooth") ~label:"Bluetooth"
+          ~name:"bluetooth" ~classes:Style.switch ()
+       )
+    )
+  </form>

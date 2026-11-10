@@ -1,0 +1,188 @@
+{0 Components and JSX}
+
+A component is a machine together with the view of its states:
+[Component.make machine view]. The view is a function from the snapshot to a
+tree of nodes. It has no state of its own: all state is in the snapshot. See
+{!Silica.Component} and {!Silica.Node}.
+
+Define a component once, at the top level. A host knows that a rendered
+component is the same one as before when its machine is the same value.
+
+{1:jsx Views in JSX}
+
+A view is written in mlx, the JSX syntax for OCaml. The ppx [silica.ppx] turns
+each element into a call of {!Silica.Node.element}.
+
+- A lower-case tag is an HTML or SVG element: [<p>], [<button>], [<svg>].
+- A string literal child is a text node. Any other child is an expression in
+  parentheses that gives a node, such as [(Node.text name)].
+- Attributes have their HTML names, with [_] in place of [-] and a [_] after a
+  name that is an OCaml keyword: [class_], [for_], [aria_label]. The ppx checks
+  the name and the type of the value for the tag.
+- A boolean attribute takes a [bool]: [disabled=(n = 0)].
+- [ref] connects the element to a {!Silica.Ref.t}, so that commands can focus,
+  measure or scroll it.
+- An attribute that JSX cannot name, such as a [data-*] attribute, is written
+  with {!Silica.Node.element} and {!Silica.Attr}.
+
+The event attributes take an event value, not a function that runs code:
+
+{t
+| Attribute | The event is sent when |
+|-----------|------------------------|
+| [on_press] | the element is pressed: a click, or Enter or Space on a button |
+| [on_double_press] | the element is pressed two times |
+| [on_input] | the text of a field changes; takes [string -> event] |
+| [on_submit] | a form is sent; the browser does not load a new page |
+| [on_focus], [on_blur] | the element gets or loses focus |
+| [on_key_down], [on_key_up] | a key goes down or up; takes [Key.t -> event option] |
+| [on_pointer_enter], [on_pointer_leave] | the pointer moves onto or off the element |
+}
+
+The key and pointer attributes take a companion attribute with the suffix
+[_prevent], which cancels the default action of the browser when the handler
+gives an event: [on_key_down_prevent=true]. Those attributes and [on_input]
+also take the suffix [_rate] with a {!Silica.Rate.t}, which holds back values
+that come too fast: [on_input_rate=(Rate.Debounce 300)]. The ppx rejects the
+DOM names, such as [onclick], and names the Silica attribute to use.
+
+Other nodes:
+
+- {!Silica.Node.list}: a group of nodes with no element around them. Use
+  [Node.list []] for nothing.
+- {!Silica.Node.keyed}: a node with a key, so that a list keeps its items
+  when they move.
+- {!Silica.Node.portal}: children that are painted at the end of the body,
+  or into the element with an id. Popups use it.
+- {!Silica.Node.val-boundary}: a part of the view that catches an exception of
+  the components inside it, shows a fallback, and can start them again.
+
+{1:children Child components}
+
+Each part of a page that has its own behaviour is a component with its own
+machine. A parent puts a child in its view as a node:
+{!Silica.Component.node}. The machine of the child starts when the node is
+rendered and stops when the node is no longer rendered.
+
+- Props go down as an event. The host sends the [props] event to the child
+  right after its start, and again each time the props change.
+- Output goes up through function props. [output] turns each event that the
+  child handled, with the snapshot after it, into events of the parent.
+- [on_final] gives events to the parent when the child reaches a final state.
+- [key] keeps the child when its siblings move.
+
+A component with props is a module with a [make] function. Then it works as a
+tag in mlx: [<Doc_stepper label="Adults" on_change=... />] calls
+[Doc_stepper.make ~label ~on_change ()]. This stepper gets its label as props
+and gives its count to the parent:
+
+{@mlx file=examples/shared/doc_stepper.mlx[
+open Silica
+
+type data = { label : string; count : int }
+type event = Props of string | Up | Down
+
+module States = struct
+  type _ t = Count : data t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"stepper"
+    ~init:(M.at Count { label = ""; count = 0 })
+    [
+      M.state Count "count" (fun data -> function
+        | Props label ->
+            M.goto Count { data with label }
+        | Up ->
+            M.goto Count { data with count = data.count + 1 }
+        | Down when data.count = 0 ->
+            M.stay []
+        | Down ->
+            M.goto Count { data with count = data.count - 1 }
+        );
+    ]
+
+let view (M.At (Count, { label; count }) : M.snapshot) : event Node.t =
+  <div>
+    <span>(Node.text (label ^ ": " ^ string_of_int count))</span>
+    <button aria_label=("Fewer " ^ label) on_press=Down disabled=(count = 0)>
+      "-"
+    </button>
+    <button aria_label=("More " ^ label) on_press=Up>"+"</button>
+  </div>
+
+let component = Component.make machine view
+
+let make ?key ~label ~on_change () =
+  Component.node ?key component ~props:(Props label)
+    ~output:(fun event (M.At (Count, { count; _ })) ->
+      match event with Up | Down -> [ on_change count ] | Props _ -> []
+  )
+]}
+
+The parent renders two steppers and keeps the total in its own snapshot:
+
+{@mlx file=examples/shared/doc_party.mlx[
+open Silica
+
+type party = { adults : int; children : int }
+type event = Adults of int | Children of int
+
+module States = struct
+  type _ t = Party : party t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"party"
+    ~init:(M.at Party { adults = 0; children = 0 })
+    [
+      M.state Party "party" (fun party -> function
+        | Adults adults ->
+            M.goto Party { party with adults }
+        | Children children ->
+            M.goto Party { party with children }
+        );
+    ]
+
+let view (M.At (Party, { adults; children }) : M.snapshot) : event Node.t =
+  <div>
+    <Doc_stepper key="adults" label="Adults" on_change=(fun n -> Adults n) />
+    <Doc_stepper
+      key="children" label="Children" on_change=(fun n -> Children n)
+    />
+    <p>(Node.text (string_of_int (adults + children) ^ " guests"))</p>
+  </div>
+
+let component = Component.make machine view
+]}
+
+A server render shows each child as its machine is after the start and the
+props event:
+
+{@ocaml[
+# Silica.Render.to_string (Silica.Component.node Doc_party.component);;
+- : string =
+"<div><div><span>Adults: 0</span><button aria-label=\"Fewer Adults\" disabled>-</button><button aria-label=\"More Adults\">+</button></div><div><span>Children: 0</span><button aria-label=\"Fewer Children\" disabled>-</button><button aria-label=\"More Children\">+</button></div><p>0 guests</p></div>"
+]}
+
+{1:identity Which child is which}
+
+The instance tree of the host ({!Silica.Instance}) keeps one machine for each
+rendered component node. A child is the same child as before when it has the
+same position in the view of its parent, the same machine and the same key.
+So a layout that is at the same place for every page keeps its state when the
+page changes. A key that goes away ends its child, and a key that comes back
+starts a new one.
+
+The checker does not run a child inside the check of its parent. It lists the
+child and the props that the parent gave it, so that the child can be checked
+alone (see {!page-checker.children}).
+
+{1:next Next}
+
+- {!page-data}: Local, Remote and Live data in a component.
+- {!page-ui}: ready-made components with the WAI-ARIA patterns.

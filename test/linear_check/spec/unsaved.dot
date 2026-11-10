@@ -1,0 +1,11 @@
+digraph "unsaved" {
+rankdir=LR;
+"unsaved.__init" [shape=point];
+"unsaved.__init" -> "unsaved.held";
+"unsaved.held" [label="held\nhold block" shape=box];
+"unsaved.asking" [label="asking\nhold block" shape=box];
+"unsaved.asking" -> "unsaved.asking";
+"unsaved.asking" -> "unsaved.held" [label="discard, keep"];
+"unsaved.held" -> "unsaved.asking" [label="attempt push, attempt traverse"];
+"unsaved.held" -> "unsaved.held";
+}

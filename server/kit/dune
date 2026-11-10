@@ -1,0 +1,4 @@
+(library
+ (name silica_server_kit)
+ (public_name silica.server-kit)
+ (libraries jsonkit))

@@ -1,0 +1,210 @@
+open Silica
+
+type event =
+  | Props of string
+  | Loaded of (Site_doc.answer, Remote.error) result
+  | Retry
+
+module State = struct
+  type failure = { slug : string; error : Remote.error }
+
+  type _ t =
+    | Idle : unit t
+    | Loading : string t
+    | Ready : Site_doc.page t
+    | Missing : string t
+    | Failed : failure t
+end
+
+open State
+module M = Machine.Make (State)
+
+let load slug = M.reenter Loading slug
+
+let props current = function
+  | Props slug when slug <> current ->
+      load slug
+  | Props _ | Loaded _ | Retry ->
+      M.unhandled
+
+let machine =
+  M.make ~id:"doc-page" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Loading ] (fun () -> function
+        | Props slug ->
+            load slug
+        | Loaded _ | Retry ->
+            M.unhandled
+        );
+      M.state Loading "loading"
+        ~to_:[ Loading; Ready; Missing; Failed ]
+        ~invoke:[ Source.call Site_doc.endpoint Fun.id (fun r -> Loaded r) ]
+        (fun slug -> function
+          | Loaded (Ok (Site_doc.Page page)) ->
+              M.goto Ready page
+          | Loaded (Ok Site_doc.Missing) ->
+              M.goto Missing slug
+          | Loaded (Error error) ->
+              M.goto Failed { slug; error }
+          | event ->
+              props slug event
+          );
+      M.state Ready "ready" ~to_:[ Loading ] (fun page event ->
+          props page.slug event
+      );
+      M.state Missing "missing" ~to_:[ Loading ] (fun slug event ->
+          props slug event
+      );
+      M.state Failed "failed" ~to_:[ Loading ] (fun { slug; _ } -> function
+        | Retry ->
+            load slug
+        | event ->
+            props slug event
+        );
+    ]
+
+let error_text = function
+  | Remote.Http status ->
+      "The server answered with status " ^ string_of_int status ^ "."
+  | Remote.Decode message ->
+      "The answer could not be read: " ^ message
+  | Remote.Network message ->
+      "The network failed: " ^ message
+
+let pager slug =
+  let before, after = Site_nav.neighbours slug in
+  let card ~rel ~caption target =
+    match Option.bind target Site_nav.title with
+    | None ->
+        <div />
+    | Some title ->
+        Site_links.doc
+          ~attrs:
+            [
+              Attr.string "rel" rel;
+              Attr.string "class"
+                ("flex flex-col gap-1 rounded-ui border border-ui-border px-4 \
+                  py-3 hover:bg-ui-highlight "
+                ^
+                if rel = "next" then
+                  "items-end text-right"
+                else
+                  ""
+                );
+            ]
+          (Option.get target)
+          [
+            <span class_="text-xs text-ui-muted">(Node.text caption)</span>;
+            <span class_="font-medium">(Node.text title)</span>;
+          ]
+  in
+  <nav
+    aria_label="Previous and next pages"
+    class_="mt-16 grid grid-cols-2 gap-4 border-t border-ui-border pt-6">
+    (card ~rel:"prev" ~caption:"Previous" before)
+    (card ~rel:"next" ~caption:"Next" after)
+  </nav>
+
+let toc slug blocks =
+  match Site_markup.toc blocks with
+  | [] ->
+      Node.list []
+  | entries ->
+      <nav
+        aria_label="On this page"
+        class_="sticky top-20 hidden max-h-[calc(100vh-6rem)] overflow-y-auto \
+                text-sm xl:block">
+        <p class_="mb-3 font-semibold">"On this page"</p>
+        <ul class_="space-y-2 border-l border-ui-border">
+          (Node.list
+             (List.map
+                (fun (level, anchor, text) ->
+                  <li>
+                    (Site_links.doc ~hash:anchor
+                       ~attrs:
+                         [
+                           Attr.string "class"
+                             ( if level = 1 then
+                                 "-ml-px block border-l border-transparent \
+                                  pl-3 text-ui-muted hover:border-ui-text \
+                                  hover:text-ui-text"
+                               else
+                                 "-ml-px block border-l border-transparent \
+                                  pl-6 text-ui-muted hover:border-ui-text \
+                                  hover:text-ui-text"
+                             );
+                         ]
+                       slug
+                       [ Node.text text ]
+                    )
+                  </li>
+                )
+                entries
+             )
+          )
+        </ul>
+      </nav>
+
+let article slug title body =
+  <div class_="grid gap-12 xl:grid-cols-[minmax(0,1fr)_14rem]">
+    <article id="doc" class_="min-w-0 max-w-[72ch]">
+      (Node.element "h1"
+         [
+           Attr.bool "data-silica-route-focus" true;
+           Attr.string "class"
+             "text-4xl font-semibold tracking-tight text-balance outline-none";
+         ]
+         [ Node.text title ]
+      )
+      body
+      (pager slug)
+    </article>
+    <div />
+  </div>
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Idle, ()) ->
+      <div />
+  | M.At (Loading, slug) ->
+      article slug
+        (Option.value (Site_nav.title slug) ~default:"Loading")
+        <p class_="mt-6 text-ui-muted" aria_busy=true>"Loading the page."</p>
+  | M.At (Ready, page) ->
+      <div class_="grid gap-12 xl:grid-cols-[minmax(0,1fr)_14rem]">
+        <article id="doc" class_="min-w-0 max-w-[72ch]">
+          (Node.element "h1"
+             [
+               Attr.bool "data-silica-route-focus" true;
+               Attr.string "class"
+                 "text-4xl font-semibold tracking-tight text-balance \
+                  outline-none";
+             ]
+             [ Node.text page.title ]
+          )
+          (Site_markup.blocks ~slug:page.slug page.blocks)
+          (pager page.slug)
+        </article>
+        (toc page.slug page.blocks)
+      </div>
+  | M.At (Missing, slug) ->
+      article slug "Page not found"
+        <p class_="mt-6">
+          "There is no documentation page with this name. Pick one from the \
+           list."
+        </p>
+  | M.At (Failed, { slug; error }) ->
+      article slug "This page did not load"
+        <div class_="mt-6 flex flex-col items-start gap-3">
+          <p class_="text-ui-danger">(Node.text (error_text error))</p>
+          <button
+            type_=`button
+            class_="rounded-ui bg-ui-accent px-3 py-1.5 text-sm \
+                    text-ui-accent-text"
+            on_press=Retry>
+            "Try again"
+          </button>
+        </div>
+
+let component = Component.make machine view
+let make ?key ~slug () = Component.node ?key ~props:(Props slug) component

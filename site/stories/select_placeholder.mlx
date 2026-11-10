@@ -1,0 +1,14 @@
+open Silica_ui
+
+let sizes =
+  [
+    { Select.value = "s"; label = "Small"; disabled = false };
+    { Select.value = "m"; label = "Medium"; disabled = false };
+    { Select.value = "l"; label = "Large"; disabled = false };
+  ]
+
+let render ~id _values =
+  Select.make
+    (Select.props ~id ~label:"Size" ~placeholder:"Pick a size" ~name:"size"
+       ~classes:Style.select sizes
+    )

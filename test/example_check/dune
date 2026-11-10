@@ -1,0 +1,137 @@
+(library
+ (name example_checks)
+ (modules example_checks)
+ (libraries silica silica.check silica_example_app_native))
+
+(test
+ (name test_example_check)
+ (modules test_example_check)
+ (libraries
+  silica
+  silica.check
+  example_checks
+  silica_example_app_native
+  alcotest))
+
+(executable
+ (name export)
+ (modules export)
+ (libraries silica silica.check example_checks silica_example_app_native))
+
+(rule
+ (targets
+  router.qnt
+  router.dot
+  home.qnt
+  home.dot
+  todo.qnt
+  todo.dot
+  item.qnt
+  item.dot
+  about.qnt
+  about.dot
+  not_found.qnt
+  not_found.dot
+  votes.qnt
+  votes.dot
+  vote.qnt
+  vote.dot
+  counter.qnt
+  counter.dot)
+ (action
+  (run ./export.exe)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.qnt router.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.dot router.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/home.qnt home.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/home.dot home.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/todo.qnt todo.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/todo.dot todo.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/item.qnt item.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/item.dot item.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/about.qnt about.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/about.dot about.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/not_found.qnt not_found.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/not_found.dot not_found.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/votes.qnt votes.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/votes.dot votes.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/vote.qnt vote.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/vote.dot vote.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/counter.qnt counter.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/counter.dot counter.dot)))
+
+(alias
+ (name runtest)
+ (deps
+  (alias spec)))

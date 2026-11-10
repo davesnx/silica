@@ -1,0 +1,71 @@
+open Silica
+open Silica_ui
+
+type event = Changed of bool * Popup.reason | Selected of string
+
+module States = struct
+  type _ t = Page : string list t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"menu-events" ~init:(M.at Page [])
+    [
+      M.state Page "page" (fun events -> function
+        | Changed (opened, reason) ->
+            M.goto Page
+              (events
+              @ [
+                  Printf.sprintf "%s %s"
+                    ( if opened then
+                        "open"
+                      else
+                        "close"
+                    )
+                    (Popup.reason_name reason);
+                ]
+              )
+        | Selected value ->
+            M.goto Page (events @ [ "select " ^ value ])
+        );
+    ]
+
+let item ?(disabled = false) value label = { Menu.value; label; disabled }
+
+let actions =
+  [
+    item "edit" "Edit";
+    item ~disabled:true "duplicate" "Duplicate";
+    item "archive" "Archive";
+    item "delete" "Delete";
+  ]
+
+let view (M.At (Page, events)) =
+  <section class_="flex flex-col gap-4">
+    <div class_="flex gap-2">
+      <button
+        type_=`button
+        id="before"
+        class_="rounded-ui border border-ui-border px-3 py-1 text-sm">
+        "Before"
+      </button>
+      (Menu.make
+         ~on_open_change:(fun opened reason -> Changed (opened, reason))
+         ~on_select:(fun value -> Selected value)
+         (Menu.props ~id:"actions" ~label:"Actions" ~classes:Style.menu actions)
+      )
+      <button
+        type_=`button
+        id="after"
+        class_="rounded-ui border border-ui-border px-3 py-1 text-sm">
+        "After"
+      </button>
+    </div>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

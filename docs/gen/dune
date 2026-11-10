@@ -1,0 +1,2 @@
+(executables
+ (names glossary_gen excerpt_check))

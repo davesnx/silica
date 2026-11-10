@@ -1,0 +1,14 @@
+(library
+ (name silica_static_export)
+ (modules silica_static_export)
+ (libraries silica silica.server str))
+
+(executable
+ (name export)
+ (modules export)
+ (libraries
+  silica_static_export
+  silica_site_server
+  silica.server
+  silica.server-kit
+  silica_example_adapter))

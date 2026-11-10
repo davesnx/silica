@@ -1,0 +1,10 @@
+open Silica_ui
+
+let render ~id values =
+  Checkbox.make
+    (Checkbox.props ~id
+       ~label:(Story.string values "label")
+       ~checked:(Story.bool values "checked")
+       ~disabled:(Story.bool values "disabled")
+       ~classes:Style.checkbox ()
+    )

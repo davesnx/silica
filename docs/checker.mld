@@ -1,0 +1,281 @@
+{0 The checker and Quint}
+
+The checker ([silica.check], module {!Check}) runs a component in every state
+that it can reach. In each state it renders the view, finds every event that
+can happen, and checks properties of the state and the view. It searches
+breadth first, so a failure comes with a shortest list of events that leads
+to it.
+
+States and events must be plain data: the checker compares and hashes them.
+A closure in a state or an event is reported as an [Error].
+
+{1:component Check a component}
+
+{!Check.component} takes a component and gives a {!Check.report}. The events
+of a state are:
+
+- the handlers of the view: press, double press, submit, focus, blur, pointer
+  enter and leave, and the key handlers with each key of [keys];
+- the events of the held sources of the state, such as the keys of a
+  [Source.keys] table or the events of a dismiss layer;
+- the events of running timers, in any order, as time is not counted;
+- the answers of running calls and the states of running subscriptions (see
+  {{!section-samples}Samples});
+- [inputs state]: the events that need a value, such as the text of an
+  [on_input];
+- every event in [props].
+
+A handler on an element with [disabled] is not an event. [within] limits a
+state space that has no end: the checker does not explore a state outside it.
+
+{@ocaml[
+# match
+    Check.component
+      ~inputs:(fun _ -> [ Doc_debounce.Typed "a"; Doc_debounce.Typed "" ])
+      Doc_debounce.component
+  with
+  | Check.Ok { states; transitions; _ } -> Printf.sprintf "%d states, %d transitions" states transitions
+  | _ -> "problem";;
+- : string = "3 states, 9 transitions"
+]}
+
+{1:invariants Properties}
+
+The built-in properties hold for every component:
+
+- Each element that can be pressed has a name that a screen reader can read.
+- Refs are unique in a view, and a [Focus], [Blur] or [Scroll_into_view]
+  command names a ref of the next view ([focus-target]).
+- The fallback of each boundary can reset it ([boundary-reset]).
+- Some event can happen, unless the state is final or the view holds a child
+  component or an island ([dead-end]).
+- Every running timer, call and subscription belongs to the current state
+  ([timer-owner], [call-owner]).
+- A handler goes only to the states of its [to_] list ([undeclared-target]),
+  and each such state has a case ([missing-case]).
+
+An invariant of the app is a name and a function of the state and the view.
+This one fails on the stepper of {!page-components}, and the report gives the
+shortest trace:
+
+{@ocaml[
+# let at_most_two =
+    { Check.name = "at-most-two";
+      holds = (fun (Doc_stepper.M.At (Count, data)) _ -> data.count <= 2) };;
+val at_most_two : (Doc_stepper.M.snapshot, 'a) Check.invariant =
+  {Check.name = "at-most-two"; holds = <fun>}
+# match
+    Check.component ~invariants:[ at_most_two ]
+      ~within:(fun (Doc_stepper.M.At (Count, data)) -> data.count <= 5)
+      Doc_stepper.component
+  with
+  | Check.Violation { invariant; trace; _ } -> (invariant, trace)
+  | _ -> ("none", []);;
+- : string * Doc_stepper.event list =
+("at-most-two", [Doc_stepper.Up; Doc_stepper.Up; Doc_stepper.Up])
+]}
+
+{!Check.pp_report} prints a report as numbered steps.
+
+When the search ends with no violation, a declared edge between two states
+that no step took is reported as [Unreached]: the [to_] list says more than
+the machine does. List an edge that only a test can reach in
+[allow_unreached].
+
+{1:samples Samples}
+
+The checker has no server. A sample gives the values that the server could
+give:
+
+- {!Check.answers} [endpoint values]: a call can end with each value, and
+  also with [Error (Http 500)] and [Error (Network "down")].
+- {!Check.states} [topic values]: a subscription gets [Loading None], then up
+  to [arrivals] states, one loss of the connection with the old data, and one
+  fatal failure.
+
+An endpoint with no sample can only fail. So the error paths are always
+checked.
+
+{@ocaml[
+# match
+    Check.component
+      ~samples:[ Check.answers Tutorial_api.greeting [ "Hello, Ada" ] ]
+      Doc_hello.component
+  with
+  | Check.Ok { states; edges; _ } -> (states, List.length edges)
+  | _ -> (0, 0);;
+- : int * int = (3, 3)
+]}
+
+{1:children Children}
+
+The checker does not run a child component inside the check of its parent. A
+report lists each child in [not_explored], and keeps the props that the
+parent gave in [children]. Check the child alone with those props:
+
+{@ocaml[
+# let children =
+    match Check.component Doc_party.component with
+    | Check.Ok { not_explored; children; _ } ->
+        print_endline (String.concat ", " not_explored);
+        children
+    | _ -> failwith "problem";;
+component stepper
+val children : Check.children = <abstr>
+# let props = Check.props children Doc_stepper.component;;
+val props : Doc_stepper.event list =
+  [Doc_stepper.Props "Adults"; Doc_stepper.Props "Children"]
+# match
+    Check.component ~props
+      ~within:(fun (Doc_stepper.M.At (Count, data)) -> data.count <= 3)
+      Doc_stepper.component
+  with
+  | Check.Ok { states; _ } -> states
+  | _ -> 0;;
+- : int = 12
+]}
+
+{1:live Live components}
+
+{!Check.live} checks a Live component. Its machine runs on the server, so a
+state that owns a source of the page (a focus trap, a key table, a dismiss
+layer) is a violation named [live-uses-client-source], and a command that
+needs an answer of the page ([Measure], [Copy], [Load_script]) is a violation
+named [live-uses-client-command].
+
+{1:app Routed apps}
+
+{!Check.app} explores the root of a router app with a simulated history: link
+presses, back, forward and the navigation commands. [routes] lists route
+values to check: for a route with a query, give one value with the default and
+one without. [inputs] gives the URLs that a user can type. Two more
+properties hold:
+
+- [route-round-trip]: each route reads back from its own URL.
+- [link-parses]: the [href] of each link in a view prints back to the same
+  URL, and does not go to the not-found route.
+
+{@ocaml[
+# match
+    let open Doc_books in
+    Check.app
+      ~inputs:(fun _ ->
+        List.map
+          (fun path -> Silica.Router.Url_changed (Silica.Url.of_string path))
+          [ "/"; "/books/7"; "/search?q=ocaml"; "/nowhere" ])
+      ~routes:
+        [
+          Router.At (State.Home, ());
+          Router.At (State.Book, 7);
+          Router.At (State.Search, { text = ""; page = 1 });
+          Router.At (State.Search, { text = "ocaml"; page = 2 });
+          Router.At (State.Not_found, "/x");
+        ]
+      ~parse:(Router.parse routes) ~print:(Router.print routes)
+      ~is_not_found:(Router.is_not_found routes)
+      ~url_event:(fun url -> Silica.Router.Url_changed url)
+      app
+  with
+  | Check.Ok { states; _ } -> Printf.sprintf "%d states" states
+  | _ -> "problem";;
+- : string = "1696 states"
+]}
+
+The pages of this example are plain nodes, so they are part of the check. A
+page that is a component node is listed in [not_explored]: check it alone,
+as a child.
+
+{1:quint Diagrams and Quint}
+
+{!Silica.Spec} is the shape of a machine: its states, its declared edges, its
+timers and its sources (see {!page-machines.spec}). It has two exports:
+
+- {!Silica.Spec.to_dot}: a Graphviz diagram.
+- {!Silica.Spec.to_quint}: a module for {{:https://quint-lang.org} Quint}, a
+  language for the specification of systems. The module has the state, the
+  running timers and sources, and the last event. It has one action for each
+  edge, and the invariants [resources_owned] (every running resource belongs
+  to the current state), [can_move] and [inv] (both).
+
+Give the export the [edges] of a checker report, and each edge gets the names
+of the events that took it:
+
+{@ocaml[
+# let labels =
+    match Check.component ~label:(fun Doc_lamp.Toggle -> "toggle") Doc_lamp.component with
+    | Check.Ok { edges; _ } -> edges
+    | _ -> [];;
+val labels : Silica.Spec.label list =
+  [{Silica.Spec.from = "off"; target = "on"; event = "toggle"; kept = false};
+   {Silica.Spec.from = "on"; target = "off"; event = "toggle"; kept = false}]
+# print_string (Silica.Spec.to_quint ~labels (Silica.Machine.spec Doc_lamp.machine));;
+// Generated from the spec of the machine "lamp". Do not edit.
+module lamp {
+  type State = | Off | On
+  type Event = OnStart | OnAny | OnToggle
+
+  var state: State
+  var running: Set[str]
+  var last: Event
+
+  pure def owned(s: State): Set[str] = match s {
+    | Off => Set()
+    | On => Set()
+  }
+
+  pure val finals: Set[State] = Set()
+  pure val movable: Set[State] = Set(Off, On)
+
+  action enter(s: State, e: Event): bool = all {
+    state' = s,
+    running' = owned(s),
+    last' = e,
+  }
+
+  action init = all {
+    state' = Off,
+    running' = owned(Off),
+    last' = OnStart,
+  }
+
+  action off_to_on_on_toggle = all { state == Off, enter(On, OnToggle) }
+  action on_to_off_on_toggle = all { state == On, enter(Off, OnToggle) }
+
+  action step = any {
+    off_to_on_on_toggle,
+    on_to_off_on_toggle,
+  }
+
+  val resources_owned = running.subseteq(owned(state))
+  val can_move = finals.contains(state) or movable.contains(state)
+  val inv = resources_owned and can_move
+}
+- : unit = ()
+]}
+
+The model holds the edges only, not the code of the handlers, so it allows
+more runs than the machine.
+
+The repository writes the exports of its machines in a dune rule, and keeps a
+copy in [spec/] next to the tests. A [diff] rule fails the build when a change
+of a machine changes its spec, so a change of the shape is always seen in a
+review:
+
+From [test/example_check/dune]:
+{@dune skip[
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.qnt router.qnt)))
+]}
+
+[test/quint/check.ts] runs Quint on each module: it type checks it and runs
+random traces against the invariant [inv]. A module with a seeded bug must
+fail:
+
+From [test/quint/check.ts]:
+{@ts skip[
+const runArgs = (file: string) => [
+  "run", file, "--invariant=inv", "--max-steps=20", "--max-samples=500", "--seed=1", "--backend=typescript",
+];
+]}

@@ -1,0 +1,12 @@
+digraph "select" {
+rankdir=LR;
+"select.__init" [shape=point];
+"select.__init" -> "select.idle";
+"select.idle" [label="idle" shape=box];
+"select.closed" [label="closed" shape=box];
+"select.open" [label="open\nhold dismiss\nhold anchor" shape=box];
+"select.closed" -> "select.open" [label="open list-navigation, open trigger-press, trigger press"];
+"select.idle" -> "select.closed" [label="props, props value"];
+"select.open" -> "select.closed" [label="close escape-key, close focus-out, close item-press, close outside-press, select focus-out, select item-press, trigger press"];
+"select.open" -> "select.open";
+}

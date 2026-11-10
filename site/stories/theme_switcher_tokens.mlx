@@ -1,0 +1,22 @@
+open Silica
+
+let tokens =
+  [
+    ("surface", "bg-ui-surface");
+    ("raised", "bg-ui-raised");
+    ("text", "bg-ui-text");
+    ("muted", "bg-ui-muted");
+    ("border", "bg-ui-border");
+    ("highlight", "bg-ui-highlight");
+    ("accent", "bg-ui-accent");
+    ("danger", "bg-ui-danger");
+  ]
+
+let swatch (name, colour) =
+  <li class_="flex items-center gap-2 text-sm">
+    <span class_=("size-6 rounded-ui border border-ui-border " ^ colour) />
+    <code>(Node.text name)</code>
+  </li>
+
+let render ~id:_ _values =
+  <ul class_="grid grid-cols-2 gap-3">(Node.list (List.map swatch tokens))</ul>

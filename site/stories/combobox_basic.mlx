@@ -1,0 +1,20 @@
+open Silica_ui
+
+let countries =
+  Combobox.
+    [
+      item "fr" "France";
+      item "de" "Germany";
+      item ~disabled:true "it" "Italy";
+      item "jp" "Japan";
+      item ~keywords:[ "uk"; "britain" ] "gb" "United Kingdom";
+      item ~keywords:[ "usa" ] "us" "United States";
+    ]
+
+let render ~id values =
+  Combobox.make
+    (Combobox.props ~id ~label:"Country" ~placeholder:"Search countries"
+       ~empty:"No country found"
+       ~inline:(Story.bool values "inline")
+       ~classes:Style.combobox countries
+    )

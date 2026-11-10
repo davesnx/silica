@@ -1,0 +1,132 @@
+open Silica
+open Silica_ui
+
+module Help = struct
+  type props = unit
+  type event = |
+
+  let id = "help-dialog"
+  let view () = <p class_="mt-2 text-sm">"A name has at most 40 letters."</p>
+  let closes : event -> bool = function _ -> .
+end
+
+module Help_dialog = Dialog.Make (Help)
+
+module Rename = struct
+  type props = { name : string }
+  type event = Name of string | Save
+
+  let id = "rename-dialog"
+
+  let view { name } =
+    <form on_submit=Save class_="mt-3 flex flex-col gap-2">
+      <input
+        id="rename-name"
+        aria_label="Name"
+        class_="rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
+        value=name
+        on_input=(fun value -> Name value)
+      />
+      (Select.make
+         (Select.props ~id:"case" ~label:"Letter case" ~value:"typed"
+            ~name:"case" ~classes:Style.select
+            [
+              { Select.value = "typed"; label = "As typed"; disabled = false };
+              { Select.value = "upper"; label = "Upper case"; disabled = false };
+            ]
+         )
+      )
+      <div class_="flex gap-2">
+        <button type_=`submit id="rename-save" class_=Style.button>
+          "Save"
+        </button>
+        (Help_dialog.make
+           (Help_dialog.props ~id:"help" ~title:"Help" ~trigger:"Help"
+              ~close:"Got it" ~classes:Style.dialog ()
+           )
+        )
+      </div>
+    </form>
+
+  let closes = function Save -> true | Name _ -> false
+end
+
+module Rename_dialog = Dialog.Make (Rename)
+
+type page = {
+  name : string;
+  saved : string;
+  events : string list;
+  open_ : bool option;
+}
+
+type event =
+  | Changed of bool * Popup.reason
+  | Edited of Rename.event
+  | Open_from_outside
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let note page line = { page with events = page.events @ [ line ] }
+
+let machine =
+  M.make ~id:"dialog-events"
+    ~init:(M.at Page { name = "Ada"; saved = "Ada"; events = []; open_ = None })
+    [
+      M.state Page "page" (fun page -> function
+        | Changed (opened, reason) ->
+            M.goto Page
+              (note
+                 { page with open_ = Some opened }
+                 (Printf.sprintf "%s %s"
+                    ( if opened then
+                        "open"
+                      else
+                        "close"
+                    )
+                    (Popup.reason_name reason)
+                 )
+              )
+        | Edited (Rename.Name name) ->
+            M.goto Page { page with name }
+        | Edited Rename.Save ->
+            M.goto Page (note { page with saved = page.name } "save")
+        | Open_from_outside ->
+            M.goto Page
+              (note { page with open_ = Some true } "open from outside")
+        );
+    ]
+
+let view (M.At (Page, page)) =
+  <section class_="flex flex-col gap-4">
+    <p id="saved">(Node.text ("Name: " ^ page.saved))</p>
+    <div class_="flex gap-2">
+      (Rename_dialog.make
+         ~on_open_change:(fun opened reason -> Changed (opened, reason))
+         ~on_content:(fun event -> Edited event)
+         (Rename_dialog.props ~id:"rename" ~title:"Rename"
+            ~description:"Choose the name that the page shows."
+            ~trigger:"Rename" ~close:"Cancel" ?open_:page.open_
+            ~classes:Style.dialog
+            { Rename.name = page.name }
+         )
+      )
+      <button
+        type_=`button
+        id="open-outside"
+        class_="rounded-ui border border-ui-border px-3 py-1 text-sm"
+        on_press=Open_from_outside>
+        "Open from outside"
+      </button>
+    </div>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

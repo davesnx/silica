@@ -1,0 +1,312 @@
+open Silica
+open Silica_ui
+
+type page = { slug : string; values : (string * Story.values) list }
+type event = Props of string | Set of string * Story.values
+
+module States = struct
+  type _ t = Idle : unit t | Shown : page t
+end
+
+open States
+module M = Machine.Make (States)
+
+let fresh slug =
+  {
+    slug;
+    values =
+      ( match Site_catalog.find slug with
+      | Some entry ->
+          List.map
+            (fun (_, s) -> (Story.slug s, Story.defaults s))
+            entry.stories
+      | None ->
+          []
+      );
+  }
+
+let machine =
+  M.make ~id:"component-page" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Shown ] (fun () -> function
+        | Props slug ->
+            M.goto Shown (fresh slug)
+        | Set _ ->
+            M.unhandled
+        );
+      M.state Shown "shown" (fun page -> function
+        | Props slug when slug <> page.slug ->
+            M.goto Shown (fresh slug)
+        | Props _ ->
+            M.stay []
+        | Set (story, values) when List.mem_assoc story page.values ->
+            M.goto Shown
+              {
+                page with
+                values =
+                  List.map
+                    (fun (s, v) ->
+                      if s = story then
+                        (s, values)
+                      else
+                        (s, v)
+                    )
+                    page.values;
+              }
+        | Set _ ->
+            M.stay []
+        );
+    ]
+
+let section_heading ~slug ~anchor text =
+  <h2
+    id=anchor
+    class_="group mb-4 scroll-mt-24 text-xl font-semibold tracking-tight">
+    (Node.text text)
+    (Site_links.component
+       ~attrs:
+         [
+           Attr.string "class"
+             "ml-2 text-ui-muted opacity-0 group-hover:opacity-100 \
+              focus-visible:opacity-100";
+           Attr.string "aria-label" ("Link to " ^ text);
+         ]
+       slug
+       [ Node.text "#" ]
+    )
+  </h2>
+
+let facts_view (facts : Site_facts.t) =
+  <div class_="grid gap-6 lg:grid-cols-2">
+    <div>
+      <h3 class_="mb-2 text-sm font-semibold">"States"</h3>
+      <ul
+        class_="divide-y divide-ui-border rounded-ui border border-ui-border \
+                text-sm">
+        (Node.list
+           (List.map
+              (fun (s : Site_facts.state) ->
+                <li
+                  class_="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 \
+                          py-2">
+                  <code class_="font-mono font-semibold">
+                    (Node.text s.name)
+                  </code>
+                  ( if s.name = facts.init then
+                      <span class_="text-xs text-ui-muted">"initial"</span>
+                    else
+                      Node.list []
+                  )
+                  ( if s.final then
+                      <span class_="text-xs text-ui-muted">"final"</span>
+                    else
+                      Node.list []
+                  )
+                  <span class_="font-mono text-xs text-ui-muted">
+                    (Node.text (String.concat ", " s.details))
+                  </span>
+                </li>
+              )
+              facts.states
+           )
+        )
+      </ul>
+    </div>
+    <div>
+      <h3 class_="mb-2 text-sm font-semibold">"Transitions"</h3>
+      <table class_="w-full text-left text-sm">
+        <thead class_="text-ui-muted">
+          <tr>
+            <th class_="py-1 pr-3 font-medium">"From"</th>
+            <th class_="py-1 pr-3 font-medium">"To"</th>
+            <th class_="py-1 font-medium">"Events"</th>
+          </tr>
+        </thead>
+        <tbody class_="font-mono">
+          (Node.list
+             (List.map
+                (fun (e : Site_facts.edge) ->
+                  <tr class_="border-t border-ui-border">
+                    <td class_="py-1.5 pr-3">(Node.text e.from)</td>
+                    <td class_="py-1.5 pr-3">(Node.text e.target)</td>
+                    <td class_="py-1.5 text-ui-muted">
+                      (Node.text (String.concat ", " e.events))
+                    </td>
+                  </tr>
+                )
+                facts.edges
+             )
+          )
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+let story_view ~(entry : Site_catalog.entry) page (file, (story : Story.t)) =
+  let anchor = Story.slug story in
+  let id = entry.info.slug ^ "-" ^ anchor in
+  let values =
+    Option.value
+      (List.assoc_opt anchor page.values)
+      ~default:(Story.defaults story)
+  in
+  Node.element "section"
+    [ Attr.string "class" "mt-14"; Attr.string "data-story" anchor ]
+    [
+      section_heading ~slug:entry.info.slug ~anchor story.name;
+      <div class_="overflow-hidden rounded-ui border border-ui-border">
+        <div
+          class_=( if story.controls = [] then
+                     "grid"
+                   else
+                     "grid md:grid-cols-[minmax(0,1fr)_15rem]"
+                 )>
+          <div
+            class_="story-preview flex min-h-48 items-center justify-center \
+                    bg-ui-raised p-8">
+            (Story.render ~id story values)
+          </div>
+          ( match story.controls with
+          | [] ->
+              Node.list []
+          | _ ->
+              <div
+                class_="border-t border-ui-border p-4 md:border-t-0 md:border-l">
+                (Story.controls ~id:(id ^ "-control") story values (fun v ->
+                     Set (anchor, v)
+                 )
+                )
+              </div>
+          )
+        </div>
+        <div
+          class_="border-t border-ui-border [&>figure]:my-0 \
+                  [&>figure]:rounded-none [&>figure]:border-0">
+          (let code =
+             Site_code.view ~file:("site/stories/" ^ file) ~lang:"mlx"
+               story.source
+           in
+           if List.length (String.split_on_char '\n' story.source) <= 30 then
+             code
+           else
+             <details class_="group">
+               <summary
+                 class_="cursor-pointer px-4 py-2 text-sm text-ui-muted \
+                         hover:text-ui-text">
+                 (Node.text
+                    ("Show the source ("
+                    ^ string_of_int
+                        (List.length (String.split_on_char '\n' story.source))
+                    ^ " lines)"
+                    )
+                 )
+               </summary>
+               code
+             </details>
+          )
+        </div>
+      </div>;
+    ]
+
+let themes_view (entry : Site_catalog.entry) =
+  match entry.grid with
+  | None ->
+      Node.list []
+  | Some story ->
+      <section class_="mt-16">
+        (section_heading ~slug:entry.info.slug ~anchor:"themes" "In every theme")
+        <p class_="mb-4 text-ui-muted">
+          (Node.text
+             ("The story \"" ^ story.name
+            ^ "\" in each shipped theme, side by side, with Theme.scope. \
+               Popups that open from a scope use its theme."
+             )
+          )
+        </p>
+        <div id="theme-grid" class_="grid gap-4 sm:grid-cols-2">
+          (Node.list
+             (List.map
+                (fun theme ->
+                  Theme.scope theme
+                    [
+                      <div
+                        class_="flex flex-col gap-4 rounded-ui border \
+                                border-ui-border p-4">
+                        <p class_="text-xs font-medium text-ui-muted">
+                          (Node.text (Theme.label theme))
+                        </p>
+                        <div class_="flex min-h-32 items-center justify-center">
+                          (Story.render
+                             ~id:(entry.info.slug ^ "-theme-" ^ Theme.name theme)
+                             story (Story.defaults story)
+                          )
+                        </div>
+                      </div>;
+                    ]
+                )
+                Site_theme.themes
+             )
+          )
+        </div>
+      </section>
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Idle, ()) ->
+      <div />
+  | M.At (Shown, page) -> (
+      match Site_catalog.find page.slug with
+      | None ->
+          <div>
+            (Node.element "h1"
+               [
+                 Attr.bool "data-silica-route-focus" true;
+                 Attr.string "class" "text-4xl font-semibold tracking-tight";
+               ]
+               [ Node.text "No such component" ]
+            )
+            <p class_="mt-4">"Pick a component from the list."</p>
+          </div>
+      | Some entry ->
+          <div class_="min-w-0">
+            (Node.element "h1"
+               [
+                 Attr.bool "data-silica-route-focus" true;
+                 Attr.string "class"
+                   "text-4xl font-semibold tracking-tight outline-none";
+               ]
+               [ Node.text entry.info.name ]
+            )
+            <p class_="mt-3 max-w-[65ch] text-lg leading-8 text-ui-muted">
+              (Node.text entry.info.summary)
+            </p>
+            <p class_="mt-3 font-mono text-sm text-ui-muted">
+              (Node.text entry.info.modules)
+            </p>
+            ( match entry.facts with
+            | Some facts ->
+                <section class_="mt-12">
+                  (section_heading ~slug:entry.info.slug ~anchor:"statechart"
+                     "Statechart"
+                  )
+                  <p class_="mb-4 max-w-[65ch] text-ui-muted">
+                    (Node.text
+                       ("The states of the machine " ^ facts.machine
+                      ^ " and the events that move it, from the checker run in \
+                         test/ui_check."
+                       )
+                    )
+                  </p>
+                  (facts_view facts)
+                </section>
+            | None ->
+                Node.list []
+            )
+            (Node.list (List.map (story_view ~entry page) entry.stories))
+            (themes_view entry)
+          </div>
+    )
+
+let component = Component.make machine view
+let make ?key ~slug () = Component.node ?key ~props:(Props slug) component
+let page slug : Silica.Router.event Node.t = make ~slug ()

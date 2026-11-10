@@ -1,0 +1,7 @@
+(melange.emit
+ (target out)
+ (alias docs-examples-js)
+ (modules tutorial_client)
+ (module_systems
+  (esm mjs))
+ (libraries silica_docs_examples_melange silica.browser silica.json-melange))

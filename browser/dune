@@ -1,0 +1,7 @@
+(library
+ (name silica_browser)
+ (public_name silica.browser)
+ (modes melange)
+ (preprocess
+  (pps melange.ppx))
+ (libraries silica silica.json-melange))

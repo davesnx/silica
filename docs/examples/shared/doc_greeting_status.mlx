@@ -1,0 +1,27 @@
+open Silica
+
+type state = (string, string) Remote_machine.state
+type event = (string, string) Remote_machine.event
+
+let machine = Remote_machine.make ~id:"greeting-status" Tutorial_api.greeting
+
+let view ({ status; _ } : state) : event Node.t =
+  match status with
+  | Status.Idle ->
+      <button on_press=(Remote_machine.Load "Ada")>"Load"</button>
+  | Status.Loading None ->
+      <p>"Loading."</p>
+  | Status.Loading (Some old) ->
+      <p>(Node.text (old ^ " Loading again."))</p>
+  | Status.Ready { data; _ } ->
+      <div>
+        <p>(Node.text data)</p>
+        <button on_press=(Remote_machine.Load "Grace")>"Load again"</button>
+      </div>
+  | Status.Failed { last; _ } ->
+      <div>
+        <p>(Node.text (Option.value last ~default:"No greeting."))</p>
+        <button on_press=Remote_machine.Retry>"Try again"</button>
+      </div>
+
+let component = Component.make machine view

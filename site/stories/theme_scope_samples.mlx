@@ -1,0 +1,27 @@
+open Silica
+open Silica_ui
+
+let sample theme =
+  let name = Theme.name theme in
+  Theme.scope theme
+    [
+      <section
+        id=("theme-" ^ name)
+        class_="flex flex-col gap-2 rounded-ui border border-ui-border p-4">
+        <h2 class_="font-semibold">(Node.text (Theme.label theme))</h2>
+        <p class_="text-sm text-ui-muted">"Muted text on the surface."</p>
+        <button type_=`button class_=Style.button>"Accent"</button>
+        <p class_="text-sm text-ui-danger">"Danger text."</p>
+        (Tooltip.make
+           (Tooltip.props
+              ~id:("theme-" ^ name ^ "-tip")
+              ~label:"Tip" ~tip:"A popup in the theme" ~classes:Style.tooltip ()
+           )
+        )
+      </section>;
+    ]
+
+let render ~id:_ _ =
+  <div id="theme-samples" class_="grid grid-cols-2 gap-4">
+    (Node.list (List.map sample Theme.shipped))
+  </div>

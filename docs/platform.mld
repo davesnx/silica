@@ -1,0 +1,86 @@
+{0 The platform and the renderers}
+
+A machine is a value. A host runs it: it keeps the snapshot, sends events,
+paints the view and carries out the commands. Silica has three hosts that run
+components: the browser, the server render and the memory platform of the
+tests. The checker is a fourth host, which runs one machine at a time (see
+{!page-checker}).
+
+{1:instances The instance tree}
+
+Every host that renders components uses one instance tree,
+{!Silica.Instance}. It starts the machine of each component node that a view
+holds, gives the props, takes the output to the parent, and ends a child that
+is no longer rendered. [Instance.update] delivers one message and gives the
+resolved view (with no component nodes left) and the commands of the step:
+
+{@ocaml[
+# let tree = Silica.Instance.mount Doc_party.component;;
+val tree : (Doc_party.M.snapshot, Doc_party.event) Silica.Instance.t =
+  <abstr>
+# Silica.Render.to_string (fst (Silica.Instance.update tree None));;
+- : string =
+"<div><div><span>Adults: 0</span><button aria-label=\"Fewer Adults\" disabled>-</button><button aria-label=\"More Adults\">+</button></div><div><span>Children: 0</span><button aria-label=\"Fewer Children\" disabled>-</button><button aria-label=\"More Children\">+</button></div><p>0 guests</p></div>"
+# Silica.Instance.count tree;;
+- : int = 3
+]}
+
+The tree has three instances: the party and its two steppers.
+
+{1:runtime The runtime and the platform}
+
+{!Silica.Runtime} is the host runtime: the queue of events, the instance
+tree, timers, Remote calls, Live subscriptions, the error page and the replay
+of the answers of a server render. It reaches the screen and the network only
+through one value of {!Silica.Platform.t}:
+
+- [renderer]: a {!Silica.Renderer.t}. It paints views, turns platform input
+  into events, runs the platform commands (focus, scroll, history, title) and
+  starts and stops the held sources. It reports each URL change and each link
+  preload with [on_route].
+- [location]: the URL of the page now.
+- [io]: a clock ([schedule]), one HTTP request form for Remote calls ([post]),
+  a Live socket ([connect]), the CSRF token of the page, a hook for a session
+  that the server no longer knows, and a log.
+
+A platform for another screen writes one value of this type and no runtime
+code. The decoding of answers, the replay of server answers, the reconnect
+and the heartbeat of Live sockets are the same for every platform.
+
+{1:browser The browser}
+
+{!Silica_browser} ([silica.browser], Melange only) is the browser platform:
+the runtime with a renderer for the DOM.
+
+- {!Silica_browser.mount} paints a component into the element with an id.
+- {!Silica_browser.mount_app} does the same for a router app: link presses,
+  back and forward reach the router (see {!page-router}).
+- {!Silica_browser.mount_live} renders a Live component whose machine runs on
+  the server (see {!page-hydration.islands}).
+- {!Silica_browser.mount_with_renderer} runs the same runtime with another
+  {!Silica.Renderer}.
+- {!Silica_browser.cookie} reads a cookie before the mount, so that the first
+  props equal those of the server render.
+
+The first paint adopts the HTML of the server instead of building it again
+(see {!page-hydration}). After it, the root element gets the attribute
+[data-silica-ready]. Events are delegated: for a DOM event, the renderer finds
+the handler of the nearest element in the view.
+
+{1:server The server render}
+
+{!Silica_server} renders a page with the same instance tree: it mounts the
+root at the URL, runs the Remote calls of the first render against the
+handlers, and prints the view with {!Silica.Render.to_string}. It is not a
+{!Silica.Platform.t}: it keeps no page after the answer. Most commands do
+nothing there; [Set_title], [Set_status], [Set_document_attribute] and the
+navigation commands change the answer. See {!page-server.render}.
+
+{1:memory The memory platform}
+
+{!Silica_memory} ([silica.memory], native only) is a platform with no DOM. It
+keeps the last painted view, a clock that moves only when the test says so,
+the requests that the test answers, Live sockets that the test opens and
+feeds, and a history of URLs. It runs the same runtime as the browser, so a
+test on native OCaml goes through the same queue, timers, calls and error
+page. See {!page-testing.memory}.

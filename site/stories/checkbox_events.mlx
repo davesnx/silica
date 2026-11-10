@@ -1,0 +1,59 @@
+open Silica
+open Silica_ui
+
+type page = { checked : bool; indeterminate : bool; events : string list }
+type event = Changed of bool | Mixed
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"checkbox-events"
+    ~init:(M.at Page { checked = false; indeterminate = false; events = [] })
+    [
+      M.state Page "page" (fun page -> function
+        | Changed checked ->
+            M.goto Page
+              {
+                checked;
+                indeterminate = false;
+                events = page.events @ [ Printf.sprintf "checked %b" checked ];
+              }
+        | Mixed ->
+            M.goto Page { page with indeterminate = true }
+        );
+    ]
+
+let view (M.At (Page, page)) =
+  <section class_="flex flex-col gap-4">
+    <form id="terms-form" class_="flex flex-col gap-2">
+      (Checkbox.make
+         ~on_checked_change:(fun checked -> Changed checked)
+         (Checkbox.props ~id:"terms" ~label:"Accept the terms"
+            ~checked:page.checked ~indeterminate:page.indeterminate
+            ~name:"terms" ~classes:Style.checkbox ()
+         )
+      )
+      (Checkbox.make
+         (Checkbox.props ~id:"locked" ~label:"Locked" ~disabled:true
+            ~classes:Style.checkbox ()
+         )
+      )
+    </form>
+    <button
+      type_=`button
+      id="set-mixed"
+      class_="self-start rounded-ui border border-ui-border px-3 py-1 text-sm"
+      on_press=Mixed>
+      "Set mixed"
+    </button>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

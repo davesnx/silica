@@ -1,0 +1,72 @@
+open Silica
+
+type search = { text : string; page : int }
+
+module State = struct
+  type _ t =
+    | Home : unit t
+    | Book : int t
+    | Search : search t
+    | Not_found : string t
+
+  let path : type data. data t -> data Route.t = function
+    | Home ->
+        Route.root
+    | Book ->
+        Route.(s "books" / int)
+    | Search ->
+        Route.(
+          s "search"
+          +? map_query
+               (fun (text, page) -> { text; page })
+               (fun { text; page } -> (text, page))
+               (string_query "q" ~default:"" &? int_query "page" ~default:1)
+        )
+    | Not_found ->
+        Route.rest
+end
+
+module Router = Router.Make (State)
+
+let routes =
+  Router.routes ~not_found:State.Not_found
+    [ State.Home; State.Book; State.Search; State.Not_found ]
+
+let title : Router.snapshot -> string = function
+  | Router.At (State.Home, ()) ->
+      "Books"
+  | Router.At (State.Book, id) ->
+      "Book " ^ string_of_int id
+  | Router.At (State.Search, { text; _ }) ->
+      "Search for " ^ text
+  | Router.At (State.Not_found, _) ->
+      "Not found"
+
+let page : Router.snapshot -> Silica.Router.event Node.t = function
+  | Router.At (State.Home, ()) ->
+      <p>"Pick a book."</p>
+  | Router.At (State.Book, id) ->
+      <p>(Node.text ("This is book " ^ string_of_int id ^ "."))</p>
+  | Router.At (State.Search, { text; page }) ->
+      <p>(Node.text (Printf.sprintf "Results for %s, page %d." text page))</p>
+  | Router.At (State.Not_found, path) ->
+      <p>(Node.text ("Nothing at " ^ path ^ "."))</p>
+
+let render current =
+  <div>
+    <nav>
+      (Router.link ~current routes State.Home () [] [ Node.text "Home" ])
+      (Router.link ~current routes State.Book 7 [] [ Node.text "Book 7" ])
+      (Router.link ~current routes State.Search
+         { text = "ocaml"; page = 1 }
+         []
+         [ Node.text "Search" ]
+      )
+    </nav>
+    (Node.element "main"
+       [ Attr.bool "data-silica-route-focus" true ]
+       [ page current ]
+    )
+  </div>
+
+let app url = Router.make routes ~title ~render url

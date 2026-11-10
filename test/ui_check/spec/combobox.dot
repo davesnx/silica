@@ -1,0 +1,17 @@
+digraph "combobox" {
+rankdir=LR;
+"combobox.__init" [shape=point];
+"combobox.__init" -> "combobox.idle";
+"combobox.idle" [label="idle" shape=box];
+"combobox.closed" [label="closed" shape=box];
+"combobox.open" [label="open\nhold dismiss\nhold anchor" shape=box];
+"combobox.inline" [label="inline" shape=box];
+"combobox.closed" -> "combobox.inline" [label="props inline"];
+"combobox.closed" -> "combobox.open" [label="next, previous, show, type"];
+"combobox.idle" -> "combobox.closed" [label="props"];
+"combobox.idle" -> "combobox.inline" [label="props inline"];
+"combobox.inline" -> "combobox.closed" [label="props"];
+"combobox.open" -> "combobox.closed" [label="enter, escape, focus-out, outside, press"];
+"combobox.open" -> "combobox.inline" [label="props inline"];
+"combobox.open" -> "combobox.open";
+}

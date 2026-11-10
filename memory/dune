@@ -1,0 +1,5 @@
+(library
+ (name silica_memory)
+ (public_name silica.memory)
+ (modes byte native)
+ (libraries silica))

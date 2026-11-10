@@ -1,0 +1,96 @@
+{0 Optimistic changes}
+
+A page feels fast when it shows a change at once, before the server confirms
+it. {!Silica.Optimistic} holds the data for this: the last value that the
+server confirmed, and the changes that wait for the server. It is a pure
+value with no functions, so a machine keeps it in the data of a state and the
+checker can compare it.
+
+{1:make Make the module}
+
+Give {!Silica.Optimistic.Make} the type of the value, the type of a change,
+and how a change goes on a value. Here the value is a list of tags and a
+change adds or removes one tag:
+
+{@ocaml[
+# type change = Add of string | Remove of string;;
+type change = Add of string | Remove of string
+# module Tags = Silica.Optimistic.Make (struct
+    type value = string list
+    type nonrec change = change
+    let apply tags = function
+      | Add tag -> tags @ [ tag ]
+      | Remove tag -> List.filter (fun t -> t <> tag) tags
+  end);;
+module Tags :
+  sig
+    type value = string list
+    type change = change/3
+    type t
+    val make : value -> t
+    val apply : id:int -> change -> t -> t
+    val settle : ?confirmed:value -> id:int -> t -> t
+    val drop : id:int -> t -> t
+    val rebase : value -> t -> t
+    val value : t -> value
+    val confirmed : t -> value
+    val pending : t -> int
+    val is_pending : id:int -> t -> bool
+  end
+]}
+
+{1:steps The steps of a change}
+
+Each change has an [id], which the app chooses, such as a counter in the
+snapshot.
+
+{t
+| When | Call |
+|------|------|
+| the change is sent | [apply ~id change] |
+| the server confirms it | [settle ~id], or [settle ~confirmed ~id] with the value of the server |
+| the call fails or is cancelled | [drop ~id] |
+| a new confirmed value arrives, such as a Live state | [rebase value] |
+}
+
+[value] is the confirmed value with the pending changes on it, oldest first.
+The view shows [value]. [confirmed] is the value with no pending change.
+
+{@ocaml[
+# let tags = Tags.make [ "bug" ];;
+val tags : Tags.t = <abstr>
+# let tags = tags |> Tags.apply ~id:1 (Add "ui") |> Tags.apply ~id:2 (Remove "bug");;
+val tags : Tags.t = <abstr>
+# Tags.value tags, Tags.confirmed tags, Tags.pending tags;;
+- : Tags.value * Tags.value * int = (["ui"], ["bug"], 2)
+]}
+
+The server confirms change 1, and change 2 fails. The value goes back for
+change 2 only:
+
+{@ocaml[
+# let tags = tags |> Tags.settle ~id:1 |> Tags.drop ~id:2;;
+val tags : Tags.t = <abstr>
+# Tags.value tags, Tags.pending tags;;
+- : Tags.value * int = (["bug"; "ui"], 0)
+]}
+
+A newer value from the server keeps the changes that still wait:
+
+{@ocaml[
+# let tags = Tags.make [ "bug" ] |> Tags.apply ~id:3 (Add "ui");;
+val tags : Tags.t = <abstr>
+# Tags.value (Tags.rebase [ "bug"; "docs" ] tags);;
+- : Tags.value = ["bug"; "docs"; "ui"]
+]}
+
+{1:machines In a machine}
+
+For a Remote change: [apply] when the call starts, [settle] when the answer
+arrives and [drop] when it fails. For Live data: [apply] when the change is
+sent, [rebase] for each new state of the topic, and [settle] when a state
+arrives that has the change.
+
+Mini Linear edits the fields of an issue in this way. Each change goes to the
+server in its own Remote call, made by a small child component, and a failed
+change shows a toast. See {!page-linear.features}.

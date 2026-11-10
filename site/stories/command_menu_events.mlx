@@ -1,0 +1,81 @@
+open Silica
+open Silica_ui
+
+let commands =
+  Combobox.
+    [
+      item ~keywords:[ "preferences" ] "settings" "Open settings";
+      item ~keywords:[ "create" ] "new-issue" "New issue";
+      item "new-project" "New project";
+      item ~keywords:[ "dark"; "light" ] "theme" "Change theme";
+      item ~disabled:true "billing" "Billing";
+      item ~keywords:[ "exit"; "logout" ] "sign-out" "Sign out";
+    ]
+
+type page = { open_ : bool option; events : string list }
+
+type event = Open_menu | Changed of bool * Popup.reason | Ran of string
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let shortcut =
+  Source.keys ~prevent:true
+    [
+      (Key.make ~ctrl:true "j", Open_menu); (Key.make ~meta:true "j", Open_menu);
+    ]
+
+let machine =
+  M.make ~id:"command-menu-events"
+    ~init:(M.at Page { open_ = None; events = [] })
+    [
+      M.state Page "page" ~invoke:[ shortcut ] (fun page -> function
+        | Open_menu ->
+            M.goto Page { page with open_ = Some true }
+        | Changed (opened, reason) ->
+            M.goto Page
+              {
+                open_ = Some opened;
+                events =
+                  page.events
+                  @ [
+                      ( if opened then
+                          "open "
+                        else
+                          "close "
+                      )
+                      ^ Popup.reason_name reason;
+                    ];
+              }
+        | Ran value ->
+            M.goto Page { page with events = page.events @ [ "run " ^ value ] }
+        );
+    ]
+
+let view (M.At (Page, page)) =
+  <section class_="flex flex-col gap-4">
+    <p class_="text-sm text-ui-muted">"Press Ctrl+J or Cmd+J."</p>
+    <div>
+      <button
+        type_=`button id="menu-open" class_=Style.button on_press=Open_menu>
+        "Open command menu"
+      </button>
+    </div>
+    (Command_menu.make
+       ~on_open_change:(fun opened reason -> Changed (opened, reason))
+       ~on_run:(fun value -> Ran value)
+       (Command_menu.props ~id:"menu" ~title:"Command menu"
+          ~placeholder:"Type a command" ~empty:"No command found"
+          ?open_:page.open_ ~classes:Style.command_menu commands
+       )
+    )
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

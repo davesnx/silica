@@ -1,0 +1,8 @@
+{0 Performance}
+
+How fast Silica is, how it is measured, and the budgets that tests enforce.
+
+{1:method Method}
+
+The benchmarks are in [bench/]. [dune build @bench] runs them and checks the
+time budgets; [dune test] checks the size budgets of the production build.

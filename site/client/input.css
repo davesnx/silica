@@ -1,0 +1,47 @@
+@import "tailwindcss" source(none);
+@import "../../ui/silica-ui.css";
+@import "./themes.css";
+@source "../app/shared";
+@source "../stories";
+
+@theme inline {
+  --color-link: var(--link);
+  --color-code-surface: var(--code-surface);
+  --color-code-keyword: var(--code-keyword);
+  --color-code-string: var(--code-string);
+  --color-code-name: var(--code-name);
+  --color-code-comment: var(--code-comment);
+}
+
+@layer base {
+  html {
+    scrollbar-color: var(--ui-border) transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--ui-accent);
+    color: var(--ui-accent-text);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea {
+    caret-color: var(--ui-accent);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+}

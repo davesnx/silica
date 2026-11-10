@@ -1,0 +1,168 @@
+(library
+ (name ui_checks)
+ (modules ui_checks)
+ (libraries silica silica.check silica-ui ui_samples))
+
+(test
+ (name test_ui_check)
+ (modules test_ui_check)
+ (libraries silica silica.check ui_checks alcotest))
+
+(executable
+ (name export)
+ (modules export)
+ (libraries silica silica.check ui_checks))
+
+(rule
+ (targets
+  note-dialog.qnt
+  note-dialog.dot
+  filter-popover.qnt
+  filter-popover.dot
+  tooltip.qnt
+  tooltip.dot
+  menu.qnt
+  menu.dot
+  select.qnt
+  select.dot
+  combobox.qnt
+  combobox.dot
+  command-menu.qnt
+  command-menu.dot
+  checkbox.qnt
+  checkbox.dot
+  switch.qnt
+  switch.dot
+  theme.qnt
+  theme.dot
+  tabs.qnt
+  tabs.dot
+  toast.qnt
+  toast.dot)
+ (action
+  (run ./export.exe)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/note-dialog.qnt note-dialog.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/note-dialog.dot note-dialog.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/filter-popover.qnt filter-popover.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/filter-popover.dot filter-popover.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tooltip.qnt tooltip.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tooltip.dot tooltip.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/menu.qnt menu.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/menu.dot menu.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/select.qnt select.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/select.dot select.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/combobox.qnt combobox.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/combobox.dot combobox.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/command-menu.qnt command-menu.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/command-menu.dot command-menu.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/checkbox.qnt checkbox.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/checkbox.dot checkbox.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/switch.qnt switch.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/switch.dot switch.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tabs.qnt tabs.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tabs.dot tabs.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/toast.qnt toast.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/toast.dot toast.dot)))
+
+(alias
+ (name runtest)
+ (deps
+  (alias spec)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/theme.qnt theme.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/theme.dot theme.dot)))

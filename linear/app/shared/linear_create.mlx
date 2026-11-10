@@ -1,0 +1,324 @@
+open Silica
+open Linear_model
+open Linear_routes
+
+type form = { view : Linear_view.t; draft : Draft.t; error : string option }
+
+type event =
+  | Props of issues
+  | Title of string
+  | Description of string
+  | Status_picked of Issue_status.t
+  | Priority_picked of Priority.t
+  | Submit
+  | Cancel
+  | Created of (Issue.t, Remote.error) result
+
+module States = struct
+  type _ t =
+    | Closed : Linear_view.t t
+    | Editing : form t
+    | Submitting : (Linear_view.t * Draft.t) t
+    | Failed : (Linear_view.t * Draft.t * Remote.error) t
+end
+
+module M = Machine.Make (States)
+
+let fresh view = { view; draft = Draft.empty; error = None }
+let focus_opener = Cmd.Focus Linear_refs.new_issue
+
+let close view =
+  [ Router.replace routes State.Issues { create = false; view }; focus_opener ]
+
+let edited (draft : Draft.t) = function
+  | Title title ->
+      Some { draft with title }
+  | Description description ->
+      Some { draft with description }
+  | Status_picked status ->
+      Some { draft with status }
+  | Priority_picked priority ->
+      Some { draft with priority }
+  | Props _ | Submit | Cancel | Created _ ->
+      None
+
+let machine =
+  M.make ~id:"create-issue"
+    ~init:(M.at Closed Linear_view.default)
+    [
+      M.state Closed "closed" ~to_:[ Editing ] (fun _ -> function
+        | Props { create = true; view } ->
+            M.goto Editing (fresh view)
+        | Props { create = false; view } ->
+            M.goto Closed view
+        | _ ->
+            M.unhandled
+        );
+      M.state Editing "editing" ~to_:[ Submitting; Closed ] (fun form event ->
+          match event with
+          | Submit -> (
+              match Draft.check form.draft with
+              | Ok draft ->
+                  M.goto Submitting (form.view, draft)
+              | Error message ->
+                  M.goto Editing { form with error = Some message }
+            )
+          | Cancel ->
+              M.goto Closed form.view ~cmds:(close form.view)
+          | Props { create = false; view } ->
+              M.goto Closed view ~cmds:[ focus_opener ]
+          | Props { create = true; view } ->
+              M.goto Editing { form with view }
+          | event -> (
+              match edited form.draft event with
+              | Some draft ->
+                  M.goto Editing { form with draft; error = None }
+              | None ->
+                  M.unhandled
+            )
+      );
+      M.state Submitting "submitting" ~to_:[ Closed; Failed ]
+        ~invoke:[ Source.call create_endpoint snd (fun r -> Created r) ]
+        (fun (view, draft) -> function
+          | Created (Ok _) ->
+              M.goto Closed view ~cmds:(close view)
+          | Created (Error error) ->
+              M.goto Failed (view, draft, error)
+          | _ ->
+              M.unhandled
+          );
+      M.state Failed "failed" ~to_:[ Submitting; Editing; Closed ]
+        (fun (view, draft, error) event ->
+          match event with
+          | Submit ->
+              M.goto Submitting (view, draft)
+          | Cancel ->
+              M.goto Closed view ~cmds:(close view)
+          | Props { create = false; view } ->
+              M.goto Closed view ~cmds:[ focus_opener ]
+          | Props { create = true; view } ->
+              M.goto Failed (view, draft, error)
+          | event -> (
+              match edited draft event with
+              | Some draft ->
+                  M.goto Editing { view; draft; error = None }
+              | None ->
+                  M.unhandled
+            )
+      );
+    ]
+
+let text = Node.text
+
+let input_class =
+  "w-full rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
+
+let option_of ~selected label =
+  <option value=label selected>(text label)</option>
+
+let status_select (draft : Draft.t) ~disabled =
+  <select
+    id="new-issue-status"
+    aria_label="Status"
+    class_=input_class
+    disabled
+    on_input=(fun value ->
+               match Issue_status.of_label value with
+               | Some status ->
+                   Status_picked status
+               | None ->
+                   Status_picked draft.status
+             )>
+    (Node.list
+       (List.map
+          (fun status ->
+            option_of ~selected:(status = draft.status)
+              (Issue_status.label status)
+          )
+          Issue_status.all
+       )
+    )
+  </select>
+
+let priority_select (draft : Draft.t) ~disabled =
+  <select
+    id="new-issue-priority"
+    aria_label="Priority"
+    class_=input_class
+    disabled
+    on_input=(fun value ->
+               match Priority.of_label value with
+               | Some priority ->
+                   Priority_picked priority
+               | None ->
+                   Priority_picked draft.priority
+             )>
+    (Node.list
+       (List.map
+          (fun priority ->
+            option_of
+              ~selected:(priority = draft.priority)
+              (Priority.label priority)
+          )
+          Priority.all
+       )
+    )
+  </select>
+
+let error_text : Remote.error -> string = function
+  | Http code ->
+      "The server answered " ^ string_of_int code
+  | Decode _ ->
+      "The server sent data that cannot be read"
+  | Network _ ->
+      "The network failed"
+
+module Form = struct
+  type props = { draft : Draft.t; busy : bool; message : string option }
+
+  type nonrec event = event
+
+  let id = "create-issue-dialog"
+
+  let view { draft; busy; message } : event Node.t =
+    <form
+      on_submit=Submit
+      on_key_down=(fun key ->
+                    if
+                      Key.equal key (Key.make ~ctrl:true "Enter")
+                      || Key.equal key (Key.make ~meta:true "Enter")
+                    then
+                      Some Submit
+                    else
+                      None
+                  )
+      class_="mt-3 flex flex-col gap-3">
+      <input
+        ref=Linear_refs.title
+        id="new-issue-title"
+        type_=`text
+        aria_label="Title"
+        placeholder="Issue title"
+        class_=input_class
+        value=draft.title
+        disabled=busy
+        on_input=(fun value -> Title value)
+      />
+      <textarea
+        id="new-issue-description"
+        aria_label="Description"
+        placeholder="Description"
+        rows=4
+        class_=input_class
+        value=draft.description
+        disabled=busy
+        on_input=(fun value -> Description value)
+      />
+      <div class_="flex gap-3">
+        (status_select draft ~disabled:busy)
+        (priority_select draft ~disabled:busy)
+      </div>
+      ( match message with
+      | Some message ->
+          <p id="new-issue-error" role=`alert class_="text-sm text-ui-danger">
+            (text message)
+          </p>
+      | None ->
+          Node.list []
+      )
+      <div class_="flex justify-end gap-2">
+        <button
+          type_=`button
+          id="new-issue-cancel"
+          class_="rounded-ui px-3 py-1 text-ui-muted"
+          disabled=busy
+          on_press=Cancel>
+          "Cancel"
+        </button>
+        <button
+          type_=`submit
+          id="new-issue-submit"
+          class_="rounded-ui bg-ui-accent px-3 py-1 text-ui-accent-text \
+                  disabled:opacity-50"
+          disabled=busy>
+          ( if busy then
+              text "Creating..."
+            else
+              text "Create issue"
+          )
+        </button>
+      </div>
+    </form>
+
+  let closes (_ : event) = false
+end
+
+module Create_dialog = Silica_ui.Dialog.Make (Form)
+
+let classes : Silica_ui.Dialog.classes =
+  {
+    Silica_ui.Dialog.no_classes with
+    backdrop = "fixed inset-0 z-40 bg-ui-backdrop";
+    popup =
+      "fixed left-1/2 top-24 z-50 w-full max-w-lg -translate-x-1/2 rounded-lg \
+       bg-ui-raised p-4 shadow-ui outline-none";
+    title = "text-lg font-semibold";
+  }
+
+let dialog ~busy ~message draft =
+  Create_dialog.make
+    ~on_open_change:(fun _ _ -> Cancel)
+    ~on_content:Fun.id
+    (Create_dialog.props ~id:"create-issue" ~title:"New issue" ~open_:true
+       ~dismissible:(not busy) ~classes
+       { Form.draft; busy; message }
+    )
+
+let closed_dialog =
+  Create_dialog.make
+    ~on_open_change:(fun _ _ -> Cancel)
+    ~on_content:Fun.id
+    (Create_dialog.props ~id:"create-issue" ~title:"New issue" ~open_:false
+       ~classes
+       { Form.draft = Draft.empty; busy = false; message = None }
+    )
+
+let trigger view =
+  Router.link routes State.Issues { create = true; view }
+    [
+      Attr.ref_ Linear_refs.new_issue;
+      Attr.string "id" "new-issue";
+      Attr.string "class"
+        "rounded-ui bg-ui-accent px-3 py-1 text-sm text-ui-accent-text \
+         hover:opacity-90";
+    ]
+    [ text "New issue" ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  <div>
+    ( match snapshot with
+    | M.At (Closed, view) ->
+        trigger view
+    | M.At (Editing, form) ->
+        trigger form.view
+    | M.At (Submitting, (view, _)) ->
+        trigger view
+    | M.At (Failed, (view, _, _)) ->
+        trigger view
+    )
+    ( match snapshot with
+    | M.At (Closed, _) ->
+        closed_dialog
+    | M.At (Editing, form) ->
+        dialog ~busy:false ~message:form.error form.draft
+    | M.At (Submitting, (_, draft)) ->
+        dialog ~busy:true ~message:None draft
+    | M.At (Failed, (_, draft, error)) ->
+        dialog ~busy:false
+          ~message:(Some ("Could not create the issue. " ^ error_text error))
+          draft
+    )
+  </div>
+
+let component = Component.make machine view
+let make ?key ~route () = Component.node ?key ~props:(Props route) component

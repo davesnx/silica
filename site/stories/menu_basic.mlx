@@ -1,0 +1,15 @@
+open Silica_ui
+
+let items =
+  [
+    { Menu.value = "copy"; label = "Copy link"; disabled = false };
+    { Menu.value = "rename"; label = "Rename"; disabled = false };
+    { Menu.value = "move"; label = "Move to project"; disabled = true };
+    { Menu.value = "remove"; label = "Remove"; disabled = false };
+  ]
+
+let render ~id values =
+  Menu.make
+    (Menu.props ~id ~label:"Options" ~open_:(Story.bool values "open")
+       ~classes:Style.menu items
+    )

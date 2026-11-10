@@ -1,0 +1,59 @@
+open Silica
+open Silica_ui
+
+let commands =
+  Combobox.
+    [
+      item ~keywords:[ "create" ] "new-file" "New file";
+      item "open-file" "Open file";
+      item ~disabled:true "share" "Share";
+      item ~keywords:[ "quit" ] "close" "Close window";
+    ]
+
+type page = { id : string; open_ : bool option }
+type event = Props of string | Open | Changed of bool
+
+module States = struct
+  type _ t = Idle : unit t | Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"command-menu-basic" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Page ] (fun () -> function
+        | Props id ->
+            M.goto Page { id; open_ = None }
+        | Open | Changed _ ->
+            M.unhandled
+        );
+      M.state Page "page" (fun page -> function
+        | Props id ->
+            M.goto Page { page with id }
+        | Open ->
+            M.goto Page { page with open_ = Some true }
+        | Changed opened ->
+            M.goto Page { page with open_ = Some opened }
+        );
+    ]
+
+let view = function
+  | M.At (Idle, ()) ->
+      <div />
+  | M.At (Page, page) ->
+      <div>
+        <button type_=`button class_=Style.button on_press=Open>
+          "Open commands"
+        </button>
+        (Command_menu.make
+           ~on_open_change:(fun opened _ -> Changed opened)
+           (Command_menu.props ~id:page.id ~title:"Commands"
+              ~placeholder:"Type a command" ~empty:"No command found"
+              ?open_:page.open_ ~classes:Style.command_menu commands
+           )
+        )
+      </div>
+
+let component = Component.make machine view
+let render ~id _values = Component.node ~props:(Props id) component

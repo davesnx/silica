@@ -1,0 +1,6 @@
+(library
+ (name silica_jsonkit_native)
+ (public_name silica.jsonkit)
+ (wrapped false)
+ (modes native)
+ (libraries silica jsonkit))

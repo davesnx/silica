@@ -1,0 +1,352 @@
+{0 Router}
+
+The router is a machine whose states are the routes. Its snapshot is the
+current route with its data, and the URL is that snapshot printed. A link
+press, a navigation command, the back and forward buttons and a typed URL all
+reach the router as the event [Url_changed]. See {!Silica.Router} and
+{!Silica.Route}.
+
+{1:routes Routes}
+
+The routes are the constructors of a GADT, as the states of any machine. The
+type index of a route is its data: its path parameters and its typed query.
+[path] gives the {!Silica.Route.t} of each route: one value that reads and
+writes the URL.
+
+{@mlx file=examples/shared/doc_books.mlx[
+open Silica
+
+type search = { text : string; page : int }
+
+module State = struct
+  type _ t =
+    | Home : unit t
+    | Book : int t
+    | Search : search t
+    | Not_found : string t
+
+  let path : type data. data t -> data Route.t = function
+    | Home ->
+        Route.root
+    | Book ->
+        Route.(s "books" / int)
+    | Search ->
+        Route.(
+          s "search"
+          +? map_query
+               (fun (text, page) -> { text; page })
+               (fun { text; page } -> (text, page))
+               (string_query "q" ~default:"" &? int_query "page" ~default:1)
+        )
+    | Not_found ->
+        Route.rest
+end
+
+module Router = Router.Make (State)
+
+let routes =
+  Router.routes ~not_found:State.Not_found
+    [ State.Home; State.Book; State.Search; State.Not_found ]
+
+let title : Router.snapshot -> string = function
+  | Router.At (State.Home, ()) ->
+      "Books"
+  | Router.At (State.Book, id) ->
+      "Book " ^ string_of_int id
+  | Router.At (State.Search, { text; _ }) ->
+      "Search for " ^ text
+  | Router.At (State.Not_found, _) ->
+      "Not found"
+
+let page : Router.snapshot -> Silica.Router.event Node.t = function
+  | Router.At (State.Home, ()) ->
+      <p>"Pick a book."</p>
+  | Router.At (State.Book, id) ->
+      <p>(Node.text ("This is book " ^ string_of_int id ^ "."))</p>
+  | Router.At (State.Search, { text; page }) ->
+      <p>(Node.text (Printf.sprintf "Results for %s, page %d." text page))</p>
+  | Router.At (State.Not_found, path) ->
+      <p>(Node.text ("Nothing at " ^ path ^ "."))</p>
+
+let render current =
+  <div>
+    <nav>
+      (Router.link ~current routes State.Home () [] [ Node.text "Home" ])
+      (Router.link ~current routes State.Book 7 [] [ Node.text "Book 7" ])
+      (Router.link ~current routes State.Search
+         { text = "ocaml"; page = 1 }
+         []
+         [ Node.text "Search" ]
+      )
+    </nav>
+    (Node.element "main"
+       [ Attr.bool "data-silica-route-focus" true ]
+       [ page current ]
+    )
+  </div>
+
+let app url = Router.make routes ~title ~render url
+]}
+
+The parts of a route:
+
+{t
+| Pattern | Matches |
+|---------|---------|
+| [Route.root] | the empty path, [/] |
+| [Route.s "books"] | one fixed segment |
+| [Route.int], [Route.string] | one segment as data; [int] does not match ["007"] or ["+7"] |
+| [Route.rest] | the whole remaining path; a route with it, placed last, takes every other path |
+| [a / b], [a // b], [a /+ b] | a fixed segment then a pattern, a pattern then a fixed segment, two patterns |
+| [path +? query], [Route.with_query path query] | a path with a typed query |
+}
+
+A query has a name and a default for each value: [string_query],
+[int_query], [bool_query], [choice_query] or [query] with your own parse and
+print. [&?] joins two values, and [map_query] turns them into a record. A
+value that does not parse gives the default, and a default value is not
+printed, so one route has one URL:
+
+{@ocaml[
+# let url = Silica.Url.of_string "/search?page=x&q=ocaml";;
+val url : Silica.Url.t =
+  {Silica.Url.path = ["search"]; query = [("page", "x"); ("q", "ocaml")];
+   hash = None}
+# let route = Doc_books.Router.parse Doc_books.routes url;;
+val route : Doc_books.Router.snapshot =
+  Doc_books.Router.At (Doc_books.State.Search, <poly>)
+# Silica.Url.to_string (Doc_books.Router.print Doc_books.routes route);;
+- : string = "/search?q=ocaml"
+# Silica.Route.describe (Doc_books.State.path Doc_books.State.Book);;
+- : string = "/books/:int"
+]}
+
+The router tries the routes in the order of the list. The last route must
+match every path, so a bad path goes to it.
+
+{1:app The router component}
+
+[Router.routes] lists the routes, with these options:
+
+- [base]: the path that every URL of the app starts with, such as ["/app"].
+  [parse] needs it and takes it off; [print] puts it first.
+- [not_found]: the route that {!Silica.Router.Make.is_not_found} names. The
+  server uses it for the status 404.
+- [reenter]: the routes whose page starts again when only the data of the
+  route changes. Any other route keeps its page, which gets the new data as a
+  props event.
+- [preload]: the Remote calls of each route (see {{!section-preload}Preload}).
+
+[Router.make routes ~render url] is the component for the root of the app.
+[render] shows the page of the current route. In an app, each page is a
+component node with its own machine; the pages of this example are plain
+nodes. The options of [Router.make]:
+
+- [title]: the document title of a route. The router raises
+  {!Silica.Cmd.Set_title} at the start and at each change of route or data,
+  before the commands of the page, so a page that sets its own title wins. A
+  server render writes it in the [<title>] of the first HTML.
+- [guard]: a function that runs before a URL change takes effect (see
+  {{!section-guard}Guard}).
+- [exit]: commands to run when a route is left.
+
+The browser mounts the app with {!Silica_browser.mount_app}. A test mounts it
+with {!Silica_memory.mount_app}:
+
+{@ocaml[
+# let page = Silica_memory.mount_app ~url:"/books/7" Doc_books.app;;
+val page : Silica_memory.t = <abstr>
+# Silica_memory.title page;;
+- : string = "Book 7"
+# Silica_memory.press (Silica_memory.by_text page "Search");;
+- : unit = ()
+# Silica_memory.url page, Silica_memory.title page;;
+- : string * string = ("/search?q=ocaml", "Search for ocaml")
+# Silica_memory.back page;;
+- : unit = ()
+# Silica_memory.url page, Silica_memory.title page;;
+- : string * string = ("/books/7", "Book 7")
+]}
+
+{1:links Links and navigation}
+
+{!Silica.Router.Make.link} makes an [a] element with [href] and
+[data-silica-link]. The browser turns a press into a history entry with no
+page load. A press with a modifier key or another button, and a press on a
+link with [target] or [download], are left to the browser. The options of a
+link:
+
+- [current]: the route now. The link gets [aria-current="page"] when its path
+  equals the current path, and [data-active] when its path is a prefix of the
+  current path, as for the link of a parent page. The query does not count.
+- [hash]: the URL has this hash, and the browser scrolls to the element with
+  that id after the paint. The router ignores the hash.
+- [preload]: when the host fetches the calls of the route of the link.
+
+{!Silica.Router.Make.link_replace} replaces the history entry instead. Use it
+for a link that changes only the query, such as a filter.
+
+A machine navigates with commands: [Router.navigate routes route data] pushes
+an entry and [Router.replace] replaces it. Both take [hash]. A navigation to
+the same printed URL does nothing.
+
+{1:layouts Layouts and nested pages}
+
+There is no tree of routes. A layout is a component at a fixed place in
+[render], such as a header. The instance tree keeps it by its position and its
+machine, so it keeps its state when the page changes. A child page that needs
+the data of its parent carries it in its own route data. [data-active] marks
+the link of the parent page.
+
+{1:guard Guard}
+
+[guard ~from ~target] decides each URL change before it takes effect. [from]
+is the current route, or [None] at the start. The answer is:
+
+- [Allow].
+- [Redirect route]: go to that route instead, and replace the URL. At the
+  start, the app starts in the other route. A server render answers it with a
+  redirect, status 303.
+- [Cancel]: stay. The router raises {!Silica.Cmd.Revert_navigation}, so the
+  URL and the position in the history go back, also after back or forward.
+
+Use the guard for rules that depend on routes only, such as "go to the login
+page".
+
+{1:block Unsaved changes}
+
+A page that holds a draft owns the block: {!Silica.Source.block} in the
+[invoke] list of the state that holds the draft. While the state is active,
+every navigation (a link press, a navigation command, back and forward) stops
+before the URL changes, and reaches the page as a {!Silica.Nav.t}. The page
+asks the user, then sends [Cmd.Resume nav] to let it happen. While a block is
+held, closing or reloading the tab asks the user through the browser.
+
+The block starts and stops with the state that owns the draft, so it cannot
+stay after the draft is saved. Mini Linear holds one while a title or a
+description differs from the saved text (see {!page-linear}).
+
+{1:preload Preload}
+
+[Router.routes ~preload] gives the Remote calls that the page of a route makes
+when it starts. A link starts them early:
+
+- [Intent] (the default): when the pointer enters the link or the link gets
+  focus.
+- [Viewport]: when the link first enters the viewport.
+- [Never].
+
+The runtime keeps a successful answer for 30 seconds, for one use. The page
+takes it when it makes the same call with the same input, so it shows with no
+loading state. A link whose route has no calls has no preload attribute. Mini
+Linear preloads the issue and its comments (see {!page-linear}).
+
+{1:lazy Lazy routes}
+
+A lazy route keeps the code of its page out of the first JavaScript file: the
+browser loads it the first time the route shows, or earlier, when a link to
+the route preloads. The site does it for its component pages.
+
+The code is a {!Silica.Chunk.t}. The view code is shared by the native server
+and the browser, but only Melange has a dynamic import, so each platform
+library of the app has one small module with the same name. The native one
+has the value at once:
+
+From [site/app/native/site_lazy.ml]:
+{@ocaml skip[
+let component_page = Silica.Chunk.ready Site_component_page.page
+]}
+
+The browser one imports it. esbuild with [--splitting] then puts
+[Site_component_page], and the code only it uses, in a file of its own:
+
+From [site/app/melange/site_lazy.ml]:
+{@ocaml skip[
+let component_page =
+  Silica_browser.import (fun () -> Js.import Site_component_page.page)
+]}
+
+The page shows the chunk with {!Silica.Node.val-chunk}, with a view for the
+time it loads:
+
+From [site/app/shared/site_app.mlx]:
+{@ocaml skip[
+        (Node.chunk Site_lazy.component_page ~loading:component_loading
+           (fun page -> page slug
+]}
+
+The routes name the lazy routes, so that a link to one preloads; the app root
+names their code. The code cannot be named in [routes], because the page links
+to routes and so depends on them:
+
+From [site/app/shared/site_app.mlx]:
+{@ocaml skip[
+let chunks : Router.snapshot -> Chunk.any list = function
+  | Router.At (State.Component, _) ->
+      [ Chunk.Any Site_lazy.component_page ]
+]}
+
+From [site/app/shared/site_routes.ml]:
+{@ocaml skip[
+  Router.routes ~not_found:State.Not_found ~preload ~chunked:[ State.Component ]
+]}
+
+What happens:
+
+- On the server the chunk is ready: the HTML has the page.
+- In the browser, the first paint waits until the chunks of the first view are
+  loaded, so hydration adopts the server HTML with the code of its page. Timers,
+  calls and sources start at once. Give the page's shared chunks to the server
+  as [preload] (see {!page-server.render}) so they load with the entry.
+- After the first paint, a route whose code is not loaded shows [loading] until
+  it is. A link to a [chunked] route loads the code on intent, like the calls
+  of [~preload], so a click rarely sees [loading].
+- A load that fails raises {!Silica.Node.exception-Chunk_failed} in the view:
+  the nearest {!Silica.Node.val-boundary} shows its fallback, and its reset
+  loads again. With no boundary, the error page's "Try again" does.
+- The checker and the memory platform use the native module: the chunk is
+  always ready.
+
+{1:server Status and redirects on the server}
+
+The server render gives the status from the root snapshot, for example 404
+when [is_not_found] is [true]. A page can set its own status with
+{!Silica.Cmd.Set_status}; the last one wins. A [Navigate] or [Replace] during
+a server render, such as a guard [Redirect] at the first URL, makes the answer
+a redirect: status 303 with a [location] header. See {!page-server.render}.
+
+{1:focus Focus, title and scroll}
+
+After a push, back or forward to another path, the browser moves focus, with
+no scroll, to the first element with [data-silica-route-focus], or else to the
+root. A polite live region then reads the new document title, so a screen
+reader user knows that the page changed. A [Focus] command after the change
+wins.
+
+The browser keeps the scroll position of each history entry, also across a
+reload. After a push it scrolls to the element of the hash, or to the top when
+the path changed. A push that changes only the query, and a replace, do not
+scroll.
+
+{1:check Check the routes}
+
+{!Check.app} explores the router with a simulated history. Besides the
+built-in properties, it checks that every route reads back from its own URL,
+and that every link in a view is canonical and does not go to the not-found
+route. See {!page-checker.app}.
+
+{1:not-built What the router does not do}
+
+The design compared the router with TanStack Router, React Router and the
+Next.js App Router. These features are left out on purpose:
+
+- Optional segments: two routes give the same result, and each route keeps
+  one printed URL.
+- Relative links and links from path strings: a link is made from a typed
+  route and its data.
+- Data loaders in the router: Remote data stays in machines, where the
+  checker sees it. Preload removes the wait.
+- History state: the data of a route is its URL, and Local state lives as
+  long as its component.
+- View transitions: the browser runs the change of the page in a later
+  callback, which breaks the paint that focus and handlers need.

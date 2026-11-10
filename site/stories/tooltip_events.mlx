@@ -1,0 +1,58 @@
+open Silica
+open Silica_ui
+
+type event = Changed of string * bool * Popup.reason
+
+module States = struct
+  type _ t = Page : string list t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"tooltip-events" ~init:(M.at Page [])
+    [
+      M.state Page "page" (fun events -> function
+        | Changed (id, opened, reason) ->
+            M.goto Page
+              (events
+              @ [
+                  Printf.sprintf "%s %s %s" id
+                    ( if opened then
+                        "open"
+                      else
+                        "close"
+                    )
+                    (Popup.reason_name reason);
+                ]
+              )
+        );
+    ]
+
+let changed id opened reason = Changed (id, opened, reason)
+
+let view (M.At (Page, events)) =
+  <section class_="flex flex-col gap-4">
+    <div class_="flex gap-2 pt-12">
+      (Tooltip.make ~on_open_change:(changed "save")
+         (Tooltip.props ~id:"save" ~label:"Save" ~tip:"Save the draft"
+            ~classes:Style.tooltip ()
+         )
+      )
+      (Tooltip.make ~on_open_change:(changed "help")
+         (Tooltip.props ~id:"help" ~label:"Help"
+            ~tip:"Move the pointer here: the tip stays open"
+            ~delay:Tooltip.Short ~close_delay:Tooltip.Short
+            ~place:
+              { Place.default with side = Place.Bottom; align = Place.Center }
+            ~classes:Style.tooltip ()
+         )
+      )
+    </div>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

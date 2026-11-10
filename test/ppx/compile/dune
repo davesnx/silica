@@ -1,0 +1,5 @@
+(library
+ (name ppx_compile_test)
+ (libraries silica)
+ (preprocess
+  (pps silica.ppx)))

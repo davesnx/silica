@@ -1,0 +1,91 @@
+{0 Silica}
+
+Silica is an OCaml view framework. All behaviour is in statecharts: each
+component is a machine and a view. The same code runs on the server (native
+OCaml) and in the browser (Melange). Hosts run the machines: the browser, the
+server, and the model checker.
+
+{1:ideas The main ideas}
+
+- {b One machine for each component.} The states of a machine are the
+  constructors of a GADT. A state owns its timers, calls and subscriptions:
+  they start when the machine enters the state and stop when it leaves it.
+- {b Views in JSX.} A view is a function of the snapshot, written in mlx, the
+  JSX syntax for OCaml. An event handler is an event value, not code.
+- {b Three kinds of data.} Local data is owned by the client. Remote data
+  comes from a typed endpoint, one request for each call. Live data is owned
+  by the server and sent to the client when it changes.
+- {b Server render and hydration.} The server sends the first HTML with the
+  answers of its calls. The browser adopts that HTML and does not call again.
+- {b A typed router.} The routes are the states of a machine. One value reads
+  and writes the URL of each route.
+- {b A model checker.} It runs every event in every state that a component
+  can reach, and checks the properties of each view. The shape of each machine
+  exports to Quint.
+- {b Headless components.} [silica-ui] has components with the WAI-ARIA
+  patterns, after Base UI, and themes.
+
+{1:pages Pages}
+
+Start:
+
+- {!page-install}: the requirements, the dune project and a first component.
+- {!page-tutorial}: a counter, then a machine with a Remote call.
+
+Concepts:
+
+- {!page-machines}: states, cases, outcomes and the spec.
+- {!page-components}: views in JSX, child components, props and output.
+- {!page-data}: Local, Remote and Live data, and [Status].
+- {!page-optimistic}: show a change before the server confirms it.
+- {!page-commands}: what a machine asks the host to do, and the sources that
+  a state owns.
+- {!page-platform}: the runtime, the platform and the three renderers.
+- {!page-router}: routes, links, guards, blocks, preload and titles.
+- {!page-server}: the HTTP policy, sessions, CSRF, assets and Live sockets.
+- {!page-hydration}: the first HTML, the answers, and islands.
+- {!page-checker}: the model checker, Quint and the diagrams.
+
+Components:
+
+- {!page-ui}: the components of silica-ui, their classes and data
+  attributes.
+- {!page-theming}: themes and tokens, a theme switcher, no flash on the first
+  paint.
+- {!page-stories}: write stories for a component browser.
+
+Guides:
+
+- {!page-testing}: machines, the checker, the memory platform, the server and
+  the browser.
+- {!page-recipes}: Tailwind, SVG, JSON with two stanzas, and hosting.
+- {!page-deploy}: Docker, Fly.io, a static export for Cloudflare Pages and
+  Vercel, the session secret, and one instance.
+- {!page-performance}: the numbers, how they are measured, the budgets that
+  tests enforce, and where Silica is slower than other frameworks.
+- {!page-linear}: how the reference app Mini Linear is made.
+
+Reference:
+
+- {!page-glossary}: the terms of Silica.
+
+{1:libraries Libraries}
+
+Package [silica]:
+
+- {!Silica}: the core. Machines, components, views, commands, routes, codecs.
+- {!Silica_browser}: the browser platform ([silica.browser], Melange only).
+  The host runtime itself is {!Silica.Runtime}; it reaches a platform only
+  through {!Silica.Platform.t}.
+- {!Silica_memory}: an in-memory platform for tests on native OCaml
+  ([silica.memory]): the same runtime, a manual clock, requests and sockets
+  that the test answers.
+- {!Silica_server}: the server logic, with an adapter for each HTTP library
+  ([silica.server], native only).
+- {!Check}: the model checker ([silica.check]).
+- {!Silica_jsonkit}: codecs from [jsonkit] ([silica.jsonkit], native only).
+  The package [silica-jsonkit-melange] has the same module for Melange.
+- {!Silica_json}: the JSON value that the codecs use ([silica.json]).
+
+Package [silica-ui]: headless components after Base UI, such as dialog, menu,
+select and tooltip, and the theme API. See {!page-ui}.

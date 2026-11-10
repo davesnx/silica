@@ -1,0 +1,535 @@
+open Silica
+open Linear_model
+open Linear_routes
+
+type text_field = Title_field | Description_field
+
+type editor = {
+  field : text_field;
+  draft : string;
+  base : int;
+  note : string option;
+}
+
+type event =
+  | Props of int
+  | Loaded of (Issues.t, Remote.error) result
+  | Updated of Issues.t Topic.update
+  | Retry
+  | Reconnect
+  | Edit of text_field
+  | Draft_changed of string
+  | Save
+  | Cancel_edit
+  | Picker of Linear_pickers.picker option
+  | Pick of Change.t
+  | Saved of int * (Change.answer, Remote.error) result
+  | Toast_closed of string
+  | Menu_open of bool
+  | Command of string
+  | Create_key
+  | Keep_editing
+
+type view_state = {
+  number : int;
+  data : Linear_data.t;
+  editor : editor option;
+  picker : Linear_pickers.picker option;
+  toasts : Silica_ui.Toast.toast list;
+  menu_open : bool;
+}
+
+module States = struct
+  type _ t =
+    | Idle : unit t
+    | Loading : int t
+    | Ready : view_state t
+    | Not_found : int t
+    | Failed : (int * Remote.error) t
+end
+
+module M = Machine.Make (States)
+
+let title number = [ Cmd.Set_title ("ENG-" ^ string_of_int number) ]
+let title_input = Ref.make "title-input"
+let description_input = Ref.make "description-input"
+
+let input_ref = function
+  | Title_field ->
+      title_input
+  | Description_field ->
+      description_input
+
+let text_of (issue : Issue.t) = function
+  | Title_field ->
+      issue.title
+  | Description_field ->
+      issue.description
+
+let change_of field draft =
+  match field with
+  | Title_field ->
+      Change.Title draft
+  | Description_field ->
+      Change.Description draft
+
+let field_of_change : Change.t -> (text_field * string) option = function
+  | Change.Title t ->
+      Some (Title_field, t)
+  | Change.Description d ->
+      Some (Description_field, d)
+  | Change.Status _ | Change.Priority _ | Change.Assignee _ | Change.Labels _ ->
+      None
+
+let error_text : Remote.error -> string = function
+  | Http code ->
+      "The server answered " ^ string_of_int code
+  | Decode _ ->
+      "The server sent data that cannot be read"
+  | Network _ ->
+      "The network failed"
+
+let add_toast state request outcome =
+  let key = "toast-" ^ string_of_int (List.length state.toasts) in
+  match Linear_data.toast ~key request outcome with
+  | Some toast ->
+      { state with toasts = state.toasts @ [ toast ] }
+  | None ->
+      state
+
+let conflict_note (current : Issue.t) field =
+  "ENG-"
+  ^ string_of_int current.number
+  ^ " changed while you edited. The "
+  ^ ( match field with
+    | Title_field ->
+        "title is now \"" ^ current.title ^ "\""
+    | Description_field ->
+        "description is now \"" ^ current.description ^ "\""
+    )
+  ^ ". Your text is kept: save again to replace it."
+
+let finished state id result =
+  let data, outcome = Linear_data.finish id result state.data in
+  let state = { state with data } in
+  match outcome with
+  | None | Some (_, Linear_data.Saved) ->
+      M.goto Ready state
+  | Some (request, (Linear_data.Conflict current as outcome)) -> (
+      match field_of_change request.change with
+      | Some (field, draft) ->
+          M.goto Ready
+            ~cmds:[ Cmd.Focus (input_ref field) ]
+            {
+              state with
+              editor =
+                Some
+                  {
+                    field;
+                    draft;
+                    base = current.version;
+                    note = Some (conflict_note current field);
+                  };
+            }
+      | None ->
+          M.goto Ready (add_toast state request outcome)
+    )
+  | Some (request, (Linear_data.Failed _ as outcome)) ->
+      M.goto Ready (add_toast state request outcome)
+
+let save state (editor : editor) =
+  match Change.check (change_of editor.field editor.draft) with
+  | Error message ->
+      M.goto Ready
+        { state with editor = Some { editor with note = Some message } }
+  | Ok change ->
+      M.goto Ready
+        {
+          state with
+          editor = None;
+          data =
+            Linear_data.start ~base:editor.base state.number change state.data;
+        }
+
+let ready state = function
+  | Updated update ->
+      M.goto Ready { state with data = Linear_data.apply update state.data }
+  | Reconnect ->
+      M.reenter Ready state
+  | Edit field -> (
+      match Linear_data.find state.number state.data with
+      | Some issue ->
+          M.goto Ready
+            ~cmds:[ Cmd.Focus (input_ref field) ]
+            {
+              state with
+              editor =
+                Some
+                  {
+                    field;
+                    draft = text_of issue field;
+                    base = issue.version;
+                    note = None;
+                  };
+            }
+      | None ->
+          M.unhandled
+    )
+  | Draft_changed draft -> (
+      match state.editor with
+      | Some editor ->
+          M.goto Ready { state with editor = Some { editor with draft } }
+      | None ->
+          M.unhandled
+    )
+  | Save -> (
+      match state.editor with
+      | Some editor ->
+          save state editor
+      | None ->
+          M.unhandled
+    )
+  | Cancel_edit -> (
+      match state.editor with
+      | Some _ ->
+          M.goto Ready { state with editor = None }
+      | None ->
+          M.unhandled
+    )
+  | Keep_editing -> (
+      match state.editor with
+      | Some editor ->
+          M.stay [ Cmd.Focus (input_ref editor.field) ]
+      | None ->
+          M.unhandled
+    )
+  | Picker picker ->
+      M.goto Ready { state with picker }
+  | Pick change ->
+      M.goto Ready
+        { state with data = Linear_data.start state.number change state.data }
+  | Saved (id, result) ->
+      finished state id result
+  | Toast_closed key ->
+      M.goto Ready
+        {
+          state with
+          toasts =
+            List.filter
+              (fun (t : Silica_ui.Toast.toast) -> t.key <> key)
+              state.toasts;
+        }
+  | Menu_open menu_open ->
+      M.goto Ready { state with menu_open }
+  | Create_key ->
+      M.stay [ Router.navigate routes State.Issues { list with create = true } ]
+  | Command value -> (
+      let issues = Linear_data.issues state.data in
+      let focused = Linear_data.find state.number state.data in
+      match Linear_commands.parse ~issues ~focused value with
+      | Some Linear_commands.Create ->
+          M.stay
+            [ Router.navigate routes State.Issues { list with create = true } ]
+      | Some Linear_commands.Go_list ->
+          M.stay [ Router.navigate routes State.Issues list ]
+      | Some (Linear_commands.Open number) ->
+          M.stay [ Router.navigate routes State.Issue number ]
+      | Some (Linear_commands.Set change) ->
+          M.goto Ready
+            {
+              state with
+              data = Linear_data.start state.number change state.data;
+            }
+      | None ->
+          M.unhandled
+    )
+  | Props _ | Loaded _ | Retry ->
+      M.unhandled
+
+let picker_keys =
+  Linear_pickers.
+    [
+      (Key.make "s", Picker (Some Status_picker));
+      (Key.make "p", Picker (Some Priority_picker));
+      (Key.make "a", Picker (Some Assignee_picker));
+      (Key.make "l", Picker (Some Labels_picker));
+      (Key.make "c", Create_key);
+    ]
+  @ Linear_commands.keys (Menu_open true)
+
+let machine =
+  M.make ~id:"issue-detail" ~init:(M.at Idle ())
+    [
+      M.always ~to_:[ Loading ] (function
+        | Props number ->
+            M.reenter Loading number
+        | _ ->
+            M.unhandled
+        );
+      M.state Idle "idle" M.ignore;
+      M.state Loading "loading"
+        ~to_:[ Ready; Not_found; Failed ]
+        ~entry:title
+        ~invoke:
+          [ Source.call issues_endpoint (fun _ -> ()) (fun r -> Loaded r) ]
+        (fun number -> function
+          | Loaded (Ok issues) -> (
+              let data = Linear_data.loaded issues in
+              match Linear_data.find number data with
+              | Some issue ->
+                  M.goto Ready
+                    ~cmds:
+                      [
+                        Cmd.Set_title
+                          (Issue.identifier issue ^ " " ^ issue.title);
+                      ]
+                    {
+                      number;
+                      data;
+                      editor = None;
+                      picker = None;
+                      toasts = [];
+                      menu_open = false;
+                    }
+              | None ->
+                  M.goto Not_found ~cmds:[ Cmd.Set_status 404 ] number
+            )
+          | Loaded (Error error) ->
+              M.goto Failed (number, error)
+          | _ ->
+              M.unhandled
+          );
+      M.state Ready "ready"
+        ~invoke:
+          [
+            Source.live issues_topic
+              (fun _ -> issues_key)
+              (fun update -> Updated update);
+            Source.keys ~prevent:true picker_keys;
+          ]
+        ready;
+      M.state Not_found "not_found" M.ignore;
+      M.state Failed "failed" ~to_:[ Loading ] (fun (number, _) -> function
+        | Retry ->
+            M.goto Loading number
+        | _ ->
+            M.unhandled
+        );
+    ]
+
+let text = Node.text
+
+let back =
+  Router.link routes State.Issues list
+    [ Attr.string "class" "text-sm text-ui-muted hover:underline" ]
+    [ text "Back to issues" ]
+
+let property name value =
+  <div class_="flex items-center gap-3 py-1 text-sm">
+    <dt class_="w-24 shrink-0 text-ui-muted">(text name)</dt> <dd>value</dd>
+  </div>
+
+let input_class =
+  "w-full rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
+
+let edit_button id label =
+  <button
+    id
+    type_=`button
+    class_="text-sm text-ui-muted underline"
+    on_press=(Edit
+                ( if id = "edit-title" then
+                    Title_field
+                  else
+                    Description_field
+                )
+             )>
+    (text label)
+  </button>
+
+let editor_view (editor : editor) =
+  let keys key =
+    if Key.equal key Key.escape then
+      Some Cancel_edit
+    else if
+      Key.equal key (Key.make ~ctrl:true "Enter")
+      || Key.equal key (Key.make ~meta:true "Enter")
+      || (editor.field = Title_field && Key.equal key Key.enter)
+    then
+      Some Save
+    else
+      None
+  in
+  <div class_="mb-4 flex flex-col gap-2">
+    ( match editor.field with
+    | Title_field ->
+        <input
+          ref=title_input
+          id="title-input"
+          type_=`text
+          aria_label="Title"
+          class_=input_class
+          value=editor.draft
+          on_input=(fun value -> Draft_changed value)
+          on_key_down=keys
+        />
+    | Description_field ->
+        <textarea
+          ref=description_input
+          id="description-input"
+          aria_label="Description"
+          rows=6
+          class_=input_class
+          value=editor.draft
+          on_input=(fun value -> Draft_changed value)
+          on_key_down=keys
+        />
+    )
+    ( match editor.note with
+    | Some note ->
+        <p id="edit-note" role=`alert class_="text-sm text-warning">
+          (text note)
+        </p>
+    | None ->
+        Node.list []
+    )
+    <div class_="flex gap-2">
+      <button
+        id="edit-save"
+        type_=`button
+        class_="rounded-ui bg-ui-accent px-3 py-1 text-sm text-ui-accent-text"
+        on_press=Save>
+        "Save"
+      </button>
+      <button
+        id="edit-cancel"
+        type_=`button
+        class_="rounded-ui px-3 py-1 text-sm text-ui-muted"
+        on_press=Cancel_edit>
+        "Cancel"
+      </button>
+    </div>
+  </div>
+
+let toast_classes = Silica_ui.Style.toast
+
+let issue_view (state : view_state) (issue : Issue.t) : event Node.t =
+  let editing field =
+    match state.editor with
+    | Some editor when editor.field = field ->
+        Some editor
+    | _ ->
+        None
+  in
+  Node.element "article"
+    [
+      Attr.string "id" "issue-detail";
+      Attr.string "data-pending" (string_of_int (Linear_data.pending state.data));
+    ]
+    [
+      ( if state.data.stale then
+          <p id="issue-offline" class_="mb-2 text-sm text-warning">
+            "Offline. Showing the last data received. "
+            <button class_="underline" on_press=Reconnect>"Reconnect"</button>
+          </p>
+        else
+          Node.list []
+      );
+      ( match state.editor with
+      | Some editor when editor.draft <> text_of issue editor.field ->
+          <Linear_unsaved on_keep=Keep_editing />
+      | Some _ | None ->
+          Node.list []
+      );
+      <p class_="text-sm text-ui-muted">(text (Issue.identifier issue))</p>;
+      ( match editing Title_field with
+      | Some editor ->
+          editor_view editor
+      | None ->
+          <div class_="mb-4 flex items-baseline gap-3">
+            <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
+              (text issue.title)
+            </h1>
+            (edit_button "edit-title" "Edit title")
+          </div>
+      );
+      ( match editing Description_field with
+      | Some editor ->
+          editor_view editor
+      | None ->
+          <div class_="mb-6">
+            <p id="issue-description" class_="whitespace-pre-wrap">
+              (text
+                 ( if issue.description = "" then
+                     "No description."
+                   else
+                     issue.description
+                 )
+              )
+            </p>
+            (edit_button "edit-description" "Edit description")
+          </div>
+      );
+      <dl>
+        (Node.list
+           (List.map
+              (fun (name, node) -> property name node)
+              (Linear_pickers.view ~issue ~picker:state.picker
+                 ~on_open:(fun p -> Picker p)
+                 ~on_pick:(fun change -> Pick change)
+              )
+           )
+        )
+        (property "Created" (text (Linear_data.date_of_epoch issue.created_at)))
+        (property "Updated" (text (Linear_data.date_of_epoch issue.updated_at)))
+      </dl>;
+      <Linear_comments number=issue.number />;
+      Linear_commands.make ~open_:state.menu_open
+        ~on_open_change:(fun opened -> Menu_open opened)
+        ~on_run:(fun value -> Command value)
+        ~issues:(Linear_data.issues state.data)
+        ~focused:(Some issue);
+      Linear_data.calls state.data (fun id result -> Saved (id, result));
+      Silica_ui.Toast.make
+        ~on_close:(fun key -> Toast_closed key)
+        (Silica_ui.Toast.props ~id:"issue-toasts" ~classes:toast_classes
+           state.toasts
+        );
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  <section>
+    <p class_="mb-4">back</p>
+    ( match snapshot with
+    | M.At (Idle, ()) | M.At (Loading, _) ->
+        <p class_="text-ui-muted">"Loading issue..."</p>
+    | M.At (Not_found, number) ->
+        <p id="issue-not-found">
+          (text ("There is no issue ENG-" ^ string_of_int number ^ "."))
+        </p>
+    | M.At (Failed, (_, error)) ->
+        <div>
+          <p role=`alert class_="text-ui-danger">(text (error_text error))</p>
+          <button
+            id="issue-retry"
+            class_="mt-2 rounded-ui border border-ui-border px-3 py-1"
+            on_press=Retry>
+            "Try again"
+          </button>
+        </div>
+    | M.At (Ready, state) -> (
+        match Linear_data.find state.number state.data with
+        | Some issue ->
+            issue_view state issue
+        | None ->
+            <p id="issue-not-found">
+              (text
+                 ("There is no issue ENG-" ^ string_of_int state.number ^ ".")
+              )
+            </p>
+      )
+    )
+  </section>
+
+let component = Component.make machine view
+let make ?key ~number () = Component.node ?key ~props:(Props number) component

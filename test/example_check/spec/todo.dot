@@ -1,0 +1,6 @@
+digraph "todo" {
+rankdir=LR;
+"todo.__init" [shape=point];
+"todo.__init" -> "todo.todo";
+"todo.todo" [label="todo" shape=box];
+}

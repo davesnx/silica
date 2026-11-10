@@ -1,0 +1,102 @@
+open Silica
+
+type todo = { id : int; text : string; completed : bool }
+type state = { todos : todo list; draft : string; next_id : int }
+type event = Draft of string | Add | Toggle of int | Delete of int
+
+let init = { todos = []; draft = ""; next_id = 1 }
+let input_ref = Ref.make "todo-input"
+
+module States = struct
+  type _ t = Todo : state t
+end
+
+module M = Machine.Make (States)
+
+let machine : (state, event) Machine.t =
+  let table =
+    M.make ~id:"todo" ~init:(M.at Todo init)
+      [
+        M.state Todo "todo" (fun s e ->
+            match e with
+            | Draft draft ->
+                M.goto Todo { s with draft }
+            | Add when String.trim s.draft = "" ->
+                M.stay [ Cmd.Focus input_ref ]
+            | Add ->
+                let todo =
+                  {
+                    id = s.next_id;
+                    text = String.trim s.draft;
+                    completed = false;
+                  }
+                in
+                M.goto Todo ~cmds:[ Cmd.Focus input_ref ]
+                  {
+                    todos = s.todos @ [ todo ];
+                    draft = "";
+                    next_id = s.next_id + 1;
+                  }
+            | Toggle id ->
+                let flip t =
+                  if t.id = id then
+                    { t with completed = not t.completed }
+                  else
+                    t
+                in
+                M.goto Todo { s with todos = List.map flip s.todos }
+            | Delete id ->
+                M.goto Todo
+                  { s with todos = List.filter (fun t -> t.id <> id) s.todos }
+        );
+      ]
+  in
+  Machine.map_snapshot table
+    ~get:(fun (M.At (Todo, s) : M.snapshot) : state -> s)
+    ~set:(fun s -> M.at Todo s)
+
+let text = Node.text
+
+let row t =
+  Node.keyed (string_of_int t.id)
+    <li>
+      <button
+        class_=( if t.completed then
+                   "todo done"
+                 else
+                   "todo"
+               )
+        on_press=(Toggle t.id)
+        on_double_press=(Delete t.id)>
+        (text
+           (( if t.completed then
+                "[x] "
+              else
+                "[ ] "
+            )
+           ^ t.text
+           )
+        )
+      </button>
+    </li>
+
+let view (s : state) : event Node.t =
+  <section>
+    <h2>"Todos"</h2>
+    <p>"Press a todo to toggle it, double press to delete it."</p>
+    <form on_submit=Add>
+      <input
+        ref=input_ref
+        type_=`text
+        value=s.draft
+        placeholder="What needs doing?"
+        aria_label="New todo"
+        on_input=(fun v -> Draft v)
+      />
+      <button type_=`submit>"Add"</button>
+    </form>
+    <ul>(Node.list (List.map row s.todos))</ul>
+  </section>
+
+let component = Component.make machine view
+let make ?key () = Component.node ?key component

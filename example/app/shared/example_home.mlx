@@ -1,0 +1,28 @@
+open Silica
+
+module States = struct
+  type _ t = Home : unit t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"home" ~init:(M.at Home ())
+    [
+      M.state Home "home"
+        ~entry:(fun () -> [ Cmd.Set_title "Silica example" ])
+        M.ignore;
+    ]
+
+let view (_ : M.snapshot) : unit Node.t =
+  <div>
+    <h1>"Silica example"</h1>
+    (Example_nav.make ())
+    <Example_todo />
+    <Example_votes />
+    <Example_vote_button />
+    <section><h2>"Live counter"</h2> (Live.slot Example_counter.live)</section>
+  </div>
+
+let component = Component.make machine view
+let make ?key () = Component.node ?key component

@@ -1,0 +1,75 @@
+open Silica
+open Silica_ui
+
+type page = { toasts : Toast.toast list; next : int; events : string list }
+type event = Add of Toast.priority | Closed of string
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"toast-events"
+    ~init:(M.at Page { toasts = []; next = 1; events = [] })
+    [
+      M.state Page "page" (fun page -> function
+        | Add priority ->
+            let key = "t" ^ string_of_int page.next in
+            let toast =
+              match priority with
+              | Toast.Low ->
+                  Toast.toast ~key ~description:"Your changes are saved."
+                    ("Saved " ^ key)
+              | Toast.High ->
+                  Toast.toast ~key ~priority ~description:"Try again later."
+                    ("Failed " ^ key)
+            in
+            M.goto Page
+              {
+                toasts = page.toasts @ [ toast ];
+                next = page.next + 1;
+                events = page.events @ [ "add " ^ key ];
+              }
+        | Closed key ->
+            M.goto Page
+              {
+                page with
+                toasts =
+                  List.filter
+                    (fun (toast : Toast.toast) -> toast.key <> key)
+                    page.toasts;
+                events = page.events @ [ "close " ^ key ];
+              }
+        );
+    ]
+
+let view (M.At (Page, page)) =
+  <section class_="flex flex-col gap-4">
+    <div class_="flex gap-2">
+      <button
+        type_=`button id="add-toast" class_=Style.button on_press=(Add Toast.Low)>
+        "Add a toast"
+      </button>
+      <button
+        type_=`button
+        id="add-urgent"
+        class_="rounded-ui border border-ui-border px-3 py-1 text-sm"
+        on_press=(Add Toast.High)>
+        "Add an urgent toast"
+      </button>
+    </div>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+    (Toast.make
+       ~on_close:(fun key -> Closed key)
+       (Toast.props ~id:"toasts" ~timeout_ms:1500 ~classes:Style.toast
+          page.toasts
+       )
+    )
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

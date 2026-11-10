@@ -1,0 +1,8 @@
+(library
+ (name silica_ppx)
+ (public_name silica.ppx)
+ (kind ppx_rewriter)
+ (libraries ppxlib)
+ (ppx_runtime_libraries silica)
+ (preprocess
+  (pps ppxlib.metaquot)))

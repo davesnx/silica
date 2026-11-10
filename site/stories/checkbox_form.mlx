@@ -1,0 +1,15 @@
+open Silica_ui
+
+let render ~id _values =
+  <form class_="flex flex-col gap-3">
+    (Checkbox.make
+       (Checkbox.props ~id:(id ^ "-news") ~label:"Newsletter" ~checked:true
+          ~name:"news" ~classes:Style.checkbox ()
+       )
+    )
+    (Checkbox.make
+       (Checkbox.props ~id:(id ^ "-offers") ~label:"Offers" ~name:"offers"
+          ~classes:Style.checkbox ()
+       )
+    )
+  </form>

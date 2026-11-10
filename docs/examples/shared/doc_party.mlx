@@ -1,0 +1,33 @@
+open Silica
+
+type party = { adults : int; children : int }
+type event = Adults of int | Children of int
+
+module States = struct
+  type _ t = Party : party t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"party"
+    ~init:(M.at Party { adults = 0; children = 0 })
+    [
+      M.state Party "party" (fun party -> function
+        | Adults adults ->
+            M.goto Party { party with adults }
+        | Children children ->
+            M.goto Party { party with children }
+        );
+    ]
+
+let view (M.At (Party, { adults; children }) : M.snapshot) : event Node.t =
+  <div>
+    <Doc_stepper key="adults" label="Adults" on_change=(fun n -> Adults n) />
+    <Doc_stepper
+      key="children" label="Children" on_change=(fun n -> Children n)
+    />
+    <p>(Node.text (string_of_int (adults + children) ^ " guests"))</p>
+  </div>
+
+let component = Component.make machine view

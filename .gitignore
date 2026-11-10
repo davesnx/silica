@@ -1,0 +1,8 @@
+/.*
+!/.gitignore
+!/.dockerignore
+!/.ocamlformat
+_build/
+_opam/
+node_modules/
+/bench/compare/dist/

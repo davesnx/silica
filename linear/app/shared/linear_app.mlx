@@ -1,0 +1,43 @@
+open Silica
+open Linear_routes
+
+let create_route : Router.snapshot -> issues = function
+  | Router.At (State.Issues, route) ->
+      route
+  | Router.At (State.Issue, _) | Router.At (State.Not_found, _) ->
+      list
+
+let page : Router.snapshot -> Silica.Router.event Node.t = function
+  | Router.At (State.Issues, { view; _ }) ->
+      <Linear_list view />
+  | Router.At (State.Issue, number) ->
+      <Linear_detail number />
+  | Router.At (State.Not_found, _) ->
+      <p id="not-found">"There is nothing at this address."</p>
+
+let render theme (snapshot : Router.snapshot) : Silica.Router.event Node.t =
+  <div class_="min-h-screen">
+    <header
+      class_="flex items-center gap-4 border-b border-ui-border px-4 py-3">
+      (Router.link ~current:snapshot routes State.Issues list
+         [ Attr.string "id" "nav-issues"; Attr.string "class" "font-semibold" ]
+         [ Node.text "Mini Linear" ]
+      )
+      <div class_="grow" />
+      <Linear_create route=(create_route snapshot) />
+      <Linear_me />
+      (Silica_ui.Theme.switcher
+         (Silica_ui.Theme.props ~id:"theme" Linear_theme.set theme)
+      )
+    </header>
+    <main class_="mx-auto max-w-3xl px-4 py-6">(page snapshot)</main>
+  </div>
+
+let make theme = Router.make routes ~render:(render theme)
+let app = make Silica_ui.Theme.System
+
+let status snapshot =
+  if Router.is_not_found routes snapshot then
+    404
+  else
+    200

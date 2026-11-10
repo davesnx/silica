@@ -1,0 +1,149 @@
+(library
+ (name linear_checks)
+ (modules linear_checks)
+ (libraries silica silica.check silica-ui silica_linear_app_native))
+
+(test
+ (name test_linear_check)
+ (modules test_linear_check)
+ (libraries
+  silica
+  silica.check
+  linear_checks
+  silica_linear_app_native
+  alcotest))
+
+(executable
+ (name export)
+ (modules export)
+ (libraries silica silica.check linear_checks silica_linear_app_native))
+
+(rule
+ (targets
+  router.qnt
+  router.dot
+  issue-list.qnt
+  issue-list.dot
+  issue-detail.qnt
+  issue-detail.dot
+  create-issue.qnt
+  create-issue.dot
+  create-issue-dialog.qnt
+  create-issue-dialog.dot
+  me.qnt
+  me.dot
+  comments.qnt
+  comments.dot
+  comment-composer.qnt
+  comment-composer.dot
+  comment.qnt
+  comment.dot
+  unsaved.qnt
+  unsaved.dot)
+ (action
+  (run ./export.exe)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.qnt router.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.dot router.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.qnt issue-list.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.dot issue-list.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-detail.qnt issue-detail.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-detail.dot issue-detail.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue.qnt create-issue.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue.dot create-issue.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue-dialog.qnt create-issue-dialog.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue-dialog.dot create-issue-dialog.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/me.qnt me.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/me.dot me.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comments.qnt comments.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comments.dot comments.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment-composer.qnt comment-composer.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment-composer.dot comment-composer.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment.qnt comment.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment.dot comment.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/unsaved.qnt unsaved.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/unsaved.dot unsaved.dot)))
+
+(alias
+ (name runtest)
+ (deps
+  (alias spec)))

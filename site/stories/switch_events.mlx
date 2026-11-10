@@ -1,0 +1,43 @@
+open Silica
+open Silica_ui
+
+type page = { checked : bool; events : string list }
+type event = Changed of bool
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"switch-events"
+    ~init:(M.at Page { checked = false; events = [] })
+    [
+      M.state Page "page" (fun page -> function
+        | Changed checked ->
+            M.goto Page
+              {
+                checked;
+                events = page.events @ [ Printf.sprintf "checked %b" checked ];
+              }
+        );
+    ]
+
+let view (M.At (Page, page)) =
+  <section class_="flex flex-col gap-4">
+    <form id="wifi-form">
+      (Switch.make
+         ~on_checked_change:(fun checked -> Changed checked)
+         (Switch.props ~id:"wifi" ~label:"Wi-Fi" ~checked:page.checked
+            ~name:"wifi" ~classes:Style.switch ()
+         )
+      )
+    </form>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

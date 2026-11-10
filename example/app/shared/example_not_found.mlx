@@ -1,0 +1,27 @@
+open Silica
+open Example_routes
+
+type event = Url of string
+
+module States = struct
+  type _ t = Not_found : unit t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"not_found" ~init:(M.at Not_found ())
+    [
+      M.state Not_found "not_found"
+        ~entry:(fun () -> [ Cmd.Set_title "Not found" ])
+        M.ignore;
+    ]
+
+let view (_ : M.snapshot) : event Node.t =
+  <div>
+    <h1>"Not found"</h1>
+    (Router.link routes State.Home () [] [ Node.text "Home" ])
+  </div>
+
+let component = Component.make machine view
+let make ?key ~url () = Component.node ?key ~props:(Url url) component

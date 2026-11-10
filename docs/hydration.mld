@@ -1,0 +1,139 @@
+{0 Hydration and islands}
+
+The server sends the first HTML of a page, so the page shows before any
+script runs, and also with JavaScript off. The browser then starts the same
+components and adopts that HTML instead of building it again. This is
+hydration.
+
+{1:server-html The HTML of the server}
+
+The server mounts the app at the URL, runs the Remote calls of the first
+render ([render_page_settled]), and prints the view. The [Doc_hello] component
+calls the greeting endpoint when it starts. The page that the server of
+{!page-server.try} sends has the answer in its HTML, and the table of answers
+in a [script] element:
+
+{@ocaml[
+# let has =
+    let html =
+      (Doc_server.Server.handle Doc_server.server (Doc_server.request "GET" "/"))
+        .Silica_server.body
+    in
+    fun text ->
+      let n = String.length text in
+      let rec at i =
+        i + n <= String.length html && (String.sub html i n = text || at (i + 1))
+      in
+      at 0;;
+val has : string -> bool = <fun>
+# has "<p>Hello, Ada</p>", has {|id="silica-answers"|};;
+- : bool * bool = (true, true)
+]}
+
+The rules of the server HTML:
+
+- Two text nodes next to each other print with [<!-- -->] between them, so
+  that the browser keeps them as two nodes.
+- A portal prints nothing: popups open in the browser.
+- The last [Set_title] is the title, and the last [Set_document_attribute] of
+  each name is on [<html>], such as the [data-theme] of the theme (see
+  {!page-theming}).
+- The CSRF token is in [<meta name="silica-csrf">].
+
+{1:answers Answers}
+
+{!Silica.Answers} is the table of the Remote calls that the server answered
+while it rendered the page: the path, the encoded input and the encoded
+output. Before its first paint, the browser answers the same calls from this
+table, and uses each answer once. So no call runs two times, and the first
+view in the browser is the view of the server HTML. A call with no answer in
+the table runs as usual. {!Silica.Answers.to_script} writes the table into
+the page as JSON.
+
+{@ocaml[
+# let table =
+    Silica.Answers.(add empty ~path:"/api/greeting" ~input:{|"Ada"|}
+      ~output:{|"Hello, Ada"|});;
+val table : Silica.Answers.t = <abstr>
+# Silica.Answers.find table ~path:"/api/greeting" ~input:{|"Ada"|};;
+- : string option = Some "\"Hello, Ada\""
+]}
+
+The server renders with no clock: timers, sources and Live subscriptions do
+not run there. A call that fails, has no handler or takes longer than
+[settle_timeout_ms] (1 second for the whole step) is left out, and the page
+shows the state at that moment.
+
+{1:adopt Adopt the HTML}
+
+{!Silica_browser.mount} and {!Silica_browser.mount_app} hydrate by default.
+The first paint walks the HTML in the root next to the view:
+
+- It checks the tag, the type and the number of children of each node.
+- It removes the [<!-- -->] markers between texts.
+- It takes the value of the client for a text or an attribute that differs.
+- It adds no handler to the nodes: events are delegated.
+- A field whose text the user changed before the first paint keeps that text,
+  and the machine gets it as an input event.
+
+When the structure differs, the browser clears the root, renders again, and
+logs the first difference to the console. In dev mode it raises an exception
+instead, so that a test finds the difference. [~hydrate:false] clears the root
+first.
+
+After the first paint the root has the attribute [data-silica-ready]. From
+then on the page reacts to input; browser tests wait for it.
+
+The first props of the root must be the same in the server and in the
+browser. A value that the page reads from a cookie, such as the theme, is read
+on both sides before the mount: {!Silica_server.cookie} and
+{!Silica_browser.cookie}.
+
+{1:islands Islands}
+
+An island is a place in a view where a Live component runs. Its machine runs
+on the server, one instance for each connection. The client sends events and
+gets each new state. Declare the component in shared code with its channel and
+the codecs of its state and its events:
+
+From [example/app/shared/example_counter.mlx]:
+{@ocaml skip[
+let live =
+  Live.declare ~channel:"counter" ~state:Example_model.counter_state
+    ~event:Example_model.counter_event component
+]}
+
+{!Silica.Live.slot} puts it in a view. It is an empty [div] with
+[data-silica-live] set to the channel:
+
+From [example/app/shared/example_home.mlx]:
+{@ocaml skip[
+    <section><h2>"Live counter"</h2> (Live.slot Example_counter.live)</section>
+]}
+
+The browser entry lists the Live components of the page:
+
+From [example/client/client_main.ml]:
+{@ocaml skip[
+  mount_app ~root:"silica-root"
+    ~lives:[ Live Example_counter.live ]
+    Example_app.app
+]}
+
+And the server lists them in [islands] (see {!page-server.islands}). Then:
+
+- The server render prints the view of the island at its initial state.
+- In the browser, the island opens its socket when the element appears, and
+  closes it when the element goes away. The browser never changes the
+  children of the island element: the server HTML stays until the first state
+  arrives, and that paint adopts it.
+- While the socket is down, the island root has [data-silica-offline], and
+  events are dropped, not queued. The client connects again after a delay.
+
+{!Silica_browser.mount_live} mounts a Live component as the root of an
+element, with no app around it.
+
+A Live machine runs on the server, where there is no page. So it must not own
+sources of the page (such as a focus trap or a key table) or use commands that
+need an answer of the page (such as [Copy]). {!Check.live} reports both (see
+{!page-checker}).

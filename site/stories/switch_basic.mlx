@@ -1,0 +1,9 @@
+open Silica_ui
+
+let render ~id values =
+  Switch.make
+    (Switch.props ~id ~label:"Airplane mode"
+       ~checked:(Story.bool values "checked")
+       ~disabled:(Story.bool values "disabled")
+       ~classes:Style.switch ()
+    )

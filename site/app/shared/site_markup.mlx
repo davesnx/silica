@@ -1,0 +1,179 @@
+open Silica
+open Site_doc
+
+let rec inline : 'e. inline -> 'e Node.t = function
+  | Text text ->
+      Node.text text
+  | Code text ->
+      <code
+        class_="rounded-ui bg-code-surface px-1 py-0.5 font-mono text-[0.875em]">
+        (Node.text text)
+      </code>
+  | Strong content ->
+      <strong class_="font-semibold">(inlines content)</strong>
+  | Emph content ->
+      <em>(inlines content)</em>
+  | Link { href; content } ->
+      <a
+        href class_="text-link underline underline-offset-2 hover:no-underline">
+        (inlines content)
+      </a>
+  | Page_link { page; anchor; label } ->
+      Site_links.doc ?hash:anchor
+        ~attrs:
+          [
+            Attr.string "class"
+              "text-link underline underline-offset-2 hover:no-underline";
+          ]
+        page
+        [ inlines label ]
+
+and inlines : 'e. inline list -> 'e Node.t =
+ fun content -> Node.list (List.map inline content)
+
+let heading_classes = function
+  | 1 ->
+      "group mt-14 mb-4 scroll-mt-24 text-2xl font-semibold tracking-tight \
+       text-balance"
+  | 2 ->
+      "group mt-10 mb-3 scroll-mt-24 text-lg font-semibold tracking-tight"
+  | _ ->
+      "group mt-8 mb-2 scroll-mt-24 font-semibold"
+
+let heading ~slug { level; anchor; text } =
+  Node.element
+    ("h" ^ string_of_int (min 6 (level + 1)))
+    [ Attr.string "id" anchor; Attr.string "class" (heading_classes level) ]
+    [
+      inlines text;
+      Site_links.doc ~hash:anchor
+        ~attrs:
+          [
+            Attr.string "class"
+              "ml-2 text-ui-muted no-underline opacity-0 \
+               group-hover:opacity-100 focus-visible:opacity-100";
+            Attr.string "aria-label" ("Link to " ^ plain text);
+          ]
+        slug
+        [ Node.text "#" ];
+    ]
+
+let rec block ~slug = function
+  | Heading h ->
+      heading ~slug h
+  | Paragraph content ->
+      <p class_="my-4 leading-7">(inlines content)</p>
+  | Items { ordered; items } ->
+      Node.element
+        ( if ordered then
+            "ol"
+          else
+            "ul"
+        )
+        [
+          Attr.string "class"
+            ( if ordered then
+                "my-4 list-decimal space-y-2 pl-6 leading-7 \
+                 marker:text-ui-muted"
+              else
+                "my-4 list-disc space-y-2 pl-6 leading-7 marker:text-ui-muted"
+            );
+        ]
+        (List.map
+           (fun item ->
+             <li class_="pl-1">
+               (Node.list (List.map (item_block ~slug) item))
+             </li>
+           )
+           items
+        )
+  | Code_block { lang; file; source } -> (
+      let code = Site_code.view ?file ~lang source in
+      match Option.bind file Site_live.find with
+      | Some live ->
+          <div class_="my-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
+            <div class_="min-w-0 [&>figure]:my-0">code</div>
+            (Node.element "div"
+               [
+                 Attr.string "class"
+                   "flex flex-col rounded-ui border border-ui-border \
+                    bg-ui-raised";
+                 Attr.string "data-live" (Option.get file);
+               ]
+               [
+                 <p
+                   class_="border-b border-ui-border px-4 py-2 text-xs \
+                           font-medium text-ui-muted">
+                   "Result"
+                 </p>;
+                 <div class_="flex grow items-center justify-center p-6">
+                   (live ())
+                 </div>;
+               ]
+            )
+          </div>
+      | None ->
+          code
+    )
+  | Table { head; rows } ->
+      <div class_="my-6 overflow-x-auto">
+        <table class_="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr>
+              (Node.list
+                 (List.map
+                    (fun cell ->
+                      <th
+                        class_="border-b border-ui-border py-2 pr-4 \
+                                font-semibold">
+                        (inlines cell)
+                      </th>
+                    )
+                    head
+                 )
+              )
+            </tr>
+          </thead>
+          <tbody>
+            (Node.list
+               (List.map
+                  (fun row ->
+                    <tr>
+                      (Node.list
+                         (List.map
+                            (fun cell ->
+                              <td
+                                class_="border-b border-ui-border py-2 pr-4 \
+                                        align-top">
+                                (inlines cell)
+                              </td>
+                            )
+                            row
+                         )
+                      )
+                    </tr>
+                  )
+                  rows
+               )
+            )
+          </tbody>
+        </table>
+      </div>
+
+and item_block ~slug = function
+  | Paragraph content ->
+      inlines content
+  | other ->
+      block ~slug other
+
+let blocks ~slug content = Node.list (List.map (block ~slug) content)
+
+let toc blocks =
+  List.filter_map
+    (function
+      | Heading { level; anchor; text } when level <= 2 ->
+          Some (level, anchor, plain text)
+      | _ ->
+          None
+      )
+    blocks

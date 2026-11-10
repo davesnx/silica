@@ -1,0 +1,132 @@
+open Silica
+
+let adjectives =
+  [|
+    "pretty";
+    "large";
+    "big";
+    "small";
+    "tall";
+    "short";
+    "long";
+    "handsome";
+    "plain";
+    "quaint";
+    "clean";
+    "elegant";
+    "easy";
+    "angry";
+    "crazy";
+    "helpful";
+    "mushy";
+    "odd";
+    "unsightly";
+    "adorable";
+    "important";
+    "inexpensive";
+    "cheap";
+    "expensive";
+    "fancy";
+  |]
+
+let colours =
+  [|
+    "red";
+    "yellow";
+    "blue";
+    "green";
+    "pink";
+    "brown";
+    "purple";
+    "brown";
+    "white";
+    "black";
+    "orange";
+  |]
+
+let nouns =
+  [|
+    "table";
+    "chair";
+    "house";
+    "bbq";
+    "desk";
+    "car";
+    "pony";
+    "cookie";
+    "sandwich";
+    "burger";
+    "pizza";
+    "mouse";
+    "keyboard";
+  |]
+
+type item = { id : int; label : string }
+
+let items =
+  List.init 1000 (fun i ->
+      {
+        id = i + 1;
+        label =
+          adjectives.(i mod 25)
+          ^ " "
+          ^ colours.(i / 25 mod 11)
+          ^ " "
+          ^ nouns.(i * 7 mod 13)
+          ^ " "
+          ^ string_of_int (i + 1);
+      }
+  )
+
+type state = string
+type event = Query of string
+
+module States = struct
+  type _ t = Ready : state t
+end
+
+module M = Machine.Make (States)
+
+let machine : (state, event) Machine.t =
+  let table =
+    M.make ~id:"filter" ~init:(M.at Ready "")
+      [ M.state Ready "ready" (fun _ (Query q) -> M.goto Ready q) ]
+  in
+  Machine.map_snapshot table
+    ~get:(fun (M.At (Ready, s) : M.snapshot) : state -> s)
+    ~set:(fun s -> M.at Ready s)
+
+let contains ~sub s =
+  let n = String.length sub and m = String.length s in
+  let rec go i = i + n <= m && (String.sub s i n = sub || go (i + 1)) in
+  n = 0 || go 0
+
+let row item =
+  Node.keyed (string_of_int item.id) <li>(Node.text item.label)</li>
+
+let view (q : state) : event Node.t =
+  <div>
+    <input
+      id="filter"
+      type_=`text
+      value=q
+      aria_label="Filter"
+      on_input=(fun v -> Query v)
+    />
+    <ul id="rows">
+      (Node.list
+         (List.filter_map
+            (fun i ->
+              if contains ~sub:q i.label then
+                Some (row i)
+              else
+                None
+            )
+            items
+         )
+      )
+    </ul>
+  </div>
+
+let component = Component.make machine view
+let () = Silica_browser.mount ~hydrate:false ~root:"main" component

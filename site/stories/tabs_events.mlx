@@ -1,0 +1,57 @@
+open Silica
+open Silica_ui
+
+type page = { selected : string; events : string list }
+type event = Changed of string
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"tabs-events"
+    ~init:(M.at Page { selected = "account"; events = [] })
+    [
+      M.state Page "page" (fun page -> function
+        | Changed selected ->
+            M.goto Page
+              { selected; events = page.events @ [ "value " ^ selected ] }
+        );
+    ]
+
+let tabs =
+  [
+    Tabs.tab ~value:"account" "Account";
+    Tabs.tab ~value:"billing" "Billing";
+    Tabs.tab ~value:"archive" ~disabled:true "Archive";
+    Tabs.tab ~value:"danger" "Danger";
+  ]
+
+let view (M.At (Page, page)) =
+  let panel value text =
+    Tabs.panel ~class_:Style.tab_panel ~id:"settings" ~value
+      ~selected:page.selected
+      [ Node.text text ]
+  in
+  <section class_="flex flex-col gap-4">
+    <div>
+      (Tabs.make
+         ~on_value_change:(fun value -> Changed value)
+         (Tabs.props ~id:"settings" ~value:page.selected ~classes:Style.tabs
+            tabs
+         )
+      )
+      (panel "account" "Account settings.")
+      (panel "billing" "Billing settings.")
+      (panel "archive" "Archived settings.")
+      (panel "danger" "Danger zone.")
+    </div>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

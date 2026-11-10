@@ -1,0 +1,110 @@
+{0 silica-ui}
+
+The package [silica-ui] has headless components after
+{{:https://base-ui.com} Base UI}. Each one is a component with its own machine
+and follows a WAI-ARIA pattern: the roles, the keys and the focus. It has no
+look of its own. The app gives the classes of each part, and styles the states
+through [data-*] attributes. The site shows each component, with its stories,
+at [/components] (see {!page-stories}).
+
+{1:components The components}
+
+{t
+| Module | What it is |
+|--------|------------|
+| [Silica_ui.Dialog] | a modal dialog or alert dialog, with a focus trap, a backdrop and no page scroll |
+| [Silica_ui.Popover] | a popup next to a button that is not modal |
+| [Silica_ui.Tooltip] | a short text that describes a button, on hover or focus |
+| [Silica_ui.Menu] | a button that opens a list of actions |
+| [Silica_ui.Select] | a button that opens a list of options, with a value for forms |
+| [Silica_ui.Combobox] | a text field with a list of options that filters as the user types |
+| [Silica_ui.Command_menu] | a dialog with a combobox: the command palette |
+| [Silica_ui.Checkbox] | a box that is checked, not checked or mixed |
+| [Silica_ui.Switch] | a button that turns a setting on or off |
+| [Silica_ui.Tabs] | a list of tabs; the app paints the panels |
+| [Silica_ui.Toast] | short messages that close by themselves |
+| [Silica_ui.Theme] | the theme switcher and theme scopes (see {!page-theming}) |
+}
+
+{1:use Use a component}
+
+Each module has the same parts:
+
+- [props]: a function that makes the props, with defaults for the options.
+  The [id] is unique in the page: the ids of the parts start with it.
+- [make]: the node, with function props for the output, such as
+  [on_checked_change] or [on_value_change].
+- [machine], [component] and [view]: for the checker and for tests.
+- [classes] and [no_classes]: the classes of each part.
+
+The output hears only what the user did, not what the props asked for. A
+value that a parent sets, such as [checked], is taken when it changes. A
+parent that sets it must follow the changes it hears, or it cannot set the
+same value again.
+
+A popup ([Dialog], [Popover], [Tooltip], [Menu], [Select], [Combobox],
+[Command_menu]) takes [open_], an open request: when it changes to
+[Some open], the popup opens or closes. [on_open_change] hears each open
+change that the popup did by itself, with its reason ([Silica_ui.Popup.reason]),
+such as [Escape_key] or [Outside_press].
+
+{1:styling Classes and data attributes}
+
+The components never write a class of their own. The record [classes] has one
+field for each part, and the state of each part is in [data-*] attributes, so
+a Tailwind variant such as [data-checked:bg-ui-accent] styles it:
+
+{@ocaml[
+# Silica.Render.to_string
+    (Silica_ui.Switch.make
+       (Silica_ui.Switch.props ~id:"wifi" ~label:"Wi-Fi" ~checked:true ()));;
+- : string =
+"<button type=\"button\" id=\"wifi\" role=\"switch\" aria-checked=\"true\" data-checked=\"\"><span data-ui=\"switch-track\" aria-hidden=\"true\"><span data-ui=\"switch-thumb\" id=\"wifi-thumb\" data-checked=\"\"></span></span>Wi-Fi</button>"
+]}
+
+The common attributes:
+
+{t
+| Attribute | Meaning |
+|-----------|---------|
+| [data-open], [data-closed] | a popup, or its trigger, is open or closed |
+| [data-popup-open] | the trigger of an open popup |
+| [data-highlighted] | the item of a list that the keys point at |
+| [data-selected] | the selected option |
+| [data-checked], [data-unchecked], [data-indeterminate] | the state of a checkbox or a switch |
+| [data-disabled] | a part that does not take input |
+| [data-active] | the selected tab |
+| [data-side], [data-align] | where the renderer put a popup next to its trigger |
+| [data-placeholder] | a select with no value |
+}
+
+[Silica_ui.Style] has default classes for every component, written with the
+theme tokens ([bg-ui-surface], [text-ui-text], [rounded-ui] and others). To
+get their CSS, import [silica-ui.css] in the Tailwind input of the app (see
+{!page-recipes.tailwind}). That file also gives each element with
+[data-theme] the background, the text colour and the font of its theme.
+
+{1:popups Popups}
+
+A popup is painted in a portal at the end of the body, so no [overflow] of
+the page cuts it. While it is open, its state owns the sources that it needs:
+
+- A dismiss layer ({!Silica.Source.dismiss}): Escape, a press outside and
+  focus that leaves close it. Layers stack: Escape reaches the newest popup
+  first, and a press inside a newer popup does not close an older one.
+- An anchor ({!Silica.Source.anchor}): the popup stays next to its trigger,
+  and moves to the other side when there is no room. The renderer writes
+  [data-side], [data-align] and the CSS variables [--anchor-width],
+  [--available-height] and others.
+- For a modal dialog, a focus trap and a scroll lock. The page behind it is
+  [inert].
+
+A popup in a theme scope keeps the theme of the scope (see
+{!page-theming.scope}).
+
+{1:checks Checks}
+
+Each component of silica-ui is checked by the checker in the tests
+([test/ui_check/]), and its spec is exported to Quint and Graphviz (see
+{!page-checker.quint}). The browser tests run the components in jsdom
+([test/browser/]) and in Chromium ([test/e2e/]).

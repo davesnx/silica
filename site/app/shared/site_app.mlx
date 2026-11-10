@@ -1,0 +1,298 @@
+open Silica
+open Site_routes
+
+let side_link =
+  "block rounded-ui px-3 py-1.5 text-ui-muted hover:bg-ui-highlight \
+   hover:text-ui-text aria-[current=page]:bg-ui-highlight \
+   aria-[current=page]:font-medium aria-[current=page]:text-ui-text"
+
+let docs_nav current =
+  <nav aria_label="Documentation" class_="flex flex-col gap-6 text-sm">
+    (Node.list
+       (List.map
+          (fun (section, slugs) ->
+            <div>
+              <p
+                class_="mb-2 px-3 text-xs font-semibold tracking-wide \
+                        text-ui-text">
+                (Node.text section)
+              </p>
+              <ul class_="flex flex-col gap-0.5">
+                (Node.list
+                   (List.filter_map
+                      (fun slug ->
+                        Option.map
+                          (fun title ->
+                            <li>
+                              (Site_links.doc ~current
+                                 ~attrs:[ Attr.string "class" side_link ]
+                                 slug
+                                 [ Node.text title ]
+                              )
+                            </li>
+                          )
+                          (Site_nav.title slug)
+                      )
+                      slugs
+                   )
+                )
+              </ul>
+            </div>
+          )
+          Site_nav.sections
+       )
+    )
+  </nav>
+
+let components_nav current =
+  <nav aria_label="Components" class_="flex flex-col text-sm">
+    <p class_="mb-2 px-3 text-xs font-semibold tracking-wide">"silica-ui"</p>
+    <ul class_="flex flex-col gap-0.5">
+      <li>
+        (Router.link ~current routes State.Components ()
+           [ Attr.string "class" side_link ]
+           [ Node.text "Overview" ]
+        )
+      </li>
+      (Node.list
+         (List.map
+            (fun (entry : Site_components.info) ->
+              <li>
+                (Site_links.component ~current
+                   ~attrs:[ Attr.string "class" side_link ]
+                   entry.slug
+                   [ Node.text entry.name ]
+                )
+              </li>
+            )
+            Site_components.all
+         )
+      )
+    </ul>
+  </nav>
+
+let with_sidebar ~label sidebar content =
+  <div
+    class_="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 \
+            lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-12 lg:py-12">
+    <aside
+      class_="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] \
+              lg:overflow-y-auto">
+      <details class_="group rounded-ui border border-ui-border lg:hidden">
+        <summary class_="cursor-pointer px-3 py-2 text-sm font-medium">
+          (Node.text label)
+        </summary>
+        <div class_="border-t border-ui-border p-2">sidebar</div>
+      </details>
+      <div class_="hidden lg:block">sidebar</div>
+    </aside>
+    <main id="main" class_="min-w-0">content</main>
+  </div>
+
+let components_index () =
+  <div>
+    (Node.element "h1"
+       [
+         Attr.bool "data-silica-route-focus" true;
+         Attr.string "class"
+           "text-4xl font-semibold tracking-tight outline-none";
+       ]
+       [ Node.text "Components" ]
+    )
+    <p class_="mt-3 max-w-[65ch] text-lg leading-8 text-ui-muted">
+      "silica-ui gives headless components after Base UI. Each one is a \
+       machine with a view: a page shows its stories, the controls that change \
+       its props, its statechart, and the story in each shipped theme."
+    </p>
+    <ul
+      id="component-list"
+      class_="mt-10 divide-y divide-ui-border border-y border-ui-border">
+      (Node.list
+         (List.map
+            (fun (entry : Site_components.info) ->
+              <li>
+                (Site_links.component
+                   ~attrs:
+                     [
+                       Attr.string "class"
+                         "grid gap-1 py-4 hover:bg-ui-highlight \
+                          sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6 sm:px-3";
+                     ]
+                   entry.slug
+                   [
+                     <span class_="font-semibold">(Node.text entry.name)</span>;
+                     <span class_="text-ui-muted">
+                       (Node.text entry.summary)
+                     </span>;
+                   ]
+                )
+              </li>
+            )
+            Site_components.all
+         )
+      )
+    </ul>
+  </div>
+
+let not_found () =
+  <main id="main" class_="mx-auto max-w-3xl px-4 py-24 sm:px-6">
+    (Node.element "h1"
+       [
+         Attr.bool "data-silica-route-focus" true;
+         Attr.string "class"
+           "text-4xl font-semibold tracking-tight outline-none";
+       ]
+       [ Node.text "Nothing at this address" ]
+    )
+    <p class_="mt-4 text-ui-muted">
+      "The page may have moved. The documentation and the components are \
+       linked from the top of every page."
+    </p>
+  </main>
+
+let component_loading =
+  <p class_="py-10 text-ui-muted" aria_busy=true>"Loading the component"</p>
+
+let page (snapshot : Router.snapshot) : Silica.Router.event Node.t =
+  match snapshot with
+  | Router.At (State.Home, ()) ->
+      <main id="main" class_="mx-auto max-w-7xl px-4 sm:px-6">
+        (Site_landing.make ())
+      </main>
+  | Router.At (State.Docs, ()) ->
+      with_sidebar ~label:"Documentation" (docs_nav snapshot)
+        (Site_doc_page.make ~slug:index_slug ())
+  | Router.At (State.Doc, slug) ->
+      with_sidebar ~label:"Documentation" (docs_nav snapshot)
+        (Site_doc_page.make ~slug ())
+  | Router.At (State.Components, ()) ->
+      with_sidebar ~label:"Components" (components_nav snapshot)
+        (components_index ())
+  | Router.At (State.Component, slug) ->
+      with_sidebar ~label:"Components" (components_nav snapshot)
+        (Node.chunk Site_lazy.component_page ~loading:component_loading
+           (fun page -> page slug
+         )
+        )
+  | Router.At (State.Not_found, _) ->
+      not_found ()
+
+let top_link =
+  "rounded-ui px-3 py-1.5 text-sm text-ui-muted hover:text-ui-text \
+   data-active:text-ui-text data-active:font-medium \
+   aria-[current=page]:text-ui-text aria-[current=page]:font-medium"
+
+let render theme (snapshot : Router.snapshot) : Silica.Router.event Node.t =
+  <div class_="flex min-h-screen flex-col">
+    <header class_="sticky top-0 z-30 border-b border-ui-border bg-ui-surface">
+      <div
+        class_="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 \
+                px-4 py-3 sm:px-6">
+        (Router.link routes State.Home ()
+           [
+             Attr.string "id" "home-link";
+             Attr.string "class"
+               "flex items-center gap-2 font-semibold tracking-tight";
+           ]
+           [
+             <svg viewBox="0 0 24 24" width="22" height="22" aria_hidden=true>
+               <path
+                 d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5Z"
+                 fill="none"
+                 class_="stroke-ui-text"
+                 strokeWidth="1.6"
+                 strokeLinejoin=`round
+               />
+               <path
+                 d="M12 2.5v19M3.5 7.25 20.5 16.75M20.5 7.25 3.5 16.75"
+                 class_="stroke-ui-accent"
+                 strokeWidth="1.2"
+               />
+             </svg>;
+             Node.text "Silica";
+           ]
+        )
+        <nav aria_label="Main" class_="flex items-center gap-1">
+          (Router.link ~current:snapshot routes State.Docs ()
+             [ Attr.string "id" "nav-docs"; Attr.string "class" top_link ]
+             [ Node.text "Docs" ]
+          )
+          (Router.link ~current:snapshot routes State.Components ()
+             [ Attr.string "id" "nav-components"; Attr.string "class" top_link ]
+             [ Node.text "Components" ]
+          )
+        </nav>
+        <div class_="grow" />
+        <div class_="order-last w-full sm:order-none sm:w-auto">
+          (Site_search.make ())
+        </div>
+        (Silica_ui.Theme.switcher
+           (Silica_ui.Theme.props ~id:"theme" Site_theme.set theme)
+        )
+      </div>
+    </header>
+    <div class_="grow">(page snapshot)</div>
+    <footer class_="border-t border-ui-border">
+      <div
+        class_="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-4 \
+                py-8 text-sm text-ui-muted sm:px-6">
+        <p>
+          "Silica. This site is a Silica app: server render, hydration, the \
+           typed router and silica-ui."
+        </p>
+        <p>"MIT license"</p>
+      </div>
+    </footer>
+  </div>
+
+let title (snapshot : Router.snapshot) =
+  let named text = text ^ {js| · Silica|js} in
+  match snapshot with
+  | Router.At (State.Home, ()) ->
+      "Silica: views that are statecharts"
+  | Router.At (State.Docs, ()) ->
+      named "Documentation"
+  | Router.At (State.Doc, slug) ->
+      named (Option.value (Site_nav.title slug) ~default:"Page not found")
+  | Router.At (State.Components, ()) ->
+      named "Components"
+  | Router.At (State.Component, slug) -> (
+      match Site_components.find slug with
+      | Some entry ->
+          named entry.name
+      | None ->
+          named "No such component"
+    )
+  | Router.At (State.Not_found, _) ->
+      named "Not found"
+
+let status (snapshot : Router.snapshot) =
+  match snapshot with
+  | Router.At (State.Doc, slug) when Site_nav.find slug = None ->
+      404
+  | Router.At (State.Component, slug) when Site_components.find slug = None ->
+      404
+  | Router.At (State.Not_found, _) ->
+      404
+  | Router.At (State.Home, ())
+  | Router.At (State.Docs, ())
+  | Router.At (State.Doc, _)
+  | Router.At (State.Components, ())
+  | Router.At (State.Component, _) ->
+      200
+
+let chunks : Router.snapshot -> Chunk.any list = function
+  | Router.At (State.Component, _) ->
+      [ Chunk.Any Site_lazy.component_page ]
+  | Router.At
+      ( ( State.Home
+        | State.Docs
+        | State.Doc
+        | State.Components
+        | State.Not_found ),
+        _
+      ) ->
+      []
+
+let make theme = Router.make routes ~title ~chunks ~render:(render theme)
+let app = make Silica_ui.Theme.System

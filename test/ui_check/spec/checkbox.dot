@@ -1,0 +1,18 @@
+digraph "checkbox" {
+rankdir=LR;
+"checkbox.__init" [shape=point];
+"checkbox.__init" -> "checkbox.idle";
+"checkbox.idle" [label="idle" shape=box];
+"checkbox.unchecked" [label="unchecked" shape=box];
+"checkbox.checked" [label="checked" shape=box];
+"checkbox.indeterminate" [label="indeterminate" shape=box];
+"checkbox.checked" -> "checkbox.indeterminate" [label="props mixed"];
+"checkbox.checked" -> "checkbox.unchecked" [label="props false, props false disabled, toggle"];
+"checkbox.idle" -> "checkbox.checked" [label="props true"];
+"checkbox.idle" -> "checkbox.indeterminate" [label="props mixed"];
+"checkbox.idle" -> "checkbox.unchecked" [label="props false, props false disabled"];
+"checkbox.indeterminate" -> "checkbox.checked" [label="props true, toggle"];
+"checkbox.indeterminate" -> "checkbox.unchecked" [label="props false, props false disabled"];
+"checkbox.unchecked" -> "checkbox.checked" [label="props true, toggle"];
+"checkbox.unchecked" -> "checkbox.indeterminate" [label="props mixed"];
+}

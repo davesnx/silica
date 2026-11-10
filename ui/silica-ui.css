@@ -1,0 +1,9 @@
+@source ".";
+
+@layer base {
+  [data-theme] {
+    background-color: var(--ui-surface);
+    color: var(--ui-text);
+    font-family: var(--ui-font);
+  }
+}

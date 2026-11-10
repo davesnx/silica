@@ -1,0 +1,8 @@
+digraph "tabs" {
+rankdir=LR;
+"tabs.__init" [shape=point];
+"tabs.__init" -> "tabs.idle";
+"tabs.idle" [label="idle" shape=box];
+"tabs.ready" [label="ready" shape=box];
+"tabs.idle" -> "tabs.ready" [label="props a, props c, props vertical a"];
+}

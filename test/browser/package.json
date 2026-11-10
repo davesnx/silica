@@ -1,0 +1,7 @@
+{
+  "name": "silica-browser-test",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test browser.test.mjs host.test.mjs" },
+  "devDependencies": { "jsdom": "^26.0.0" }
+}

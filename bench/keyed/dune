@@ -1,0 +1,26 @@
+(melange.emit
+ (target out)
+ (alias bench-keyed-js)
+ (modules keyed)
+ (module_systems
+  (esm mjs))
+ (libraries silica silica.browser)
+ (preprocess
+  (pps silica.ppx melange.ppx)))
+
+(rule
+ (targets main.js)
+ (deps
+  (alias bench-keyed-js)
+  index.html
+  ../../site/client/package.json
+  (source_tree ../../site/client/node_modules))
+ (action
+  (run
+   ../../site/client/node_modules/esbuild/bin/esbuild
+   out/bench/keyed/keyed.mjs
+   --bundle
+   --format=esm
+   --minify
+   --log-level=warning
+   --outfile=main.js)))

@@ -1,0 +1,9 @@
+(copy_files ../shared/*.{ml,mlx})
+
+(library
+ (name silica_example_app_melange)
+ (wrapped false)
+ (modes melange)
+ (libraries silica silica-jsonkit-melange jsonkit-melange)
+ (preprocess
+  (pps jsonkit-melange.ppx silica.ppx melange.ppx)))

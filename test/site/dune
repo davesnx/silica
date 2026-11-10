@@ -1,0 +1,19 @@
+(test
+ (name test_site)
+ (deps
+  (glob_files %{project_root}/ui/*.{ml,mli})
+  (glob_files %{project_root}/site/app/shared/*.{ml,mlx})
+  (glob_files %{project_root}/site/app/melange/*.ml)
+  (glob_files %{project_root}/site/stories/*.mlx)
+  (glob_files %{project_root}/linear/app/shared/*.{ml,mlx})
+  (glob_files %{project_root}/docs/examples/shared/*.{ml,mlx}))
+ (libraries
+  silica
+  silica-ui
+  silica.server
+  silica_example_adapter
+  silica_site_app_native
+  silica_site_server
+  silica_static_export
+  str
+  alcotest))

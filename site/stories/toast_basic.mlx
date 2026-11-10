@@ -1,0 +1,75 @@
+open Silica
+open Silica_ui
+
+type props = { id : string; priority : Toast.priority }
+type page = { props : props; toasts : Toast.toast list; next : int }
+type event = Props of props | Add | Closed of string
+
+module States = struct
+  type _ t = Idle : unit t | Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"toast-basic" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Page ] (fun () -> function
+        | Props props ->
+            M.goto Page { props; toasts = []; next = 1 }
+        | Add | Closed _ ->
+            M.unhandled
+        );
+      M.state Page "page" (fun page -> function
+        | Props props ->
+            M.goto Page { page with props }
+        | Add ->
+            let toast =
+              Toast.toast ~key:(string_of_int page.next)
+                ~priority:page.props.priority ~description:"The file is ready."
+                "Export done"
+            in
+            M.goto Page
+              {
+                page with
+                toasts = page.toasts @ [ toast ];
+                next = page.next + 1;
+              }
+        | Closed key ->
+            M.goto Page
+              {
+                page with
+                toasts =
+                  List.filter
+                    (fun (toast : Toast.toast) -> toast.key <> key)
+                    page.toasts;
+              }
+        );
+    ]
+
+let view = function
+  | M.At (Idle, ()) ->
+      <div />
+  | M.At (Page, page) ->
+      <div>
+        <button type_=`button class_=Style.button on_press=Add>
+          "Show a toast"
+        </button>
+        (Toast.make
+           ~on_close:(fun key -> Closed key)
+           (Toast.props ~id:page.props.id ~label:"Messages" ~classes:Style.toast
+              page.toasts
+           )
+        )
+      </div>
+
+let component = Component.make machine view
+
+let render ~id values =
+  let priority =
+    if Story.string values "priority" = "high" then
+      Toast.High
+    else
+      Toast.Low
+  in
+  Component.node ~props:(Props { id; priority }) component

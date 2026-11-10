@@ -1,0 +1,4 @@
+(library
+ (name silica_docs_examples_testing)
+ (wrapped false)
+ (libraries silica_docs_examples_native silica.server))

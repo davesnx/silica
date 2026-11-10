@@ -1,0 +1,70 @@
+(dirs)
+
+(data_only_dirs node_modules)
+
+(melange.emit
+ (target out)
+ (alias client-js)
+ (modules client_main)
+ (module_systems
+  (esm mjs))
+ (libraries silica_site_app_melange silica.browser silica.json-melange))
+
+(executable
+ (name themes)
+ (modules themes)
+ (libraries silica-ui silica_site_app_native))
+
+(rule
+ (with-stdout-to
+  themes.css
+  (run ./themes.exe)))
+
+(rule
+ (targets app.css)
+ (deps
+  input.css
+  themes.css
+  package.json
+  ../../ui/silica-ui.css
+  (glob_files ../../ui/*.ml)
+  (glob_files ../app/shared/*.ml)
+  (glob_files ../app/shared/*.mlx)
+  (glob_files ../stories/*.mlx)
+  (source_tree node_modules))
+ (action
+  (setenv
+   RAYON_NUM_THREADS
+   1
+   (run
+    node
+    node_modules/@tailwindcss/cli/dist/index.mjs
+    -i
+    input.css
+    -o
+    app.css))))
+
+(rule
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  app.css
+  package.json
+  (source_tree node_modules))
+ (action
+  (progn
+   (run
+    node_modules/esbuild/bin/esbuild
+    out/site/client/client_main.mjs
+    app.css
+    --bundle
+    --format=esm
+    --minify=%{env:SILICA_MINIFY=true}
+    --splitting
+    --outdir=dist
+    --entry-names=[name]-[hash]
+    --chunk-names=[name]-[hash]
+    --metafile=meta.json)
+   (run node %{dep:../../server/precompress.ts} dist))))

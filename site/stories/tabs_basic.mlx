@@ -1,0 +1,75 @@
+open Silica
+open Silica_ui
+
+type props = { id : string; orientation : Tabs.orientation }
+type page = { props : props; selected : string }
+type event = Props of props | Changed of string
+
+module States = struct
+  type _ t = Idle : unit t | Page : page t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"tabs-basic" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Page ] (fun () -> function
+        | Props props ->
+            M.goto Page { props; selected = "overview" }
+        | Changed _ ->
+            M.unhandled
+        );
+      M.state Page "page" (fun page -> function
+        | Props props ->
+            M.goto Page { page with props }
+        | Changed selected ->
+            M.goto Page { page with selected }
+        );
+    ]
+
+let tabs =
+  [
+    Tabs.tab ~value:"overview" "Overview";
+    Tabs.tab ~value:"activity" "Activity";
+    Tabs.tab ~value:"files" ~disabled:true "Files";
+    Tabs.tab ~value:"members" "Members";
+  ]
+
+let view = function
+  | M.At (Idle, ()) ->
+      <div />
+  | M.At (Page, { props = { id; orientation }; selected }) ->
+      let panel value text =
+        Tabs.panel ~class_:Style.tab_panel ~id ~value ~selected
+          [ Node.text text ]
+      in
+      let layout =
+        if orientation = Tabs.Vertical then
+          "flex gap-4"
+        else
+          "flex flex-col"
+      in
+      <div class_=layout>
+        (Tabs.make
+           ~on_value_change:(fun value -> Changed value)
+           (Tabs.props ~id ~orientation ~value:selected ~classes:Style.tabs tabs)
+        )
+        <div>
+          (panel "overview" "What the project is about.")
+          (panel "activity" "The latest changes.")
+          (panel "files" "No files yet.")
+          (panel "members" "Who works on it.")
+        </div>
+      </div>
+
+let component = Component.make machine view
+
+let render ~id values =
+  let orientation =
+    if Story.string values "orientation" = "vertical" then
+      Tabs.Vertical
+    else
+      Tabs.Horizontal
+  in
+  Component.node ~props:(Props { id; orientation }) component

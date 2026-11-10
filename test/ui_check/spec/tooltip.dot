@@ -1,0 +1,22 @@
+digraph "tooltip" {
+rankdir=LR;
+"tooltip.__init" [shape=point];
+"tooltip.__init" -> "tooltip.idle";
+"tooltip.idle" [label="idle" shape=box];
+"tooltip.closed" [label="closed" shape=box];
+"tooltip.opening" [label="opening\nafter 0ms\nafter 300ms\nafter 600ms\nafter 1000ms" shape=box];
+"tooltip.open" [label="open\nhold dismiss\nhold anchor" shape=box];
+"tooltip.closing" [label="closing\nafter 0ms\nafter 300ms\nafter 600ms\nafter 1000ms\nhold dismiss\nhold anchor" shape=box];
+"tooltip.closed" -> "tooltip.open" [label="focus, hover"];
+"tooltip.closed" -> "tooltip.opening" [label="hover"];
+"tooltip.closing" -> "tooltip.closed" [label="close escape-key, close trigger-focus, close trigger-press, elapsed 0, elapsed 300"];
+"tooltip.closing" -> "tooltip.closing" [label="props 0 300, props 600 0"];
+"tooltip.closing" -> "tooltip.open" [label="resume"];
+"tooltip.idle" -> "tooltip.closed" [label="props 0 300, props 600 0"];
+"tooltip.open" -> "tooltip.closed" [label="close escape-key, close trigger-focus, close trigger-press, leave"];
+"tooltip.open" -> "tooltip.closing" [label="leave"];
+"tooltip.open" -> "tooltip.open";
+"tooltip.opening" -> "tooltip.closed" [label="cancel"];
+"tooltip.opening" -> "tooltip.open" [label="elapsed 0, elapsed 600"];
+"tooltip.opening" -> "tooltip.opening" [label="props 0 300, props 600 0"];
+}

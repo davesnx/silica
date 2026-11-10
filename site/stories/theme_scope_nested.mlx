@@ -1,0 +1,23 @@
+open Silica_ui
+
+let render ~id _values =
+  Theme.scope Theme.dark
+    [
+      <div class_="flex flex-col gap-3 rounded-ui border border-ui-border p-4">
+        <p class_="text-sm">"A dark scope"</p>
+        (Theme.scope Theme.ocean
+           [
+             <div
+               class_="flex flex-col items-start gap-2 rounded-ui border \
+                       border-ui-border p-4">
+               <p class_="text-sm">"An ocean scope inside it"</p>
+               (Tooltip.make
+                  (Tooltip.props ~id:(id ^ "-tip") ~label:"Hover me"
+                     ~tip:"The nearest scope wins" ~classes:Style.tooltip ()
+                  )
+               )
+             </div>;
+           ]
+        )
+      </div>;
+    ]

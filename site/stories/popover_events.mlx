@@ -1,0 +1,104 @@
+open Silica
+open Silica_ui
+
+module Label = struct
+  type props = { label : string }
+  type event = Label of string | Save
+
+  let id = "label-popover"
+
+  let view { label } =
+    <form on_submit=Save class_="mt-2 flex flex-col gap-2">
+      <input
+        id="label-name"
+        aria_label="Label"
+        class_="rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
+        value=label
+        on_input=(fun value -> Label value)
+      />
+      <button type_=`submit id="label-save" class_=Style.button>"Save"</button>
+    </form>
+
+  let closes = function Save -> true | Label _ -> false
+end
+
+module Label_popover = Popover.Make (Label)
+
+module Info = struct
+  type props = unit
+  type event = |
+
+  let id = "info-popover"
+
+  let view () =
+    <p class_="mt-1 text-sm">
+      "Popovers flip to the other side when there is no room."
+    </p>
+
+  let closes : event -> bool = function _ -> .
+end
+
+module Info_popover = Popover.Make (Info)
+
+type page = { label : string; saved : string; events : string list }
+type event = Changed of bool * Popup.reason | Edited of Label.event
+
+module States = struct
+  type _ t = Page : page t
+end
+
+module M = Machine.Make (States)
+
+let note page line = { page with events = page.events @ [ line ] }
+
+let machine =
+  M.make ~id:"popover-events"
+    ~init:(M.at Page { label = "Bug"; saved = "Bug"; events = [] })
+    [
+      M.state Page "page" (fun page -> function
+        | Changed (opened, reason) ->
+            M.goto Page
+              (note page
+                 (Printf.sprintf "%s %s"
+                    ( if opened then
+                        "open"
+                      else
+                        "close"
+                    )
+                    (Popup.reason_name reason)
+                 )
+              )
+        | Edited (Label.Label label) ->
+            M.goto Page { page with label }
+        | Edited Label.Save ->
+            M.goto Page (note { page with saved = page.label } "save")
+        );
+    ]
+
+let changed opened reason = Changed (opened, reason)
+
+let view (M.At (Page, page)) =
+  <section class_="flex flex-col gap-4">
+    <p id="saved">(Node.text ("Label: " ^ page.saved))</p>
+    <div class_="flex gap-2 pt-36">
+      (Label_popover.make ~on_open_change:changed
+         ~on_content:(fun event -> Edited event)
+         (Label_popover.props ~id:"label" ~trigger:"Edit label"
+            ~title:"Edit label" ~close:"Close" ~classes:Style.popover
+            { Label.label = page.label }
+         )
+      )
+      (Info_popover.make
+         (Info_popover.props ~id:"info" ~trigger:"Info" ~title:"Placement"
+            ~place:{ Place.default with side = Place.Top }
+            ~classes:Style.popover ()
+         )
+      )
+    </div>
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

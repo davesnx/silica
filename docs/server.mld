@@ -1,0 +1,295 @@
+{0 Server}
+
+The package [silica.server] ({!Silica_server}) has the server side of an app:
+it renders pages, answers Remote calls, runs Live sockets, keeps sessions,
+checks CSRF tokens and origins, serves the hashed assets and adds the security
+headers. It does not open a port and does not depend on an HTTP library.
+
+{1:adapter The server and the adapter}
+
+[Silica_server.Make (Io)] takes the concurrency of the HTTP library: a task
+type with [return], [bind], [sleep], [async], a clock and a promise. An
+adapter connects the result to one HTTP library. It only translates: requests,
+whole WebSocket messages and files in, responses out. The repository has one
+adapter, over [tiny_httpd], in [example/server_adapter/]. {!page-recipes.hosting}
+shows a complete server with it.
+
+[Server.create config ~read ~handlers ~islands ~topics ~page ()] makes the
+server:
+
+- [config]: the policy. {!Silica_server.default_config} needs the allowed
+  origins and a secret of at least 16 bytes for the CSRF tokens.
+- [assets] and [read]: the files of the client build (see
+  {{!section-assets}Assets}).
+- [handlers]: the Remote endpoints.
+- [islands] and [topics]: the Live components and topics.
+- [page]: the function that renders a page for a [GET].
+
+[Server.handle server request] answers one HTTP request.
+[Server.upgrade server request] answers a WebSocket request. The adapter calls
+[Server.sweep] about every 5 seconds.
+
+{1:try Try the policy}
+
+This module makes a server with a synchronous [Io], so that a test or this
+page can call [handle] directly. [visit] loads the page and keeps the session
+cookie and the CSRF token that the page has. [call] sends a Remote call with
+them:
+
+{@ocaml file=examples/testing/doc_server.ml[
+module Io = struct
+  type 'a t = 'a
+
+  let return value = value
+  let bind value next = next value
+  let sleep _ = ()
+  let tasks : (unit -> unit) Queue.t = Queue.create ()
+  let async task = Queue.add task tasks
+  let now () = 0.
+
+  type 'a promise = 'a option ref
+
+  let promise () = ref None
+  let resolve promise value = if !promise = None then promise := Some value
+
+  let await promise ~timeout:_ =
+    while not (Queue.is_empty tasks) do
+      (Queue.take tasks) ()
+    done;
+    !promise
+end
+
+module Server = Silica_server.Make (Io)
+
+let handlers =
+  [
+    Server.implement Tutorial_api.greeting (fun _context name ->
+        Ok ("Hello, " ^ name)
+    );
+  ]
+
+let config =
+  Silica_server.default_config
+    ~origins:(Silica_server.Origins [ "https://app.example" ])
+    ~secret:"a secret of more than 16 bytes"
+
+let server =
+  Server.create config
+    ~read:(fun _ -> None)
+    ~handlers ~islands:[] ~topics:[]
+    ~page:(fun (page : Server.page) ->
+      Server.render_page_settled
+        (fun _url -> Doc_hello.component)
+        ~status:(fun _ -> 200)
+        ~scripts:[] ~csrf:page.csrf ~nonce:page.nonce ~handlers
+        ~context:page.context page.url
+    )
+    ()
+
+let request ?(headers = []) ?(body = "") meth path =
+  { Silica_server.meth; path; query = []; headers; body }
+
+let after marker text =
+  let length = String.length marker in
+  let rec find i =
+    if String.sub text i length = marker then
+      i + length
+    else
+      find (i + 1)
+  in
+  let start = find 0 in
+  String.sub text start (String.index_from text start '"' - start)
+
+let visit () =
+  let page = Server.handle server (request "GET" "/") in
+  let cookie =
+    List.hd (String.split_on_char ';' (List.assoc "set-cookie" page.headers))
+  in
+  (cookie, after "name=\"silica-csrf\" content=\"" page.body)
+
+let call ?(origin = "https://app.example") ?token path body =
+  let cookie, page_token = visit () in
+  Server.handle server
+    (request "POST" path ~body
+       ~headers:
+         [
+           ("cookie", cookie);
+           ("origin", origin);
+           ("content-type", "application/json");
+           ("x-silica-csrf", Option.value token ~default:page_token);
+         ]
+    )
+]}
+
+{1:requests The HTTP policy}
+
+[handle] answers a request as follows:
+
+- [GET /_silica/health] answers 200 [ok].
+- A [GET] under [/static/] serves a file of the client build.
+- A path of a handler must be [POST]; another method gets 405.
+- Any other [GET] is a page. It finds the session by its cookie, or makes a
+  new session and sets the cookie. The answer has
+  [cache-control: private, no-store].
+
+{@ocaml[
+# let health = Doc_server.Server.handle Doc_server.server
+    (Doc_server.request "GET" "/_silica/health");;
+val health : Silica_server.response =
+  {Silica_server.status = 200;
+   headers =
+    [("referrer-policy", "same-origin");
+     ("x-content-type-options", "nosniff"); ("cache-control", "no-store");
+     ("content-type", "text/plain; charset=utf-8")];
+   body = "ok"}
+]}
+
+Every request that is not a [GET] must pass these checks, in this order:
+
++ The body is at most [max_body] bytes, else 413.
++ [sec-fetch-site], when the browser sends it, is [same-origin] or [none],
+  else 403.
++ [origin] is present and allowed, else 403.
++ The cookie names a live session, else 403.
++ [content-type] starts with [application/json], else 415.
++ [x-silica-csrf] is the token of the session, else 403.
+
+{@ocaml[
+# (Doc_server.call "/api/greeting" {|"Ada"|}).body;;
+- : string = "\"Hello, Ada\""
+# (Doc_server.call ~origin:"https://other.example" "/api/greeting" {|"Ada"|}).status;;
+- : int = 403
+# (Doc_server.call ~token:"not the token" "/api/greeting" {|"Ada"|}).status;;
+- : int = 403
+]}
+
+Every answer has [x-content-type-options: nosniff] and
+[referrer-policy: same-origin]. An HTML page also has a
+[content-security-policy] with a nonce for this answer: pass [page.nonce] to
+the render.
+
+{1:origins Origins}
+
+[Origins list] gives the allowed values of the [Origin] header, matched in
+full, such as ["https://app.example.com"]. [Localhost] is for development
+only: the origin must be the host of the request, and that host must be
+[localhost], [127.0.0.1] or [[::1]].
+
+{1:sessions Sessions and CSRF}
+
+A session is temporary server data for one visitor, found by the cookie
+[silica_sid]. The cookie is [HttpOnly], [SameSite=Lax] and [Path=/], and
+[Secure] when [secure_cookie] is set. With the default store, a session lives
+8 hours when unused and 7 days at most, and the store keeps at most 10 000
+sessions. Sessions live in memory: a restart ends them. [config.sessions]
+takes another store.
+
+The CSRF token is tied to the session. The page gets it as [page.csrf] and
+writes it in a [meta] element of the head; every Remote call and every Live
+hello carries it. So a page of another site cannot act for the visitor.
+
+When a Live socket names a session that the server no longer knows, for
+example after a restart, the server accepts the upgrade and closes the socket
+at once with {!Silica.Protocol.close_session}. A browser cannot read the
+status of a refused upgrade. The client then reloads the page once, which
+gives it a new session and token.
+
+{1:remote Remote handlers}
+
+[Server.implement endpoint f] answers an endpoint. [f] gets the context (the
+request and the session) and the decoded input, and gives
+[Ok output] or [Error message] in [Io]. An input that does not decode gets
+400. An [Error], or an exception that the handler raises while it runs, gets
+500 with the fixed body ["internal error"]; the detail goes to the log, not to
+the client.
+
+{1:render Pages}
+
+The [page] function gets a [page] record: the context, the URL, the CSRF token,
+the nonce and [asset], which gives the URL of a file of the client build. It
+renders the app with one of these:
+
+- [Server.render_page]: mount the root at the URL, start the machines and
+  print the view.
+- [Server.render_page_settled]: also run the Remote calls of the first render
+  against the handlers, step the machines with the answers, and repeat until
+  no call is left. It writes the answers into the page, so the browser does not
+  call again. See {!page-hydration}.
+- [Server.render_component]: a component with no URL.
+
+[status] gives the HTTP status from the root snapshot. The last
+[Set_status], [Set_title] and [Set_document_attribute] of the render change the
+status, the title and the attributes of [<html>]. A [Navigate] or [Replace]
+makes the answer a redirect: status 303 with a [location] header and no body.
+An exception that no boundary catches gives status 500 and an error page,
+with the details only in [dev] mode.
+
+{1:assets Assets}
+
+{!Silica_server.Assets.of_metafile} reads the esbuild metafile: the map from
+the name of a file before the hash, such as [client_main.js], to the file with
+the hash. The page asks for a file by its name with [page.asset]. [read]
+gives the bytes of a file under [/static/]; the server never asks for a name
+with [..], a leading slash or control characters.
+
+A file with a hash in its name gets
+[cache-control: public, max-age=31536000, immutable]. Other files get
+[no-cache] and an [etag], and a matching [if-none-match] gets 304.
+
+{1:live Live sockets}
+
+The browser opens one WebSocket on [/_silica/live] for each island and each
+topic subscription. [Server.upgrade] refuses the request when the origin is
+missing or not allowed. The first message must be a hello with the protocol
+version, the CSRF token of the session, and an island or a topic that the
+server knows; otherwise the server closes the socket with a code of
+{!Silica.Protocol}. Settings in [config]:
+
+- [heartbeat]: [sweep] closes a socket with no traffic for two heartbeats
+  (default 30 seconds).
+- [live_keep]: the state of an island or a topic stays this long after its
+  last socket closed (default 30 minutes). An island that comes back in time
+  gets its state again.
+- [max_message]: a larger message from the client is dropped, and the client
+  gets an error message (default 64 KiB).
+
+{2:islands Islands}
+
+An island is a Live component ({!Silica.Live.t}) whose machine runs on the
+server, one instance for each connection. Give it to the server in
+[islands], as [Server.Island live]. The server runs its Remote calls against
+the handlers directly and its timers with [Io.sleep]. See
+{!page-hydration.islands}.
+
+{2:publish Topics and publish}
+
+A topic is declared in shared code. The server lists it in [topics] with an
+[init] function, which gives the first state of a key that nobody published
+yet. A handler publishes the new full state of a key with [Server.publish];
+each subscriber gets it with a sequence number one higher than the last. The
+example app publishes the votes after each vote:
+
+From [example/server/main.ml]:
+{@ocaml skip[
+  let vote _ () =
+    let n = Atomic.fetch_and_add votes 1 + 1 in
+    ignore
+      (S.publish (Option.get !server) Example_model.votes_topic ~key:"main" n);
+    Ok n
+  in
+]}
+
+From [example/server/main.ml]:
+{@ocaml skip[
+      ~topics:
+        [
+          S.Topic_def
+            {
+              topic = Example_model.votes_topic;
+              init = (fun _ ~key:_ -> Ok (Atomic.get votes));
+            };
+        ]
+]}
+
+The [observer] of the config hears the log lines, each request with its status
+and time, and each socket that opens or closes.

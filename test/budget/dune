@@ -1,0 +1,34 @@
+(rule
+ (alias runtest)
+ (deps
+  budget.ts
+  budgets.json
+  %{project_root}/site/client/meta.json
+  %{project_root}/site/client/dist
+  %{project_root}/linear/client/meta.json
+  %{project_root}/linear/client/dist
+  %{project_root}/bench/keyed/main.js)
+ (action
+  (run
+   node
+   budget.ts
+   budgets.json
+   %{env:SILICA_MINIFY=true}
+   site
+   %{project_root}/site/client/meta.json
+   %{project_root}/site/client/dist
+   linear
+   %{project_root}/linear/client/meta.json
+   %{project_root}/linear/client/dist
+   keyed
+   %{project_root}/bench/keyed/main.js)))
+
+(rule
+ (alias runtest)
+ (deps
+  self_test.ts
+  budget.ts
+  fixture/meta.json
+  (glob_files fixture/dist/*))
+ (action
+  (run node self_test.ts)))

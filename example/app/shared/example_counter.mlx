@@ -1,0 +1,43 @@
+open Silica
+module E = Example_model.Counter_event
+
+module States = struct
+  type _ t = Counter : int t
+end
+
+module M = Machine.Make (States)
+
+let machine : (int, E.t) Machine.t =
+  let table =
+    M.make ~id:"counter" ~init:(M.at Counter 0)
+      [
+        M.state Counter "counter" (fun n e ->
+            match e with
+            | E.Incr ->
+                M.goto Counter (n + 1)
+            | Decr when n = 0 ->
+                M.stay []
+            | Decr ->
+                M.goto Counter (n - 1)
+            | Reset ->
+                M.goto Counter 0
+        );
+      ]
+  in
+  Machine.map_snapshot table
+    ~get:(fun (M.At (Counter, n) : M.snapshot) : int -> n)
+    ~set:(fun n -> M.at Counter n)
+
+let view (n : int) : E.t Node.t =
+  <div class_="counter">
+    <button on_press=E.Decr disabled=(n = 0)>"Decrement"</button>
+    <span>(Node.text (string_of_int n))</span>
+    <button on_press=E.Incr>"Increment"</button>
+    <button on_press=E.Reset>"Reset"</button>
+  </div>
+
+let component : (int, E.t) Component.t = { machine; view }
+
+let live =
+  Live.declare ~channel:"counter" ~state:Example_model.counter_state
+    ~event:Example_model.counter_event component

@@ -1,0 +1,7 @@
+(executable
+ (name main)
+ (libraries
+  silica_example_app_native
+  silica.server
+  silica.server-kit
+  silica_example_adapter))

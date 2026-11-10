@@ -1,0 +1,43 @@
+open Silica
+
+type event = Copy | Result of bool | Back
+
+module States = struct
+  type _ t = Ready : unit t | Shown : bool t
+end
+
+module M = Machine.Make (States)
+
+let text = "Hello from Silica"
+
+let machine =
+  M.make ~id:"copy" ~init:(M.at Ready ())
+    [
+      M.state Ready "ready" ~to_:[ Shown ] (fun () -> function
+        | Copy ->
+            M.stay [ Cmd.Copy { text; on_result = Some (fun ok -> Result ok) } ]
+        | Result ok ->
+            M.goto Shown ok
+        | Back ->
+            M.unhandled
+        );
+      M.state Shown "shown" ~to_:[ Ready ]
+        ~after:[ (2000, Back) ]
+        (fun _ -> function
+          | Back -> M.goto Ready () | Copy | Result _ -> M.unhandled
+          );
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Ready, ()) ->
+      <div>
+        <code>(Node.text text)</code>
+        <button on_press=Copy>"Copy the text"</button>
+      </div>
+  | M.At (Shown, true) ->
+      <p>"Copied."</p>
+  | M.At (Shown, false) ->
+      <p>"The browser did not allow the copy."</p>
+
+let component = Component.make machine view

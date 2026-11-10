@@ -1,0 +1,8 @@
+(copy_files ../jsonkit/silica_jsonkit.ml*)
+
+(library
+ (name silica_jsonkit_melange)
+ (public_name silica-jsonkit-melange)
+ (wrapped false)
+ (modes melange)
+ (libraries silica jsonkit-melange))

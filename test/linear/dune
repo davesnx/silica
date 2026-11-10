@@ -1,0 +1,17 @@
+(tests
+ (names
+  test_linear
+  test_linear_server
+  test_linear_features
+  test_linear_memory)
+ (libraries
+  silica
+  silica_test_support
+  silica_linear_app_native
+  silica_linear_server
+  silica.server
+  silica.memory
+  silica_example_adapter
+  silica-ui
+  alcotest
+  threads.posix))

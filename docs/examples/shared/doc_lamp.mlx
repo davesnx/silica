@@ -1,0 +1,29 @@
+open Silica
+
+type event = Toggle
+
+module States = struct
+  type _ t = Off : unit t | On : unit t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"lamp" ~init:(M.at Off ())
+    [
+      M.state Off "off" ~to_:[ On ] (fun () Toggle -> M.goto On ());
+      M.state On "on" ~to_:[ Off ] (fun () Toggle -> M.goto Off ());
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Off, ()) ->
+      <div>
+        <p>"The lamp is off."</p> <button on_press=Toggle>"Turn on"</button>
+      </div>
+  | M.At (On, ()) ->
+      <div>
+        <p>"The lamp is on."</p> <button on_press=Toggle>"Turn off"</button>
+      </div>
+
+let component = Component.make machine view

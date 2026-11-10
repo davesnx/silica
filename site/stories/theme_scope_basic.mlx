@@ -1,0 +1,23 @@
+open Silica
+open Silica_ui
+
+let render ~id values =
+  let name = Story.string values "theme" in
+  let theme = List.find (fun t -> Theme.name t = name) Theme.shipped in
+  Theme.scope theme
+    [
+      <div
+        class_="flex flex-col items-start gap-2 rounded-ui border \
+                border-ui-border p-4">
+        <p class_="font-semibold">(Node.text (Theme.label theme))</p>
+        <p class_="text-sm text-ui-muted">
+          "Every token comes from the scope."
+        </p>
+        (Tooltip.make
+           (Tooltip.props ~id:(id ^ "-tip") ~label:"Hover me"
+              ~tip:"The popup uses the scope theme too" ~classes:Style.tooltip
+              ()
+           )
+        )
+      </div>;
+    ]

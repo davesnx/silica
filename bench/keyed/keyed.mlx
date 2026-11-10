@@ -1,0 +1,203 @@
+open Silica
+
+let adjectives =
+  [|
+    "pretty";
+    "large";
+    "big";
+    "small";
+    "tall";
+    "short";
+    "long";
+    "handsome";
+    "plain";
+    "quaint";
+    "clean";
+    "elegant";
+    "easy";
+    "angry";
+    "crazy";
+    "helpful";
+    "mushy";
+    "odd";
+    "unsightly";
+    "adorable";
+    "important";
+    "inexpensive";
+    "cheap";
+    "expensive";
+    "fancy";
+  |]
+
+let colours =
+  [|
+    "red";
+    "yellow";
+    "blue";
+    "green";
+    "pink";
+    "brown";
+    "purple";
+    "brown";
+    "white";
+    "black";
+    "orange";
+  |]
+
+let nouns =
+  [|
+    "table";
+    "chair";
+    "house";
+    "bbq";
+    "desk";
+    "car";
+    "pony";
+    "cookie";
+    "sandwich";
+    "burger";
+    "pizza";
+    "mouse";
+    "keyboard";
+  |]
+
+let pick words =
+  let n = int_of_float (Js.Math.round (Js.Math.random () *. 1000.)) in
+  words.(n mod Array.length words)
+
+type row = { id : int; label : string }
+type state = { rows : row array; selected : int; next_id : int }
+
+type event =
+  | Run
+  | Run_lots
+  | Add
+  | Update
+  | Clear
+  | Swap_rows
+  | Select of int
+  | Remove of int
+
+let build next_id count =
+  Array.init count (fun i ->
+      {
+        id = next_id + i;
+        label = pick adjectives ^ " " ^ pick colours ^ " " ^ pick nouns;
+      }
+  )
+
+let init = { rows = [||]; selected = 0; next_id = 1 }
+
+let step s = function
+  | Run ->
+      { s with rows = build s.next_id 1000; next_id = s.next_id + 1000 }
+  | Run_lots ->
+      { s with rows = build s.next_id 10000; next_id = s.next_id + 10000 }
+  | Add ->
+      {
+        s with
+        rows = Array.append s.rows (build s.next_id 1000);
+        next_id = s.next_id + 1000;
+      }
+  | Update ->
+      {
+        s with
+        rows =
+          Array.mapi
+            (fun i r ->
+              if i mod 10 = 0 then
+                { r with label = r.label ^ " !!!" }
+              else
+                r
+            )
+            s.rows;
+      }
+  | Clear ->
+      { s with rows = [||] }
+  | Swap_rows when Array.length s.rows > 998 ->
+      let rows = Array.copy s.rows in
+      let a = rows.(1) in
+      rows.(1) <- rows.(998);
+      rows.(998) <- a;
+      { s with rows }
+  | Swap_rows ->
+      s
+  | Select id ->
+      { s with selected = id }
+  | Remove id ->
+      {
+        s with
+        rows =
+          Array.of_list
+            (List.filter (fun r -> r.id <> id) (Array.to_list s.rows));
+      }
+
+module States = struct
+  type _ t = Ready : state t
+end
+
+module M = Machine.Make (States)
+
+let machine : (state, event) Machine.t =
+  let table =
+    M.make ~id:"keyed" ~init:(M.at Ready init)
+      [ M.state Ready "ready" (fun s e -> M.goto Ready (step s e)) ]
+  in
+  Machine.map_snapshot table
+    ~get:(fun (M.At (Ready, s) : M.snapshot) : state -> s)
+    ~set:(fun s -> M.at Ready s)
+
+let button id label event =
+  <div class_="col-sm-6 smallpad">
+    <button type_=`button class_="btn btn-primary btn-block" id on_press=event>
+      (Node.text label)
+    </button>
+  </div>
+
+let row selected r =
+  Node.keyed (string_of_int r.id)
+    <tr
+      class_=( if r.id = selected then
+                 "danger"
+               else
+                 ""
+             )>
+      <td class_="col-md-1">(Node.text (string_of_int r.id))</td>
+      <td class_="col-md-4">
+        <a class_="lbl" on_press=(Select r.id)>(Node.text r.label)</a>
+      </td>
+      <td class_="col-md-1">
+        <a class_="remove" on_press=(Remove r.id)>
+          <span class_="remove glyphicon glyphicon-remove" aria_hidden=true />
+        </a>
+      </td>
+      <td class_="col-md-6" />
+    </tr>
+
+let view (s : state) : event Node.t =
+  <div class_="container">
+    <div class_="jumbotron">
+      <div class_="row">
+        <div class_="col-md-6"><h1>"Silica keyed"</h1></div>
+        <div class_="col-md-6">
+          <div class_="row">
+            (button "run" "Create 1,000 rows" Run)
+            (button "runlots" "Create 10,000 rows" Run_lots)
+            (button "add" "Append 1,000 rows" Add)
+            (button "update" "Update every 10th row" Update)
+            (button "clear" "Clear" Clear)
+            (button "swaprows" "Swap Rows" Swap_rows)
+          </div>
+        </div>
+      </div>
+    </div>
+    <table class_="table table-hover table-striped test-data">
+      <tbody>
+        (Node.list (Array.to_list (Array.map (row s.selected) s.rows)))
+      </tbody>
+    </table>
+    <span class_="preloadicon glyphicon glyphicon-remove" aria_hidden=true />
+  </div>
+
+let component = Component.make machine view
+let () = Silica_browser.mount ~hydrate:false ~root:"main" component

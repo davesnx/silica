@@ -1,0 +1,270 @@
+{0 Deploy}
+
+This page puts the Silica site ([site/]) in production: as a container
+(Docker, Fly.io), or as static files (Cloudflare Pages, Vercel). Another app
+built on the [tiny_httpd] adapter does the same; the commands name the site.
+
+{1:build The production build}
+
+[dune build] makes the production build: the client is minified, split into
+an entry, shared chunks and the chunks of lazy routes (see
+{!page-router.lazy}), and each file gets a [.br] (brotli 11) and a [.gz] copy
+next to it. The server sends the copy that the browser accepts for hashed
+files, with [vary: accept-encoding]. The esbuild rule of the site:
+
+From [site/client/dune]:
+{@dune skip[
+    --minify=%{env:SILICA_MINIFY=true}
+    --splitting
+    --outdir=dist
+    --entry-names=[name]-[hash]
+    --chunk-names=[name]-[hash]
+]}
+
+[SILICA_MINIFY=false dune build] gives the debug build, not minified, with the
+same file names. [dune test] checks the size of the production build against
+its budgets (see {!page-performance}); it skips that check for a debug build.
+
+The server does not compress HTML pages: the switch has no zlib binding, and
+pages are [private, no-store], so they cannot be compressed ahead. Put a proxy
+that compresses [text/html] in front (Fly.io and Cloudflare do; for Caddy,
+[encode zstd gzip]; for nginx, [gzip on]). It matters for large pages: the
+mini Linear list with 1000 issues is 784 kB, 45 kB with gzip.
+
+The server is one executable, [site/server/main.exe]. It needs the client
+build next to it: the directory [dist] with the hashed files, and the esbuild
+metafile [meta.json] that maps each logical name to its hashed file (see
+{!page-server.assets}).
+
+{1:env Environment variables}
+
+Each variable has a flag of the same meaning ([main.exe --help]).
+
+- [PORT]: the port, default [8080].
+- [SILICA_ADDR]: the address to listen on, default [127.0.0.1]. In a
+  container it must be [0.0.0.0], or the proxy cannot reach the server.
+- [SILICA_STATIC]: the directory served at [/static/], default
+  [_build/default/site/client/dist].
+- [SILICA_METAFILE]: the esbuild metafile, default
+  [_build/default/site/client/meta.json].
+- [SILICA_ORIGINS]: the public origins, separated by commas, such as
+  [https://silica-site.fly.dev]. Every call and every Live socket must send one
+  of them in its [Origin] header. With none, only [localhost], [127.0.0.1] and
+  [[::1]] work: a deployed server needs this variable.
+- [SILICA_SECURE_COOKIE]: [1] adds [Secure] to the session cookie. Set it when
+  the public address is HTTPS, also when a proxy ends TLS.
+- [SILICA_SECRET]: the key of the CSRF tokens, at least 16 bytes (see
+  {{!section-secret}The session secret}).
+- [SILICA_MAX_CONNECTIONS]: the open connections at most, default [1024]. Each
+  open Live socket and each idle keep-alive connection holds one, with a
+  thread; a client above the limit waits until one closes.
+
+{1:docker Docker}
+
+The [Dockerfile] at the root of the repository has three stages. The build
+stage installs the opam packages at the versions of the development switch, and
+takes [node] from the Node image for the Tailwind and esbuild rules. The
+[node_modules] directory of [site/client] is in the repository, so the build
+needs no npm registry. The last stage has only the server and the client build,
+runs as a user that is not root, and checks [/_silica/health]:
+
+From [Dockerfile]:
+{@dockerfile[
+FROM debian:12-slim
+RUN useradd --system --uid 10001 --no-create-home silica
+COPY --from=build /home/opam/silica/_build/default/site/server/main.exe /app/site
+COPY --from=build /home/opam/silica/_build/default/site/client/dist /app/dist
+COPY --from=build /home/opam/silica/_build/default/site/client/meta.json /app/meta.json
+ENV PORT=8080 \
+    SILICA_ADDR=0.0.0.0 \
+    SILICA_STATIC=/app/dist \
+    SILICA_METAFILE=/app/meta.json
+USER silica
+]}
+
+Build and run it, then open [http://127.0.0.1:8080/]:
+
+{@sh[
+docker build -t silica-site .
+docker run --rm -p 8080:8080 silica-site
+]}
+
+[docker stop] sends [SIGTERM]. The adapter then stops accepting connections,
+closes each Live socket with code 1001 (going away), waits for the requests in
+progress, at most 10 seconds, and exits with code 0. The browser connects a
+Live socket again after a delay (see {!page-server}).
+
+{1:fly Fly.io}
+
+[fly.toml] runs the same image:
+
+From [fly.toml]:
+{@toml[
+[env]
+  PORT = "8080"
+  SILICA_ADDR = "0.0.0.0"
+  SILICA_ORIGINS = "https://silica-site.fly.dev"
+  SILICA_SECURE_COOKIE = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+]}
+
+Change [app] and [SILICA_ORIGINS] to the name of your app, then run
+[fly launch --no-deploy --copy-config] once and [fly deploy --ha=false].
+
+- The Fly proxy ends TLS and passes WebSocket upgrades through. The browser
+  sends the [Origin] of the public address, so [SILICA_ORIGINS] must hold it.
+- The client pings each Live socket every 30 seconds, so the socket is never
+  idle for long enough for the proxy to close it.
+- [kill_timeout] is 15 seconds, more than the 10 seconds the server waits for
+  the requests in progress after [SIGTERM].
+- With [auto_stop_machines], the machine stops when it has no connection. An
+  open Live socket is a connection, so a page with Live data keeps it running.
+  A stop ends the sessions: see {{!section-secret}The session secret}.
+- [--ha=false] keeps one machine. The sessions and the Live state are in
+  memory (see {{!section-scale}One instance}).
+
+{1:static Static export}
+
+A static host serves files and cannot answer a [POST]. The site still works
+there, because its Remote calls only read: the export renders every page on the
+server and writes the answers of the calls as files.
+
+{@sh[
+dune build @all
+dune exec site/export/export.exe -- --out _build/site-static
+]}
+
+The directory has [index.html], [docs.html], [docs/<page>.html],
+[components.html], [components/<name>.html], [404.html], the hashed files in
+[static/], the answers in [silica-answers/] and a [_headers] file that gives the
+hashed files a cache of one year. The Docker build can make the same directory
+with no OCaml on the machine:
+[docker build --target static --output type=local,dest=site-static .]
+
+How it works:
+
+- Each page is the server HTML of its route. The export replaces the
+  [silica-csrf] meta element with
+  [<meta name="silica-static" content="/silica-answers/">].
+- For each answer that the server wrote into a page (the
+  [silica-answers] script, see {!page-hydration}), the export writes the
+  output at [silica-answers/<path>/<hash>.json]. The hash is FNV-1a, 32 bits,
+  of the bytes of the encoded input, in 8 hex digits.
+- In a page with the [silica-static] element, the browser host sends no
+  [POST] for a Remote call: it reads that file with a [GET]. A call that no
+  page answered gets status 404, and its machine gets [Error (Http 404)].
+
+So the first page reads its answers from its HTML, and a link to another docs
+page reads the answer file of that page, on hover as on a server.
+
+What does not work on a static host:
+
+- The two samples that call the server: the save sample of the landing page
+  ([/api/save]) and the greeting of the {{!page-tutorial}tutorial}
+  ([/api/greeting]). Their answer depends on the moment or on the input, so the
+  export writes no file for them. A press shows their failed state: "Not
+  saved. Try again" and "The server did not answer."
+- No flash on the first paint with a stored theme: the HTML has the [system]
+  theme, and the client applies the theme of the cookie after the script runs
+  (see {!page-theming}).
+- Live data, sessions and any call that changes data.
+- The pages use paths from the root ([/static/], [/silica-answers/]), so the
+  site must be at the root of its domain.
+
+{2:cloudflare Cloudflare}
+
+Cloudflare Pages serves the export as it is: upload the directory, or run the
+export in the build command and give the directory as the output. Pages serves
+[docs/router.html] at [/docs/router], [404.html] with status 404 for unknown
+paths, and reads [_headers].
+
+A Cloudflare Worker runs JavaScript and WebAssembly in V8. It cannot run the
+native OCaml server. For the server there are two choices:
+
+- Cloudflare Containers run a container image, such as the image of the
+  Dockerfile, behind a Worker that sends each request to a container. A
+  container sleeps when it has no requests; when it starts again, it has no
+  sessions and no Live state, as after a restart.
+- The Cloudflare proxy in front of a server on Fly.io: point a proxied DNS
+  record at the Fly app and put the public origin in [SILICA_ORIGINS]. The
+  proxy passes WebSockets through and closes one that is idle for about 100
+  seconds; the ping every 30 seconds prevents that.
+
+{2:vercel Vercel}
+
+Vercel serves the export as static files. Turn on clean URLs, so that
+[/docs/router] serves [docs/router.html], in [vercel.json]:
+[{"cleanUrls": true}]. Vercel does not read [_headers]; give the cache headers
+of [/static/] in [vercel.json] instead.
+
+Vercel does not run a container that listens on a port, so it cannot run the
+server. With Docker, run the server on Fly.io or another container host, and
+serve the static export from Vercel or point the domain at that host.
+
+{1:secret The session secret}
+
+The CSRF token of a session is a keyed hash of the session id with the secret.
+The site makes a new random secret at each start, unless [SILICA_SECRET] is set:
+
+From [site/server/main.ml]:
+{@ocaml[
+  let secret =
+    match Sys.getenv_opt "SILICA_SECRET" with
+    | Some secret when String.length secret >= 16 ->
+        secret
+    | Some _ ->
+        prerr_endline "site: SILICA_SECRET needs at least 16 bytes";
+        exit 1
+    | None ->
+        Silica_server_kit.Random_source.hex_id ~bytes:32
+  in
+]}
+
+After a restart the sessions are gone, because the store is in memory, with or
+without [SILICA_SECRET]:
+
+- A call from a page that was open before the restart gets status 403 (the
+  cookie names no session). Its machine gets [Error (Http 403)].
+- A Live socket is closed with [close_session], and the page reloads once. The
+  reload gets a new session and a new token (see {!page-server}).
+
+A fixed secret matters when the sessions outlive the process or are shared by
+several instances (next section): every instance must check the tokens with
+the same key. Keep it out of the image and of [fly.toml]; give it as a secret
+of the host, such as [fly secrets set SILICA_SECRET=...] with a value from
+[openssl rand -hex 32].
+
+{1:scale One instance}
+
+One process holds all state that is not in the page: the session store, the
+Live islands and the topic states with their subscribers. Two instances behind
+a load balancer do not share them. A call or a socket that reaches the other
+instance finds no session (status 403, or [close_session]), and a
+{!Silica_server.Make.publish} on one instance does not reach the subscribers on
+the other.
+
+One instance goes far: on the test machine of {!page-performance}, the site
+server answers about 1300 docs pages a second, and 1000 Live sessions on one
+mini Linear topic cost about 130 MB of memory with 30 issues. Raise
+[SILICA_MAX_CONNECTIONS] above the number of open pages with Live data, and
+give the machine the memory: a topic sends its full state to each subscriber,
+so memory and time grow with the state size times the subscribers.
+
+So run one instance. To run more, an app must supply:
+
+- A shared session store: a {!Silica_server.Session.type-ops} over a database or
+  Redis, in [config.sessions].
+- The same [SILICA_SECRET] on every instance.
+- A shared publish: a handler publishes to a bus (Postgres [NOTIFY], Redis
+  pub/sub), and each instance calls [publish] on its own server for each
+  message. The [init] of a topic must read the shared data, so every instance
+  starts a key at the same state.
+- Islands keep their state in the instance that runs them. A load balancer
+  with sticky sessions sends a socket back to that instance; without it, an
+  island starts again from its first state after a reconnect.

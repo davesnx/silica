@@ -1,0 +1,13 @@
+digraph "menu" {
+rankdir=LR;
+"menu.__init" [shape=point];
+"menu.__init" -> "menu.idle";
+"menu.idle" [label="idle" shape=box];
+"menu.closed" [label="closed" shape=box];
+"menu.open" [label="open\nhold dismiss\nhold anchor" shape=box];
+"menu.closed" -> "menu.open" [label="open first list-navigation, open first trigger-press, open last list-navigation, props open, trigger press"];
+"menu.idle" -> "menu.closed" [label="props, props closed"];
+"menu.idle" -> "menu.open" [label="props open"];
+"menu.open" -> "menu.closed" [label="choose, close escape-key, close focus-out, close outside-press, props closed, trigger press"];
+"menu.open" -> "menu.open";
+}

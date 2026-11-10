@@ -1,0 +1,6 @@
+(library
+ (name silica_json)
+ (public_name silica.json)
+ (modes native melange)
+ (default_implementation silica.json-native)
+ (virtual_modules json))

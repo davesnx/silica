@@ -1,0 +1,121 @@
+{0 Testing}
+
+A Silica app is tested at five levels. Most tests run on native OCaml, with no
+browser:
+
+{t
+| Level | Tool | What it shows |
+|-------|------|---------------|
+| one machine | {!Silica.Machine.send} | a step gives the next state and the commands |
+| every state | {!Check} | no state that the machine can reach breaks a property |
+| the runtime | {!Silica_memory} | the components, timers, calls and history work together |
+| the server | [Server.handle] | the HTTP policy, the handlers and the first HTML |
+| the browser | jsdom and Playwright | the DOM renderer in a real page |
+}
+
+{1:machines Machines}
+
+A machine is a value: start it, send events, and compare the snapshot, the
+key of the state and the commands. The {{!page-tutorial}tutorial} and
+{!page-machines.run} show it. This is the fastest test, and the right one for
+the rules of one machine.
+
+{1:checker The checker}
+
+The checker runs every event in every state that it can reach, so one call
+covers the paths that a list of examples would miss. Give it samples of the
+server and the invariants of the app, and run it in a dune test. See
+{!page-checker}.
+
+{1:memory The memory platform}
+
+{!Silica_memory} mounts a component with the same runtime as the browser, on
+native OCaml. The test finds elements, presses them, types text, and answers
+the Remote calls by hand. Nothing happens by itself: the clock moves only when
+the test calls [advance].
+
+The [Doc_hello] component calls the server when it starts. The test answers
+the request:
+
+{@ocaml[
+# let page = Silica_memory.mount Doc_hello.component;;
+val page : Silica_memory.t = <abstr>
+# Silica_memory.html page;;
+- : string = "<p>Loading.</p>"
+# let request = List.hd (Silica_memory.pending page);;
+val request : Silica_memory.request = <abstr>
+# Silica_memory.path request, Silica_memory.body request;;
+- : string * string = ("/api/greeting", "\"Ada\"")
+# Silica_memory.reply request {|"Hello, Ada"|};;
+- : unit = ()
+# Silica_memory.html page;;
+- : string = "<p>Hello, Ada</p>"
+]}
+
+A failed call and a retry:
+
+{@ocaml[
+# let page = Silica_memory.mount Doc_hello.component;;
+val page : Silica_memory.t = <abstr>
+# Silica_memory.network_error (List.hd (Silica_memory.pending page)) "down";;
+- : unit = ()
+# Silica_memory.press (Silica_memory.by_text page "Try again");;
+- : unit = ()
+# List.length (Silica_memory.requests page);;
+- : int = 2
+]}
+
+Timers wait for the clock. The debounce of {!page-machines} settles 500
+milliseconds after the last text:
+
+{@ocaml[
+# let page = Silica_memory.mount Doc_debounce.component;;
+val page : Silica_memory.t = <abstr>
+# let field = List.hd (Silica_memory.select page "aria-label" "Word");;
+val field : Silica_memory.element = <abstr>
+# Silica_memory.input field "ocaml";;
+- : unit = ()
+# Silica_memory.advance page 499;;
+- : unit = ()
+# Silica_memory.text (Silica_memory.by_text page "Waiting for you to stop.");;
+- : string = "Waiting for you to stop."
+# Silica_memory.advance page 1;;
+- : unit = ()
+# Silica_memory.html page;;
+- : string =
+"<div><input aria-label=\"Word\" value=\"ocaml\" /><button>Clear</button><p>You typed ocaml.</p></div>"
+]}
+
+[mount ~answers] answers calls before the first paint, as a server render
+does. {!Silica_memory.mount_app} runs a router app with a history: see
+{!page-router.app}. The platform also records the commands, the running
+sources, the title, the cookies, the log and the Live sockets, which the test
+opens and feeds with messages.
+
+What the memory platform does not do: it paints islands as empty elements,
+it does not measure (a [Measure] gets {!Silica.Rect.zero}), and the sources
+that need a layout, such as [Anchor] and [Scroll_lock], are only recorded.
+Test those in a browser.
+
+{1:server Server tests}
+
+[Server.handle] is a function from a request to a response. With a
+synchronous [Io], a test calls it directly: see {!page-server.try}. Test the
+status of each check, the body of each handler, and the HTML of a page. For
+Live sockets, [Server.live] runs one island with a [send] function that the
+test gives, and [Server.receive] gives it a client message.
+
+{1:browser Browser tests}
+
+The repository has two sets of browser tests:
+
+- [test/browser/]: Node tests over jsdom. They mount components with
+  {!Silica_browser} and check the DOM, the hydration and the events. Run them
+  with [dune build @test/browser/browser-test].
+- [test/e2e/]: Playwright tests in Chromium, against the example server, mini
+  Linear and the Silica site. They test what jsdom cannot: layout, focus, scroll,
+  the history and the first paint with and without JavaScript. Run them with
+  [npm --prefix test/e2e test].
+
+A browser test waits for the attribute [data-silica-ready] on the root before
+it acts: from then on the page reacts to input.

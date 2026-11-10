@@ -1,0 +1,273 @@
+{0 Tutorial}
+
+This tutorial makes two components. The first is a counter. The second is a
+component that asks the server for a greeting with a Remote call.
+
+The code of this page is in [docs/examples/] of the repository. Dune compiles
+it for the server (native) and for the browser (Melange). A test makes sure
+that the code on this page is the same as those files, and runs the examples
+on this page.
+
+{1 Part 1: a counter}
+
+{2 The machine}
+
+A component is a machine and a view. The machine holds all the behaviour. The
+view shows the snapshot of the machine and sends events to it.
+
+The counter has one state, [Count], which carries an [int]. The type of the
+states is a GADT: each constructor gives the type of the data that the state
+carries. [Machine.Make] makes the functions to build the machine for these
+states.
+
+The machine has two events. [Increment] goes to [Count] with the number plus
+one. [Decrement] goes to [Count] with the number minus one, and stays when the
+number is 0. The view is written in mlx, the JSX syntax for OCaml.
+
+{@mlx file=examples/shared/tutorial_counter.mlx[
+open Silica
+
+type event = Increment | Decrement
+
+module States = struct
+  type _ t = Count : int t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"counter" ~init:(M.at Count 0)
+    [
+      M.state Count "count" (fun n -> function
+        | Increment ->
+            M.goto Count (n + 1)
+        | Decrement when n = 0 ->
+            M.stay []
+        | Decrement ->
+            M.goto Count (n - 1)
+        );
+    ]
+
+let view (M.At (Count, n) : M.snapshot) : event Node.t =
+  <div>
+    <button on_press=Decrement disabled=(n = 0)>"Decrement"</button>
+    <span>(Node.text (string_of_int n))</span>
+    <button on_press=Increment>"Increment"</button>
+  </div>
+
+let component = Component.make machine view
+]}
+
+{2 Run the machine}
+
+A machine is a plain value. You can start it and send events to it without a
+browser. [Machine.start] gives the first snapshot. [Machine.send] gives the
+next snapshot and the commands that the host must run.
+
+{@ocaml[
+# let counter = Tutorial_counter.machine;;
+val counter :
+  (Tutorial_counter.M.snapshot, Tutorial_counter.event) Silica.Machine.t =
+  <abstr>
+# let snapshot, _ = Silica.Machine.start counter;;
+val snapshot : Tutorial_counter.M.snapshot =
+  Tutorial_counter.M.At (Tutorial_counter.States.Count, <poly>)
+# let snapshot, _, _ =
+    Silica.Machine.send counter snapshot Tutorial_counter.Increment;;
+val snapshot : Tutorial_counter.M.snapshot =
+  Tutorial_counter.M.At (Tutorial_counter.States.Count, <poly>)
+]}
+
+[Render.to_string] makes the HTML of a view. The server uses it for the first
+paint of a page.
+
+{@ocaml[
+# Silica.Render.to_string (Tutorial_counter.view snapshot);;
+- : string =
+"<div><button>Decrement</button><span>1</span><button>Increment</button></div>"
+]}
+
+{2 Check the machine}
+
+The checker ([silica.check]) runs every event in every state that it can
+reach, and checks properties of each view. For example, each button must have
+a name that a screen reader can read. The counter can count forever, so
+[within] limits the search to the numbers 0 to 3.
+
+{@ocaml[
+# let within (Tutorial_counter.M.At (Count, n) : Tutorial_counter.M.snapshot) =
+    n <= 3;;
+val within : Tutorial_counter.M.snapshot -> bool = <fun>
+# match Check.component ~within Tutorial_counter.component with
+  | Check.Ok { states; _ } -> Printf.sprintf "%d states, no problem" states
+  | _ -> "problem";;
+- : string = "4 states, no problem"
+]}
+
+{2 Show it in the browser}
+
+The browser package [silica.browser] mounts a component into an element of the
+page. The {{!section-browser}second part} shows a complete client file.
+
+{1:part2 Part 2: a machine with a Remote call}
+
+{2 The endpoint}
+
+A Remote call is one request to a typed endpoint on the server. Declare the
+endpoint in code that the server and the browser share. The codecs change the
+input and the output to JSON and back.
+
+{@ocaml file=examples/shared/tutorial_api.ml[
+let greeting =
+  Silica.Remote.declare ~path:"/api/greeting" ~input:Silica.Codec.string
+    ~output:Silica.Codec.string
+]}
+
+{2 The machine}
+
+The greeting machine has four states. In [Idle], a press on the button sends
+[Ask], and the machine goes to [Asking]. The state [Asking] owns the call: the
+call starts when the machine enters the state, and its answer comes back as
+the event [Answered]. If the machine leaves the state first, the answer is
+dropped. The answer takes the machine to [Shown] or to [Failed].
+
+[to_] lists the states that a handler can go to. The checker uses this list to
+find edges that no event takes.
+
+{@mlx file=examples/shared/tutorial_greeting.mlx[
+open Silica
+
+type event = Ask | Answered of (string, Remote.error) result
+
+module States = struct
+  type _ t =
+    | Idle : unit t
+    | Asking : unit t
+    | Shown : string t
+    | Failed : Remote.error t
+end
+
+module M = Machine.Make (States)
+
+let ask = function Ask -> M.goto Asking () | Answered _ -> M.unhandled
+
+let machine =
+  M.make ~id:"greeting" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
+      M.state Asking "asking" ~to_:[ Shown; Failed ]
+        ~invoke:
+          [
+            Source.call Tutorial_api.greeting
+              (fun () -> "Ada")
+              (fun result -> Answered result);
+          ]
+        (fun () -> function
+          | Answered (Ok text) ->
+              M.goto Shown text
+          | Answered (Error error) ->
+              M.goto Failed error
+          | Ask ->
+              M.unhandled
+          );
+      M.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
+      M.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Idle, ()) ->
+      <button on_press=Ask>"Say hello"</button>
+  | M.At (Asking, ()) ->
+      <p>"Asking the server."</p>
+  | M.At (Shown, text) ->
+      <div>
+        <p>(Node.text text)</p> <button on_press=Ask>"Ask again"</button>
+      </div>
+  | M.At (Failed, _) ->
+      <div>
+        <p>"The server did not answer."</p>
+        <button on_press=Ask>"Try again"</button>
+      </div>
+
+let component = Component.make machine view
+]}
+
+{2 Run the machine}
+
+When the machine enters [Asking], [Machine.send] gives a [Start_call] command.
+The host runs the call. The test below does not run it, so the machine stays in
+[Asking].
+
+{@ocaml[
+# let greeting = Tutorial_greeting.machine;;
+val greeting :
+  (Tutorial_greeting.M.snapshot, Tutorial_greeting.event) Silica.Machine.t =
+  <abstr>
+# let snapshot, _ = Silica.Machine.start greeting;;
+val snapshot : Tutorial_greeting.M.snapshot =
+  Tutorial_greeting.M.At (Tutorial_greeting.States.Idle, <poly>)
+# let snapshot, commands, _ =
+    Silica.Machine.send greeting snapshot Tutorial_greeting.Ask;;
+val snapshot : Tutorial_greeting.M.snapshot =
+  Tutorial_greeting.M.At (Tutorial_greeting.States.Asking, <poly>)
+val commands : Tutorial_greeting.event Silica.Cmd.host list =
+  [Silica.Cmd.Start_call
+    {Silica.Cmd.id = "greeting/asking/invoke0"; endpoint = <abstr>;
+     input = <poly>; timeout_ms = None; on_result = <fun>}]
+# Silica.Machine.key greeting snapshot;;
+- : string = "asking"
+]}
+
+The machine gets the answer as an event, as any other event:
+
+{@ocaml[
+# let snapshot, _, _ =
+    Silica.Machine.send greeting snapshot
+      (Tutorial_greeting.Answered (Ok "Hello, Ada"));;
+val snapshot : Tutorial_greeting.M.snapshot =
+  Tutorial_greeting.M.At (Tutorial_greeting.States.Shown, <poly>)
+# Silica.Render.to_string (Tutorial_greeting.view snapshot);;
+- : string = "<div><p>Hello, Ada</p><button>Ask again</button></div>"
+]}
+
+{2 Check the machine}
+
+The checker gives the call each answer in [answers], and also the errors
+[Http 500] and [Network "down"]. So it checks the success path and the error
+paths.
+
+{@ocaml[
+# match
+    Check.component
+      ~samples:[ Check.answers Tutorial_api.greeting [ "Hello, Ada" ] ]
+      Tutorial_greeting.component
+  with
+  | Check.Ok { states; _ } -> Printf.sprintf "%d states, no problem" states
+  | _ -> "problem";;
+- : string = "5 states, no problem"
+]}
+
+{2:browser The browser}
+
+The client file mounts the component into the element with the id
+[silica-root]. Dune compiles it with Melange, and a bundler such as esbuild
+makes the file for the page.
+
+{@ocaml file=examples/client/tutorial_client.ml[
+let () = Silica_browser.mount ~root:"silica-root" Tutorial_greeting.component
+]}
+
+{2 The server}
+
+The server answers the endpoint and renders the page. See
+{!page-recipes.hosting} for the file, and {!page-server} for what the server
+does.
+
+{1 Next}
+
+- {!page-machines}, {!page-components} and {!page-data} explain the parts of
+  this tutorial in full.
+- {!page-router} adds pages and links.
+- {!page-linear} shows how a larger app uses routes, Live data and dialogs.
+- {!page-glossary} gives the meaning of each term.

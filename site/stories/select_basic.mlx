@@ -1,0 +1,16 @@
+open Silica_ui
+
+let fruits =
+  [
+    { Select.value = "apple"; label = "Apple"; disabled = false };
+    { Select.value = "banana"; label = "Banana"; disabled = false };
+    { Select.value = "cherry"; label = "Cherry"; disabled = true };
+    { Select.value = "pear"; label = "Pear"; disabled = false };
+  ]
+
+let render ~id values =
+  Select.make
+    (Select.props ~id ~label:"Fruit"
+       ~value:(Story.string values "value")
+       ~classes:Style.select fruits
+    )

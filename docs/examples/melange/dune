@@ -1,0 +1,20 @@
+(copy_files ../shared/*.{ml,mlx})
+
+(library
+ (name silica_docs_examples_melange)
+ (wrapped false)
+ (modes melange)
+ (libraries silica silica-ui)
+ (preprocess
+  (pps silica.ppx melange.ppx)))
+
+(rule
+ (target doc_checkbox_story_source.ml)
+ (deps doc_checkbox_story.mlx)
+ (action
+  (with-stdout-to
+   %{target}
+   (progn
+    (echo "let text = {|")
+    (cat %{deps})
+    (echo "|}\n")))))

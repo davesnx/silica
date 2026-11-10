@@ -1,0 +1,38 @@
+open Silica
+
+type event = Go_back
+
+module States = struct
+  type _ t = About : unit t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"about" ~init:(M.at About ())
+    [
+      M.state About "about"
+        ~entry:(fun () -> [ Cmd.Set_title "About" ])
+        (fun () -> function Go_back -> M.stay [ Cmd.Back ]);
+    ]
+
+let history =
+  List.init 40 (fun i ->
+      <p>(Node.text (Printf.sprintf "Release note %d." (i + 1)))</p>
+  )
+
+let view (_ : M.snapshot) : event Node.t =
+  <div>
+    (Node.element "h1"
+       [ Attr.bool "data-silica-route-focus" true ]
+       [ Node.text "About" ]
+    )
+    (Example_nav.make ())
+    <p>"Silica is a view framework where all behaviour is statecharts."</p>
+    <button on_press=Go_back>"Back"</button>
+    <section><h2>"Release notes"</h2> (Node.list history)</section>
+    <section id="credits"><h2>"Credits"</h2> <p>"Made with OCaml."</p></section>
+  </div>
+
+let component = Component.make machine view
+let make ?key () = Component.node ?key component

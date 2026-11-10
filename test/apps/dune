@@ -1,0 +1,4 @@
+(library
+ (name test_apps)
+ (modes native melange)
+ (libraries silica))

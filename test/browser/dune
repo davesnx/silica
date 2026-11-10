@@ -1,0 +1,29 @@
+(data_only_dirs node_modules)
+
+(melange.emit
+ (target out)
+ (alias browser-build)
+ (modules app host_app ui_app)
+ (module_systems
+  (esm mjs))
+ (preprocess
+  (pps melange.ppx))
+ (libraries
+  silica
+  silica.browser
+  silica.json-melange
+  silica-ui
+  silica_site_app_melange
+  test_apps))
+
+(rule
+ (alias browser-test)
+ (deps
+  (alias browser-build)
+  browser.test.mjs
+  host.test.mjs
+  ui.test.mjs
+  package.json
+  (source_tree node_modules))
+ (action
+  (run node --test browser.test.mjs host.test.mjs ui.test.mjs)))

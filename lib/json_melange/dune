@@ -1,0 +1,6 @@
+(library
+ (name silica_json_melange)
+ (public_name silica.json-melange)
+ (modes melange)
+ (implements silica.json)
+ (libraries jsonkit-melange))

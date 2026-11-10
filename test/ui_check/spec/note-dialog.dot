@@ -1,0 +1,13 @@
+digraph "note-dialog" {
+rankdir=LR;
+"note-dialog.__init" [shape=point];
+"note-dialog.__init" -> "note-dialog.idle";
+"note-dialog.idle" [label="idle" shape=box];
+"note-dialog.closed" [label="closed" shape=box];
+"note-dialog.open" [label="open\nhold focus_trap\nhold scroll_lock\nhold dismiss" shape=box];
+"note-dialog.closed" -> "note-dialog.open" [label="open trigger-press, props open"];
+"note-dialog.idle" -> "note-dialog.closed" [label="props, props closed"];
+"note-dialog.idle" -> "note-dialog.open" [label="props open"];
+"note-dialog.open" -> "note-dialog.closed" [label="close close-press, close escape-key, close outside-press, props closed, save"];
+"note-dialog.open" -> "note-dialog.open";
+}

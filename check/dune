@@ -1,0 +1,5 @@
+(library
+ (name silica_check)
+ (public_name silica.check)
+ (wrapped false)
+ (libraries silica))

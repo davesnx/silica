@@ -1,0 +1,156 @@
+open Silica
+open Linear_model
+
+type event =
+  | Props of int
+  | Typed of string
+  | Send
+  | Clear
+  | Sent of (Comment.t, Remote.error) result
+
+module States = struct
+  type _ t =
+    | Empty : int t
+    | Drafting : (int * string) t
+    | Sending : (int * string) t
+    | Failed : (int * string * Remote.error) t
+end
+
+module M = Machine.Make (States)
+
+let typed number draft =
+  if String.trim draft = "" then
+    M.goto Empty number
+  else
+    M.goto Drafting (number, draft)
+
+let machine =
+  M.make ~id:"comment-composer" ~init:(M.at Empty 0)
+    [
+      M.always ~to_:[ Empty ] (function
+        | Props number ->
+            M.goto Empty number
+        | _ ->
+            M.unhandled
+        );
+      M.state Empty "empty" ~to_:[ Drafting ] (fun number -> function
+        | Typed draft ->
+            typed number draft
+        | _ ->
+            M.unhandled
+        );
+      M.state Drafting "drafting" ~to_:[ Empty; Sending ]
+        (fun (number, draft) -> function
+        | Typed draft ->
+            typed number draft
+        | Send -> (
+            match Comment.check draft with
+            | Ok body ->
+                M.goto Sending (number, body)
+            | Error _ ->
+                M.goto Empty number
+          )
+        | Clear ->
+            M.goto Empty number
+        | _ ->
+            M.unhandled
+        );
+      M.state Sending "sending" ~to_:[ Empty; Failed ]
+        ~invoke:
+          [
+            Source.call add_comment_endpoint
+              (fun (number, body) -> { New_comment.number; body })
+              (fun r -> Sent r);
+          ]
+        (fun (number, body) -> function
+          | Sent (Ok _) ->
+              M.goto Empty number
+          | Sent (Error error) ->
+              M.goto Failed (number, body, error)
+          | _ ->
+              M.unhandled
+          );
+      M.state Failed "failed" ~to_:[ Sending; Drafting; Empty ]
+        (fun (number, body, _) -> function
+        | Send ->
+            M.goto Sending (number, body)
+        | Typed draft ->
+            typed number draft
+        | Clear ->
+            M.goto Empty number
+        | _ ->
+            M.unhandled
+        );
+    ]
+
+let text = Node.text
+
+let keys key =
+  if Key.equal key Key.escape then
+    Some Clear
+  else if
+    Key.equal key (Key.make ~ctrl:true "Enter")
+    || Key.equal key (Key.make ~meta:true "Enter")
+  then
+    Some Send
+  else
+    None
+
+let form ~draft ~busy ~can_send ~message =
+  <div id="comment-composer" class_="mt-4 flex flex-col gap-2">
+    <textarea
+      id="comment-input"
+      aria_label="Comment"
+      placeholder="Leave a comment"
+      rows=3
+      class_="w-full rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
+      value=draft
+      disabled=busy
+      on_input=(fun value -> Typed value)
+      on_key_down=keys
+    />
+    ( match message with
+    | Some message ->
+        <p role=`alert class_="text-sm text-ui-danger">(text message)</p>
+    | None ->
+        Node.list []
+    )
+    <div>
+      <button
+        id="comment-send"
+        type_=`button
+        disabled=(not can_send)
+        class_="rounded-ui bg-ui-accent px-3 py-1 text-sm text-ui-accent-text \
+                disabled:opacity-50"
+        on_press=Send>
+        ( if busy then
+            text "Sending..."
+          else
+            text "Comment"
+        )
+      </button>
+    </div>
+  </div>
+
+let error_text : Remote.error -> string = function
+  | Http code ->
+      "The server answered " ^ string_of_int code
+  | Decode _ ->
+      "The server sent data that cannot be read"
+  | Network _ ->
+      "The network failed"
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Empty, _) ->
+      form ~draft:"" ~busy:false ~can_send:false ~message:None
+  | M.At (Drafting, (_, draft)) ->
+      form ~draft ~busy:false ~can_send:true ~message:None
+  | M.At (Sending, (_, draft)) ->
+      form ~draft ~busy:true ~can_send:false ~message:None
+  | M.At (Failed, (_, draft, error)) ->
+      form ~draft ~busy:false ~can_send:true
+        ~message:(Some ("Could not send the comment. " ^ error_text error))
+
+let component = Component.make machine view
+let make ?key ~number () = Component.node ?key ~props:(Props number) component

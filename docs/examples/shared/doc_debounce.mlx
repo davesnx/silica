@@ -1,0 +1,62 @@
+open Silica
+
+type event = Typed of string | Settle | Clear
+
+module States = struct
+  type _ t = Empty : unit t | Typing : string t | Settled : string t
+end
+
+module M = Machine.Make (States)
+
+let typed = function "" -> M.goto Empty () | text -> M.reenter Typing text
+
+let machine =
+  M.make ~id:"debounce" ~init:(M.at Empty ())
+    [
+      M.state Empty "empty" ~to_:[ Typing ] (fun () -> function
+        | Typed text ->
+            typed text
+        | Settle | Clear ->
+            M.unhandled
+        );
+      M.state Typing "typing" ~to_:[ Empty; Settled ]
+        ~after:[ (500, Settle) ]
+        (fun text -> function
+          | Typed text ->
+              typed text
+          | Settle ->
+              M.goto Settled text
+          | Clear ->
+              M.unhandled
+          );
+      M.state Settled "settled" ~to_:[ Empty; Typing ] (fun _ -> function
+        | Typed text ->
+            typed text
+        | Settle | Clear ->
+            M.unhandled
+        );
+      M.always ~to_:[ Empty ] (function
+        | Clear ->
+            M.goto Empty ()
+        | Typed _ | Settle ->
+            M.unhandled
+        );
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  let text, note =
+    match snapshot with
+    | M.At (Empty, ()) ->
+        ("", "Type a word.")
+    | M.At (Typing, text) ->
+        (text, "Waiting for you to stop.")
+    | M.At (Settled, text) ->
+        (text, "You typed " ^ text ^ ".")
+  in
+  <div>
+    <input aria_label="Word" value=text on_input=(fun text -> Typed text) />
+    <button on_press=Clear disabled=(text = "")>"Clear"</button>
+    <p>(Node.text note)</p>
+  </div>
+
+let component = Component.make machine view

@@ -1,0 +1,32 @@
+{
+ "inputs": {},
+ "outputs": {
+  "dist/main-AAAAAAAA.js": {
+   "entryPoint": "out/main.mjs",
+   "imports": [
+    {
+     "path": "dist/shared-BBBBBBBB.js",
+     "kind": "import-statement"
+    },
+    {
+     "path": "dist/page-CCCCCCCC.js",
+     "kind": "dynamic-import"
+    }
+   ]
+  },
+  "dist/shared-BBBBBBBB.js": {
+   "imports": []
+  },
+  "dist/page-CCCCCCCC.js": {
+   "imports": [
+    {
+     "path": "dist/shared-BBBBBBBB.js",
+     "kind": "import-statement"
+    }
+   ]
+  },
+  "dist/app-DDDDDDDD.css": {
+   "entryPoint": "out/main.mjs"
+  }
+ }
+}

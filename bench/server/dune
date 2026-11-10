@@ -1,0 +1,10 @@
+(executable
+ (name bench)
+ (modules bench)
+ (libraries
+  silica
+  silica.server
+  silica_site_server
+  silica_linear_server
+  silica_example_adapter
+  unix))

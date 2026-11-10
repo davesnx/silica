@@ -1,0 +1,117 @@
+{0 Stories}
+
+A story is a named example of a component: a name, the source that a reader
+sees, the controls that change it, and a function that renders it. A
+component browser shows the stories of each component. The site of Silica has
+one at [/components]. [Silica_ui.Story] is the type, and an app uses it to
+write stories of its own components.
+
+{1:type The story type}
+
+{t
+| Field | Meaning |
+|-------|---------|
+| [name] | the heading of the story |
+| [source] | the code that the reader sees |
+| [controls] | the controls that change the story |
+| [render] | [~id values] gives the node of the story |
+}
+
+[render] is polymorphic in the event type, so the browser can put a story in
+any view. [id] is unique in the page: pass it, or ids made from it, to the
+components, so that one story can show more than once, for example once in
+each theme.
+
+{1:write Write a story}
+
+Put the [render] function of each story in its own file. This one shows a
+checkbox of silica-ui with the values of three controls:
+
+{@mlx file=examples/shared/doc_checkbox_story.mlx[
+open Silica_ui
+
+let render ~id values =
+  Checkbox.make
+    (Checkbox.props ~id
+       ~label:(Story.string values "label")
+       ~checked:(Story.bool values "checked")
+       ~disabled:(Story.bool values "disabled")
+       ~classes:Style.checkbox ()
+    )
+]}
+
+The story gives the controls and takes the source text from the file:
+
+{@ocaml file=examples/shared/doc_stories.ml[
+open Silica_ui
+
+let checkbox =
+  {
+    Story.name = "Checkbox";
+    source = Doc_checkbox_story_source.text;
+    controls =
+      [
+        Story.choice "label" ~label:"Label"
+          [ ("Accept the terms", "Terms"); ("Send me the news", "News") ]
+          "Accept the terms";
+        Story.toggle "checked" ~label:"Checked" false;
+        Story.toggle "disabled" ~label:"Disabled" false;
+      ];
+    render = Doc_checkbox_story.render;
+  }
+]}
+
+Keep the source honest: do not copy the code into a string by hand. A dune
+rule writes the text of the file into a module, so the code that the reader
+sees is the code that compiles:
+
+From [docs/examples/native/dune]:
+{@dune skip[
+(rule
+ (target doc_checkbox_story_source.ml)
+ (deps doc_checkbox_story.mlx)
+ (action
+  (with-stdout-to
+   %{target}
+   (progn
+    (echo "let text = {|")
+    (cat %{deps})
+    (echo "|}\n")))))
+]}
+
+{1:controls Controls and values}
+
+A control is a toggle ([Story.toggle name ~label default]) or a choice from a
+list ([Story.choice name ~label options default]). An option of a choice is a
+value and its label. The values of a story are plain data, compared with
+[=]:
+
+{@ocaml[
+# let values = Silica_ui.Story.defaults Doc_stories.checkbox;;
+val values : Silica_ui.Story.values = <abstr>
+# Silica_ui.Story.string values "label", Silica_ui.Story.bool values "checked";;
+- : string * bool = ("Accept the terms", false)
+# let values = Silica_ui.Story.set_bool values "checked" true;;
+val values : Silica_ui.Story.values = <abstr>
+# Silica_ui.Story.bool values "checked";;
+- : bool = true
+# Silica_ui.Story.slug Doc_stories.checkbox;;
+- : string = "checkbox"
+]}
+
+[Silica_ui.Story.controls] draws the controls of a story with silica-ui: a
+switch for each toggle and a select for each choice. Each change gives the new
+values to a function, which makes an event. A parent machine keeps one value
+of [values] for each story, and gives it to [render].
+
+{1:browser The component browser}
+
+The site keeps a catalog: for each component, its name, a summary and its
+stories. The page of a component is a machine that keeps the values of each
+story. For each story it shows the rendered story, its controls and its
+source. It also renders the first story in each shipped theme side by side,
+with [Silica_ui.Theme.scope]. [Story.slug] gives the anchor of each story.
+
+An app can make the same page for its own components with a list of stories,
+a machine that keeps their values, and [Silica_ui.Story.render] and
+[Silica_ui.Story.controls] in the view.

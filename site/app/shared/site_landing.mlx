@@ -1,0 +1,361 @@
+open Silica
+
+type event = Moved of string
+
+module States = struct
+  type _ t = Watching : string t
+end
+
+open States
+module M = Machine.Make (States)
+
+let demo = Landing_save.machine
+let spec = Machine.spec demo
+
+let machine =
+  M.make ~id:"landing" ~init:(M.at Watching spec.init)
+    [
+      M.state Watching "watching" (fun _ -> function
+        | Moved state ->
+            M.goto Watching state
+        );
+    ]
+
+let place = function
+  | "idle" ->
+      (70, 120)
+  | "saving" ->
+      (250, 120)
+  | "saved" ->
+      (430, 60)
+  | "failed" ->
+      (430, 180)
+  | _ ->
+      (250, 220)
+
+let width = 112
+let height = 40
+
+let edge (a, b) =
+  let ax, ay = place a and bx, by = place b in
+  if a = b then
+    Node.list []
+  else
+    let half = height / 2 in
+    let path =
+      if bx > ax then
+        let x1 = ax + (width / 2) and x2 = bx - (width / 2) - 3 in
+        Printf.sprintf "M %d %d C %d %d, %d %d, %d %d" x1 ay
+          ((x1 + x2) / 2)
+          ay
+          ((x1 + x2) / 2)
+          by x2 by
+      else if ay <= 120 then
+        Printf.sprintf "M %d %d C %d %d, %d %d, %d %d" ax (ay - half) ax 4 bx 4
+          bx
+          (by - half - 3)
+      else
+        Printf.sprintf "M %d %d C %d %d, %d %d, %d %d" ax (ay + half) ax 236 bx
+          236 bx
+          (by + half + 3)
+    in
+    <path
+      d=path
+      fill="none"
+      class_="stroke-ui-border"
+      strokeWidth="1.5"
+      markerEnd="url(#arrow)"
+    />
+
+let node ~current (state : Spec.state) =
+  let x, y = place state.name in
+  let active = state.name = current in
+  Node.element "g"
+    [
+      Attr.string "data-state" state.name;
+      Attr.string "class"
+        ( if active then
+            "chart-node is-active"
+          else
+            "chart-node"
+        );
+    ]
+    [
+      <rect
+        x=(string_of_int (x - (width / 2)))
+        y=(string_of_int (y - (height / 2)))
+        width=(string_of_int width)
+        height=(string_of_int height)
+        rx="10"
+        class_=( if active then
+                   "fill-ui-accent stroke-ui-accent transition-colors \
+                    duration-300"
+                 else
+                   "fill-ui-surface stroke-ui-border transition-colors \
+                    duration-300"
+               )
+        strokeWidth="1.5"
+      />;
+      <text
+        x=(string_of_int x)
+        y=(string_of_int (y + 5))
+        textAnchor="middle"
+        class_=( if active then
+                   "fill-ui-accent-text font-mono text-[13px] font-semibold"
+                 else
+                   "fill-ui-text font-mono text-[13px]"
+               )>
+        (Node.text state.name)
+      </text>;
+      ( match state.timers with
+      | [] ->
+          Node.list []
+      | ms :: _ ->
+          <text
+            x=(string_of_int x)
+            y=(string_of_int (y + 36))
+            textAnchor="middle"
+            class_="fill-ui-muted font-mono text-[11px]">
+            (Node.text (Printf.sprintf "after %d ms" ms))
+          </text>
+      );
+      ( match state.sources with
+      | [] ->
+          Node.list []
+      | path :: _ ->
+          <text
+            x=(string_of_int x)
+            y=(string_of_int (y - 30))
+            textAnchor="middle"
+            class_="fill-ui-muted font-mono text-[11px]">
+            (Node.text ("call " ^ path))
+          </text>
+      );
+    ]
+
+let chart current =
+  <svg
+    viewBox="0 0 500 240"
+    role=`img
+    aria_label=("Statechart of the save machine. Current state: " ^ current)
+    id="hero-chart"
+    class_="w-full">
+    <defs>
+      <marker
+        id="arrow"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" class_="fill-ui-muted" />
+      </marker>
+    </defs>
+    (Node.list (List.map edge spec.edges))
+    (Node.list (List.map (node ~current) spec.states))
+  </svg>
+
+let ideas =
+  [
+    ( "Statecharts",
+      "machines",
+      "Each component is a machine and a view. States are a GADT, transitions \
+       are declared, and timers and calls belong to the state that owns them."
+    );
+    ( "Local, Remote, Live",
+      "data",
+      "Three kinds of data with one tool each: snapshot data, typed calls to \
+       the server, and topics the server pushes. Status.t says where data is."
+    );
+    ( "Server and browser",
+      "hydration",
+      "The same code renders HTML on the server and adopts it in the browser. \
+       Answers of the first calls travel with the page."
+    );
+    ( "Typed router",
+      "router",
+      "Routes are the states of a machine. Path and query parameters are \
+       typed, links know when they are current, and data loads before a click."
+    );
+    ( "Checker and Quint",
+      "checker",
+      "Every event in every reachable state, against invariants about the \
+       view. Export a machine to Quint and check it with TLA+ tools."
+    );
+    ( "silica-ui",
+      "ui",
+      "Headless components after Base UI: dialog, menu, select, combobox, \
+       command menu and more, each a machine you can read and check."
+    );
+    ( "Theming",
+      "theming",
+      "Typed tokens, any number of themes, a cookie so the first paint has the \
+       right theme, and scopes for a part of the page."
+    );
+  ]
+
+let view (M.At (Watching, current)) : event Node.t =
+  <div>
+    <section
+      class_="grid items-center gap-12 pt-10 pb-20 \
+              lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:pt-16">
+      <div>
+        (Node.element "h1"
+           [
+             Attr.bool "data-silica-route-focus" true;
+             Attr.string "class"
+               "text-5xl font-semibold leading-[1.05] tracking-[-0.03em] \
+                text-balance outline-none sm:text-6xl";
+           ]
+           [ Node.text "Views that are statecharts." ]
+        )
+        <p class_="mt-6 max-w-[52ch] text-lg leading-8 text-ui-muted">
+          "Silica is an OCaml framework where all behaviour lives in machines. \
+           The same machine runs on the server, in the browser and in a model \
+           checker, so you can render it, use it and prove things about it."
+        </p>
+        <div class_="mt-8 flex flex-wrap gap-3">
+          (Site_links.doc "tutorial"
+             ~attrs:
+               [
+                 Attr.string "class"
+                   "rounded-ui bg-ui-accent px-4 py-2 font-medium \
+                    text-ui-accent-text hover:opacity-90";
+               ]
+             [ Node.text "Start the tutorial" ]
+          )
+          (Site_routes.Router.link Site_routes.routes
+             Site_routes.State.Components ()
+             [
+               Attr.string "class"
+                 "rounded-ui border border-ui-border px-4 py-2 font-medium \
+                  hover:bg-ui-highlight";
+             ]
+             [ Node.text "Browse components" ]
+          )
+        </div>
+      </div>
+      <div
+        id="hero-demo"
+        class_="overflow-hidden rounded-ui border border-ui-border \
+                bg-ui-raised shadow-ui">
+        <div
+          class_="flex items-center justify-between border-b border-ui-border \
+                  px-4 py-2 text-xs text-ui-muted">
+          <span class_="font-mono">
+            "docs/examples/shared/landing_save.mlx"
+          </span>
+          <span>"live"</span>
+        </div>
+        <div class_="px-4 pt-4">(chart current)</div>
+        <div
+          id="hero-live"
+          class_="flex min-h-20 items-center justify-center border-t \
+                  border-ui-border p-5 [&_button]:rounded-ui \
+                  [&_button]:bg-ui-accent [&_button]:px-4 [&_button]:py-2 \
+                  [&_button]:font-medium [&_button]:text-ui-accent-text \
+                  [&_button:disabled]:opacity-60">
+          (Component.node Landing_save.component ~output:(fun _ snapshot ->
+               [ Moved (Machine.key demo snapshot) ]
+           )
+          )
+        </div>
+        <p class_="border-t border-ui-border px-4 py-3 text-sm text-ui-muted">
+          "Press the button. The call to /api/save runs while the machine is \
+           in saving, and the timer of saved brings it back."
+        </p>
+      </div>
+    </section>
+    <section class_="border-t border-ui-border py-16">
+      <div class_="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        <div class_="self-start lg:sticky lg:top-24">
+          <h2 class_="text-3xl font-semibold tracking-tight text-balance">
+            "The code is the chart"
+          </h2>
+          <p class_="mt-4 max-w-[52ch] leading-7 text-ui-muted">
+            "This is the whole component above. The diagram is drawn from its \
+             spec, which the machine builds without running a handler. The \
+             checker reads the same spec."
+          </p>
+          <div class_="mt-6">
+            (Site_links.doc "machines"
+               ~attrs:
+                 [
+                   Attr.string "class"
+                     "text-link underline underline-offset-4 hover:no-underline";
+                 ]
+               [ Node.text "How machines work" ]
+            )
+          </div>
+        </div>
+        <div class_="min-w-0 [&>figure]:my-0">
+          (Site_code.view ~file:"docs/examples/shared/landing_save.mlx"
+             ~lang:"mlx" Site_landing_source.landing_save
+          )
+        </div>
+      </div>
+    </section>
+    <section class_="border-t border-ui-border py-16">
+      <h2 class_="text-3xl font-semibold tracking-tight">"The ideas"</h2>
+      <dl class_="mt-10 grid gap-x-12 gap-y-10 md:grid-cols-2">
+        (Node.list
+           (List.map
+              (fun (term, slug, text) ->
+                <div class_="border-t border-ui-border pt-5">
+                  <dt class_="text-lg font-semibold">
+                    (Site_links.doc slug
+                       ~attrs:[ Attr.string "class" "hover:text-link" ]
+                       [ Node.text term ]
+                    )
+                  </dt>
+                  <dd class_="mt-2 max-w-[60ch] leading-7 text-ui-muted">
+                    (Node.text text)
+                  </dd>
+                </div>
+              )
+              ideas
+           )
+        )
+      </dl>
+    </section>
+    <section class_="border-t border-ui-border py-16">
+      <div
+        class_="flex flex-col items-start gap-6 md:flex-row md:items-end \
+                md:justify-between">
+        <div>
+          <h2 class_="text-3xl font-semibold tracking-tight">
+            "Read the documentation"
+          </h2>
+          <p class_="mt-3 max-w-[56ch] leading-7 text-ui-muted">
+            "Concepts, how-to pages, the mini Linear walkthrough, and a \
+             browser of every silica-ui component with its stories and \
+             statechart."
+          </p>
+        </div>
+        <div class_="flex flex-wrap gap-3">
+          (Site_links.doc "index"
+             ~attrs:
+               [
+                 Attr.string "class"
+                   "rounded-ui bg-ui-accent px-4 py-2 font-medium \
+                    text-ui-accent-text hover:opacity-90";
+               ]
+             [ Node.text "Documentation" ]
+          )
+          (Site_links.doc "install"
+             ~attrs:
+               [
+                 Attr.string "class"
+                   "rounded-ui border border-ui-border px-4 py-2 font-medium \
+                    hover:bg-ui-highlight";
+               ]
+             [ Node.text "Install" ]
+          )
+        </div>
+      </div>
+    </section>
+  </div>
+
+let component = Component.make machine view
+let make ?key () = Component.node ?key component

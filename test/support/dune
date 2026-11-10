@@ -1,0 +1,3 @@
+(library
+ (name silica_test_support)
+ (libraries silica))

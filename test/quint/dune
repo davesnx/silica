@@ -1,0 +1,33 @@
+(data_only_dirs node_modules)
+
+(executable
+ (name gen)
+ (libraries silica))
+
+(rule
+ (targets door.qnt dead_end.qnt)
+ (action
+  (run ./gen.exe)))
+
+(rule
+ (alias quint)
+ (deps
+  check.ts
+  package.json
+  (source_tree node_modules)
+  door.qnt
+  dead_end.qnt
+  (glob_files ../linear_check/spec/*.qnt)
+  (glob_files ../example_check/spec/*.qnt)
+  (glob_files ../ui_check/spec/*.qnt))
+ (action
+  (run
+   node
+   --experimental-strip-types
+   check.ts
+   door.qnt
+   ../linear_check/spec
+   ../example_check/spec
+   ../ui_check/spec
+   --fail
+   dead_end.qnt)))

@@ -1,0 +1,4 @@
+(library
+ (name silica_server)
+ (public_name silica.server)
+ (libraries silica silica.server-kit unix))

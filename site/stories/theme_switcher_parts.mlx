@@ -1,0 +1,17 @@
+open Silica_ui
+
+let render ~id _values =
+  <div class_="flex flex-col items-start gap-3">
+    <button type_=`button class_=Style.button>"Save"</button>
+    (Checkbox.make
+       (Checkbox.props ~id:(id ^ "-check") ~label:"Remember me" ~checked:true
+          ~classes:Style.checkbox ()
+       )
+    )
+    (Switch.make
+       (Switch.props ~id:(id ^ "-switch") ~label:"Sync" ~checked:true
+          ~classes:Style.switch ()
+       )
+    )
+    <p class_="text-sm text-ui-danger">"The name is taken."</p>
+  </div>

@@ -1,0 +1,79 @@
+open Silica
+open Example_model
+
+type event = Props of int | Settled of (Item.t, Remote.error) result
+
+module States = struct
+  type _ t =
+    | Idle : unit t
+    | Loading : int t
+    | Loaded : Item.t t
+    | Failed : Remote.error t
+end
+
+module M = Machine.Make (States)
+
+let title text = [ Cmd.Set_title text ]
+
+let machine =
+  M.make ~id:"item" ~init:(M.at Idle ())
+    [
+      M.always ~to_:[ Loading ] (function
+        | Props id ->
+            M.reenter Loading id
+        | Settled _ ->
+            M.unhandled
+        );
+      M.state Idle "idle" ~entry:(fun () -> title "Item") M.ignore;
+      M.state Loading "loading" ~to_:[ Loaded; Failed ]
+        ~entry:(fun _ -> title "Item")
+        ~invoke:[ Source.call item_endpoint Fun.id (fun r -> Settled r) ]
+        (fun _ -> function
+          | Settled (Ok item) ->
+              M.goto Loaded item
+          | Settled (Error error) ->
+              M.goto Failed error
+          | Props _ ->
+              M.unhandled
+          );
+      M.state Loaded "loaded"
+        ~entry:(fun (item : Item.t) -> title item.title)
+        M.ignore;
+      M.state Failed "failed" ~entry:(fun _ -> title "Item") M.ignore;
+    ]
+
+let text = Node.text
+let price cents = Printf.sprintf "$%d.%02d" (cents / 100) (cents mod 100)
+
+let error_text : Remote.error -> string = function
+  | Http code ->
+      "Server answered " ^ string_of_int code
+  | Decode msg ->
+      "Bad answer: " ^ msg
+  | Network msg ->
+      "Network error: " ^ msg
+
+let view (snapshot : M.snapshot) : event Node.t =
+  <div>
+    <h1>"Item"</h1>
+    (Example_nav.make ())
+    ( match snapshot with
+    | M.At (Idle, ()) ->
+        <p>"Nothing loaded."</p>
+    | M.At (Loading, id) ->
+        <p>(text (Printf.sprintf "Loading item %d..." id))</p>
+    | M.At (Failed, error) ->
+        <p>(text (error_text error))</p>
+    | M.At (Loaded, item) ->
+        <article>
+          <h2>(text item.title)</h2>
+          <p>(text (price item.price_cents))</p>
+          <ul>
+            (Node.list (List.map (fun tag -> <li>(text tag)</li>) item.tags))
+          </ul>
+        </article>
+    )
+  </div>
+
+let component = Component.make machine view
+let make ?key ~id () = Component.node ?key ~props:(Props id) component

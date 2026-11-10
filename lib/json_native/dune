@@ -1,0 +1,5 @@
+(library
+ (name silica_json_native)
+ (public_name silica.json-native)
+ (implements silica.json)
+ (libraries jsonkit))

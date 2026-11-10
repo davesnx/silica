@@ -1,0 +1,56 @@
+open Silica
+
+type event = Ask | Answered of (string, Remote.error) result
+
+module States = struct
+  type _ t =
+    | Idle : unit t
+    | Asking : unit t
+    | Shown : string t
+    | Failed : Remote.error t
+end
+
+module M = Machine.Make (States)
+
+let ask = function Ask -> M.goto Asking () | Answered _ -> M.unhandled
+
+let machine =
+  M.make ~id:"greeting" ~init:(M.at Idle ())
+    [
+      M.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
+      M.state Asking "asking" ~to_:[ Shown; Failed ]
+        ~invoke:
+          [
+            Source.call Tutorial_api.greeting
+              (fun () -> "Ada")
+              (fun result -> Answered result);
+          ]
+        (fun () -> function
+          | Answered (Ok text) ->
+              M.goto Shown text
+          | Answered (Error error) ->
+              M.goto Failed error
+          | Ask ->
+              M.unhandled
+          );
+      M.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
+      M.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Idle, ()) ->
+      <button on_press=Ask>"Say hello"</button>
+  | M.At (Asking, ()) ->
+      <p>"Asking the server."</p>
+  | M.At (Shown, text) ->
+      <div>
+        <p>(Node.text text)</p> <button on_press=Ask>"Ask again"</button>
+      </div>
+  | M.At (Failed, _) ->
+      <div>
+        <p>"The server did not answer."</p>
+        <button on_press=Ask>"Try again"</button>
+      </div>
+
+let component = Component.make machine view

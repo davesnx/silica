@@ -1,0 +1,71 @@
+open Silica
+
+type event = Attempt of Nav.t | Discard | Keep
+
+module States = struct
+  type _ t = Held : unit t | Asking : Nav.t t
+end
+
+module M = Machine.Make (States)
+
+let keep_button = Ref.make "unsaved-keep"
+let block () = Source.block (fun nav -> Attempt nav)
+let ask nav = M.goto Asking ~cmds:[ Cmd.Focus keep_button ] nav
+
+let machine =
+  M.make ~id:"unsaved" ~init:(M.at Held ())
+    [
+      M.state Held "held" ~to_:[ Asking ]
+        ~invoke:[ block () ]
+        (fun () -> function
+          | Attempt nav -> ask nav | Discard | Keep -> M.unhandled
+          );
+      M.state Asking "asking" ~to_:[ Held ]
+        ~invoke:[ block () ]
+        (fun nav -> function
+          | Attempt nav ->
+              ask nav
+          | Discard ->
+              M.goto Held ~cmds:[ Cmd.Resume nav ] ()
+          | Keep ->
+              M.goto Held ()
+          );
+    ]
+
+let view (snapshot : M.snapshot) : event Node.t =
+  match snapshot with
+  | M.At (Asking, _) ->
+      <div
+        id="unsaved"
+        role=`alertdialog
+        aria_labelledby="unsaved-text"
+        class_="mb-4 flex flex-wrap items-center gap-2 rounded-ui border \
+                border-warning bg-warning-surface px-3 py-2 text-sm">
+        <p id="unsaved-text" class_="grow">
+          "You have unsaved changes. Leave this page?"
+        </p>
+        <button
+          id="unsaved-discard"
+          type_=`button
+          class_="rounded-ui bg-ui-danger px-3 py-1 text-ui-surface"
+          on_press=Discard>
+          "Discard"
+        </button>
+        <button
+          ref=keep_button
+          id="unsaved-keep"
+          type_=`button
+          class_="rounded-ui px-3 py-1 text-ui-muted"
+          on_press=Keep>
+          "Keep editing"
+        </button>
+      </div>
+  | M.At (Held, ()) ->
+      Node.list []
+
+let component = Component.make machine view
+
+let make ?key ~on_keep () =
+  Component.node ?key component ~output:(fun event _ ->
+      match event with Keep -> [ on_keep ] | Attempt _ | Discard -> []
+  )

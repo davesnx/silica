@@ -1,0 +1,7 @@
+digraph "votes" {
+rankdir=LR;
+"votes.__init" [shape=point];
+"votes.__init" -> "votes.watching";
+"votes.watching" [label="watching\ninvoke live:votes" shape=box];
+"votes.watching" -> "votes.watching" [label="reconnect"];
+}

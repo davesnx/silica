@@ -1,0 +1,12 @@
+(tests
+ (names
+  test_core
+  test_router
+  test_machine
+  test_instance
+  test_host_v04
+  test_data
+  test_remote_machine
+  test_protocol
+  test_place)
+ (libraries silica silica_test_support alcotest))

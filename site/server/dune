@@ -1,0 +1,31 @@
+(library
+ (name silica_site_server)
+ (wrapped false)
+ (modules site_docs_pages site_server)
+ (libraries silica_site_app_native silica.server silica_example_adapter unix))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries
+  silica_site_server
+  silica.server
+  silica.server-kit
+  silica_example_adapter))
+
+(rule
+ (target site_docs_pages.ml)
+ (deps
+  (glob_files %{project_root}/docs/*.mld)
+  %{project_root}/docs/glossary.mld
+  (source_tree %{project_root}/docs/examples)
+  (glob_files %{project_root}/example/app/shared/*)
+  %{project_root}/example/app/native/dune
+  %{project_root}/example/app/melange/dune
+  (glob_files %{project_root}/linear/app/shared/*)
+  (glob_files %{project_root}/linear/client/*.{ml,css})
+  (glob_files %{project_root}/linear/server/*.ml))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../gen/docs_gen.exe} pages %{project_root}/docs))))

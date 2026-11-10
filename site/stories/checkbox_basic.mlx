@@ -1,0 +1,10 @@
+open Silica_ui
+
+let render ~id values =
+  Checkbox.make
+    (Checkbox.props ~id ~label:"Email me about updates"
+       ~checked:(Story.bool values "checked")
+       ~indeterminate:(Story.bool values "mixed")
+       ~disabled:(Story.bool values "disabled")
+       ~classes:Style.checkbox ()
+    )

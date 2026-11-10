@@ -1,0 +1,9 @@
+(library
+ (name silica_example_adapter)
+ (libraries
+  silica
+  silica.server
+  silica.server-kit
+  tiny_httpd
+  unix
+  threads.posix))

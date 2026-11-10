@@ -1,0 +1,6 @@
+digraph "counter" {
+rankdir=LR;
+"counter.__init" [shape=point];
+"counter.__init" -> "counter.counter";
+"counter.counter" [label="counter" shape=box];
+}

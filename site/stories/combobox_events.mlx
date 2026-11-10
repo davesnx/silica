@@ -1,0 +1,61 @@
+open Silica
+open Silica_ui
+
+let fruits =
+  Combobox.
+    [
+      item ~keywords:[ "red"; "pie" ] "apple" "Apple";
+      item "apricot" "Apricot";
+      item "banana" "Banana";
+      item "blueberry" "Blueberry";
+      item ~disabled:true "cherry" "Cherry";
+      item "fig" "Fig";
+      item ~keywords:[ "vine"; "wine" ] "grape" "Grape";
+      item "kiwi" "Kiwi";
+      item ~keywords:[ "citrus" ] "lemon" "Lemon";
+      item "mango" "Mango";
+      item ~keywords:[ "citrus" ] "orange" "Orange";
+      item "pear" "Pear";
+      item "plum" "Plum";
+    ]
+
+type event = Chose of string * string
+
+module States = struct
+  type _ t = Page : string list t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"combobox-events" ~init:(M.at Page [])
+    [
+      M.state Page "page" (fun events -> function
+        | Chose (id, value) ->
+            M.goto Page (events @ [ id ^ " " ^ value ])
+        );
+    ]
+
+let view (M.At (Page, events)) =
+  <section class_="flex flex-col gap-4">
+    (Combobox.make
+       ~on_value_change:(fun value -> Chose ("fruit", value))
+       (Combobox.props ~id:"fruit" ~label:"Fruit" ~placeholder:"Search fruit"
+          ~empty:"No fruit found" ~classes:Style.combobox fruits
+       )
+    )
+    <h2 class_="font-semibold">"Inline"</h2>
+    (Combobox.make
+       ~on_value_change:(fun value -> Chose ("pick", value))
+       (Combobox.props ~id:"pick" ~label:"Pick a fruit"
+          ~placeholder:"Search fruit" ~empty:"No fruit found" ~inline:true
+          ~classes:Style.combobox fruits
+       )
+    )
+    <ol id="events" class_="text-sm text-ui-muted">
+      (Node.list (List.map (fun line -> <li>(Node.text line)</li>) events))
+    </ol>
+  </section>
+
+let component = Component.make machine view
+let render ~id:_ _ = Component.node component

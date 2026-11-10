@@ -1,0 +1,3 @@
+(executables
+ (names docs_gen embed_gen facts_gen)
+ (libraries odoc-parser str))

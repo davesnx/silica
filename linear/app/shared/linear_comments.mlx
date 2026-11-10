@@ -1,0 +1,111 @@
+open Silica
+open Linear_model
+
+type ready = { number : int; viewer : User.t; comments : Comment.t list }
+
+type event =
+  | Props of int
+  | Loaded of (Thread.t, Remote.error) result
+  | Updated of Comments.t Topic.update
+  | Retry
+
+module States = struct
+  type _ t =
+    | Idle : unit t
+    | Loading : int t
+    | Ready : ready t
+    | Failed : (int * Remote.error) t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"comments" ~init:(M.at Idle ())
+    [
+      M.always ~to_:[ Loading ] (function
+        | Props number ->
+            M.reenter Loading number
+        | _ ->
+            M.unhandled
+        );
+      M.state Idle "idle" M.ignore;
+      M.state Loading "loading" ~to_:[ Ready; Failed ]
+        ~invoke:[ Source.call comments_endpoint Fun.id (fun r -> Loaded r) ]
+        (fun number -> function
+          | Loaded (Ok thread) ->
+              M.goto Ready
+                { number; viewer = thread.viewer; comments = thread.comments }
+          | Loaded (Error error) ->
+              M.goto Failed (number, error)
+          | _ ->
+              M.unhandled
+          );
+      M.state Ready "ready"
+        ~invoke:
+          [
+            Source.live comments_topic
+              (fun r -> string_of_int r.number)
+              (fun update -> Updated update);
+          ]
+        (fun r -> function
+          | Updated { seq; status = Status.Ready { data; _ } } when seq > 0 ->
+              M.goto Ready { r with comments = data }
+          | Updated _ ->
+              M.goto Ready r
+          | _ ->
+              M.unhandled
+          );
+      M.state Failed "failed" ~to_:[ Loading ] (fun (number, _) -> function
+        | Retry ->
+            M.goto Loading number
+        | _ ->
+            M.unhandled
+        );
+    ]
+
+let text = Node.text
+
+let view (snapshot : M.snapshot) : event Node.t =
+  <section id="comments" class_="mt-8">
+    <h2 class_="mb-2 font-semibold">"Comments"</h2>
+    ( match snapshot with
+    | M.At (Idle, ()) | M.At (Loading, _) ->
+        <p class_="text-ui-muted">"Loading comments..."</p>
+    | M.At (Failed, _) ->
+        <div>
+          <p role=`alert class_="text-ui-danger">
+            "Could not load the comments."
+          </p>
+          <button id="comments-retry" class_="underline" on_press=Retry>
+            "Try again"
+          </button>
+        </div>
+    | M.At (Ready, r) ->
+        <div>
+          ( match r.comments with
+          | [] ->
+              <p id="comments-empty" class_="text-sm text-ui-muted">
+                "No comments yet."
+              </p>
+          | comments ->
+              <ul>
+                (Node.list
+                   (List.map
+                      (fun (comment : Comment.t) ->
+                        Linear_comment.make ~key:(string_of_int comment.id)
+                          ~comment
+                          ~own:(comment.author = r.viewer)
+                          ()
+                      )
+                      comments
+                   )
+                )
+              </ul>
+          )
+          <Linear_composer number=r.number />
+        </div>
+    )
+  </section>
+
+let component = Component.make machine view
+let make ?key ~number () = Component.node ?key ~props:(Props number) component

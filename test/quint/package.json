@@ -1,0 +1,8 @@
+{
+  "name": "silica-quint",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@informalsystems/quint": "0.33.1"
+  }
+}

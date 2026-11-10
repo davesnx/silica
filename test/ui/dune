@@ -1,0 +1,61 @@
+(library
+ (name ui_samples)
+ (wrapped false)
+ (modules
+  ui_samples
+  popover_samples
+  tooltip_samples
+  menu_samples
+  select_samples
+  combobox_samples
+  checkbox_samples
+  switch_samples
+  tabs_samples
+  toast_samples)
+ (libraries silica silica-ui))
+
+(tests
+ (names
+  test_dialog
+  test_popover
+  test_tooltip
+  test_menu
+  test_select
+  test_combobox
+  test_command_menu
+  test_checkbox
+  test_switch
+  test_tabs
+  test_toast)
+ (modules
+  test_dialog
+  test_popover
+  test_tooltip
+  test_menu
+  test_select
+  test_combobox
+  test_command_menu
+  test_checkbox
+  test_switch
+  test_tabs
+  test_toast)
+ (libraries silica silica-ui silica_test_support ui_samples alcotest))
+
+(test
+ (name test_theme)
+ (modules test_theme)
+ (libraries silica silica-ui silica.memory alcotest))
+
+(test
+ (name test_tokens)
+ (modules test_tokens)
+ (deps
+  (glob_files %{project_root}/ui/*.ml)
+  %{project_root}/ui/silica-ui.css
+  (glob_files %{project_root}/site/app/shared/*.ml)
+  (glob_files %{project_root}/site/app/shared/*.mlx)
+  (glob_files %{project_root}/site/stories/*.mlx)
+  %{project_root}/site/client/input.css
+  (glob_files %{project_root}/linear/app/shared/*.ml)
+  (glob_files %{project_root}/linear/app/shared/*.mlx))
+ (libraries alcotest str))

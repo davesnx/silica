@@ -1,0 +1,17 @@
+digraph "router" {
+rankdir=LR;
+"router.__init" [shape=point];
+"router.__init" -> "router./?new&status&assignee&priority&label&group&order";
+"router./?new&status&assignee&priority&label&group&order" [label="/?new&status&assignee&priority&label&group&order" shape=box];
+"router./issue/:int" [label="/issue/:int" shape=box];
+"router./*" [label="/*" shape=box];
+"router./*" -> "router./*";
+"router./*" -> "router./?new&status&assignee&priority&label&group&order" [label="url changed"];
+"router./*" -> "router./issue/:int" [label="url changed"];
+"router./?new&status&assignee&priority&label&group&order" -> "router./*" [label="url changed"];
+"router./?new&status&assignee&priority&label&group&order" -> "router./?new&status&assignee&priority&label&group&order";
+"router./?new&status&assignee&priority&label&group&order" -> "router./issue/:int" [label="url changed"];
+"router./issue/:int" -> "router./*" [label="url changed"];
+"router./issue/:int" -> "router./?new&status&assignee&priority&label&group&order" [label="url changed"];
+"router./issue/:int" -> "router./issue/:int";
+}

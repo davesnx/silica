@@ -1,0 +1,13 @@
+digraph "create-issue-dialog" {
+rankdir=LR;
+"create-issue-dialog.__init" [shape=point];
+"create-issue-dialog.__init" -> "create-issue-dialog.idle";
+"create-issue-dialog.idle" [label="idle" shape=box];
+"create-issue-dialog.closed" [label="closed" shape=box];
+"create-issue-dialog.open" [label="open\nhold focus_trap\nhold scroll_lock\nhold dismiss" shape=box];
+"create-issue-dialog.closed" -> "create-issue-dialog.open" [label="props busy, props open"];
+"create-issue-dialog.idle" -> "create-issue-dialog.closed" [label="props closed"];
+"create-issue-dialog.idle" -> "create-issue-dialog.open" [label="props busy, props open"];
+"create-issue-dialog.open" -> "create-issue-dialog.closed" [label="close escape-key, close outside-press, props closed"];
+"create-issue-dialog.open" -> "create-issue-dialog.open";
+}

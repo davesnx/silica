@@ -1,0 +1,164 @@
+open Silica
+open Silica_ui
+
+type event = Open_search | Changed of bool | Ran of string
+
+module States = struct
+  type _ t = Closed : unit t | Open : unit t
+end
+
+open States
+module M = Machine.Make (States)
+
+let doc_value ?anchor slug =
+  "doc:" ^ slug ^ match anchor with Some a -> "#" ^ a | None -> ""
+
+let items =
+  List.concat_map
+    (fun slug ->
+      match Site_nav.find slug with
+      | None ->
+          []
+      | Some (_, title, headings) ->
+          Combobox.item ~keywords:[ "docs" ] (doc_value slug) title
+          :: List.filter_map
+               (fun (level, anchor, text) ->
+                 if level = 1 then
+                   Some
+                     (Combobox.item (doc_value ~anchor slug)
+                        (title ^ ": " ^ text)
+                     )
+                 else
+                   None
+               )
+               headings
+    )
+    Site_nav.order
+  @ List.map
+      (fun (entry : Site_components.info) ->
+        Combobox.item ~keywords:[ "component" ]
+          ("component:" ^ entry.slug)
+          (entry.name ^ " component")
+      )
+      Site_components.all
+
+let target value =
+  let open Site_routes in
+  match String.index_opt value ':' with
+  | Some i -> (
+      let kind = String.sub value 0 i in
+      let rest = String.sub value (i + 1) (String.length value - i - 1) in
+      let slug, hash =
+        match String.index_opt rest '#' with
+        | Some j ->
+            ( String.sub rest 0 j,
+              Some (String.sub rest (j + 1) (String.length rest - j - 1))
+            )
+        | None ->
+            (rest, None)
+      in
+      match kind with
+      | "doc" when slug = index_slug ->
+          Some (Router.navigate ?hash routes State.Docs ())
+      | "doc" ->
+          Some (Router.navigate ?hash routes State.Doc slug)
+      | "component" ->
+          Some (Router.navigate routes State.Component slug)
+      | _ ->
+          None
+    )
+  | None ->
+      None
+
+let shortcut =
+  Source.keys ~prevent:true
+    [
+      (Key.make ~ctrl:true "k", Open_search);
+      (Key.make ~meta:true "k", Open_search);
+      (Key.make "/", Open_search);
+    ]
+
+let machine =
+  M.make ~id:"search" ~init:(M.at Closed ())
+    [
+      M.state Closed "closed" ~to_:[ Open ] ~invoke:[ shortcut ]
+        (fun () -> function
+        | Open_search | Changed true ->
+            M.goto Open ()
+        | Changed false | Ran _ ->
+            M.unhandled
+        );
+      M.state Open "open" ~to_:[ Closed ] (fun () -> function
+        | Changed false ->
+            M.goto Closed ()
+        | Ran value ->
+            M.goto Closed () ~cmds:(Option.to_list (target value))
+        | Open_search | Changed true ->
+            M.unhandled
+        );
+    ]
+
+let classes : Command_menu.classes =
+  {
+    Style.command_menu with
+    dialog =
+      {
+        Style.command_menu.dialog with
+        popup =
+          "fixed left-1/2 top-[12vh] z-50 flex w-[calc(100%-2rem)] max-w-xl \
+           -translate-x-1/2 flex-col gap-3 rounded-ui border border-ui-border \
+           bg-ui-raised p-4 text-ui-text shadow-ui outline-none";
+      };
+  }
+
+let view (snapshot : M.snapshot) : event Node.t =
+  let open_ =
+    match snapshot with M.At (Open, ()) -> true | M.At (Closed, ()) -> false
+  in
+  <div>
+    <button
+      type_=`button
+      id="search-open"
+      class_="flex w-full items-center gap-3 rounded-ui border \
+              border-ui-border bg-ui-surface px-3 py-1.5 text-sm text-ui-muted \
+              hover:border-ui-muted sm:w-56"
+      on_press=Open_search>
+      <svg
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        aria_hidden=true
+        class_="shrink-0">
+        <circle
+          cx="7"
+          cy="7"
+          r="4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M10.5 10.5L14 14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap=`round
+        />
+      </svg>
+      <span class_="grow text-left">"Search"</span>
+      <kbd class_="rounded-ui border border-ui-border px-1.5 font-mono text-xs">
+        "Ctrl K"
+      </kbd>
+    </button>
+    (Command_menu.make
+       ~on_open_change:(fun opened _ -> Changed opened)
+       ~on_run:(fun value -> Ran value)
+       (Command_menu.props ~id:"search" ~title:"Search the site"
+          ~placeholder:"Search pages, sections and components"
+          ~empty:"Nothing matches." ~open_ ~classes items
+       )
+    )
+  </div>
+
+let component = Component.make machine view
+let make ?key () = Component.node ?key component

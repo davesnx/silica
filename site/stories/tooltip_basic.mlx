@@ -1,0 +1,35 @@
+open Silica
+open Silica_ui
+
+let side = function
+  | "bottom" ->
+      Place.Bottom
+  | "left" ->
+      Place.Left
+  | "right" ->
+      Place.Right
+  | _ ->
+      Place.Top
+
+let delay = function
+  | "instant" ->
+      Tooltip.Instant
+  | "short" ->
+      Tooltip.Short
+  | "long" ->
+      Tooltip.Long
+  | _ ->
+      Tooltip.Medium
+
+let render ~id values =
+  Tooltip.make
+    (Tooltip.props ~id ~label:"Copy" ~tip:"Copy the link"
+       ~delay:(delay (Story.string values "delay"))
+       ~place:
+         {
+           Place.default with
+           side = side (Story.string values "side");
+           align = Place.Center;
+         }
+       ~classes:Style.tooltip ()
+    )

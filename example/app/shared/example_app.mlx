@@ -1,0 +1,34 @@
+open Silica
+open Example_routes
+
+let render : Router.snapshot -> Silica.Router.event Node.t = function
+  | Router.At (State.Home, ()) ->
+      <Example_home />
+  | Router.At (State.Item, id) ->
+      <Example_item id />
+  | Router.At (State.About, ()) ->
+      <Example_about />
+  | Router.At (State.Edit, ()) ->
+      <Example_edit />
+  | Router.At (State.Locked, ()) ->
+      <div>
+        <h1>"Locked"</h1>
+        (Example_nav.make ())
+        <p>"This page opens only from its own URL, never from a link."</p>
+      </div>
+  | Router.At (State.Not_found, url) ->
+      <Example_not_found url />
+
+let guard ~from ~target =
+  match (from, target) with
+  | Some _, Router.At (State.Locked, ()) ->
+      Router.Cancel
+  | _ ->
+      Router.Allow
+
+let app = Router.make routes ~guard ~render
+let status snapshot =
+  if Router.is_not_found routes snapshot then
+    404
+  else
+    200

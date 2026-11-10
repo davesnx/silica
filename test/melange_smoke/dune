@@ -1,0 +1,5 @@
+(melange.emit
+ (target out)
+ (alias melange)
+ (libraries silica silica.json-melange)
+ (modules smoke))

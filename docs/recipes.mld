@@ -1,0 +1,281 @@
+{0 Recipes}
+
+Short setups for tasks that most apps have: Tailwind, SVG, JSON codecs for the
+two compilers, and a server. For navigation, see {!page-router}; for a new
+platform, see {!page-platform}.
+
+{1:tailwind Tailwind}
+
+Silica has no CSS layer of its own. An app uses Tailwind through a dune rule.
+Mini Linear has the rule in [linear/client/dune]. The Tailwind command line
+([@tailwindcss/cli], from [node_modules]) reads [input.css], finds the class
+names in the app source, and writes [app.css]:
+
+From [linear/client/dune]:
+{@dune skip[
+(rule
+ (targets app.css)
+ (deps
+  input.css
+  themes.css
+  package.json
+  ../../ui/silica-ui.css
+  (glob_files ../../ui/*.ml)
+  (glob_files ../app/shared/*.ml)
+  (glob_files ../app/shared/*.mlx)
+  (source_tree node_modules))
+ (action
+  (setenv
+   RAYON_NUM_THREADS
+   1
+   (run
+    node
+    node_modules/@tailwindcss/cli/dist/index.mjs
+    -i
+    input.css
+    -o
+    app.css))))
+]}
+
+The input file turns off the automatic scan and names the source folder. In the
+dune build folder, the automatic scan also reads earlier outputs, so the CSS
+would depend on what was built before.
+
+{@css file=../linear/client/input.css[
+@import "tailwindcss" source(none);
+@import "../../ui/silica-ui.css";
+@import "./themes.css";
+@source "../app/shared";
+
+@theme inline {
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+}
+]}
+
+esbuild then bundles [app.css] with the client code. It adds a hash to each
+file name, and the metafile gives the page the URL of each file (see
+{{!section-hosting}Hosting}).
+
+Write each class as a complete string literal. Tailwind reads the source text,
+so a name made at run time, such as ["bg-" ^ colour], gets no CSS. For a class
+that depends on a condition, use {!Silica.Class.join}. It drops empty strings:
+
+{@ocaml[
+# Silica.Class.join [ "grow truncate"; (if true then "line-through" else "") ];;
+- : string = "grow truncate line-through"
+# Silica.Class.join [ "grow truncate"; (if false then "line-through" else "") ];;
+- : string = "grow truncate"
+]}
+
+Colours, radius, shadow, font and the spacing unit come from themes: the
+[themes.css] file that the [themes] rule writes, and the [@theme inline] block
+for the app tokens of mini Linear. See {!page-theming}.
+
+The components of [silica-ui] use theme tokens. To get their CSS, import
+[silica-ui.css] in the Tailwind input, as the second line of the input above
+does. That file has an [@source] line for the components, so the rule also
+depends on [ui/*.ml].
+
+{1:svg SVG}
+
+Write SVG in mlx as any other element. Use the camelCase name of an attribute
+when SVG has one, such as [viewBox]. Any other name with an upper-case letter
+prints with dashes: [strokeWidth] prints as [stroke-width]. An icon is a
+function that gives a node:
+
+{@mlx file=examples/shared/tutorial_icon.mlx[
+let check () =
+  <svg viewBox="0 0 16 16" width="16" height="16">
+    <path d="M3 8l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" />
+  </svg>
+]}
+
+{@ocaml[
+# Silica.Render.to_string (Tutorial_icon.check ());;
+- : string =
+"<svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\"><path d=\"M3 8l3 3 7-7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"></path></svg>"
+]}
+
+In the browser, the [svg] element and its children get the SVG namespace. The
+children of [foreignObject] are HTML again. Names that start with [xlink:] or
+[xml:] get their namespace too. There is no node for a raw SVG or HTML string.
+
+{1:text Text that is not ASCII}
+
+OCaml strings are bytes. Native code and the server read a literal such as
+["Café"] as UTF-8, but Melange turns each byte of a plain literal into one
+JavaScript character, so the browser shows ["CafÃ©"]. Write such text in
+shared code as a [{js|...|js}] literal. Melange reads it as Unicode text, and
+native OCaml reads it as an ordinary quoted string, so both sides get the same
+text and hydration matches:
+
+{@ocaml[
+# {js|Café|js} = "Caf\195\169";;
+- : bool = true
+]}
+
+Text that comes from JSON (Remote answers, Live states) and from inputs is
+already correct on both sides. The site test [text that is not ASCII is a
+{js|...|js} literal] fails on a plain literal with such text in the shared code
+of the site, silica-ui, mini Linear and the examples.
+
+{1:json JSON: two stanzas}
+
+The server and the browser use different JSON libraries: [jsonkit] for native
+code and [jsonkit-melange] for Melange. App code that derives JSON functions
+with [[@@deriving json]] must compile with the matching library. So the shared
+code of an app is compiled by two dune stanzas.
+
+The shared folder holds the code and no stanza:
+
+{@dune file=../example/app/shared/dune[
+(dirs)
+]}
+
+The native stanza copies the shared files and uses [silica.jsonkit]:
+
+{@dune file=../example/app/native/dune[
+(copy_files ../shared/*.{ml,mlx})
+
+(library
+ (name silica_example_app_native)
+ (wrapped false)
+ (modes native)
+ (libraries silica silica.jsonkit jsonkit)
+ (preprocess
+  (pps jsonkit.ppx silica.ppx)))
+]}
+
+The Melange stanza copies the same files and uses [silica-jsonkit-melange]:
+
+{@dune file=../example/app/melange/dune[
+(copy_files ../shared/*.{ml,mlx})
+
+(library
+ (name silica_example_app_melange)
+ (wrapped false)
+ (modes melange)
+ (libraries silica silica-jsonkit-melange jsonkit-melange)
+ (preprocess
+  (pps jsonkit-melange.ppx silica.ppx melange.ppx)))
+]}
+
+Both libraries have the module [Silica_jsonkit], so the shared code is the same
+for the two stanzas. [Silica_jsonkit.codec] makes a {!Silica.Codec.t} from the
+derived functions:
+
+{@ocaml file=../example/app/shared/example_model.ml[
+open Jsonkit.Primitives
+
+module Item = struct
+  type t = { id : int; title : string; price_cents : int; tags : string list }
+  [@@deriving json]
+end
+
+module Counter_event = struct
+  type t = Incr | Decr | Reset [@@deriving json]
+end
+
+let item_endpoint =
+  Silica.Remote.declare ~path:"/api/item" ~input:Silica.Codec.int
+    ~output:(Silica_jsonkit.codec ~to_json:Item.to_json ~of_json:Item.of_json)
+
+let counter_state = Silica.Codec.int
+
+let counter_event =
+  Silica_jsonkit.codec ~to_json:Counter_event.to_json
+    ~of_json:Counter_event.of_json
+
+let votes_topic = Silica.Topic.declare ~name:"votes" ~state:Silica.Codec.int
+
+let vote_endpoint =
+  Silica.Remote.declare ~path:"/api/vote" ~input:Silica.Codec.unit
+    ~output:Silica.Codec.int
+]}
+
+For simple types you do not need [jsonkit]: {!Silica.Codec} has codecs for
+strings, numbers, lists, options and pairs.
+
+{1:hosting Hosting with the server package}
+
+The package [silica.server] has the server logic: routes for pages, Remote
+calls and Live sockets, sessions, CSRF tokens, origin checks, hashed assets and
+security headers. It does not open a port. An adapter connects it to an HTTP
+library. [Silica_server.Make (Io)] takes the concurrency of that library.
+
+The repository has one adapter, over [tiny_httpd], in [example/server_adapter/].
+This server serves the greeting component of the {{!page-tutorial}tutorial}:
+
+{@ocaml file=examples/server/tutorial_server.ml[
+module Adapter = Silica_example_adapter
+module Server = Adapter.Server
+
+let read_file path = In_channel.with_open_bin path In_channel.input_all
+
+let greeting _context name = Ok ("Hello, " ^ name)
+
+let () =
+  let handlers = [ Server.implement Tutorial_api.greeting greeting ] in
+  let assets =
+    match
+      Silica_server.Assets.of_metafile ~prefix:"/static/"
+        (read_file "_build/default/client/meta.json")
+    with
+    | Ok assets ->
+        assets
+    | Error message ->
+        failwith message
+  in
+  let config =
+    Silica_server.default_config ~origins:Silica_server.Localhost
+      ~secret:(Silica_server_kit.Random_source.hex_id ~bytes:32)
+  in
+  let server =
+    Server.create config ~assets
+      ~read:(Adapter.read_dir "_build/default/client/dist")
+      ~handlers ~islands:[] ~topics:[]
+      ~page:(fun (page : Server.page) ->
+        Server.render_page_settled
+          (fun _url -> Tutorial_greeting.component)
+          ~status:(fun _ -> 200)
+          ~scripts:[ page.asset "tutorial_client.js" ]
+          ~csrf:page.csrf ~nonce:page.nonce ~handlers ~context:page.context
+          page.url
+      )
+      ()
+  in
+  Adapter.run ~port:8080 server
+]}
+
+The parts:
+
+- [Server.implement] connects an endpoint to a function. The function gets the
+  context (the request and the session) and the input.
+- [Silica_server.Assets.of_metafile] reads the esbuild metafile. The page asks
+  for a file by its name before the hash, such as [tutorial_client.js], and
+  gets the URL with the hash.
+- [default_config] needs the allowed origins and a secret of at least 16
+  bytes. [Localhost] is for development only. In production give the list of
+  origins of the site.
+- [render_page_settled] runs the Remote calls of the first render on the
+  server, and writes the answers into the page. The browser then starts from
+  the same state.
+- The paths in this file assume a [client/] folder at the root of the project,
+  with an esbuild rule as in [example/client/dune].
+
+The dune stanza links the shared code, the server package and the adapter:
+
+{@dune file=examples/server/dune[
+(executable
+ (name tutorial_server)
+ (libraries
+  silica_docs_examples_native
+  silica.server
+  silica.server-kit
+  silica_example_adapter))
+]}
+
+Sessions live in memory: a server restart ends them. The browser then reloads
+the page one time and gets a new session. {!page-server} explains the policy
+of the server: sessions, CSRF tokens, origins, assets and Live sockets.

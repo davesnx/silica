@@ -1,0 +1,60 @@
+(copy_files ../shared/*.{ml,mlx})
+
+(copy_files ../../stories/*.mlx)
+
+(library
+ (name silica_site_app_melange)
+ (wrapped false)
+ (modes melange)
+ (libraries
+  silica
+  silica-ui
+  silica-jsonkit-melange
+  silica.browser
+  jsonkit-melange
+  silica_docs_examples_melange)
+ (preprocess
+  (pps jsonkit-melange.ppx silica.ppx melange.ppx)))
+
+(rule
+ (target site_docs_index.ml)
+ (deps
+  (glob_files %{project_root}/docs/*.mld)
+  %{project_root}/docs/glossary.mld
+  (source_tree %{project_root}/docs/examples)
+  (glob_files %{project_root}/example/app/shared/*)
+  %{project_root}/example/app/native/dune
+  %{project_root}/example/app/melange/dune
+  (glob_files %{project_root}/linear/app/shared/*)
+  (glob_files %{project_root}/linear/client/*.{ml,css})
+  (glob_files %{project_root}/linear/server/*.ml))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/docs_gen.exe} index %{project_root}/docs))))
+
+(rule
+ (target site_story_sources.ml)
+ (deps
+  (glob_files ../../stories/*.mlx))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/embed_gen.exe} %{deps}))))
+
+(rule
+ (target site_landing_source.ml)
+ (deps %{project_root}/docs/examples/shared/landing_save.mlx)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/embed_gen.exe} %{deps}))))
+
+(rule
+ (target site_facts.ml)
+ (deps
+  (glob_files %{project_root}/test/ui_check/spec/*.dot))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/facts_gen.exe} %{deps}))))

@@ -1,0 +1,19 @@
+digraph "vote" {
+rankdir=LR;
+"vote.__init" [shape=point];
+"vote.__init" -> "vote.idle";
+"vote.idle" [label="idle" shape=box];
+"vote.loading" [label="loading\ninvoke /api/vote" shape=box];
+"vote.ready" [label="ready" shape=box];
+"vote.failed" [label="failed" shape=box];
+"vote.failed" -> "vote.idle";
+"vote.failed" -> "vote.loading" [label="load, retry"];
+"vote.idle" -> "vote.idle";
+"vote.idle" -> "vote.loading" [label="load"];
+"vote.loading" -> "vote.failed" [label="settled error"];
+"vote.loading" -> "vote.idle";
+"vote.loading" -> "vote.loading" [label="load"];
+"vote.loading" -> "vote.ready" [label="settled ok"];
+"vote.ready" -> "vote.idle";
+"vote.ready" -> "vote.loading" [label="load"];
+}

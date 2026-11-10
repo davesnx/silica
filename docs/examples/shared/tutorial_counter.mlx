@@ -1,0 +1,31 @@
+open Silica
+
+type event = Increment | Decrement
+
+module States = struct
+  type _ t = Count : int t
+end
+
+module M = Machine.Make (States)
+
+let machine =
+  M.make ~id:"counter" ~init:(M.at Count 0)
+    [
+      M.state Count "count" (fun n -> function
+        | Increment ->
+            M.goto Count (n + 1)
+        | Decrement when n = 0 ->
+            M.stay []
+        | Decrement ->
+            M.goto Count (n - 1)
+        );
+    ]
+
+let view (M.At (Count, n) : M.snapshot) : event Node.t =
+  <div>
+    <button on_press=Decrement disabled=(n = 0)>"Decrement"</button>
+    <span>(Node.text (string_of_int n))</span>
+    <button on_press=Increment>"Increment"</button>
+  </div>
+
+let component = Component.make machine view
