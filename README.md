@@ -190,25 +190,6 @@ npm --prefix test/e2e test                # Playwright, in Chromium
 
 The two browser suites need `npm install` in `test/browser` and `test/e2e` first.
 
-## What's in this repository
-
-| Folder | What it is |
-|---|---|
-| `lib/` | `silica`: machines, components, views, commands, routes, codecs, the host runtime |
-| `ppx/` | `silica.ppx`: JSX elements to `Silica.Node.element` calls |
-| `browser/` | `silica.browser`: the browser platform (Melange) |
-| `server/` | `silica.server`: the server logic (native) |
-| `memory/` | `silica.memory`: an in-memory platform for tests |
-| `check/` | `silica.check`: the model checker |
-| `ui/` | `silica-ui`: the headless components and the theme API |
-| `docs/` | the documentation (odoc pages) and its compiled examples |
-| `site/` | the landing page, the docs and the component browser, built with Silica |
-| `linear/` | Mini Linear, the reference app: an issue tracker with live updates |
-| `example/` | a smaller example app, and the `tiny_httpd` adapter |
-| `bench/`, `test/` | the benchmarks and the tests |
-
-[`CONTEXT.md`](CONTEXT.md) is the glossary. Silica uses each of its words for one thing only.
-
 ## Status
 
 Silica is pre-1.0 and experimental. The version is 0.1.0, it isn't published on opam and the API will change. It's a serious attempt to answer one question: what does a view framework look like when behaviour is a statechart all the way down, and OCaml checks the rest?
