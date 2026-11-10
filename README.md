@@ -190,21 +190,6 @@ npm --prefix test/e2e test                # Playwright, in Chromium
 
 The two browser suites need `npm install` in `test/browser` and `test/e2e` first.
 
-## Performance
-
-Silica is not the fastest framework, and it doesn't say it is. The numbers below are medians from one shared machine (they move by about 10 percent between runs), measured in headless Chromium with the keyed rows app of js-framework-benchmark. [Performance](docs/performance.mld) has the method, the full tables and the budgets that the tests enforce.
-
-| Keyed rows, CPU 1x (ms) | Silica | Plain JS | React 19 | Solid |
-|---|---|---|---|---|
-| Create 1,000 rows | 46.8 | 46.1 | 41.8 | 47.4 |
-| Swap two rows | 13.5 | 5.7 | 41.9 | 6.2 |
-| Select a row | 5.6 | 0.4 | 0.9 | 0.5 |
-| Bundle of that app, brotli (kB) | 41.6 | 1.1 | 60.5 | 6.4 |
-
-Where it's slower, and why: a small change runs the view of the component that changed and diffs the whole result, so its cost grows with the size of that view. Split a large view into components and the ones that didn't change aren't rendered again.
-
-On the server, the landing page of the site renders in 0.19 ms (median, in process).
-
 ## What's in this repository
 
 | Folder | What it is |
