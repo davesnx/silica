@@ -9,7 +9,7 @@ type t = {
   config : config;
   sub : Protocol.subscription;
   on_state :
-    seq:int -> state:Silica_json.Json.t -> cmds:Protocol.host list -> unit;
+    seq:int -> state:Silica_json.Json.t -> actions:Protocol.host list -> unit;
   on_down : unit -> unit;
   on_fatal : fatal -> unit;
   io : Platform.io;
@@ -84,12 +84,12 @@ let rec connect t =
           wait_ping ()
       | Ok (Protocol.Error { code }) ->
           fail t (Server_error code)
-      | Ok (Protocol.State { seq; state; cmds; _ }) ->
+      | Ok (Protocol.State { seq; state; actions; _ }) ->
           if t.ready && seq > !last_seq then (
             last_seq := seq;
             t.attempt <- 0;
             t.down <- false;
-            t.on_state ~seq ~state ~cmds
+            t.on_state ~seq ~state ~actions
           )
   in
   let ws =
@@ -177,7 +177,7 @@ let subscribe ?config ~io topic key ~deliver =
   let client =
     start ?config ~io
       ~sub:(Protocol.Topic { name = Topic.name topic; key })
-      ~on_state:(fun ~seq ~state ~cmds:_ ->
+      ~on_state:(fun ~seq ~state ~actions:_ ->
         match Protocol.decode_state (Topic.state topic) state with
         | Ok data ->
             last := Some data;

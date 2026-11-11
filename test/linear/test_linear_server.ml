@@ -248,7 +248,11 @@ let connect ?(name = "issues") ?(key = "all") t (v : visitor) =
       connection.receive
         (Protocol.encode_client
            (Protocol.Hello
-              { v = 1; csrf = v.csrf; sub = Protocol.Topic { name; key } }
+              {
+                v = Protocol.version;
+                csrf = v.csrf;
+                sub = Protocol.Topic { name; key };
+              }
            )
         );
       (sock, connection)
@@ -416,7 +420,7 @@ let test_unknown_topic_key () =
         (Protocol.encode_client
            (Protocol.Hello
               {
-                v = 1;
+                v = Protocol.version;
                 csrf = v.csrf;
                 sub = Protocol.Topic { name = "issues"; key = "other" };
               }

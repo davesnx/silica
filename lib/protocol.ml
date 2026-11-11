@@ -11,68 +11,68 @@ type host =
   | Forward
   | Reload
 
-let host_of_command : type e. e Cmd.t -> host option = function
-  | Cmd.Focus r ->
+let host_of_action : type e. e Action.t -> host option = function
+  | Action.Focus r ->
       Some (Focus r)
-  | Cmd.Blur r ->
+  | Action.Blur r ->
       Some (Blur r)
-  | Cmd.Scroll_into_view r ->
+  | Action.Scroll_into_view r ->
       Some (Scroll_into_view r)
-  | Cmd.Scroll_to { target; left; top } ->
+  | Action.Scroll_to { target; left; top } ->
       Some (Scroll_to { target; left; top })
-  | Cmd.Navigate u ->
+  | Action.Navigate u ->
       Some (Navigate u)
-  | Cmd.Replace u ->
+  | Action.Replace u ->
       Some (Replace u)
-  | Cmd.Back ->
+  | Action.Back ->
       Some Back
-  | Cmd.Forward ->
+  | Action.Forward ->
       Some Forward
-  | Cmd.Reload ->
+  | Action.Reload ->
       Some Reload
-  | Cmd.Set_title _
-  | Cmd.Set_status _
-  | Cmd.Set_document_attribute _
-  | Cmd.Set_cookie _
-  | Cmd.Resume _
-  | Cmd.Revert_navigation
-  | Cmd.Preload _
-  | Cmd.Remount
-  | Cmd.Measure _
-  | Cmd.Copy _
-  | Cmd.Load_script _
-  | Cmd.Load_chunk _ ->
+  | Action.Set_title _
+  | Action.Set_status _
+  | Action.Set_document_attribute _
+  | Action.Set_cookie _
+  | Action.Resume _
+  | Action.Revert_navigation
+  | Action.Preload _
+  | Action.Remount
+  | Action.Measure _
+  | Action.Copy _
+  | Action.Load_script _
+  | Action.Load_chunk _ ->
       None
 
-let host_of_cmd : type e. e Cmd.host -> host option = function
-  | Cmd.Run command ->
-      host_of_command command
-  | Cmd.Start_timer _
-  | Cmd.Start_call _
-  | Cmd.Start_live _
-  | Cmd.Start_source _
-  | Cmd.Stop _ ->
+let host_of_host_action : type e. e Action.host -> host option = function
+  | Action.Run action ->
+      host_of_action action
+  | Action.Start_timer _
+  | Action.Start_call _
+  | Action.Start_live _
+  | Action.Start_source _
+  | Action.Stop _ ->
       None
 
-let host_to_cmd : type e. host -> e Cmd.t = function
+let host_to_action : type e. host -> e Action.t = function
   | Focus r ->
-      Cmd.Focus r
+      Action.Focus r
   | Blur r ->
-      Cmd.Blur r
+      Action.Blur r
   | Scroll_into_view r ->
-      Cmd.Scroll_into_view r
+      Action.Scroll_into_view r
   | Scroll_to { target; left; top } ->
-      Cmd.Scroll_to { target; left; top }
+      Action.Scroll_to { target; left; top }
   | Navigate u ->
-      Cmd.Navigate u
+      Action.Navigate u
   | Replace u ->
-      Cmd.Replace u
+      Action.Replace u
   | Back ->
-      Cmd.Back
+      Action.Back
   | Forward ->
-      Cmd.Forward
+      Action.Forward
   | Reload ->
-      Cmd.Reload
+      Action.Reload
 
 let int n = Json.declassify (`Int n)
 let ( let* ) = Result.bind
@@ -169,12 +169,12 @@ let decode_host j =
       | "replace", `String s ->
           Ok (Replace (Url.of_string s))
       | _ ->
-          Error ("unknown cmd: " ^ k)
+          Error ("unknown action: " ^ k)
     )
   | _ ->
-      Error "invalid cmd"
+      Error "invalid action"
 
-let version = 1
+let version = 2
 
 type subscription =
   | Island of { channel : string; instance : string }
@@ -187,7 +187,7 @@ type client =
 
 type server =
   | Hello_ok of { v : int }
-  | State of { seq : int; ack : int; state : Json.t; cmds : host list }
+  | State of { seq : int; ack : int; state : Json.t; actions : host list }
   | Error of { code : string }
   | Pong
 
@@ -261,19 +261,19 @@ let decode_client text =
   | other ->
       Error ("unknown client message: " ^ other)
 
-let state_fields ~seq ~ack ~state cmds =
+let state_fields ~seq ~ack ~state actions =
   [
     ("seq", int seq);
     ("ack", int ack);
     ("state", state);
-    ("cmds", Json.declassify (`List (List.map encode_host cmds)));
+    ("actions", Json.declassify (`List (List.map encode_host actions)));
   ]
 
 let encode_server = function
   | Hello_ok { v } ->
       message_json "hello" [ ("v", int v) ]
-  | State { seq; ack; state; cmds } ->
-      message_json "state" (state_fields ~seq ~ack ~state cmds)
+  | State { seq; ack; state; actions } ->
+      message_json "state" (state_fields ~seq ~ack ~state actions)
   | Error { code } ->
       message_json "error" [ ("code", str code) ]
   | Pong ->
@@ -289,13 +289,13 @@ let decode_server text =
       let* seq = int_field "seq" l in
       let* ack = int_field "ack" l in
       let* state = field "state" l in
-      let* cmds = field "cmds" l in
-      match Json.classify cmds with
+      let* actions = field "actions" l in
+      match Json.classify actions with
       | `List cs ->
-          let* cmds = all (List.map decode_host cs) in
-          Ok (State { seq; ack; state; cmds })
+          let* actions = all (List.map decode_host cs) in
+          Ok (State { seq; ack; state; actions })
       | _ ->
-          Error "cmds must be a list"
+          Error "actions must be a list"
     )
   | "error" ->
       let* code = string_field "code" l in
@@ -308,9 +308,9 @@ let decode_server text =
 let encode_event codec ~id e =
   encode_client (Event { id; event = codec.Codec.encode e })
 
-let encode_state codec ~seq ~ack s cmds =
+let encode_state codec ~seq ~ack s actions =
   message_json "state"
-    (state_fields ~seq ~ack ~state:(codec.Codec.encode s) cmds)
+    (state_fields ~seq ~ack ~state:(codec.Codec.encode s) actions)
 
 let decode_state codec json = codec.Codec.decode json
 let decode_event_payload codec json = codec.Codec.decode json

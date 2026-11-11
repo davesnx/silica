@@ -27,13 +27,13 @@ let is_error = function Error _ -> true | Ok _ -> false
 let tests =
   [
     Alcotest.test_case "the version is 1" `Quick (fun () ->
-        Alcotest.(check int) "v" 1 Protocol.version
+        Alcotest.(check int) "v" 2 Protocol.version
     );
     Alcotest.test_case "hello for an island round trips" `Quick (fun () ->
         let hello =
           Protocol.Hello
             {
-              v = 1;
+              v = 2;
               csrf = "tok";
               sub = Protocol.Island { channel = "counter"; instance = "i-1" };
             }
@@ -44,7 +44,7 @@ let tests =
         let hello =
           Protocol.Hello
             {
-              v = 1;
+              v = 2;
               csrf = "tok";
               sub = Protocol.Topic { name = "issues"; key = "team-1" };
             }
@@ -56,7 +56,7 @@ let tests =
           Protocol.encode_client
             (Protocol.Hello
                {
-                 v = 1;
+                 v = 2;
                  csrf = "c";
                  sub = Protocol.Topic { name = "t"; key = "k" };
                }
@@ -64,7 +64,7 @@ let tests =
         in
         Alcotest.(check string)
           "json"
-          {|{"t":"hello","v":1,"csrf":"c","sub":{"topic":"t","key":"k"}}|} text
+          {|{"t":"hello","v":2,"csrf":"c","sub":{"topic":"t","key":"k"}}|} text
     );
     Alcotest.test_case "event and ping round trip" `Quick (fun () ->
         let event = Protocol.Event { id = 7; event = obj [ ("a", num 1) ] } in
@@ -77,13 +77,13 @@ let tests =
     Alcotest.test_case "server messages round trip" `Quick (fun () ->
         let all =
           [
-            Protocol.Hello_ok { v = 1 };
+            Protocol.Hello_ok { v = 2 };
             Protocol.State
               {
                 seq = 3;
                 ack = 2;
                 state = num 5;
-                cmds = [ Protocol.Back; Protocol.Reload ];
+                actions = [ Protocol.Back; Protocol.Reload ];
               };
             Protocol.Error { code = "unknown_topic" };
             Protocol.Pong;
@@ -101,9 +101,9 @@ let tests =
     Alcotest.test_case "state carries seq and ack on the wire" `Quick (fun () ->
         let text = Protocol.encode_state Codec.int ~seq:9 ~ack:4 1 [] in
         Alcotest.(check string)
-          "json" {|{"t":"state","seq":9,"ack":4,"state":1,"cmds":[]}|} text;
+          "json" {|{"t":"state","seq":9,"ack":4,"state":1,"actions":[]}|} text;
         match ok (Protocol.decode_server text) with
-        | Protocol.State { seq = 9; ack = 4; state; cmds = [] } ->
+        | Protocol.State { seq = 9; ack = 4; state; actions = [] } ->
             Alcotest.(check int)
               "decoded" 1
               (ok (Protocol.decode_state Codec.int state))
@@ -131,11 +131,11 @@ let tests =
             "[]";
             {|{"t":"nope"}|};
             {|{"t":"hello"}|};
-            {|{"t":"hello","v":1,"csrf":"c"}|};
-            {|{"t":"hello","v":1,"sub":{"topic":"a","key":"b"}}|};
+            {|{"t":"hello","v":2,"csrf":"c"}|};
+            {|{"t":"hello","v":2,"sub":{"topic":"a","key":"b"}}|};
             {|{"t":"hello","v":"1","csrf":"c","sub":{"topic":"a","key":"b"}}|};
-            {|{"t":"hello","v":1,"csrf":"c","sub":{"nothing":1}}|};
-            {|{"t":"hello","v":1,"csrf":"c","sub":{"topic":"a"}}|};
+            {|{"t":"hello","v":2,"csrf":"c","sub":{"nothing":1}}|};
+            {|{"t":"hello","v":2,"csrf":"c","sub":{"topic":"a"}}|};
             {|{"t":"event","event":1}|};
             {|{"t":"event","id":"x","event":1}|};
             {|{"t":"event","id":1}|};
@@ -156,8 +156,8 @@ let tests =
           )
           [
             "";
-            {|{"t":"state","state":1,"cmds":[]}|};
-            {|{"t":"state","seq":1,"ack":0,"cmds":[]}|};
+            {|{"t":"state","state":1,"actions":[]}|};
+            {|{"t":"state","seq":1,"ack":0,"actions":[]}|};
             {|{"t":"error"}|};
             {|{"t":"hello"}|};
           ]

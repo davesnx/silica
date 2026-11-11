@@ -420,14 +420,14 @@ module Gadgets = struct
     Printf.sprintf "%s:%.0f,%.0f,%.0f,%.0f,%.0f,%.0f" name s.left s.top
       s.scroll_width s.scroll_height s.client_width s.client_height
 
-  let command = function
+  let actions_of = function
     | Scroll_window ->
-        [ Cmd.Scroll_to { target = None; left = 5; top = 7 } ]
+        [ Action.Scroll_to { target = None; left = 5; top = 7 } ]
     | Scroll_box ->
-        [ Cmd.Scroll_to { target = Some box; left = 3; top = 4 } ]
+        [ Action.Scroll_to { target = Some box; left = 3; top = 4 } ]
     | Measure_box ->
         [
-          Cmd.Measure
+          Action.Measure
             {
               target = box;
               on_rect =
@@ -439,7 +439,7 @@ module Gadgets = struct
         ]
     | Measure_missing ->
         [
-          Cmd.Measure
+          Action.Measure
             {
               target = Ref.make "missing";
               on_rect =
@@ -455,17 +455,17 @@ module Gadgets = struct
         ]
     | Copy_text ->
         [
-          Cmd.Copy
+          Action.Copy
             {
               text = "hello";
               on_result = Some (fun ok -> Got (Printf.sprintf "copy:%b" ok));
             };
         ]
     | Copy_quiet ->
-        [ Cmd.Copy { text = "quiet"; on_result = None } ]
+        [ Action.Copy { text = "quiet"; on_result = None } ]
     | Load src ->
         [
-          Cmd.Load_script
+          Action.Load_script
             {
               src;
               on_result = (fun ok -> Got (Printf.sprintf "load:%s:%b" src ok));
@@ -483,7 +483,7 @@ module Gadgets = struct
     | Unwatch ->
         Gadgets_machine.goto States.Idle log
     | other ->
-        Gadgets_machine.stay (command other)
+        Gadgets_machine.stay (actions_of other)
 
   let machine =
     let to_ = Gadgets_machine.[ States.Idle; States.Watching ] in
@@ -549,13 +549,13 @@ module Document = struct
   let handle state log = function
     | Attr value ->
         Document_machine.stay
-          [ Cmd.Set_document_attribute { name = "data-theme"; value } ]
+          [ Action.Set_document_attribute { name = "data-theme"; value } ]
     | Bad_attr ->
         Document_machine.stay
-          [ Cmd.Set_document_attribute { name = "on click"; value = None } ]
+          [ Action.Set_document_attribute { name = "on click"; value = None } ]
     | Cookie value ->
         Document_machine.stay
-          [ Cmd.Set_cookie { name = "silica-theme"; value; max_age = 60 } ]
+          [ Action.Set_cookie { name = "silica-theme"; value; max_age = 60 } ]
     | Watch ->
         Document_machine.goto States.Watching log
     | Unwatch ->
@@ -847,35 +847,35 @@ module Fake = struct
   let dispatch : (Instance.message -> unit) option ref = ref None
   let note line = log := line :: !log
 
-  let command : Instance.message Cmd.t -> string = function
-    | Cmd.Focus r ->
+  let describe : Instance.message Action.t -> string = function
+    | Action.Focus r ->
         "focus " ^ Ref.name r
-    | Cmd.Blur r ->
+    | Action.Blur r ->
         "blur " ^ Ref.name r
-    | Cmd.Set_title t ->
+    | Action.Set_title t ->
         "title " ^ t
-    | Cmd.Scroll_to { left; top; _ } ->
+    | Action.Scroll_to { left; top; _ } ->
         Printf.sprintf "scroll_to %d %d" left top
-    | Cmd.Measure { target; _ } ->
+    | Action.Measure { target; _ } ->
         "measure " ^ Ref.name target
-    | Cmd.Copy { text; _ } ->
+    | Action.Copy { text; _ } ->
         "copy " ^ text
-    | Cmd.Load_script { src; _ } ->
+    | Action.Load_script { src; _ } ->
         "load_script " ^ src
-    | Cmd.Scroll_into_view _
-    | Cmd.Navigate _
-    | Cmd.Replace _
-    | Cmd.Back
-    | Cmd.Forward
-    | Cmd.Reload
-    | Cmd.Resume _
-    | Cmd.Revert_navigation
-    | Cmd.Preload _
-    | Cmd.Set_status _
-    | Cmd.Set_document_attribute _
-    | Cmd.Set_cookie _
-    | Cmd.Load_chunk _
-    | Cmd.Remount ->
+    | Action.Scroll_into_view _
+    | Action.Navigate _
+    | Action.Replace _
+    | Action.Back
+    | Action.Forward
+    | Action.Reload
+    | Action.Resume _
+    | Action.Revert_navigation
+    | Action.Preload _
+    | Action.Set_status _
+    | Action.Set_document_attribute _
+    | Action.Set_cookie _
+    | Action.Load_chunk _
+    | Action.Remount ->
         "other"
 
   let renderer : Instance.message Renderer.make =
@@ -887,9 +887,11 @@ module Fake = struct
           last := node;
           note ("paint " ^ Render.to_string node)
         );
-      run = (fun cmd -> note ("run " ^ command cmd));
+      run = (fun action -> note ("run " ^ describe action));
       start_source =
-        (fun ~id source -> note ("start " ^ id ^ " " ^ Cmd.source_name source));
+        (fun ~id source ->
+          note ("start " ^ id ^ " " ^ Action.source_name source)
+        );
       stop_source = (fun ~id -> note ("stop " ^ id));
     }
 

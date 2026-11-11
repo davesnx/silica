@@ -78,7 +78,7 @@ let sides_left_and_right () =
 
 let anchor_place source data =
   match Source.held data source with
-  | Some (Cmd.Anchor { place; _ }) ->
+  | Some (Action.Anchor { place; _ }) ->
       place
   | _ ->
       Alcotest.fail "not an anchor source"

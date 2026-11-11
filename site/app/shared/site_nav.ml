@@ -7,7 +7,7 @@ let sections =
         "components";
         "data";
         "optimistic";
-        "commands";
+        "actions";
         "platform";
         "router";
         "server";

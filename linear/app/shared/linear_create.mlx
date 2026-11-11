@@ -25,7 +25,7 @@ end
 module Create_machine = Machine.Make (States)
 
 let fresh view = { view; draft = Draft.empty; error = None }
-let focus_opener = Cmd.Focus Linear_refs.new_issue
+let focus_opener = Action.Focus Linear_refs.new_issue
 
 let close view =
   [ Router.replace routes State.Issues { create = false; view }; focus_opener ]
@@ -65,9 +65,9 @@ let machine =
                   Create_machine.goto Editing { form with error = Some message }
             )
           | Cancel ->
-              Create_machine.goto Closed form.view ~cmds:(close form.view)
+              Create_machine.goto Closed form.view ~actions:(close form.view)
           | Props { create = false; view } ->
-              Create_machine.goto Closed view ~cmds:[ focus_opener ]
+              Create_machine.goto Closed view ~actions:[ focus_opener ]
           | Props { create = true; view } ->
               Create_machine.goto Editing { form with view }
           | event -> (
@@ -82,7 +82,7 @@ let machine =
         ~invoke:[ Source.call create_endpoint snd (fun r -> Created r) ]
         (fun (view, draft) -> function
           | Created (Ok _) ->
-              Create_machine.goto Closed view ~cmds:(close view)
+              Create_machine.goto Closed view ~actions:(close view)
           | Created (Error error) ->
               Create_machine.goto Failed (view, draft, error)
           | _ ->
@@ -94,9 +94,9 @@ let machine =
           | Submit ->
               Create_machine.goto Submitting (view, draft)
           | Cancel ->
-              Create_machine.goto Closed view ~cmds:(close view)
+              Create_machine.goto Closed view ~actions:(close view)
           | Props { create = false; view } ->
-              Create_machine.goto Closed view ~cmds:[ focus_opener ]
+              Create_machine.goto Closed view ~actions:[ focus_opener ]
           | Props { create = true; view } ->
               Create_machine.goto Failed (view, draft, error)
           | event -> (

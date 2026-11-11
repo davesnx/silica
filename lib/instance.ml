@@ -2,7 +2,7 @@ type message = { run : unit -> unit }
 
 type context = {
   queue : (unit -> unit) Queue.t;
-  mutable commands : message Cmd.host list;
+  mutable actions : message Action.host list;
   mutable next_id : int;
   dev : bool;
   on_error : (exn -> Node.error -> unit) option;
@@ -51,8 +51,8 @@ and packed = Packed : ('s, 'e) cell -> packed
 
 type ('s, 'e) t = { context : context; root : ('s, 'e) cell }
 
-let add_command context (command : message Cmd.host) =
-  context.commands <- command :: context.commands
+let add_action context (action : message Action.host) =
+  context.actions <- action :: context.actions
 
 let qualify cell local =
   string_of_int cell.id ^ "." ^ string_of_int cell.entry ^ "/" ^ local
@@ -114,13 +114,13 @@ let rec step : type s e. (s, e) cell -> e -> unit =
       match Machine.step cell.component.machine cell.snapshot event with
       | _, _, `Unhandled ->
           ()
-      | snapshot, commands, kind ->
+      | snapshot, actions, kind ->
           cell.snapshot <- snapshot;
           Option.iter
             (fun (Packed parent) -> invalidate ~force:false parent)
             cell.parent;
           if kind = `Entered then cell.entry <- cell.entry + 1;
-          emit cell commands;
+          emit cell actions;
           cell.notify event snapshot;
           check_final cell
     with exn -> (
@@ -146,27 +146,31 @@ and timed : type s e. (s, e) cell -> e -> message =
   let entry = cell.entry in
   { run = (fun () -> if cell.entry = entry then step cell event) }
 
-and emit : type s e. (s, e) cell -> e Cmd.host list -> unit =
- fun cell commands ->
-  let add = add_command cell.context in
+and emit : type s e. (s, e) cell -> e Action.host list -> unit =
+ fun cell actions ->
+  let add = add_action cell.context in
   List.iter
     (function
-      | Cmd.Start_timer { id; ms; event } ->
-          let qualified = qualify cell id in
-          Hashtbl.replace cell.owned id qualified;
-          add (Cmd.Start_timer { id = qualified; ms; event = timed cell event })
-      | Cmd.Start_source { id; source } ->
+      | Action.Start_timer { id; ms; event } ->
           let qualified = qualify cell id in
           Hashtbl.replace cell.owned id qualified;
           add
-            (Cmd.Start_source
-               { id = qualified; source = Cmd.map_source (timed cell) source }
+            (Action.Start_timer { id = qualified; ms; event = timed cell event })
+      | Action.Start_source { id; source } ->
+          let qualified = qualify cell id in
+          Hashtbl.replace cell.owned id qualified;
+          add
+            (Action.Start_source
+               {
+                 id = qualified;
+                 source = Action.map_source (timed cell) source;
+               }
             )
-      | Cmd.Start_call { id; endpoint; input; timeout_ms; on_result } ->
+      | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
           let qualified = qualify cell id in
           Hashtbl.replace cell.owned id qualified;
           add
-            (Cmd.Start_call
+            (Action.Start_call
                {
                  id = qualified;
                  endpoint;
@@ -175,11 +179,11 @@ and emit : type s e. (s, e) cell -> e Cmd.host list -> unit =
                  on_result = (fun result -> timed cell (on_result result));
                }
             )
-      | Cmd.Start_live { id; topic; key; on_update } ->
+      | Action.Start_live { id; topic; key; on_update } ->
           let qualified = qualify cell id in
           Hashtbl.replace cell.owned id qualified;
           add
-            (Cmd.Start_live
+            (Action.Start_live
                {
                  id = qualified;
                  topic;
@@ -187,32 +191,32 @@ and emit : type s e. (s, e) cell -> e Cmd.host list -> unit =
                  on_update = (fun update -> timed cell (on_update update));
                }
             )
-      | Cmd.Stop id -> (
+      | Action.Stop id -> (
           match Hashtbl.find_opt cell.owned id with
           | Some qualified ->
               Hashtbl.remove cell.owned id;
-              add (Cmd.Stop qualified)
+              add (Action.Stop qualified)
           | None ->
               ()
         )
-      | Cmd.Run Cmd.Remount ->
+      | Action.Run Action.Remount ->
           cell.remount <- true
-      | Cmd.Run command ->
+      | Action.Run action ->
           add
-            (Cmd.Run
-               (Cmd.map
+            (Action.Run
+               (Action.map
                   (fun event -> { run = (fun () -> step cell event) })
-                  command
+                  action
                )
             )
       )
-    commands
+    actions
 
 let to_message cell event = { run = (fun () -> step cell event) }
 
 let create : type s e. context -> (s, e) Node.component -> (s, e) cell =
  fun context component ->
-  let snapshot, commands = Machine.start component.machine in
+  let snapshot, actions = Machine.start component.machine in
   context.next_id <- context.next_id + 1;
   let cell =
     {
@@ -237,7 +241,7 @@ let create : type s e. context -> (s, e) Node.component -> (s, e) cell =
       last = None;
     }
   in
-  emit cell commands;
+  emit cell actions;
   cell
 
 let rec unmount_cell : type s e. (s, e) cell -> unit =
@@ -248,7 +252,7 @@ let rec unmount_cell : type s e. (s, e) cell -> unit =
     emit cell (Machine.exit cell.component.machine cell.snapshot);
     cell.alive <- false;
     Hashtbl.iter
-      (fun _ qualified -> add_command cell.context (Cmd.Stop qualified))
+      (fun _ qualified -> add_action cell.context (Action.Stop qualified))
       cell.owned;
     Hashtbl.reset cell.owned
   )
@@ -265,10 +269,10 @@ let same_slot (path, machine) (other_path, other_machine) =
   path = other_path && machine == other_machine
 
 let rec until_physically stop = function
-  | commands when commands == stop ->
+  | actions when actions == stop ->
       []
-  | command :: rest ->
-      command :: until_physically stop rest
+  | action :: rest ->
+      action :: until_physically stop rest
   | [] ->
       []
 
@@ -299,7 +303,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
   );
   let claimed = ref [] in
   let pending = ref false in
-  let before = cell.context.commands in
+  let before = cell.context.actions in
   let resolve_attr reset (attr : e Node.attr) : message Node.attr option =
     match attr with
     | Node.On_reset | Node.Rated (_, Node.On_reset) ->
@@ -342,9 +346,9 @@ and render_view : type s e. (s, e) cell -> message Node.t =
         | None, None ->
             pending := true;
             cell.context.waiting <- cell.context.waiting + 1;
-            add_command cell.context
-              (Cmd.Run
-                 (Cmd.Load_chunk
+            add_action cell.context
+              (Action.Run
+                 (Action.Load_chunk
                     {
                       chunk = Chunk.Any chunk;
                       on_ready =
@@ -502,8 +506,8 @@ and render_view : type s e. (s, e) cell -> message Node.t =
       raise exn
   in
   let still_rendered = List.rev !claimed in
-  let during = until_physically before cell.context.commands in
-  cell.context.commands <- before;
+  let during = until_physically before cell.context.actions in
+  cell.context.actions <- before;
   List.iter
     (fun (_, Packed old) ->
       if
@@ -517,7 +521,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
     )
     cell.children;
   cell.children <- still_rendered;
-  cell.context.commands <- during @ cell.context.commands;
+  cell.context.actions <- during @ cell.context.actions;
   if !pending then invalidate ~force:true cell;
   resolved
 
@@ -526,16 +530,16 @@ let drain context =
     (Queue.pop context.queue) ()
   done
 
-let take_commands context =
-  let commands = List.rev context.commands in
-  context.commands <- [];
-  commands
+let take_actions context =
+  let actions = List.rev context.actions in
+  context.actions <- [];
+  actions
 
 let mount ?(dev = false) ?on_error ?props (component : (_, _) Node.component) =
   let context =
     {
       queue = Queue.create ();
-      commands = [];
+      actions = [];
       next_id = 0;
       dev;
       on_error;
@@ -571,7 +575,7 @@ let update tree message =
         settle (round + 1)
     in
     let node = settle 0 in
-    (node, take_commands tree.context)
+    (node, take_actions tree.context)
   )
 
 let message tree event = to_message tree.root event
@@ -585,7 +589,7 @@ let failure ?(dev = false) ?on_error exn =
   make_error
     {
       queue = Queue.create ();
-      commands = [];
+      actions = [];
       next_id = 0;
       dev;
       on_error;
@@ -595,7 +599,7 @@ let failure ?(dev = false) ?on_error exn =
 
 let unmount tree =
   unmount_cell tree.root;
-  take_commands tree.context
+  take_actions tree.context
 
 let snapshot tree = tree.root.snapshot
 

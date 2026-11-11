@@ -134,6 +134,6 @@ And the server lists them in [islands] (see {!page-server.islands}). Then:
 element, with no app around it.
 
 A Live machine runs on the server, where there is no page. So it must not own
-sources of the page (such as a focus trap or a key table) or use commands that
+sources of the page (such as a focus trap or a key table) or use actions that
 need an answer of the page (such as [Copy]). {!Check.live} reports both (see
 {!page-checker}).

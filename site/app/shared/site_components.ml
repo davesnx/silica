@@ -39,7 +39,7 @@ let menu =
     name = "Menu";
     modules = "Silica_ui.Menu";
     summary =
-      "A button that opens a list of actions. Focus moves to the highlighted \
+      "A button that opens a list of items. Focus moves to the highlighted \
        item; arrows, Home, End and letters move it, and disabled items are \
        skipped.";
   }

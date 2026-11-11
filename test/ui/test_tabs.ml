@@ -28,9 +28,9 @@ let check_stop sim v =
 let focused_last sim v =
   match List.rev (List.filter (fun l -> contains l "focus") (Sim.log sim)) with
   | last :: _ ->
-      Alcotest.(check string) "focus command" ("focus " ^ tab v) last
+      Alcotest.(check string) "focus action" ("focus " ^ tab v) last
   | [] ->
-      Alcotest.fail "no focus command"
+      Alcotest.fail "no focus action"
 
 let roles_at_start () =
   let sim = Sim.mount page in

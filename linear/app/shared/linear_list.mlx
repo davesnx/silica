@@ -81,7 +81,7 @@ let move (r : ready) step =
   | Some number ->
       List_machine.goto Ready
         { r with cursor = Some number }
-        ~cmds:[ Cmd.Focus (row_ref number) ]
+        ~actions:[ Action.Focus (row_ref number) ]
   | None ->
       List_machine.unhandled
 
@@ -193,7 +193,7 @@ let machine =
     ~init:(List_machine.at Loading Linear_view.default)
     [
       List_machine.state Loading "loading" ~to_:[ Ready; Failed ]
-        ~entry:(fun _ -> [ Cmd.Set_title "Issues" ])
+        ~entry:(fun _ -> [ Action.Set_title "Issues" ])
         ~invoke:
           [ Source.call issues_endpoint (fun _ -> ()) (fun r -> Loaded r) ]
         (fun view -> function

@@ -45,7 +45,7 @@ The built-in properties hold for every component:
 
 - Each element that can be pressed has a name that a screen reader can read.
 - Refs are unique in a view, and a [Focus], [Blur] or [Scroll_into_view]
-  command names a ref of the next view ([focus-target]).
+  action names a ref of the next view ([focus-target]).
 - The fallback of each boundary can reset it ([boundary-reset]).
 - Some event can happen, unless the state is final or the view holds a child
   component or an island ([dead-end]).
@@ -143,14 +143,14 @@ val props : Doc_stepper.event list =
 
 {!Check.live} checks a Live component. Its machine runs on the server, so a
 state that owns a source of the page (a focus trap, a key table, a dismiss
-layer) is a violation named [live-uses-client-source], and a command that
+layer) is a violation named [live-uses-client-source], and an action that
 needs an answer of the page ([Measure], [Copy], [Load_script]) is a violation
-named [live-uses-client-command].
+named [live-uses-client-action].
 
 {1:app Routed apps}
 
 {!Check.app} explores the root of a router app with a simulated history: link
-presses, back, forward and the navigation commands. [routes] lists route
+presses, back, forward and the navigation actions. [routes] lists route
 values to check: for a route with a query, give one value with the default and
 one without. [inputs] gives the URLs that a user can type. Two more
 properties hold:
@@ -197,9 +197,10 @@ timers and its sources (see {!page-machines.spec}). It has two exports:
 - {!Silica.Spec.to_dot}: a Graphviz diagram.
 - {!Silica.Spec.to_quint}: a module for {{:https://quint-lang.org} Quint}, a
   language for the specification of systems. The module has the state, the
-  running timers and sources, and the last event. It has one action for each
-  edge, and the invariants [resources_owned] (every running resource belongs
-  to the current state), [can_move] and [inv] (both).
+  running timers and sources, and the last event. It has one transition
+  for each edge, written as a Quint [action], and the invariants
+  [resources_owned] (every running resource belongs to the current state),
+  [can_move] and [inv] (both).
 
 Give the export the [edges] of a checker report, and each edge gets the names
 of the events that took it:

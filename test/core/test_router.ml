@@ -46,7 +46,7 @@ module Page = struct
       ~init:(Page_machine.at Page (0, 0))
       [
         Page_machine.state Page "page"
-          ~entry:(fun _ -> [ Cmd.Set_title "issue" ])
+          ~entry:(fun _ -> [ Action.Set_title "issue" ])
           ~after:[ (5, Bump) ]
           (fun (id, bumps) -> function
             | Props id ->
@@ -79,7 +79,7 @@ module Static = struct
         ~init:(Static_machine.at Static ())
         [
           Static_machine.state Static name
-            ~entry:(fun () -> [ Cmd.Set_title name ])
+            ~entry:(fun () -> [ Action.Set_title name ])
             Static_machine.ignore;
         ]
     in
@@ -128,7 +128,7 @@ let test_start () =
   let sim = mount "/" in
   Alcotest.(check string) "url" "/" (url_of sim);
   has sim "home";
-  Alcotest.check strings "start commands" [ "title home" ] (Sim.log sim);
+  Alcotest.check strings "start actions" [ "title home" ] (Sim.log sim);
   Alcotest.(check int) "router and page" 2 (Sim.count sim)
 
 let test_url_changed_switches_page () =
@@ -154,7 +154,7 @@ let test_same_route_new_parameters_keeps_page () =
   go sim "/issues/8";
   has sim "issue 8:1";
   Alcotest.check strings "same instance, same timers" before (Sim.running sim);
-  Alcotest.check strings "no command" [] (Sim.log sim);
+  Alcotest.check strings "no action" [] (Sim.log sim);
   Alcotest.(check int) "router and page" 2 (Sim.count sim)
 
 let test_reenter_route_restarts_page () =
@@ -180,7 +180,7 @@ let test_same_url_does_nothing () =
   Sim.clear_log sim;
   go sim "/issues/7#top";
   has sim "issue 7:1";
-  Alcotest.check strings "no command" [] (Sim.log sim)
+  Alcotest.check strings "no action" [] (Sim.log sim)
 
 let test_back_and_forward () =
   let sim = mount "/" in
@@ -331,7 +331,7 @@ let test_base_path () =
        (Router.link ~preload:Never routes State.Issue 5 [] [ Node.text "go" ])
     );
   ( match Router.navigate routes State.Issue 5 with
-  | Cmd.Navigate url ->
+  | Action.Navigate url ->
       Alcotest.(check string) "navigate" "/app/issues/5" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Navigate"
@@ -347,13 +347,13 @@ let test_base_path () =
 
 let test_hash () =
   ( match Router.navigate ~hash:"c3" routes State.Issue 5 with
-  | Cmd.Navigate url ->
+  | Action.Navigate url ->
       Alcotest.(check string) "navigate" "/issues/5#c3" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Navigate"
   );
   ( match Router.replace ~hash:"top" routes State.Home () with
-  | Cmd.Replace url ->
+  | Action.Replace url ->
       Alcotest.(check string) "replace" "/#top" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Replace"
@@ -457,7 +457,7 @@ let test_preload_event () =
     (Sim.snapshot sim = Router.At (State.Home, ()));
   Sim.clear_log sim;
   Sim.send sim (Silica.Router.Preload (u "/"));
-  Alcotest.check strings "no call, no command" [] (Sim.log sim)
+  Alcotest.check strings "no call, no action" [] (Sim.log sim)
 
 let test_guard_at_first_url () =
   let seen = ref [] in
@@ -501,7 +501,7 @@ let test_guard_at_first_url () =
 let test_exit_hook () =
   let exit snapshot =
     [
-      Cmd.Focus
+      Action.Focus
         (Ref.make ("left " ^ Url.to_string (Router.print routes snapshot)));
     ]
   in
@@ -553,7 +553,7 @@ let test_title () =
     && not (List.mem "title Other" (titles sim))
     )
 
-let test_links_and_commands () =
+let test_links_and_actions () =
   Alcotest.(check string)
     "link"
     "<a href=\"/issues?status=closed\" data-silica-link class=\"x\">go</a>"
@@ -570,13 +570,13 @@ let test_links_and_commands () =
        (Router.link_replace routes State.Issue 5 [] [ Node.text "go" ])
     );
   ( match Router.navigate routes State.Issue 5 with
-  | Cmd.Navigate url ->
+  | Action.Navigate url ->
       Alcotest.(check string) "navigate" "/issues/5" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Navigate"
   );
   match Router.replace routes State.Home () with
-  | Cmd.Replace url ->
+  | Action.Replace url ->
       Alcotest.(check string) "replace" "/" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Replace"
@@ -675,7 +675,7 @@ let () =
           t "preload event" test_preload_event;
           t "exit hook" test_exit_hook;
           t "title" test_title;
-          t "links and commands" test_links_and_commands;
+          t "links and actions" test_links_and_actions;
           t "spec" test_spec;
           t "no catch-all route" test_no_catch_all;
         ]

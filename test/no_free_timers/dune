@@ -20,7 +20,7 @@
  (action
   (progn
    (run grep -q "belongs to the variant type" in_goto.output)
-   (run grep -q "Silica.Cmd.host" in_goto.output)
-   (run grep -q "Silica.Cmd.host" in_stay.output)
-   (run grep -q "Silica.Cmd.host" in_entry.output)
-   (run grep -q "Silica.Cmd.host" in_source.output))))
+   (run grep -q "Silica.Action.host" in_goto.output)
+   (run grep -q "Silica.Action.host" in_stay.output)
+   (run grep -q "Silica.Action.host" in_entry.output)
+   (run grep -q "Silica.Action.host" in_source.output))))

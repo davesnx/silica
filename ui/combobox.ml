@@ -157,14 +157,14 @@ let move (direction : [ `Next | `Previous | `First | `Last ]) data =
         Option.map (fun i -> (i + count - 1) mod count) (position value 0 values)
   in
   let highlighted = Option.map (List.nth values) target in
-  let cmds =
+  let actions =
     match Option.bind highlighted (index_of data) with
     | Some index ->
-        [ Cmd.Scroll_into_view (Ref.make (option_id data.props index)) ]
+        [ Action.Scroll_into_view (Ref.make (option_id data.props index)) ]
     | None ->
         []
   in
-  ({ data with highlighted }, cmds)
+  ({ data with highlighted }, actions)
 
 let choose data value =
   match List.find_opt (fun item -> item.value = value) data.props.items with
@@ -205,8 +205,8 @@ let machine =
         | Typed query ->
             Combobox_machine.goto Open { data with query; highlighted = None }
         | Move direction ->
-            let data, cmds = move direction data in
-            Combobox_machine.goto Open data ~cmds
+            let data, actions = move direction data in
+            Combobox_machine.goto Open data ~actions
         | Show ->
             Combobox_machine.goto Open data
         | Escape when data.query <> "" ->
@@ -228,8 +228,8 @@ let machine =
         | Typed query ->
             Combobox_machine.goto Open { data with query; highlighted = None }
         | Move direction ->
-            let data, cmds = move direction data in
-            Combobox_machine.goto Open data ~cmds
+            let data, actions = move direction data in
+            Combobox_machine.goto Open data ~actions
         | Highlight value ->
             Combobox_machine.goto Open
               (valid { data with highlighted = Some value })
@@ -244,7 +244,7 @@ let machine =
             match choose data value with
             | Some data ->
                 Combobox_machine.goto Closed data
-                  ~cmds:[ Cmd.Focus (input_ref data.props) ]
+                  ~actions:[ Action.Focus (input_ref data.props) ]
             | None ->
                 Combobox_machine.unhandled
           )
@@ -261,8 +261,8 @@ let machine =
             Combobox_machine.goto Inline
               (auto { data with query; highlighted = None })
         | Move direction ->
-            let data, cmds = move direction data in
-            Combobox_machine.goto Inline data ~cmds
+            let data, actions = move direction data in
+            Combobox_machine.goto Inline data ~actions
         | Highlight value ->
             Combobox_machine.goto Inline
               (auto { data with highlighted = Some value })
@@ -277,7 +277,7 @@ let machine =
             match choose data value with
             | Some data ->
                 Combobox_machine.goto Inline (auto data)
-                  ~cmds:[ Cmd.Focus (input_ref data.props) ]
+                  ~actions:[ Action.Focus (input_ref data.props) ]
             | None ->
                 Combobox_machine.unhandled
           )

@@ -10,7 +10,7 @@ let machine =
   Home_machine.make ~id:"home" ~init:(Home_machine.at Home ())
     [
       Home_machine.state Home "home"
-        ~entry:(fun () -> [ Cmd.Set_title "Silica example" ])
+        ~entry:(fun () -> [ Action.Set_title "Silica example" ])
         Home_machine.ignore;
     ]
 

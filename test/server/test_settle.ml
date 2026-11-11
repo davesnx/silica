@@ -63,7 +63,7 @@ module Lookup = struct
       ~init:(Lookup_machine.at States.Loading input)
       [
         Lookup_machine.state States.Loading "loading" ~to_
-          ~entry:(fun _ -> [ Cmd.Set_title "loading" ])
+          ~entry:(fun _ -> [ Action.Set_title "loading" ])
           ~invoke:
             [
               Source.call endpoint (fun n -> n) (fun result -> Answered result);
@@ -75,7 +75,7 @@ module Lookup = struct
                 Lookup_machine.goto States.Failed "failed"
             );
         Lookup_machine.state States.Ready "ready"
-          ~entry:(fun n -> [ Cmd.Set_title (Printf.sprintf "ready %d" n) ])
+          ~entry:(fun n -> [ Action.Set_title (Printf.sprintf "ready %d" n) ])
           Lookup_machine.ignore;
         Lookup_machine.state States.Failed "failed" Lookup_machine.ignore;
       ]
@@ -495,13 +495,13 @@ end
 
 module Only_machine = Machine.Make (Only)
 
-let starting ~id commands : (Only_machine.snapshot, unit) Component.t =
+let starting ~id actions : (Only_machine.snapshot, unit) Component.t =
   Component.make
     (Only_machine.make ~id
        ~init:(Only_machine.at Only.Only ())
        [
          Only_machine.state Only.Only "only"
-           ~entry:(fun () -> commands)
+           ~entry:(fun () -> actions)
            Only_machine.ignore;
        ]
     )
@@ -528,7 +528,7 @@ let test_guard_redirect_at_first_url () =
 let test_navigate_during_render_redirects () =
   let r =
     Server.render_component
-      (starting ~id:"go" [ Cmd.Navigate (Url.of_string "/login?next=%2Fa") ])
+      (starting ~id:"go" [ Action.Navigate (Url.of_string "/login?next=%2Fa") ])
       ~title:"t" ~scripts:[] ()
   in
   Alcotest.(check int) "303" 303 r.status;
@@ -538,7 +538,9 @@ let test_navigate_during_render_redirects () =
 let test_set_status_last_wins () =
   let r =
     Server.render_page
-      (fun _ -> starting ~id:"st" [ Cmd.Set_status 404; Cmd.Set_status 410 ])
+      (fun _ ->
+        starting ~id:"st" [ Action.Set_status 404; Action.Set_status 410 ]
+      )
       ~status:(fun _ -> 200)
       ~scripts:[] (Url.of_string "/")
   in
@@ -553,13 +555,13 @@ let test_set_status_last_wins () =
   Alcotest.(check int) "the status function without one" 201 r.status;
   let r =
     Server.render_component
-      (starting ~id:"st" [ Cmd.Set_status 404 ])
+      (starting ~id:"st" [ Action.Set_status 404 ])
       ~title:"t" ~scripts:[] ()
   in
   Alcotest.(check int) "a component page" 404 r.status
 
 let test_document_attributes_on_html () =
-  let attr name value = Cmd.Set_document_attribute { name; value } in
+  let attr name value = Action.Set_document_attribute { name; value } in
   let r =
     Server.render_page
       (fun _ ->
@@ -569,7 +571,7 @@ let test_document_attributes_on_html () =
             attr "lang" (Some "en");
             attr "data-theme" (Some "contrast\"<x");
             attr "lang" None;
-            Cmd.Set_cookie { name = "c"; value = "v"; max_age = 1 };
+            Action.Set_cookie { name = "c"; value = "v"; max_age = 1 };
           ]
       )
       ~status:(fun _ -> 200)
@@ -580,7 +582,7 @@ let test_document_attributes_on_html () =
   Alcotest.(check bool)
     "a removed attribute is not written" false (contains r.body "lang=");
   Alcotest.(check bool)
-    "a cookie command sets no header" true
+    "a cookie action sets no header" true
     (List.for_all (fun (name, _) -> name <> "set-cookie") r.headers);
   let r =
     Server.render_component
@@ -640,7 +642,8 @@ module After = struct
              ~to_:After_machine.[ States.Done ]
              ~invoke:[ Source.call double (fun () -> 1) (fun r -> Answered r) ]
              (fun () -> function
-               | Answered _ -> After_machine.goto ~cmds:on_answer States.Done ()
+               | Answered _ ->
+                   After_machine.goto ~actions:on_answer States.Done ()
                );
            After_machine.state States.Done "done" After_machine.ignore;
          ]
@@ -651,15 +654,15 @@ end
 let test_settled_status_and_redirect () =
   reset ();
   let calls = ref 0 in
-  let settled commands =
+  let settled actions =
     Server.render_page_settled
-      (fun (_ : Url.t) -> After.component commands)
+      (fun (_ : Url.t) -> After.component actions)
       ~status:(fun _ -> 200)
       ~scripts:[] ~handlers:(handlers ~calls) ~context (Url.of_string "/")
   in
-  let r = settled [ Cmd.Set_status 404 ] in
+  let r = settled [ Action.Set_status 404 ] in
   Alcotest.(check int) "Set_status after an answer" 404 r.status;
-  let r = settled [ Cmd.Replace (Url.of_string "/elsewhere") ] in
+  let r = settled [ Action.Replace (Url.of_string "/elsewhere") ] in
   Alcotest.(check int) "redirect after an answer" 303 r.status;
   Alcotest.(check (option string))
     "location" (Some "/elsewhere") (header "location" r)

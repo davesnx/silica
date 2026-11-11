@@ -4,11 +4,11 @@ let strings = Alcotest.(list string)
 
 let ep = Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
 
-let test_cmd_map () =
+let test_action_map () =
   ( match
-      Cmd.map_host
+      Action.map_host
         (fun n -> n + 1)
-        (Cmd.Start_timer { id = "t"; ms = 5; event = 1 })
+        (Action.Start_timer { id = "t"; ms = 5; event = 1 })
     with
   | Start_timer { id = "t"; ms = 5; event = 2 } ->
       ()
@@ -16,8 +16,8 @@ let test_cmd_map () =
       Alcotest.fail "Start_timer not mapped"
   );
   ( match
-      Cmd.map_host string_of_int
-        (Cmd.Start_call
+      Action.map_host string_of_int
+        (Action.Start_call
            {
              id = "c";
              endpoint = ep;
@@ -35,15 +35,15 @@ let test_cmd_map () =
   | _ ->
       Alcotest.fail "Start_call not mapped"
   );
-  ( match Cmd.map_host succ (Cmd.Stop "t") with
+  ( match Action.map_host succ (Action.Stop "t") with
   | Stop "t" ->
       ()
   | _ ->
       Alcotest.fail "Stop not kept"
   );
   ( match
-      Cmd.map succ
-        (Cmd.Measure
+      Action.map succ
+        (Action.Measure
            {
              target = Ref.make "m";
              on_rect = (function Some _ -> 1 | None -> 0);
@@ -57,8 +57,8 @@ let test_cmd_map () =
       Alcotest.fail "Measure not mapped"
   );
   ( match
-      Cmd.map succ
-        (Cmd.Copy
+      Action.map succ
+        (Action.Copy
            {
              text = "t";
              on_result =
@@ -77,7 +77,7 @@ let test_cmd_map () =
   | _ ->
       Alcotest.fail "Copy not mapped"
   );
-  match Cmd.map succ (Cmd.Navigate (Url.of_string "/x")) with
+  match Action.map succ (Action.Navigate (Url.of_string "/x")) with
   | Navigate u ->
       Alcotest.check strings "url kept" [ "x" ] u.path
   | _ ->
@@ -284,7 +284,7 @@ let () =
   Alcotest.run "silica core"
     [
       ("live", [ t "slot" test_live_slot ]);
-      ("cmd", [ t "map" test_cmd_map ]);
+      ("action", [ t "map" test_action_map ]);
       ("node", [ t "map" test_node_map ]);
       ( "render",
         [

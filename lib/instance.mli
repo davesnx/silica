@@ -9,15 +9,15 @@
       that comes back starts a new one.
     - A new child starts its machine and then receives its props event. A child
       that stays receives its props event again when the props changed.
-    - A child that is no longer rendered ends: the commands of leaving its
-      state, and a {!Cmd.Stop} for every timer and source it still owns, come
-      first for its own children, then for it.
+    - A child that is no longer rendered ends: the actions of leaving its state,
+      and a {!Action.Stop} for every timer and source it still owns, come first
+      for its own children, then for it.
     - Each entry of a state gets a number. Timer and source ids are
       ["<instance>.<entry>/<machine>/<state>/<kind>"], so two instances of one
       machine never share an id. A message from a timer or source of an earlier
       entry, or of an ended instance, is dropped.
-    - The result event of a command (such as {!Cmd.Measure}) goes to the
-      instance that ran the command, in any state. It is dropped when that
+    - The result event of an action (such as {!Action.Measure}) goes to the
+      instance that ran the action, in any state. It is dropped when that
       instance has ended.
     - A view must be a function of its snapshot. An instance whose snapshot is
       physically the same as at its last render, whose props did not change,
@@ -41,8 +41,8 @@ val mount :
   ?props:'e ->
   ('s, 'e) Component.t ->
   ('s, 'e) t
-(** Create the root and start its machine. The commands are returned by the
-    first {!update}. [props] is sent to the root right after the start.
+(** Create the root and start its machine. The actions are returned by the first
+    {!update}. [props] is sent to the root right after the start.
 
     An exception from the machine step or the view of a component under a
     {!Node.val-boundary} does not leave {!update}: the boundary shows its
@@ -70,12 +70,12 @@ val callback : (unit -> unit) -> message
     the handlers of its own views, such as a top-level error page. *)
 
 val update :
-  ('s, 'e) t -> message option -> message Node.t * message Cmd.host list
+  ('s, 'e) t -> message option -> message Node.t * message Action.host list
 (** Deliver the message, if any. Then process the events that components raised
     for their parents, and render until nothing changes. Returns the resolved
-    view (it has no component nodes) and the commands raised since the last
-    call, in order. Timer and source ids in the commands are the ids described
-    above. *)
+    view (it has no component nodes) and the actions raised since the last call,
+    in order. Timer and source ids in the actions are the ids described above.
+*)
 
 val waiting : ('s, 'e) t -> bool
 (** The last {!update} rendered a {!Node.val-chunk} whose value is not here. A
@@ -86,7 +86,7 @@ val waiting : ('s, 'e) t -> bool
 val message : ('s, 'e) t -> 'e -> message
 (** An event for the root component, such as a URL change. *)
 
-val unmount : ('s, 'e) t -> message Cmd.host list
+val unmount : ('s, 'e) t -> message Action.host list
 (** End the root, children first. Later messages are dropped. *)
 
 val snapshot : ('s, 'e) t -> 's

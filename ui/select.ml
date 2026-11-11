@@ -95,7 +95,7 @@ let selected_index (sel : selection) =
 
 let scroll (sel : selection) = function
   | Some i ->
-      [ Cmd.Scroll_into_view (Ref.make (option_id sel.props.id i)) ]
+      [ Action.Scroll_into_view (Ref.make (option_id sel.props.id i)) ]
   | None ->
       []
 
@@ -107,13 +107,13 @@ let show sel =
     | _ ->
         navigate sel.props None First
   in
-  Select_machine.goto Open (sel, highlighted) ~cmds:(scroll sel highlighted)
+  Select_machine.goto Open (sel, highlighted) ~actions:(scroll sel highlighted)
 
 let close ?(focus = true) sel =
   Select_machine.goto Closed sel
-    ~cmds:
+    ~actions:
       ( if focus then
-          [ Cmd.Focus (parts sel.props).trigger ]
+          [ Action.Focus (parts sel.props).trigger ]
         else
           []
       )
@@ -167,7 +167,7 @@ let machine =
             | next when next = highlighted ->
                 Select_machine.stay []
             | next ->
-                Select_machine.goto Open (sel, next) ~cmds:(scroll sel next)
+                Select_machine.goto Open (sel, next) ~actions:(scroll sel next)
           )
         | Highlight i when enabled sel.props i ->
             if highlighted = Some i then

@@ -1,7 +1,7 @@
 {0 The platform and the renderers}
 
 A machine is a value. A host runs it: it keeps the snapshot, sends events,
-paints the view and carries out the commands. Silica has three hosts that run
+paints the view and carries out the actions. Silica has three hosts that run
 components: the browser, the server render and the memory platform of the
 tests. The checker is a fourth host, which runs one machine at a time (see
 {!page-checker}).
@@ -12,7 +12,7 @@ Every host that renders components uses one instance tree,
 {!Silica.Instance}. It starts the machine of each component node that a view
 holds, gives the props, takes the output to the parent, and ends a child that
 is no longer rendered. [Instance.update] delivers one message and gives the
-resolved view (with no component nodes left) and the commands of the step:
+resolved view (with no component nodes left) and the actions of the step:
 
 {@ocaml[
 # let tree = Silica.Instance.mount Doc_party.component;;
@@ -36,7 +36,7 @@ of the answers of a server render. It reaches the screen and the network only
 through one value of {!Silica.Platform.t}:
 
 - [renderer]: a {!Silica.Renderer.t}. It paints views, turns platform input
-  into events, runs the platform commands (focus, scroll, history, title) and
+  into events, runs the platform actions (focus, scroll, history, title) and
   starts and stops the held sources. It reports each URL change and each link
   preload with [on_route].
 - [location]: the URL of the page now.
@@ -73,9 +73,9 @@ the handler of the nearest element in the view.
 {!Silica_server} renders a page with the same instance tree: it mounts the
 root at the URL, runs the Remote calls of the first render against the
 handlers, and prints the view with {!Silica.Render.to_string}. It is not a
-{!Silica.Platform.t}: it keeps no page after the answer. Most commands do
+{!Silica.Platform.t}: it keeps no page after the answer. Most actions do
 nothing there; [Set_title], [Set_status], [Set_document_attribute] and the
-navigation commands change the answer. See {!page-server.render}.
+navigation actions change the answer. See {!page-server.render}.
 
 {1:memory The memory platform}
 

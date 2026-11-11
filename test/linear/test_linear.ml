@@ -347,7 +347,7 @@ let test_detail () =
     [ ("issues", "all") ]
     (Sim.subscriptions sim);
   Alcotest.(check bool)
-    "title command" true
+    "title action" true
     (List.mem "title ENG-2 Second" (Sim.log sim));
   Sim.publish sim issues_topic ~key:"all"
     (ready 2 [ issue 2 ~title:"Renamed"; issue 1 ]);

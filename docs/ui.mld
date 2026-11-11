@@ -15,7 +15,7 @@ at [/components] (see {!page-stories}).
 | [Silica_ui.Dialog] | a modal dialog or alert dialog, with a focus trap, a backdrop and no page scroll |
 | [Silica_ui.Popover] | a popup next to a button that is not modal |
 | [Silica_ui.Tooltip] | a short text that describes a button, on hover or focus |
-| [Silica_ui.Menu] | a button that opens a list of actions |
+| [Silica_ui.Menu] | a button that opens a list of items |
 | [Silica_ui.Select] | a button that opens a list of options, with a value for forms |
 | [Silica_ui.Combobox] | a text field with a list of options that filters as the user types |
 | [Silica_ui.Command_menu] | a dialog with a combobox: the command palette |

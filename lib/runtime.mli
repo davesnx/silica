@@ -4,15 +4,15 @@
     {!Platform.t}, so the browser and the in-memory platform of the tests run
     this same code.
 
-    Preload. The runtime carries out {!Cmd.Preload}: it sends the call at once
-    and keeps a [200] answer for 30 seconds from its arrival, for one use. The
-    next call of the same endpoint path with the same encoded input takes the
-    kept answer with no request, or waits for the preload that is still in
+    Preload. The runtime carries out {!Action.Preload}: it sends the call at
+    once and keeps a [200] answer for 30 seconds from its arrival, for one use.
+    The next call of the same endpoint path with the same encoded input takes
+    the kept answer with no request, or waits for the preload that is still in
     flight. A failed or non-[200] preload is not kept: a call that waited for it
     sends its own request. A preload of a call that is kept or in flight does
     nothing.
 
-    Chunks. The runtime carries out {!Cmd.Load_chunk}. The first paint waits
+    Chunks. The runtime carries out {!Action.Load_chunk}. The first paint waits
     until the first view has no {!Node.val-chunk} that is loading, so a renderer
     that adopts the server screen adopts it with the code of its page; timers,
     calls and sources start at once. *)
@@ -41,6 +41,6 @@ val start :
     {!Node.val-boundary} catches paints an error page (with "Try again", which
     starts the root again with fresh state, and "Reload the page"), and goes to
     [on_error] and [platform.io.log]. A step that raises changes nothing: its
-    state, view and commands are dropped with the tree. In [dev] mode the page
+    state, view and actions are dropped with the tree. In [dev] mode the page
     shows the details, and an exception during the first paint is raised again
     after the error page shows. *)

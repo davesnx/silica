@@ -154,7 +154,7 @@ module Make (Io : IO) : sig
     response
   (** Mounts the app root (for example [Router.make routes ~render]) at the URL
       and renders its view, with the page components it holds, as their machines
-      are after the start and their props event. Commands are ignored, except
+      are after the start and their props event. Actions are ignored, except
       these: the last [Set_title] is the document title; the last
       [Set_document_attribute] of each name is written on the [<html>] tag (a
       [None] value writes nothing); a [Navigate] or [Replace] (such as a router
@@ -204,9 +204,9 @@ module Make (Io : IO) : sig
     Silica.Url.t ->
     response Io.t
   (** Like {!render_page}, with a settle step first. It starts the app, then
-      runs the [Start_call] commands of every rendered component against
+      runs the [Start_call] actions of every rendered component against
       [handlers] (with [context]), steps the machines with the answers, renders
-      again, and repeats until no call is left. [Start_timer] commands, sources
+      again, and repeats until no call is left. [Start_timer] actions, sources
       and Live subscriptions do not run. Only calls that answer with success
       count: a call that fails, has no handler or does not answer within
       [settle_timeout_ms] (default 1000, for the whole settle step) is left
@@ -237,7 +237,7 @@ module Make (Io : IO) : sig
     ?islands:island list ->
     unit ->
     response
-  (** Like {!render_page} for a component with no URL. A [Set_title] command
+  (** Like {!render_page} for a component with no URL. A [Set_title] action
       replaces [title]. The status is 200, or the last [Set_status]. *)
 
   (** {2 One island} *)
@@ -256,14 +256,14 @@ module Make (Io : IO) : sig
     runner Io.t
   (** Starts the machine and sends the first state message ([seq] 1, [ack] 0).
       Each step sends one more state message, with [seq] one higher and [ack]
-      the id of the last event handled. [Start_call] commands run against
-      [handlers] directly and [Start_timer] commands through [Io.sleep]; the
+      the id of the last event handled. [Start_call] actions run against
+      [handlers] directly and [Start_timer] actions through [Io.sleep]; the
       resulting events are stepped like client events, one at a time. A
       [Start_call] with [timeout_ms] also starts a timeout: the first of the
       answer and the timeout steps the machine, with [Error (Network "timeout")]
-      for the timeout, and the other is dropped. A [Stop] command, for a timer
-      or call, makes the runner drop its event when it arrives. [Start_live]
-      commands do nothing: an island has no topics.
+      for the timeout, and the other is dropped. A [Stop] action, for a timer or
+      call, makes the runner drop its event when it arrives. [Start_live]
+      actions do nothing: an island has no topics.
 
       When a step raises (a machine, a codec or [send]), the error is logged to
       stderr with the channel name, queued events are discarded, the runner

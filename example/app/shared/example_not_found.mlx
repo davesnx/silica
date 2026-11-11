@@ -14,7 +14,7 @@ let machine =
     ~init:(Not_found_machine.at Not_found ())
     [
       Not_found_machine.state Not_found "not_found"
-        ~entry:(fun () -> [ Cmd.Set_title "Not found" ])
+        ~entry:(fun () -> [ Action.Set_title "Not found" ])
         Not_found_machine.ignore;
     ]
 

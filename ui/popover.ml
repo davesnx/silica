@@ -57,16 +57,17 @@ module Make (Content : Dialog.CONTENT) = struct
     props.open_ = Some false && previous.open_ <> Some false
 
   let open_ (props : props) =
-    Popover_machine.goto Open props ~cmds:[ Cmd.Focus (parts props).popup ]
+    Popover_machine.goto Open props
+      ~actions:[ Action.Focus (parts props).popup ]
 
   let close ?(focus = true) (props : props) =
-    let cmds =
+    let actions =
       if focus then
-        [ Cmd.Focus (parts props).trigger ]
+        [ Action.Focus (parts props).trigger ]
       else
         []
     in
-    Popover_machine.goto Closed props ~cmds
+    Popover_machine.goto Closed props ~actions
 
   let machine =
     Popover_machine.make ~id:Content.id

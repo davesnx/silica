@@ -86,7 +86,7 @@ let seen t = Memory.text (Memory.by_id t "seen")
 let theme_attr t = Memory.document_attribute t "data-theme"
 
 let media_sources t =
-  List.filter (fun (_, s) -> Cmd.source_name s = "media") (Memory.sources t)
+  List.filter (fun (_, s) -> Action.source_name s = "media") (Memory.sources t)
 
 let choose t label =
   Memory.press (Memory.by_id t "theme-trigger");

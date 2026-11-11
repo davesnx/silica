@@ -14,7 +14,7 @@ let machine =
   Edit_machine.make ~id:"edit" ~init:(Edit_machine.at Clean ())
     [
       Edit_machine.state Clean "clean" ~to_:[ Dirty ]
-        ~entry:(fun () -> [ Cmd.Set_title "Edit" ])
+        ~entry:(fun () -> [ Action.Set_title "Edit" ])
         (fun () -> function
           | Draft text when text <> "" ->
               Edit_machine.goto Dirty text
@@ -37,7 +37,7 @@ let machine =
         ~invoke:[ block () ]
         (fun (draft, nav) -> function
           | Leave ->
-              Edit_machine.goto ~cmds:[ Cmd.Resume nav ] Clean ()
+              Edit_machine.goto ~actions:[ Action.Resume nav ] Clean ()
           | Stay ->
               Edit_machine.goto Dirty draft
           | Attempt next ->

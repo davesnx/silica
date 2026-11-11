@@ -2,7 +2,7 @@
     elements self-close, [true] boolean attributes print the bare name, [false]
     ones are omitted, refs print as [data-silica-ref], handlers are not printed.
     An [html] root is prefixed with the doctype. A component node renders as its
-    machine starts, after its props event; its commands are dropped. *)
+    machine starts, after its props event; its actions are dropped. *)
 
 val to_string : ?island:(string -> string option) -> 'e Node.t -> string
 (** [island channel] gives the HTML that an island with [data-silica-live] set

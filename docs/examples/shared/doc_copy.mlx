@@ -16,7 +16,7 @@ let machine =
       Copy_machine.state Ready "ready" ~to_:[ Shown ] (fun () -> function
         | Copy ->
             Copy_machine.stay
-              [ Cmd.Copy { text; on_result = Some (fun ok -> Result ok) } ]
+              [ Action.Copy { text; on_result = Some (fun ok -> Result ok) } ]
         | Result ok ->
             Copy_machine.goto Shown ok
         | Back ->

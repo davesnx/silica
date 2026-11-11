@@ -145,7 +145,7 @@ let escape_closes () =
   Alcotest.(check bool) "hidden" false (shown sim);
   has_log sim "open false escape-key";
   Alcotest.(check bool)
-    "focus stays on the trigger: no focus command" false
+    "focus stays on the trigger: no focus action" false
     (List.exists (fun line -> contains line "focus") (Sim.log sim))
 
 let outside_press_keeps_it () =

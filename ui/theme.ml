@@ -342,13 +342,13 @@ type snapshot = Mach.snapshot = At : 'data State.t * 'data -> snapshot
 let one_year = 365 * 24 * 60 * 60
 
 let apply ~store (props : props) choice =
-  let cmds =
-    Cmd.Set_document_attribute
+  let actions =
+    Action.Set_document_attribute
       { name = "data-theme"; value = Some (choice_name choice) }
     ::
     ( if store then
         [
-          Cmd.Set_cookie
+          Action.Set_cookie
             {
               name = cookie_name;
               value = choice_name choice;
@@ -361,9 +361,9 @@ let apply ~store (props : props) choice =
   in
   match choice with
   | System ->
-      Mach.goto ~cmds State.System { State.props; dark = None }
+      Mach.goto ~actions State.System { State.props; dark = None }
   | Fixed theme ->
-      Mach.goto ~cmds State.Fixed { State.props; theme }
+      Mach.goto ~actions State.Fixed { State.props; theme }
 
 let handle ~current_name ~(last : props) ~keep = function
   | Props props when choice_name props.choice <> choice_name last.choice ->

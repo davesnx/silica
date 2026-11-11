@@ -512,7 +512,7 @@ let test_message_after_unmount_is_dropped () =
   Sim.unmount sim;
   let before = Sim.log sim in
   Sim.fire_after_stop sim "2.0/ticker/running/after0";
-  Alcotest.check strings "no command after unmount" before (Sim.log sim)
+  Alcotest.check strings "no action after unmount" before (Sim.log sim)
 
 let test_duplicate_key_is_an_error () =
   let sim = Sim.mount Parent.component in
@@ -537,7 +537,10 @@ module Clip = struct
       [
         Clip_machine.state Copying "copying" ~to_:[ Elsewhere ]
           ~entry:(fun () ->
-            [ Cmd.Copy { text = "hi"; on_result = Some (fun ok -> Copied ok) } ]
+            [
+              Action.Copy
+                { text = "hi"; on_result = Some (fun ok -> Copied ok) };
+            ]
           )
           (fun () -> function
             | Moved ->
@@ -594,40 +597,43 @@ module Clip_host = struct
   let component = Component.make machine view
 end
 
-let copy_result commands =
+let copy_result actions =
   match
     List.find_map
       (function
-        | Cmd.Run (Cmd.Copy { on_result = Some k; _ }) -> Some k | _ -> None
+        | Action.Run (Action.Copy { on_result = Some k; _ }) ->
+            Some k
+        | _ ->
+            None
         )
-      commands
+      actions
   with
   | Some k ->
       k
   | None ->
-      Alcotest.fail "no Copy command with a result"
+      Alcotest.fail "no Copy action with a result"
 
 let text_of node = Render.to_string node
 
-let test_command_result_reaches_its_instance () =
+let test_action_result_reaches_its_instance () =
   let tree = Instance.mount Clip_host.component in
-  let node, commands = Instance.update tree None in
+  let node, actions = Instance.update tree None in
   Alcotest.(check string)
     "the child left the copying state" "waiting" (text_of node);
-  let k = copy_result commands in
+  let k = copy_result actions in
   let node, _ = Instance.update tree (Some (k true)) in
   Alcotest.(check string)
     "the result reaches the child in its new state" "copied=true" (text_of node)
 
-let test_command_result_after_end_is_dropped () =
+let test_action_result_after_end_is_dropped () =
   let tree = Instance.mount Clip_host.component in
-  let _, commands = Instance.update tree None in
-  let k = copy_result commands in
+  let _, actions = Instance.update tree None in
+  let k = copy_result actions in
   let _ = Instance.update tree (Some (Instance.message tree (Show false))) in
   Alcotest.(check int) "the child ended" 1 (Instance.count tree);
-  let node, commands = Instance.update tree (Some (k true)) in
+  let node, actions = Instance.update tree (Some (k true)) in
   Alcotest.(check string) "the view does not change" "none" (text_of node);
-  Alcotest.(check int) "no commands" 0 (List.length commands);
+  Alcotest.(check int) "no actions" 0 (List.length actions);
   Alcotest.(check int) "no child starts again" 1 (Instance.count tree)
 
 let () =
@@ -663,10 +669,10 @@ let () =
             test_call_timeout_reaches_the_machine;
           t "answer before the timeout" test_call_answer_before_timeout;
           t "keyed child is a keyed node" test_keyed_child_is_a_keyed_node;
-          t "command result reaches its instance"
-            test_command_result_reaches_its_instance;
-          t "command result after the end is dropped"
-            test_command_result_after_end_is_dropped;
+          t "action result reaches its instance"
+            test_action_result_reaches_its_instance;
+          t "action result after the end is dropped"
+            test_action_result_after_end_is_dropped;
         ]
       );
     ]

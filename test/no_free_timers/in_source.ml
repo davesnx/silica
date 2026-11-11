@@ -4,4 +4,7 @@ end
 module Timer_machine = Silica.Machine.Make (States)
 let _ =
   Timer_machine.stay
-    [ Silica.Cmd.Start_source { id = "s"; source = Silica.Cmd.Scroll_lock } ]
+    [
+      Silica.Action.Start_source
+        { id = "s"; source = Silica.Action.Scroll_lock };
+    ]

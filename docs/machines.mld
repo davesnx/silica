@@ -1,7 +1,7 @@
 {0 Machines and states}
 
 All behaviour in Silica is in machines. A machine is a statechart: a set of
-states, the events that each state accepts, and the commands that each step
+states, the events that each state accepts, and the actions that each step
 gives to the host. A machine is a plain value. It does not run by itself: a
 host (the browser, the server or the checker) runs it. See {!Silica.Machine}.
 
@@ -94,7 +94,7 @@ let component = Component.make machine view
 
 [Debounce_machine.make ~id ~init cases] makes the machine. [id] names the
 machine in the spec, in the checker and in the ids of timers and sources.
-[init] is the first snapshot. [?start] gives commands that run once, before the
+[init] is the first snapshot. [?start] gives actions that run once, before the
 entry of [init].
 
 Each state has one case, made with
@@ -105,7 +105,7 @@ state and the event, and gives an outcome. The options of a case:
 | Option | Meaning |
 |--------|---------|
 | [to_] | The states that the handler can go to. Going to the current state needs no entry. |
-| [entry], [exit] | Commands to run when the machine enters or leaves the state. |
+| [entry], [exit] | Actions to run when the machine enters or leaves the state. |
 | [after] | Timers, in milliseconds, with the event that each one raises. |
 | [invoke] | Sources: Remote calls, Live subscriptions and held resources. |
 | [final] | The machine stops here: a final state handles no event. |
@@ -113,7 +113,7 @@ state and the event, and gives an outcome. The options of a case:
 
 Timers and sources belong to the state. They start when the machine enters
 the state and stop when it leaves the state, so a timer or an answer of a left
-state never arrives. See {!page-commands} for the sources.
+state never arrives. See {!page-actions} for the sources.
 
 [Debounce_machine.always ~to_ handler] is a handler that every state that is
 not final tries after its own handler gives [unhandled]. In the example,
@@ -150,18 +150,18 @@ Exception: Silica.Machine.Missing_case {machine = "broken"; index = 1}.
 |---------|---------|
 | [Debounce_machine.goto state data] | Go to the state. To the current state, only the data changes: no exit, no entry, the timers and sources keep running. |
 | [Debounce_machine.reenter state data] | Like [goto], but exit and enter again, also to the current state. Timers and sources start again. |
-| [Debounce_machine.stay cmds] | Keep the snapshot and run the commands. |
+| [Debounce_machine.stay actions] | Keep the snapshot and run the actions. |
 | [Debounce_machine.unhandled] | This state does not handle the event. The [always] handlers get it next. |
 }
 
-[goto] and [reenter] take [?cmds], the commands of the step. A debounce is
+[goto] and [reenter] take [?actions], the actions of the step. A debounce is
 [reenter] on a state with an [after] timer: each new text starts the timer
 again, so the timer fires only after the last key.
 
 {1:run Run a machine}
 
-{!Silica.Machine.start} gives the first snapshot and the commands of the start.
-{!Silica.Machine.send} gives the next snapshot, the commands and whether the
+{!Silica.Machine.start} gives the first snapshot and the actions of the start.
+{!Silica.Machine.send} gives the next snapshot, the actions and whether the
 event was handled. {!Silica.Machine.active} lists the timers and sources that
 the current state owns.
 
@@ -173,13 +173,13 @@ val machine :
 # let snapshot, _ = Silica.Machine.start machine;;
 val snapshot : Doc_debounce.Debounce_machine.snapshot =
   Doc_debounce.Debounce_machine.At (Doc_debounce.States.Empty, <poly>)
-# let snapshot, commands, _ =
+# let snapshot, actions, _ =
     Silica.Machine.send machine snapshot (Doc_debounce.Typed "oc");;
 val snapshot : Doc_debounce.Debounce_machine.snapshot =
   Doc_debounce.Debounce_machine.At (Doc_debounce.States.Typing, <poly>)
-val commands : Doc_debounce.event Silica.Cmd.host list =
-  [Silica.Cmd.Start_timer
-    {Silica.Cmd.id = "debounce/typing/after0"; ms = 500;
+val actions : Doc_debounce.event Silica.Action.host list =
+  [Silica.Action.Start_timer
+    {Silica.Action.id = "debounce/typing/after0"; ms = 500;
      event = Doc_debounce.Settle}]
 # Silica.Machine.active machine snapshot;;
 - : Silica.Machine.resource list =
@@ -187,18 +187,18 @@ val commands : Doc_debounce.event Silica.Cmd.host list =
   {Silica.Machine.id = "debounce/typing/after0"; ms = 500}]
 ]}
 
-A second text enters [Typing] again. The commands stop the old timer and start
+A second text enters [Typing] again. The actions stop the old timer and start
 a new one:
 
 {@ocaml[
-# let snapshot, commands, _ =
+# let snapshot, actions, _ =
     Silica.Machine.send machine snapshot (Doc_debounce.Typed "ocaml");;
 val snapshot : Doc_debounce.Debounce_machine.snapshot =
   Doc_debounce.Debounce_machine.At (Doc_debounce.States.Typing, <poly>)
-val commands : Doc_debounce.event Silica.Cmd.host list =
-  [Silica.Cmd.Stop "debounce/typing/after0";
-   Silica.Cmd.Start_timer
-    {Silica.Cmd.id = "debounce/typing/after0"; ms = 500;
+val actions : Doc_debounce.event Silica.Action.host list =
+  [Silica.Action.Stop "debounce/typing/after0";
+   Silica.Action.Start_timer
+    {Silica.Action.id = "debounce/typing/after0"; ms = 500;
      event = Doc_debounce.Settle}]
 # let snapshot, _, _ = Silica.Machine.send machine snapshot Doc_debounce.Settle;;
 val snapshot : Doc_debounce.Debounce_machine.snapshot =
@@ -232,5 +232,5 @@ see {!page-checker}.
 {1:next Next}
 
 - {!page-components}: the view, JSX and child components.
-- {!page-commands}: what a machine asks the host to do.
+- {!page-actions}: what a machine asks the host to do.
 - {!page-checker}: check every state that the machine can reach.

@@ -85,14 +85,14 @@ module Make (Content : CONTENT) = struct
     props.open_ = Some false && previous.open_ <> Some false
 
   let close (props : props) =
-    let cmds =
+    let actions =
       match props.trigger with
       | Some _ ->
-          [ Cmd.Focus (parts props).trigger ]
+          [ Action.Focus (parts props).trigger ]
       | None ->
           []
     in
-    Dialog_machine.goto Closed props ~cmds
+    Dialog_machine.goto Closed props ~actions
 
   let machine =
     Dialog_machine.make ~id:Content.id

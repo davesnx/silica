@@ -2,7 +2,7 @@
 
 The router is a machine whose states are the routes. Its snapshot is the
 current route with its data, and the URL is that snapshot printed. A link
-press, a navigation command, the back and forward buttons and a typed URL all
+press, a navigation action, the back and forward buttons and a typed URL all
 reach the router as the event [Url_changed]. See {!Silica.Router} and
 {!Silica.Route}.
 
@@ -143,12 +143,12 @@ component node with its own machine; the pages of this example are plain
 nodes. The options of [Router.make]:
 
 - [title]: the document title of a route. The router raises
-  {!Silica.Cmd.Set_title} at the start and at each change of route or data,
-  before the commands of the page, so a page that sets its own title wins. A
+  {!Silica.Action.Set_title} at the start and at each change of route or data,
+  before the actions of the page, so a page that sets its own title wins. A
   server render writes it in the [<title>] of the first HTML.
 - [guard]: a function that runs before a URL change takes effect (see
   {{!section-guard}Guard}).
-- [exit]: commands to run when a route is left.
+- [exit]: actions to run when a route is left.
 
 The browser mounts the app with {!Silica_browser.mount_app}. A test mounts it
 with {!Silica_memory.mount_app}:
@@ -186,7 +186,7 @@ link:
 {!Silica.Router.Make.link_replace} replaces the history entry instead. Use it
 for a link that changes only the query, such as a filter.
 
-A machine navigates with commands: [Router.navigate routes route data] pushes
+A machine navigates with actions: [Router.navigate routes route data] pushes
 an entry and [Router.replace] replaces it. Both take [hash]. A navigation to
 the same printed URL does nothing.
 
@@ -207,7 +207,7 @@ is the current route, or [None] at the start. The answer is:
 - [Redirect route]: go to that route instead, and replace the URL. At the
   start, the app starts in the other route. A server render answers it with a
   redirect, status 303.
-- [Cancel]: stay. The router raises {!Silica.Cmd.Revert_navigation}, so the
+- [Cancel]: stay. The router raises {!Silica.Action.Revert_navigation}, so the
   URL and the position in the history go back, also after back or forward.
 
 Use the guard for rules that depend on routes only, such as "go to the login
@@ -217,9 +217,9 @@ page".
 
 A page that holds a draft owns the block: {!Silica.Source.block} in the
 [invoke] list of the state that holds the draft. While the state is active,
-every navigation (a link press, a navigation command, back and forward) stops
+every navigation (a link press, a navigation action, back and forward) stops
 before the URL changes, and reaches the page as a {!Silica.Nav.t}. The page
-asks the user, then sends [Cmd.Resume nav] to let it happen. While a block is
+asks the user, then sends [Action.Resume nav] to let it happen. While a block is
 held, closing or reloading the tab asks the user through the browser.
 
 The block starts and stops with the state that owns the draft, so it cannot
@@ -311,7 +311,7 @@ What happens:
 
 The server render gives the status from the root snapshot, for example 404
 when [is_not_found] is [true]. A page can set its own status with
-{!Silica.Cmd.Set_status}; the last one wins. A [Navigate] or [Replace] during
+{!Silica.Action.Set_status}; the last one wins. A [Navigate] or [Replace] during
 a server render, such as a guard [Redirect] at the first URL, makes the answer
 a redirect: status 303 with a [location] header. See {!page-server.render}.
 
@@ -320,7 +320,7 @@ a redirect: status 303 with a [location] header. See {!page-server.render}.
 After a push, back or forward to another path, the browser moves focus, with
 no scroll, to the first element with [data-silica-route-focus], or else to the
 root. A polite live region then reads the new document title, so a screen
-reader user knows that the page changed. A [Focus] command after the change
+reader user knows that the page changed. A [Focus] action after the change
 wins.
 
 The browser keeps the scroll position of each history entry, also across a

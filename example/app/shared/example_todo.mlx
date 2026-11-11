@@ -23,7 +23,7 @@ let machine : (state, event) Machine.t =
             | Draft draft ->
                 Todo_machine.goto Todo { s with draft }
             | Add when String.trim s.draft = "" ->
-                Todo_machine.stay [ Cmd.Focus input_ref ]
+                Todo_machine.stay [ Action.Focus input_ref ]
             | Add ->
                 let todo =
                   {
@@ -32,7 +32,7 @@ let machine : (state, event) Machine.t =
                     completed = false;
                   }
                 in
-                Todo_machine.goto Todo ~cmds:[ Cmd.Focus input_ref ]
+                Todo_machine.goto Todo ~actions:[ Action.Focus input_ref ]
                   {
                     todos = s.todos @ [ todo ];
                     draft = "";

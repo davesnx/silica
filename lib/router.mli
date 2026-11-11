@@ -28,7 +28,7 @@
 
     The snapshot of the router machine is the current route with its data. The
     URL is that snapshot printed by [path], after the [base] of the routes. A
-    navigation command, a press on a {!Make.link}, the browser back and forward
+    navigation action, a press on a {!Make.link}, the browser back and forward
     buttons and a typed URL all reach the machine as {!event} [Url_changed]. The
     route is found by trying the listed routes in order, so the last one must
     match every path (use {!Route.rest}): a bad path goes to that route. A query
@@ -37,13 +37,13 @@
 
 type event =
   | Url_changed of Url.t
-      (** Sent by a host when the URL changes: at a navigation command, a link
+      (** Sent by a host when the URL changes: at a navigation action, a link
           press, and when the user moves in the history. *)
   | Preload of Url.t
       (** Sent by a host when a link may be pressed soon (see {!preload}). The
-          router answers with a {!Cmd.Preload} for each call that the [preload]
-          function of the routes gives for the route of the URL, and a
-          {!Cmd.Load_chunk} for each chunk that the [chunks] function of
+          router answers with a {!Action.Preload} for each call that the
+          [preload] function of the routes gives for the route of the URL, and a
+          {!Action.Load_chunk} for each chunk that the [chunks] function of
           {!Make.make} gives, and changes nothing else. *)
 
 type preload =
@@ -98,12 +98,12 @@ end) : sig
   val is_not_found : routes -> snapshot -> bool
   (** [true] when the snapshot is in the [not_found] route of [routes]. *)
 
-  val navigate : ?hash:string -> routes -> 'data State.t -> 'data -> 'e Cmd.t
+  val navigate : ?hash:string -> routes -> 'data State.t -> 'data -> 'e Action.t
   (** Push a history entry. With [hash], the URL has that hash, and the browser
       scrolls to the element with that id after the paint. The router ignores
       the hash. *)
 
-  val replace : ?hash:string -> routes -> 'data State.t -> 'data -> 'e Cmd.t
+  val replace : ?hash:string -> routes -> 'data State.t -> 'data -> 'e Action.t
   (** Replace the current history entry. Use it for a change of the query only.
       [hash] is as in {!navigate}. *)
 
@@ -149,13 +149,13 @@ end) : sig
     | Redirect of snapshot
         (** Go to this route instead, and replace the URL. *)
     | Cancel
-        (** Stay: the router raises {!Cmd.Revert_navigation}, so the URL and the
-            history position go back to those of the current route. *)
+        (** Stay: the router raises {!Action.Revert_navigation}, so the URL and
+            the history position go back to those of the current route. *)
 
   val make :
     routes ->
     ?guard:(from:snapshot option -> target:snapshot -> decision) ->
-    ?exit:(snapshot -> event Cmd.t list) ->
+    ?exit:(snapshot -> event Action.t list) ->
     ?title:(snapshot -> string) ->
     ?chunks:(snapshot -> Chunk.any list) ->
     render:(snapshot -> event Node.t) ->
@@ -165,15 +165,15 @@ end) : sig
       the page of the current route, as a component node. [guard] runs before a
       URL change to another URL takes effect, and at the start with
       [from = None]: use it for "go to login". At the start, [Redirect] starts
-      in the other route and raises {!Cmd.Replace} with its URL (a server render
-      answers it with a redirect), and [Cancel] starts in the route of the URL,
-      as there is no route to stay in. For unsaved data inside a page, use
-      {!Source.block}. [exit] runs when a route state is left, as the [exit] of
-      its state. [title] gives the document title of a route: the router raises
-      {!Cmd.Set_title} with it at the start and at each change of route or
-      parameters, before the commands of the page, so a page machine that sets
-      its own title wins. A change to the same printed URL does nothing.
-      [chunks] gives the code that [render] shows with {!Node.val-chunk} for a
-      route: the router loads it when a link to that route preloads (see
-      {!val-routes}, [chunked]). *)
+      in the other route and raises {!Action.Replace} with its URL (a server
+      render answers it with a redirect), and [Cancel] starts in the route of
+      the URL, as there is no route to stay in. For unsaved data inside a page,
+      use {!Source.block}. [exit] runs when a route state is left, as the [exit]
+      of its state. [title] gives the document title of a route: the router
+      raises {!Action.Set_title} with it at the start and at each change of
+      route or parameters, before the actions of the page, so a page machine
+      that sets its own title wins. A change to the same printed URL does
+      nothing. [chunks] gives the code that [render] shows with
+      {!Node.val-chunk} for a route: the router loads it when a link to that
+      route preloads (see {!val-routes}, [chunked]). *)
 end

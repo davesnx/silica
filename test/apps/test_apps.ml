@@ -1,7 +1,7 @@
 open Silica
 
 let simple (type s e) ~id ~(init : s)
-    (step : s -> e -> (s * e Cmd.t list) option) : (s, e) Machine.t =
+    (step : s -> e -> (s * e Action.t list) option) : (s, e) Machine.t =
   let module Only = struct
     type _ t = Only : s t
   end in
@@ -14,8 +14,8 @@ let simple (type s e) ~id ~(init : s)
             match step data event with
             | None ->
                 Only_machine.unhandled
-            | Some (data, cmds) ->
-                Only_machine.goto ~cmds Only.Only data
+            | Some (data, actions) ->
+                Only_machine.goto ~actions Only.Only data
         );
       ]
   in
@@ -77,7 +77,7 @@ let machine =
     | Submit ->
         Phases.goto self { s with submits = s.submits + 1 }
     | Focus_input ->
-        Phases.stay [ Cmd.Focus input_ref ]
+        Phases.stay [ Action.Focus input_ref ]
     | Reverse ->
         Phases.goto self { s with items = List.rev s.items }
     | Tick ->
@@ -245,7 +245,7 @@ type title_event = Title of string
 let title_component =
   Component.make
     (simple ~id:"title" ~init:() (fun () (Title text) ->
-         Some ((), [ Cmd.Set_title text ])
+         Some ((), [ Action.Set_title text ])
      )
     )
     (fun () -> Node.list [])
@@ -258,13 +258,13 @@ let nav_component =
       | Go_about ->
           Some ((), [ Pages_router.navigate routes Pages.About () ])
       | Go_hash ->
-          Some ((), [ Cmd.Navigate (Url.of_string "/about#section") ])
+          Some ((), [ Action.Navigate (Url.of_string "/about#section") ])
       ))
     (fun () ->
       Node.list
         [
-          el "button" [ id "cmd-nav"; Attr.on_press Go_about ] [ txt "go" ];
-          el "button" [ id "cmd-hash"; Attr.on_press Go_hash ] [ txt "hash" ];
+          el "button" [ id "action-nav"; Attr.on_press Go_about ] [ txt "go" ];
+          el "button" [ id "action-hash"; Attr.on_press Go_hash ] [ txt "hash" ];
         ]
     )
 
@@ -374,7 +374,7 @@ let edit_component =
            ~invoke:[ block () ]
            (fun (draft, nav) -> function
              | Leave ->
-                 goto ~cmds:[ Cmd.Resume nav ] Edit_state.Clean ()
+                 goto ~actions:[ Action.Resume nav ] Edit_state.Clean ()
              | Stay ->
                  goto Edit_state.Dirty draft
              | Attempt next ->
@@ -939,12 +939,12 @@ end
 
 let lookup_server () =
   let tree = Instance.mount Lookup.component in
-  let node, commands = Instance.update tree None in
+  let node, actions = Instance.update tree None in
   let table = ref Answers.empty in
   let result = ref (Render.to_string node) in
   List.iter
     (function
-      | Cmd.Start_call { endpoint; input; on_result; _ } -> (
+      | Action.Start_call { endpoint; input; on_result; _ } -> (
           let encoded = Codec.to_string (Remote.input endpoint) input in
           let output = string_of_int (2 * int_of_string encoded) in
           match Codec.of_string (Remote.output endpoint) output with
@@ -962,7 +962,7 @@ let lookup_server () =
       | _ ->
           ()
       )
-    commands;
+    actions;
   (!result, !table)
 
 let lookup_html () = fst (lookup_server ())

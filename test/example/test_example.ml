@@ -115,7 +115,7 @@ let test_leaving_item_ignores_late_result () =
   let before = html sim in
   Sim.fire_after_stop sim "2.1/item/loading/invoke0";
   Alcotest.(check string) "view unchanged" before (html sim);
-  Alcotest.check strings "no command" [] (Sim.log sim)
+  Alcotest.check strings "no action" [] (Sim.log sim)
 
 let test_about_back () =
   let sim = mount "/" in

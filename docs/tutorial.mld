@@ -64,7 +64,7 @@ let component = Component.make machine view
 
 A machine is a plain value. You can start it and send events to it without a
 browser. [Machine.start] gives the first snapshot. [Machine.send] gives the
-next snapshot and the commands that the host must run.
+next snapshot and the actions that the host must run.
 
 {@ocaml[
 # let counter = Tutorial_counter.machine;;
@@ -204,7 +204,7 @@ let component = Component.make machine view
 
 {2 Run the machine}
 
-When the machine enters [Asking], [Machine.send] gives a [Start_call] command.
+When the machine enters [Asking], [Machine.send] gives a [Start_call] action.
 The host runs the call. The test below does not run it, so the machine stays in
 [Asking].
 
@@ -217,14 +217,14 @@ val greeting :
 val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
   Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Idle,
    <poly>)
-# let snapshot, commands, _ =
+# let snapshot, actions, _ =
     Silica.Machine.send greeting snapshot Tutorial_greeting.Ask;;
 val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
   Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Asking,
    <poly>)
-val commands : Tutorial_greeting.event Silica.Cmd.host list =
-  [Silica.Cmd.Start_call
-    {Silica.Cmd.id = "greeting/asking/invoke0"; endpoint = <abstr>;
+val actions : Tutorial_greeting.event Silica.Action.host list =
+  [Silica.Action.Start_call
+    {Silica.Action.id = "greeting/asking/invoke0"; endpoint = <abstr>;
      input = <poly>; timeout_ms = None; on_result = <fun>}]
 # Silica.Machine.key greeting snapshot;;
 - : string = "asking"

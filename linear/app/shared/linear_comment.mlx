@@ -27,7 +27,7 @@ let input_ref id = Ref.make ("comment-" ^ string_of_int id ^ "-input")
 
 let editing props draft error =
   Comment_machine.goto Editing { props; draft; error }
-    ~cmds:[ Cmd.Focus (input_ref props.comment.id) ]
+    ~actions:[ Action.Focus (input_ref props.comment.id) ]
 
 let machine =
   Comment_machine.make ~id:"comment"

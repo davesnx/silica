@@ -107,10 +107,10 @@ let machine =
     | Inc ->
         Phase_machine.goto self (n + 1)
     | Focus_me ->
-        Phase_machine.stay [ Cmd.Focus x ]
+        Phase_machine.stay [ Action.Focus x ]
     | Mixed ->
         Phase_machine.goto Phase.Mixing n
-          ~cmds:[ Cmd.Focus x; Cmd.Navigate (Url.of_string "/a?b=c") ]
+          ~actions:[ Action.Focus x; Action.Navigate (Url.of_string "/a?b=c") ]
     | Double ->
         Phase_machine.goto Phase.Doubling n
     | Boom ->
@@ -215,7 +215,7 @@ let page_component : (int, ev) Component.t =
     machine =
       Silica_test_support.Simple.machine ~id:"page" ~init:0 (fun _ -> function
         | Set n ->
-            Some (n, [ Cmd.Set_title ("Count & <" ^ string_of_int n ^ ">") ])
+            Some (n, [ Action.Set_title ("Count & <" ^ string_of_int n ^ ">") ])
         | _ ->
             None
         );
@@ -228,7 +228,7 @@ let missing_component : (int, ev) Component.t =
       Silica_test_support.Simple.machine ~id:"missing" ~init:0
         (fun _ -> function
         | Set _ ->
-            Some (0, [ Cmd.Set_title "Not found" ])
+            Some (0, [ Action.Set_title "Not found" ])
         | _ ->
             None
         );

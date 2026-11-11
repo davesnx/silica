@@ -11,8 +11,8 @@
 
     The theme component ({!switcher} or {!provider}) holds the {!type-choice}.
     At the start and at each change it sets [data-theme] on the [<html>] element
-    ({!Silica.Cmd.Set_document_attribute}); a server render writes it into the
-    first HTML. A change made in the page is stored in the cookie
+    ({!Silica.Action.Set_document_attribute}); a server render writes it into
+    the first HTML. A change made in the page is stored in the cookie
     {!cookie_name}, which the server and the browser read before the first props
     ({!choice_of_cookie}), so the first HTML has the right theme. A switch
     changes one attribute: no other component renders again.

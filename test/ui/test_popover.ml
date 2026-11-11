@@ -134,7 +134,7 @@ let anchor_uses_props () =
   let anchors =
     List.filter_map
       (function
-        | Cmd.Anchor { anchor; popup; place } ->
+        | Action.Anchor { anchor; popup; place } ->
             Some (Ref.name anchor, Ref.name popup, place.side)
         | _ ->
             None

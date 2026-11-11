@@ -72,7 +72,7 @@ let all_hosts =
 let protocol_tests =
   let open Alcotest in
   [
-    test_case "host cmds round trip" `Quick (fun () ->
+    test_case "host actions round trip" `Quick (fun () ->
         List.iter
           (fun h ->
             check
@@ -82,7 +82,7 @@ let protocol_tests =
           )
           all_hosts
     );
-    test_case "host cmd json shapes" `Quick (fun () ->
+    test_case "host action json shapes" `Quick (fun () ->
         let shape h = Json.to_string (Protocol.encode_host h) in
         check string "focus" {|{"focus":"a"}|} (shape (List.nth all_hosts 0));
         check string "blur" {|{"blur":"b"}|} (shape (List.nth all_hosts 1));
@@ -101,43 +101,46 @@ let protocol_tests =
           {|{"scroll_to":{"left":0,"top":30}}|}
           (shape (List.nth all_hosts 9))
     );
-    test_case "commands with a result do not cross the wire" `Quick (fun () ->
+    test_case "actions with a result do not cross the wire" `Quick (fun () ->
         check
           (list (option host_testable))
           "measure, copy and load_script are dropped" [ None; None; None ]
-          (List.map Protocol.host_of_cmd
+          (List.map Protocol.host_of_host_action
              [
-               Cmd.Run
-                 (Cmd.Measure { target = Ref.make "a"; on_rect = (fun _ -> ()) });
-               Cmd.Run (Cmd.Copy { text = "t"; on_result = None });
-               Cmd.Run (Cmd.Load_script { src = "/s.js"; on_result = ignore });
+               Action.Run
+                 (Action.Measure
+                    { target = Ref.make "a"; on_rect = (fun _ -> ()) }
+                 );
+               Action.Run (Action.Copy { text = "t"; on_result = None });
+               Action.Run
+                 (Action.Load_script { src = "/s.js"; on_result = ignore });
              ]
           )
     );
-    test_case "timers, calls and stops are not host cmds" `Quick (fun () ->
+    test_case "timers, calls and stops are not host actions" `Quick (fun () ->
         let start, _ = Machine.start machine in
         let mixing, entered, _ = Machine.send machine start Mixed in
         check int "focus, navigate, timer, call" 4 (List.length entered);
         check
           (list (option host_testable))
-          "only commands cross the wire"
+          "only actions cross the wire"
           [
             Some (Protocol.Focus x);
             Some (Protocol.Navigate (Url.of_string "/a?b=c"));
             None;
             None;
           ]
-          (List.map Protocol.host_of_cmd entered);
+          (List.map Protocol.host_of_host_action entered);
         let _, left, _ = Machine.send machine mixing Cancel_later in
         check
           (list (option host_testable))
-          "stops are not commands" [ None; None ]
-          (List.map Protocol.host_of_cmd left);
+          "stops are not actions" [ None; None ]
+          (List.map Protocol.host_of_host_action left);
         List.iter
           (fun h ->
-            check bool "host_to_cmd inverts" true
-              (Protocol.host_of_cmd
-                 (Cmd.Run (Protocol.host_to_cmd h : unit Cmd.t))
+            check bool "host_to_action inverts" true
+              (Protocol.host_of_host_action
+                 (Action.Run (Protocol.host_to_action h : unit Action.t))
               = Some h
               )
           )
@@ -299,10 +302,10 @@ let state_messages r =
   List.rev_map
     (fun s ->
       match Protocol.decode_server s with
-      | Ok (Protocol.State { seq; ack; state; cmds }) -> (
+      | Ok (Protocol.State { seq; ack; state; actions }) -> (
           match Protocol.decode_state Codec.int state with
           | Ok v ->
-              (v, cmds, seq, ack)
+              (v, actions, seq, ack)
           | Error e ->
               Alcotest.fail e
         )
@@ -313,7 +316,8 @@ let state_messages r =
     )
     !(r.sent)
 
-let states r = List.map (fun (v, cmds, _, _) -> (v, cmds)) (state_messages r)
+let states r =
+  List.map (fun (v, actions, _, _) -> (v, actions)) (state_messages r)
 
 let send r e =
   r.next_id <- r.next_id + 1;
@@ -340,7 +344,7 @@ let live_tests =
         send r Inc;
         check states_t "states" [ (0, []); (1, []); (2, []) ] (states r)
     );
-    test_case "host cmds are forwarded" `Quick (fun () ->
+    test_case "host actions are forwarded" `Quick (fun () ->
         let r = start () in
         send r Focus_me;
         check states_t "focus" [ (0, []); (0, [ Protocol.Focus x ]) ] (states r)
@@ -348,7 +352,7 @@ let live_tests =
     test_case "call and after never cross the wire" `Quick (fun () ->
         let r = start () in
         send r Mixed;
-        check states_t "only host cmds"
+        check states_t "only host actions"
           [
             (0, []);
             (0, [ Protocol.Focus x; Protocol.Navigate (Url.of_string "/a?b=c") ]);

@@ -8,10 +8,10 @@
     - a manual clock: nothing scheduled runs until {!advance};
     - the HTTP requests of Remote calls, which the test answers one at a time;
     - the Live sockets, which the test opens, sends messages into and closes;
-    - a history of URLs with an index, which the navigation commands, link
+    - a history of URLs with an index, which the navigation actions, link
       presses, {!back} and {!forward} change;
-    - the commands that the renderer ran, the running sources, the title, the
-      log lines and the number of times the session was gone.
+    - the actions that the renderer ran, the running sources, the title, the log
+      lines and the number of times the session was gone.
 
     Input follows the browser renderer: a handler on the nearest ancestor of the
     element answers, as with event delegation; a press on an element inside an
@@ -28,7 +28,7 @@
     navigation past every block; [Revert_navigation] undoes the last reported
     change without a report. After a push or a back or forward to another path,
     a task on the clock with delay 0 moves focus to the first element with
-    [data-silica-route-focus] (or to no element), unless a [Focus] command ran
+    [data-silica-route-focus] (or to no element), unless a [Focus] action ran
     since, and announces the title (see {!announcements}).
 
     Out of scope: islands ([data-silica-live]) are painted as empty elements and
@@ -248,10 +248,10 @@ val history : t -> string list
 val history_index : t -> int
 (** The index of the current entry in {!val-history}. *)
 
-val commands : t -> Instance.message Cmd.t list
-(** The commands that the renderer ran, oldest first. *)
+val actions : t -> Instance.message Action.t list
+(** The actions that the renderer ran, oldest first. *)
 
-val sources : t -> (string * Instance.message Cmd.source) list
+val sources : t -> (string * Instance.message Action.source) list
 (** The running sources with their ids, in the order they started. *)
 
 val title : t -> string
@@ -259,21 +259,21 @@ val title : t -> string
 
 val document_attribute : t -> string -> string option
 (** The value of an attribute of the document element, as the
-    {!Silica.Cmd.Set_document_attribute} commands left it. *)
+    {!Silica.Action.Set_document_attribute} actions left it. *)
 
 val cookies : t -> (string * string) list
-(** The cookies that {!Silica.Cmd.Set_cookie} stored, as name and value, in the
-    order of their last write. *)
+(** The cookies that {!Silica.Action.Set_cookie} stored, as name and value, in
+    the order of their last write. *)
 
 val set_media : t -> string -> bool -> unit
-(** The media query now matches, or not: each running {!Silica.Cmd.Media} source
-    of that query raises its event at once. *)
+(** The media query now matches, or not: each running {!Silica.Action.Media}
+    source of that query raises its event at once. *)
 
 val logs : t -> string list
 (** The log lines of the runtime, oldest first. *)
 
 val leave_asks : t -> bool
-(** [true] while a {!Silica.Cmd.Block} source runs: closing or reloading the
+(** [true] while a {!Silica.Action.Block} source runs: closing or reloading the
     page would ask the user first. *)
 
 val announcements : t -> string list

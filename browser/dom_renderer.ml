@@ -726,7 +726,7 @@ let scroll_of array =
   }
 
 let start_source (type e) ~(dispatch : e -> unit)
-    ~(block : (Nav.t -> e) -> unit -> unit) (source : e Cmd.source) :
+    ~(block : (Nav.t -> e) -> unit -> unit) (source : e Action.source) :
     unit -> unit =
   let limited rate deliver =
     match rate with
@@ -736,11 +736,11 @@ let start_source (type e) ~(dispatch : e -> unit)
         Rate.limiter ~schedule:Web.schedule rate deliver
   in
   match source with
-  | Cmd.Focus_trap { container; return_focus } ->
+  | Action.Focus_trap { container; return_focus } ->
       trap_focus ~container ~return_focus
-  | Cmd.Scroll_lock ->
+  | Action.Scroll_lock ->
       lock_scroll ()
-  | Cmd.Outside_press { container; event } ->
+  | Action.Outside_press { container; event } ->
       on_document ~capture:true "pointerdown" (fun ev ->
           let inside =
             match find_ref container with
@@ -751,7 +751,7 @@ let start_source (type e) ~(dispatch : e -> unit)
           in
           if not inside then dispatch event
       )
-  | Cmd.Global_keys { bindings; prevent; rate } ->
+  | Action.Global_keys { bindings; prevent; rate } ->
       let deliver = limited rate dispatch in
       on_document "keydown" (fun ev ->
           let key = key_of_event ev in
@@ -770,7 +770,7 @@ let start_source (type e) ~(dispatch : e -> unit)
           | None ->
               ()
       )
-  | Cmd.Resize { target; rate; on_resize } -> (
+  | Action.Resize { target; rate; on_resize } -> (
       let deliver = limited rate (fun rect -> dispatch (on_resize rect)) in
       match find_ref target with
       | Some node ->
@@ -786,7 +786,7 @@ let start_source (type e) ~(dispatch : e -> unit)
       | None ->
           fun () -> ()
     )
-  | Cmd.Dismiss { containers; on_escape; on_outside; on_focus_out } ->
+  | Action.Dismiss { containers; on_escape; on_outside; on_focus_out } ->
       let deliver event () = dispatch event in
       push_layer
         {
@@ -795,9 +795,9 @@ let start_source (type e) ~(dispatch : e -> unit)
           on_outside = Option.map deliver on_outside;
           on_focus_out = Option.map deliver on_focus_out;
         }
-  | Cmd.Anchor { anchor; popup; place } ->
+  | Action.Anchor { anchor; popup; place } ->
       track_anchor ~anchor ~popup place
-  | Cmd.Intersection { target; rate; on_change } -> (
+  | Action.Intersection { target; rate; on_change } -> (
       let deliver =
         limited rate (fun visible -> dispatch (on_change visible))
       in
@@ -807,7 +807,7 @@ let start_source (type e) ~(dispatch : e -> unit)
       | None ->
           fun () -> ()
     )
-  | Cmd.Scroll { target; rate; on_scroll } -> (
+  | Action.Scroll { target; rate; on_scroll } -> (
       let deliver = limited rate (fun s -> dispatch (on_scroll s)) in
       let watch node read =
         let report _ = deliver (scroll_of (read ())) in
@@ -825,15 +825,15 @@ let start_source (type e) ~(dispatch : e -> unit)
               fun () -> ()
         )
     )
-  | Cmd.Visibility on_change ->
+  | Action.Visibility on_change ->
       let report _ = dispatch (on_change (Dom.visible ())) in
       report ();
       listen Dom.document "visibilitychange" report
-  | Cmd.Block { on_attempt } ->
+  | Action.Block { on_attempt } ->
       block on_attempt
-  | Cmd.Media { query; on_change } ->
+  | Action.Media { query; on_change } ->
       Dom.watch_media query (fun matches -> dispatch (on_change matches))
-  | Cmd.Online on_change ->
+  | Action.Online on_change ->
       let report _ = dispatch (on_change (Dom.online ())) in
       report ();
       let stop_online = listen Dom.window "online" report in
@@ -1023,8 +1023,8 @@ let make (type e) ~dev ~adopt ~hooks ~root
         ()
   in
   let on_ref f r = Option.iter f (find_ref r) in
-  let run : e Cmd.t -> unit = function
-    | Cmd.Focus r ->
+  let run : e Action.t -> unit = function
+    | Action.Focus r ->
         focus_due := false;
         on_ref
           (fun node ->
@@ -1034,29 +1034,32 @@ let make (type e) ~dev ~adopt ~hooks ~root
               Dom.focus node
           )
           r
-    | Cmd.Blur r ->
+    | Action.Blur r ->
         on_ref Dom.blur r
-    | Cmd.Scroll_into_view r ->
+    | Action.Scroll_into_view r ->
         Dom.microtask (fun () ->
             on_ref
               (fun n -> if Dom.has_scroll n then Dom.scroll_into_view_nearest n)
               r
         )
-    | Cmd.Navigate u ->
+    | Action.Navigate u ->
         if not (blocked (Nav.Push u)) then push u
-    | Cmd.Replace u ->
+    | Action.Replace u ->
         if not (blocked (Nav.Replace u)) then replace u
-    | Cmd.Resume nav ->
+    | Action.Resume nav ->
         resume nav
-    | Cmd.Revert_navigation ->
+    | Action.Revert_navigation ->
         revert ()
-    | Cmd.Remount | Cmd.Preload _ | Cmd.Load_chunk _ | Cmd.Set_status _ ->
+    | Action.Remount
+    | Action.Preload _
+    | Action.Load_chunk _
+    | Action.Set_status _ ->
         ()
-    | Cmd.Scroll_to { target = None; left; top } ->
+    | Action.Scroll_to { target = None; left; top } ->
         Dom.scroll_to left top
-    | Cmd.Scroll_to { target = Some r; left; top } ->
+    | Action.Scroll_to { target = Some r; left; top } ->
         on_ref (fun node -> Dom.scroll_element node left top) r
-    | Cmd.Measure { target; on_rect } ->
+    | Action.Measure { target; on_rect } ->
         dispatch
           (on_rect
              (Option.map
@@ -1064,25 +1067,25 @@ let make (type e) ~dev ~adopt ~hooks ~root
                 (find_ref target)
              )
           )
-    | Cmd.Copy { text; on_result } ->
+    | Action.Copy { text; on_result } ->
         Dom.copy_text text (fun ok ->
             Option.iter (fun on_result -> dispatch (on_result ok)) on_result
         )
-    | Cmd.Load_script { src; on_result } ->
+    | Action.Load_script { src; on_result } ->
         Dom.load_script src (fun ok -> dispatch (on_result ok))
-    | Cmd.Set_title title ->
+    | Action.Set_title title ->
         Dom.set_title_ Dom.document title
-    | Cmd.Set_document_attribute { name; value } as command ->
-        Cmd.check command;
+    | Action.Set_document_attribute { name; value } as action ->
+        Action.check action;
         Dom.set_document_attribute name (Js.Nullable.fromOption value)
-    | Cmd.Set_cookie { name; value; max_age } as command ->
-        Cmd.check command;
+    | Action.Set_cookie { name; value; max_age } as action ->
+        Action.check action;
         Dom.set_cookie name value max_age
-    | Cmd.Back ->
+    | Action.Back ->
         Dom.back Dom.history
-    | Cmd.Forward ->
+    | Action.Forward ->
         Dom.forward Dom.history
-    | Cmd.Reload ->
+    | Action.Reload ->
         Dom.reload Dom.location
   in
   {

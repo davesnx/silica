@@ -7,11 +7,11 @@
 
     - {!field-renderer} paints views, adopts a server-painted screen, turns
       platform input into events (element handlers and held sources), runs the
-      platform commands of {!Cmd.t} (focus, scroll, history, title, ...) and
+      platform actions of {!Action.t} (focus, scroll, history, title, ...) and
       paints portals. See {!Renderer}.
     - {!field-location} and the [on_route] argument of {!field-renderer} are the
       navigation part: the URL at the start, each URL change (a navigation
-      command, a link press, back and forward) and each preload of a link, which
+      action, a link press, back and forward) and each preload of a link, which
       the runtime gives to the root component.
     - {!field-io} holds what the runtime itself needs: a clock, one HTTP request
       form for Remote calls, a socket for Live subscriptions, and a log.

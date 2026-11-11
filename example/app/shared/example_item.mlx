@@ -13,7 +13,7 @@ end
 
 module Item_machine = Machine.Make (States)
 
-let title text = [ Cmd.Set_title text ]
+let title text = [ Action.Set_title text ]
 
 let machine =
   Item_machine.make ~id:"item" ~init:(Item_machine.at Idle ())

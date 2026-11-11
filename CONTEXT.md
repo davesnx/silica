@@ -30,9 +30,14 @@ The value a machine holds at one moment: one state and its data.
 _Avoid_: state (as the current value), model, store
 
 **Machine**:
-A statechart: states, the events it accepts, and the commands each transition
+A statechart: states, the events it accepts, and the actions each transition
 emits.
 _Avoid_: reducer, store, actor
+
+**Transition**:
+A step of a machine from one state to a state on an event. The Quint export
+writes one Quint `action` for each.
+_Avoid_: action
 
 **Component**:
 A machine together with the view of its states. Each rendered component runs
@@ -45,18 +50,18 @@ The static shape of a machine: its states, declared edges, timers, sources and
 final states. Lint, the Quint export and diagrams read it.
 _Avoid_: schema, graph (as the name of the value)
 
-**Command**:
+**Action**:
 A request from a machine for the host to do something outside the machine.
-_Avoid_: effect, side effect, action
+_Avoid_: command, effect, side effect
 
 **Host**:
-The thing that runs machines and carries out their commands: the browser, the
+The thing that runs machines and carries out their actions: the browser, the
 server, or the model checker.
 _Avoid_: runtime, driver, platform
 
 **Renderer**:
 The part of a platform that paints views, turns platform input into events and
-runs platform commands. The queue, the instance tree, timers, calls and Live
+runs platform actions. The queue, the instance tree, timers, calls and Live
 subscriptions stay in the host runtime, which is the same for every platform.
 _Avoid_: driver, backend
 
@@ -136,7 +141,7 @@ _Avoid_: middleware, interceptor
 
 **Block**:
 A held source of a page that has unsaved data. While it is held, no navigation
-happens: a link press, a navigation command, back and forward reach the page as
+happens: a link press, a navigation action, back and forward reach the page as
 an attempt, which it can resume; closing the tab asks first.
 _Avoid_: prompt, confirm guard
 
@@ -162,7 +167,7 @@ _Avoid_: bundle (the whole client file), module (the OCaml unit)
 **Route title**:
 The document title of a route, given by the `title` function of the router.
 The router sets it at the start and at each change of route or data, before
-the commands of the page, so a page can set its own.
+the actions of the page, so a page can set its own.
 _Avoid_: page title (for the function), head
 
 **Route focus**:

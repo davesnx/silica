@@ -101,9 +101,9 @@ let error_view (error : Node.error) ~retry ~reload : Instance.message Node.t =
 let max_replay_rounds = 200
 
 let answered : type e.
-    Answers.t -> e Cmd.host -> (string * e * string * string) option =
+    Answers.t -> e Action.host -> (string * e * string * string) option =
  fun table -> function
-  | Cmd.Start_call { id; endpoint; input; on_result; _ } -> (
+  | Action.Start_call { id; endpoint; input; on_result; _ } -> (
       let path = Remote.path endpoint in
       let encoded = Codec.to_string (Remote.input endpoint) input in
       match Answers.find table ~path ~input:encoded with
@@ -120,27 +120,27 @@ let answered : type e.
   | _ ->
       None
 
-let live_commands commands =
+let live_actions actions =
   List.fold_left
-    (fun live command ->
-      match command with
-      | Cmd.Start_call { id; _ } ->
+    (fun live action ->
+      match action with
+      | Action.Start_call { id; _ } ->
           List.filter
             (function
-              | Cmd.Start_call { id = other; _ } -> other <> id | _ -> true
+              | Action.Start_call { id = other; _ } -> other <> id | _ -> true
               )
             live
-          @ [ command ]
-      | Cmd.Stop id ->
+          @ [ action ]
+      | Action.Stop id ->
           List.filter
             (function
-              | Cmd.Start_call { id = other; _ } -> other <> id | _ -> true
+              | Action.Start_call { id = other; _ } -> other <> id | _ -> true
               )
             live
       | _ ->
           live
     )
-    [] commands
+    [] actions
 
 let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
     ?live_config ?(on_route : (Router.event -> e) option)
@@ -184,19 +184,19 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
            )
          ~dispatch:send
       )
-  and exec_one (command : Instance.message Cmd.host) =
+  and exec_one (action : Instance.message Action.host) =
     let r = Lazy.force renderer_value in
-    match command with
-    | Cmd.Run (Cmd.Preload (Remote.Request (endpoint, input))) ->
+    match action with
+    | Action.Run (Action.Preload (Remote.Request (endpoint, input))) ->
         preload ~path:(Remote.path endpoint)
           ~body:(Codec.to_string (Remote.input endpoint) input)
-    | Cmd.Run (Cmd.Load_chunk { chunk = Chunk.Any chunk; on_ready }) ->
+    | Action.Run (Action.Load_chunk { chunk = Chunk.Any chunk; on_ready }) ->
         Chunk.load chunk (fun () -> Option.iter send on_ready)
-    | Cmd.Run command ->
-        r.run command
-    | Cmd.Start_source { id; source } ->
+    | Action.Run action ->
+        r.run action
+    | Action.Start_source { id; source } ->
         r.start_source ~id source
-    | Cmd.Start_timer { id; ms; event } ->
+    | Action.Start_timer { id; ms; event } ->
         stop running id;
         let cancel =
           platform.io.schedule ms (fun () ->
@@ -205,7 +205,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
           )
         in
         Hashtbl.replace running id cancel
-    | Cmd.Start_call { id; endpoint; input; timeout_ms; on_result } ->
+    | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
         stop running id;
         let live = ref true in
         let cancel_timeout =
@@ -235,7 +235,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
             )
           )
           endpoint input on_result
-    | Cmd.Start_live { id; topic; key; on_update } ->
+    | Action.Start_live { id; topic; key; on_update } ->
         stop running id;
         let live = ref true in
         let stop_subscription =
@@ -247,15 +247,15 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
             live := false;
             stop_subscription ()
         )
-    | Cmd.Stop id ->
+    | Action.Stop id ->
         stop running id;
         r.stop_source ~id
-  and exec commands = List.iter exec_one commands
+  and exec actions = List.iter exec_one actions
   and paint node = (Lazy.force renderer_value).paint node
   and step message =
-    let node, commands = Instance.update !tree message in
+    let node, actions = Instance.update !tree message in
     paint_unless_waiting node;
-    exec commands
+    exec actions
   and paint_unless_waiting node =
     if !first_paint_done || not (Instance.waiting !tree) then (
       first_paint_done := true;
@@ -269,7 +269,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
     failed := true;
     let retry = Instance.callback (fun () -> restart ()) in
     let reload =
-      Instance.callback (fun () -> (Lazy.force renderer_value).run Cmd.Reload)
+      Instance.callback (fun () -> (Lazy.force renderer_value).run Action.Reload)
     in
     paint (error_view error ~retry ~reload)
   and guarded f = try f () with exn -> fail exn
@@ -295,12 +295,12 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
   in
   let replay_first () =
     let rec loop message pending round =
-      let node, commands = Instance.update !tree message in
-      let pending = pending @ commands in
+      let node, actions = Instance.update !tree message in
+      let pending = pending @ actions in
       let next =
         List.find_map
-          (fun command -> answered !answers command)
-          (live_commands pending)
+          (fun action -> answered !answers action)
+          (live_actions pending)
       in
       match next with
       | Some (id, event, path, encoded) when round < max_replay_rounds ->
@@ -308,7 +308,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
           let pending =
             List.filter
               (function
-                | Cmd.Start_call { id = other; _ } -> other <> id | _ -> true
+                | Action.Start_call { id = other; _ } -> other <> id | _ -> true
                 )
               pending
           in
@@ -324,9 +324,9 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
     ~finally:(fun () -> busy := false)
     (fun () ->
       try
-        let node, commands = replay_first () in
+        let node, actions = replay_first () in
         paint_unless_waiting node;
-        exec commands
+        exec actions
       with exn ->
         first_failure := Some exn;
         fail exn

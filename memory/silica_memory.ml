@@ -38,8 +38,8 @@ type t = {
   mutable sockets : socket list;
   mutable entries : Url.t list;
   mutable index : int;
-  mutable commands : message Cmd.t list;
-  mutable sources : (string * message Cmd.source * (message -> unit)) list;
+  mutable actions : message Action.t list;
+  mutable sources : (string * message Action.source * (message -> unit)) list;
   mutable title : string;
   mutable document : (string * string) list;
   mutable cookies : (string * string) list;
@@ -349,16 +349,20 @@ type layer = {
   on_focus_out : message option;
 }
 
-let is_layer = function Cmd.Dismiss _ | Cmd.Focus_trap _ -> true | _ -> false
+let is_layer = function
+  | Action.Dismiss _ | Action.Focus_trap _ ->
+      true
+  | _ ->
+      false
 
 let layers t =
   List.rev
     (List.filter_map
        (fun (_, source, _) ->
          match source with
-         | Cmd.Dismiss { containers; on_escape; on_outside; on_focus_out } ->
+         | Action.Dismiss { containers; on_escape; on_outside; on_focus_out } ->
              Some { containers; on_escape; on_outside; on_focus_out }
-         | Cmd.Focus_trap { container; _ } ->
+         | Action.Focus_trap { container; _ } ->
              Some
                {
                  containers = [ container ];
@@ -399,7 +403,7 @@ let pointer_down t chain =
   List.iter
     (fun (_, source, _) ->
       match source with
-      | Cmd.Outside_press { container; event } ->
+      | Action.Outside_press { container; event } ->
           if not (inside [ container ] chain) then t.dispatch event
       | source when is_layer source && not !layered ->
           layered := true;
@@ -437,7 +441,7 @@ let newest_block t =
   List.fold_left
     (fun found (_, source, deliver) ->
       match source with
-      | Cmd.Block { on_attempt } ->
+      | Action.Block { on_attempt } ->
           Some (fun nav -> deliver (on_attempt nav))
       | _ ->
           found
@@ -697,7 +701,7 @@ let key t (k : Key.t) =
   List.iter
     (fun (_, source, deliver) ->
       match source with
-      | Cmd.Global_keys { bindings; prevent; _ } -> (
+      | Action.Global_keys { bindings; prevent; _ } -> (
           match
             List.find_opt (fun (bound, _) -> Key.equal bound k) bindings
           with
@@ -744,35 +748,35 @@ let find_ref t r =
 let back t = step t (-1)
 let forward t = step t 1
 
-let run t (command : message Cmd.t) =
-  t.commands <- command :: t.commands;
-  match command with
-  | Cmd.Focus r ->
+let run t (action : message Action.t) =
+  t.actions <- action :: t.actions;
+  match action with
+  | Action.Focus r ->
       t.route_focus <- false;
       Option.iter (fun e -> set_focus t (Some e)) (find_ref t r)
-  | Cmd.Blur r -> (
+  | Action.Blur r -> (
       match (find_ref t r, t.focused) with
       | Some e, Some f when e.root = f.root && e.path = f.path ->
           set_focus t None
       | _ ->
           ()
     )
-  | Cmd.Navigate url ->
+  | Action.Navigate url ->
       navigate t url
-  | Cmd.Replace url ->
+  | Action.Replace url ->
       replace_url t url
-  | Cmd.Resume nav ->
+  | Action.Resume nav ->
       resume t nav
-  | Cmd.Revert_navigation ->
+  | Action.Revert_navigation ->
       revert t
-  | Cmd.Back ->
+  | Action.Back ->
       back t
-  | Cmd.Forward ->
+  | Action.Forward ->
       forward t
-  | Cmd.Set_title title ->
+  | Action.Set_title title ->
       t.title <- title
-  | Cmd.Set_document_attribute { name; value } as command -> (
-      Cmd.check command;
+  | Action.Set_document_attribute { name; value } as action -> (
+      Action.check action;
       let others = List.remove_assoc name t.document in
       match value with
       | Some value ->
@@ -780,22 +784,22 @@ let run t (command : message Cmd.t) =
       | None ->
           t.document <- others
     )
-  | Cmd.Set_cookie { name; value; _ } as command ->
-      Cmd.check command;
+  | Action.Set_cookie { name; value; _ } as action ->
+      Action.check action;
       t.cookies <- List.remove_assoc name t.cookies @ [ (name, value) ]
-  | Cmd.Measure { target; on_rect } ->
+  | Action.Measure { target; on_rect } ->
       t.dispatch (on_rect (Option.map (fun _ -> Rect.zero) (find_ref t target)))
-  | Cmd.Copy { on_result; _ } ->
+  | Action.Copy { on_result; _ } ->
       Option.iter (fun on_result -> t.dispatch (on_result true)) on_result
-  | Cmd.Load_script { on_result; _ } ->
+  | Action.Load_script { on_result; _ } ->
       t.dispatch (on_result true)
-  | Cmd.Scroll_into_view _
-  | Cmd.Scroll_to _
-  | Cmd.Reload
-  | Cmd.Remount
-  | Cmd.Set_status _
-  | Cmd.Preload _
-  | Cmd.Load_chunk _ ->
+  | Action.Scroll_into_view _
+  | Action.Scroll_to _
+  | Action.Reload
+  | Action.Remount
+  | Action.Set_status _
+  | Action.Preload _
+  | Action.Load_chunk _ ->
       ()
 
 let paint t node =
@@ -814,18 +818,18 @@ let media_matches t query =
 let stop_source t ~id =
   t.sources <- List.filter (fun (other, _, _) -> other <> id) t.sources
 
-let start_source t ~id (source : message Cmd.source) =
+let start_source t ~id (source : message Action.source) =
   stop_source t ~id;
   let deliver =
     match source with
-    | Cmd.Global_keys { rate = Some rate; _ } ->
+    | Action.Global_keys { rate = Some rate; _ } ->
         Rate.limiter ~schedule:(schedule t) rate (fun m -> t.dispatch m)
     | _ ->
         fun m -> t.dispatch m
   in
   t.sources <- t.sources @ [ (id, source, deliver) ];
   match source with
-  | Cmd.Media { query; on_change } ->
+  | Action.Media { query; on_change } ->
       deliver (on_change (media_matches t query))
   | _ ->
       ()
@@ -869,7 +873,7 @@ let make ~csrf ~url ~media =
     sockets = [];
     entries = [ Url.of_string url ];
     index = 0;
-    commands = [];
+    actions = [];
     sources = [];
     title = "";
     document = [];
@@ -918,7 +922,7 @@ let paints t = t.paints
 let url t = Url.to_string (current_url t)
 let history t = List.map Url.to_string t.entries
 let history_index t = t.index
-let commands t = List.rev t.commands
+let actions t = List.rev t.actions
 let sources t = List.map (fun (id, source, _) -> (id, source)) t.sources
 let title t = t.title
 let document_attribute t name = List.assoc_opt name t.document
@@ -929,7 +933,7 @@ let set_media t query matches =
   List.iter
     (fun (_, source, deliver) ->
       match source with
-      | Cmd.Media { query = q; on_change } when q = query ->
+      | Action.Media { query = q; on_change } when q = query ->
           deliver (on_change matches)
       | _ ->
           ()
@@ -940,7 +944,9 @@ let session_gone t = t.gone
 
 let leave_asks t =
   List.exists
-    (fun (_, source, _) -> match source with Cmd.Block _ -> true | _ -> false)
+    (fun (_, source, _) ->
+      match source with Action.Block _ -> true | _ -> false
+    )
     t.sources
 
 let announcements t = List.rev t.announced

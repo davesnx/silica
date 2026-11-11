@@ -253,7 +253,8 @@ let server_message ic =
       Alcotest.failf "closed with %d" code
 
 let hello_text v sub =
-  Protocol.encode_client (Protocol.Hello { v = 1; csrf = v.csrf; sub })
+  Protocol.encode_client
+    (Protocol.Hello { v = Protocol.version; csrf = v.csrf; sub })
 
 let state_int = function
   | Protocol.State { seq; ack; state; _ } -> (
@@ -539,7 +540,7 @@ let ws_tests port =
              (Protocol.Island { channel = "counter"; instance = "a" })
           );
         check bool "hello ok" true
-          (server_message ic = Protocol.Hello_ok { v = 1 });
+          (server_message ic = Protocol.Hello_ok { v = Protocol.version });
         check (triple int int int) "initial" (1, 0, 0)
           (state_int (server_message ic));
         ws_text fd (Protocol.encode_event ev_codec ~id:1 Inc);
@@ -596,7 +597,7 @@ let ws_tests port =
           (Protocol.encode_client
              (Protocol.Hello
                 {
-                  v = 1;
+                  v = Protocol.version;
                   csrf = "wrong";
                   sub = Protocol.Island { channel = "counter"; instance = "x" };
                 }

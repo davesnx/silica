@@ -84,9 +84,9 @@ type 'e app_event =
 type ('n, 'ev, 'e) model = {
   view : 'n -> 'e Node.t;
   enabled : 'n -> 'ev move list;
-  step : 'n -> 'ev move -> 'n * 'e Cmd.host list;
+  step : 'n -> 'ev move -> 'n * 'e Action.host list;
   final : 'n -> bool;
-  start : 'n * 'e Cmd.host list;
+  start : 'n * 'e Action.host list;
 }
 
 let rec iter f n =
@@ -143,32 +143,32 @@ let rec attr_events ~keys = function
     ->
       []
 
-let source_events (sources : _ Cmd.source list) =
+let source_events (sources : _ Action.source list) =
   List.concat_map
     (function
-      | Cmd.Global_keys { bindings; _ } ->
+      | Action.Global_keys { bindings; _ } ->
           List.map snd bindings
-      | Cmd.Outside_press { event; _ } ->
+      | Action.Outside_press { event; _ } ->
           [ event ]
-      | Cmd.Resize { on_resize; _ } ->
+      | Action.Resize { on_resize; _ } ->
           [ on_resize Rect.zero ]
-      | Cmd.Intersection { on_change; _ } ->
+      | Action.Intersection { on_change; _ } ->
           [ on_change true; on_change false ]
-      | Cmd.Dismiss { on_escape; on_outside; on_focus_out; _ } ->
+      | Action.Dismiss { on_escape; on_outside; on_focus_out; _ } ->
           Option.to_list on_escape @ Option.to_list on_outside
           @ Option.to_list on_focus_out
-      | Cmd.Scroll { on_scroll; _ } ->
+      | Action.Scroll { on_scroll; _ } ->
           [ on_scroll Scroll.zero ]
-      | Cmd.Visibility on_change
-      | Cmd.Online on_change
-      | Cmd.Media { on_change; _ } ->
+      | Action.Visibility on_change
+      | Action.Online on_change
+      | Action.Media { on_change; _ } ->
           [ on_change true; on_change false ]
-      | Cmd.Block { on_attempt } ->
+      | Action.Block { on_attempt } ->
           [
             on_attempt (Nav.Push (Url.of_string "/"));
             on_attempt (Nav.Traverse { delta = -1; url = Url.of_string "/" });
           ]
-      | Cmd.Focus_trap _ | Cmd.Scroll_lock | Cmd.Anchor _ ->
+      | Action.Focus_trap _ | Action.Scroll_lock | Action.Anchor _ ->
           []
       )
     sources
@@ -321,20 +321,20 @@ let not_explored_of_view n =
       )
     n
 
-let focus_targets_present view cmds =
+let focus_targets_present view actions =
   let present = refs view in
   List.for_all
     (function
-      | Cmd.Run
-          ( Cmd.Focus r
-          | Cmd.Blur r
-          | Cmd.Scroll_into_view r
-          | Cmd.Scroll_to { target = Some r; _ } ) ->
+      | Action.Run
+          ( Action.Focus r
+          | Action.Blur r
+          | Action.Scroll_into_view r
+          | Action.Scroll_to { target = Some r; _ } ) ->
           List.mem (Ref.name r) present
       | _ ->
           true
       )
-    cmds
+    actions
 
 let functional msg =
   let sub = "functional value" in
@@ -354,7 +354,7 @@ let children_of_view n =
       )
     n
 
-let search ~max_states ~within ~model ~checks ~command_checks ~to_state =
+let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
   let parents = Dynarray.create () in
   let seen = Hashtbl.create 1024 in
   let queue = Queue.create () in
@@ -406,18 +406,18 @@ let search ~max_states ~within ~model ~checks ~command_checks ~to_state =
           checks
     )
   in
-  let failed_command n cmds =
+  let failed_action n actions =
     List.find_map
       (fun (name, holds) ->
-        if holds n cmds then
+        if holds n actions then
           None
         else
           Some name
       )
-      command_checks
+      action_checks
   in
-  let n0, cmds0 = model.start in
-  ( match failed_command n0 cmds0 with
+  let n0, actions0 = model.start in
+  ( match failed_action n0 actions0 with
   | None ->
       add None n0
   | Some name ->
@@ -430,8 +430,8 @@ let search ~max_states ~within ~model ~checks ~command_checks ~to_state =
         incr transitions;
         if Option.is_none !result then
           match model.step n mv with
-          | n', cmds -> (
-              match failed_command n' cmds with
+          | n', actions -> (
+              match failed_action n' actions with
               | None ->
                   add (Some (i, mv)) n'
               | Some name ->
@@ -457,7 +457,7 @@ let search ~max_states ~within ~model ~checks ~command_checks ~to_state =
           children = List.rev !children;
         }
 
-let run ?(extra_commands = []) ~max_states ~within ~model ~invariants ~extra
+let run ?(extra_actions = []) ~max_states ~within ~model ~invariants ~extra
     ~to_state () =
   let builtin =
     [
@@ -480,11 +480,11 @@ let run ?(extra_commands = []) ~max_states ~within ~model ~invariants ~extra
   try
     search ~max_states ~within ~model
       ~checks:(builtin @ extra @ user)
-      ~command_checks:
+      ~action_checks:
         (( "focus-target",
-           fun n cmds -> focus_targets_present (model.view n) cmds
+           fun n actions -> focus_targets_present (model.view n) actions
          )
-        :: extra_commands
+        :: extra_actions
         )
       ~to_state
   with
@@ -606,61 +606,61 @@ let rec put id value = function
   | rest ->
       (id, value) :: rest
 
-let host_cmd host w = function
-  | Cmd.Start_timer { id; event; _ } ->
+let host_action host w = function
+  | Action.Start_timer { id; event; _ } ->
       { w with timers = put id event w.timers }
-  | Cmd.Start_call { id; endpoint; on_result; _ } ->
+  | Action.Start_call { id; endpoint; on_result; _ } ->
       if not (Hashtbl.mem host.answers_of id) then
         Hashtbl.replace host.answers_of id
           (answers_for host.samples endpoint on_result);
       { w with calls = List.sort_uniq compare (id :: w.calls) }
-  | Cmd.Start_live { id; topic; on_update; _ } ->
+  | Action.Start_live { id; topic; on_update; _ } ->
       if not (Hashtbl.mem host.feeds id) then
         Hashtbl.replace host.feeds id (feed_for host.samples topic on_update);
       { w with subs = put id fresh w.subs }
-  | Cmd.Stop id ->
+  | Action.Stop id ->
       {
         w with
         timers = List.remove_assoc id w.timers;
         calls = List.filter (fun c -> c <> id) w.calls;
         subs = List.remove_assoc id w.subs;
       }
-  | Cmd.Run command ->
+  | Action.Run action ->
       let results =
-        match command with
-        | Cmd.Measure { on_rect; _ } ->
+        match action with
+        | Action.Measure { on_rect; _ } ->
             [ on_rect (Some Rect.zero) ]
-        | Cmd.Copy { on_result = Some on_result; _ } ->
+        | Action.Copy { on_result = Some on_result; _ } ->
             [ on_result true ]
-        | Cmd.Load_script { on_result; _ } ->
+        | Action.Load_script { on_result; _ } ->
             [ on_result true ]
-        | Cmd.Load_chunk { on_ready; _ } ->
+        | Action.Load_chunk { on_ready; _ } ->
             Option.to_list on_ready
-        | Cmd.Copy { on_result = None; _ }
-        | Cmd.Focus _
-        | Cmd.Blur _
-        | Cmd.Scroll_into_view _
-        | Cmd.Scroll_to _
-        | Cmd.Navigate _
-        | Cmd.Replace _
-        | Cmd.Back
-        | Cmd.Forward
-        | Cmd.Reload
-        | Cmd.Set_title _
-        | Cmd.Set_status _
-        | Cmd.Set_document_attribute _
-        | Cmd.Set_cookie _
-        | Cmd.Resume _
-        | Cmd.Revert_navigation
-        | Cmd.Preload _
-        | Cmd.Remount ->
+        | Action.Copy { on_result = None; _ }
+        | Action.Focus _
+        | Action.Blur _
+        | Action.Scroll_into_view _
+        | Action.Scroll_to _
+        | Action.Navigate _
+        | Action.Replace _
+        | Action.Back
+        | Action.Forward
+        | Action.Reload
+        | Action.Set_title _
+        | Action.Set_status _
+        | Action.Set_document_attribute _
+        | Action.Set_cookie _
+        | Action.Resume _
+        | Action.Revert_navigation
+        | Action.Preload _
+        | Action.Remount ->
             []
       in
       if results = [] then
         w
       else
         { w with results = List.sort compare (results @ w.results) }
-  | Cmd.Start_source _ ->
+  | Action.Start_source _ ->
       w
 
 let live_moves host id sub =
@@ -755,7 +755,7 @@ type 'e recorder = {
 }
 
 let send recorder m w e =
-  let s, cmds, how = Machine.step m w.s e in
+  let s, actions, how = Machine.step m w.s e in
   ( match how with
   | `Entered | `Kept ->
       Hashtbl.replace recorder.taken
@@ -769,7 +769,7 @@ let send recorder m w e =
   | `Unhandled ->
       ()
   );
-  (s, cmds)
+  (s, actions)
 
 let finish ~recorder ~allow_unreached m = function
   | Ok ok ->
@@ -800,25 +800,25 @@ let finish ~recorder ~allow_unreached m = function
   | (Violation _ | Unreached _ | Limit _ | Error _) as r ->
       r
 
-let server_commands cmds =
+let server_actions actions =
   List.for_all
     (function
-      | Cmd.Run
-          ( Cmd.Measure _
-          | Cmd.Copy _
-          | Cmd.Load_script _
-          | Cmd.Resume _
-          | Cmd.Revert_navigation
-          | Cmd.Preload _
-          | Cmd.Load_chunk _
-          | Cmd.Set_status _
-          | Cmd.Set_document_attribute _
-          | Cmd.Set_cookie _ ) ->
+      | Action.Run
+          ( Action.Measure _
+          | Action.Copy _
+          | Action.Load_script _
+          | Action.Resume _
+          | Action.Revert_navigation
+          | Action.Preload _
+          | Action.Load_chunk _
+          | Action.Set_status _
+          | Action.Set_document_attribute _
+          | Action.Set_cookie _ ) ->
           false
       | _ ->
           true
       )
-    cmds
+    actions
 
 let component_with ~client_only_sources ~max_states ~within ~inputs ~props
     ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants
@@ -833,11 +833,11 @@ let component_with ~client_only_sources ~max_states ~within ~inputs ~props
     }
   in
   let recorder = { taken = Hashtbl.create 64; label } in
-  let exec w cmds = List.fold_left (host_cmd host) w cmds in
+  let exec w actions = List.fold_left (host_action host) w actions in
   let w0 s =
     { s; timers = []; calls = []; subs = []; results = []; hist = []; idx = 0 }
   in
-  let s0, cmds0 = Machine.start m in
+  let s0, actions0 = Machine.start m in
   let model =
     {
       view = (fun w -> c.view w.s);
@@ -856,11 +856,11 @@ let component_with ~client_only_sources ~max_states ~within ~inputs ~props
       step =
         (fun w mv ->
           let w = consume w mv.via in
-          let s, cmds = send recorder m w mv.event in
-          (exec { w with s } cmds, cmds)
+          let s, actions = send recorder m w mv.event in
+          (exec { w with s } actions, actions)
         );
       final = (fun w -> Machine.is_final m w.s);
-      start = (exec (w0 s0) cmds0, cmds0);
+      start = (exec (w0 s0) actions0, actions0);
     }
   in
   let extra =
@@ -871,13 +871,13 @@ let component_with ~client_only_sources ~max_states ~within ~inputs ~props
     else
       []
   in
-  let extra_commands =
+  let extra_actions =
     if client_only_sources then
-      [ ("live-uses-client-command", fun _ cmds -> server_commands cmds) ]
+      [ ("live-uses-client-action", fun _ actions -> server_actions actions) ]
     else
       []
   in
-  run ~extra_commands ~max_states ~within ~model ~invariants ~extra
+  run ~extra_actions ~max_states ~within ~model ~invariants ~extra
     ~to_state:(fun w -> w.s)
     ()
   |> finish ~recorder ~allow_unreached m
@@ -941,42 +941,42 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
         }
       in
       let recorder = { taken = Hashtbl.create 64; label } in
-      let rec apply depth (w, acc) cmds =
+      let rec apply depth (w, acc) actions =
         List.fold_left
           (fun (w, acc) c ->
             let nav hist idx u =
               if depth > 50 then
-                failwith "navigation loop: commands keep navigating";
+                failwith "navigation loop: actions keep navigating";
               let w = { w with hist; idx } in
               let s, cs = send recorder m w (url_event u) in
               apply (depth + 1) ({ w with s }, acc @ cs) cs
             in
             match c with
-            | Cmd.Run (Cmd.Navigate u) ->
+            | Action.Run (Action.Navigate u) ->
                 let h = take (w.idx + 1) w.hist @ [ u ] in
                 if List.length h > max_history then
                   nav (List.tl h) w.idx u
                 else
                   nav h (w.idx + 1) u
-            | Cmd.Run (Cmd.Replace u) ->
+            | Action.Run (Action.Replace u) ->
                 nav
                   (take w.idx w.hist
                   @ (u :: List.filteri (fun i _ -> i > w.idx) w.hist)
                   )
                   w.idx u
-            | Cmd.Run Cmd.Back when w.idx > 0 ->
+            | Action.Run Action.Back when w.idx > 0 ->
                 nav w.hist (w.idx - 1) (nth w.hist (w.idx - 1))
-            | Cmd.Run Cmd.Forward when w.idx < List.length w.hist - 1 ->
+            | Action.Run Action.Forward when w.idx < List.length w.hist - 1 ->
                 nav w.hist (w.idx + 1) (nth w.hist (w.idx + 1))
-            | Cmd.Run Cmd.Reload ->
+            | Action.Run Action.Reload ->
                 nav w.hist w.idx (nth w.hist w.idx)
             | c ->
-                (host_cmd host w c, acc)
+                (host_action host w c, acc)
           )
-          (w, acc) cmds
+          (w, acc) actions
       in
       let view w = component.view w.s in
-      let s0, cmds0 = Machine.start m in
+      let s0, actions0 = Machine.start m in
       let to_state w = { router = w.s; history = w.hist; index = w.idx } in
       let user event = { event; via = User } in
       let model =
@@ -1014,14 +1014,14 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
               match mv.event with
               | Event e ->
                   let w = consume w mv.via in
-                  let s, cmds = send recorder m w e in
-                  apply 0 ({ w with s }, cmds) cmds
+                  let s, actions = send recorder m w e in
+                  apply 0 ({ w with s }, actions) actions
               | Link u ->
-                  apply 0 (w, []) [ Cmd.Run (Cmd.Navigate u) ]
+                  apply 0 (w, []) [ Action.Run (Action.Navigate u) ]
               | Browser_back ->
-                  apply 0 (w, []) [ Cmd.Run Cmd.Back ]
+                  apply 0 (w, []) [ Action.Run Action.Back ]
               | Browser_forward ->
-                  apply 0 (w, []) [ Cmd.Run Cmd.Forward ]
+                  apply 0 (w, []) [ Action.Run Action.Forward ]
             );
           final = (fun w -> Machine.is_final m w.s);
           start =
@@ -1035,9 +1035,9 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
                   hist = [ url0 ];
                   idx = 0;
                 },
-                cmds0
+                actions0
               )
-              cmds0;
+              actions0;
         }
       in
       match

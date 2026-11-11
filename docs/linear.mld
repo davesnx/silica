@@ -107,7 +107,7 @@ let routes =
 [linear_app.mlx] renders the page of the current route, and a header with
 links. A link is made with [Router.link], so a press changes the route with no
 page load. The server gives status 404 when the route is [Not_found], and also
-when the detail finds no issue: the detail raises [Cmd.Set_status 404].
+when the detail finds no issue: the detail raises [Action.Set_status 404].
 
 The header stays at the same place for every route, so its components
 ([linear_create.mlx], [linear_me.mlx]) keep their state when the page changes:

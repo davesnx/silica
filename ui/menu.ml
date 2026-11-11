@@ -87,17 +87,17 @@ let navigate (props : props) highlighted nav =
 let focus (o : opened) =
   match o.highlighted with
   | Some i ->
-      Cmd.Focus (Ref.make (item_id o.props.id i))
+      Action.Focus (Ref.make (item_id o.props.id i))
   | None ->
-      Cmd.Focus (parts o.props).popup
+      Action.Focus (parts o.props).popup
 
-let show (o : opened) = Menu_machine.goto Open o ~cmds:[ focus o ]
+let show (o : opened) = Menu_machine.goto Open o ~actions:[ focus o ]
 
 let close ?(focus = true) (props : props) =
   Menu_machine.goto Closed props
-    ~cmds:
+    ~actions:
       ( if focus then
-          [ Cmd.Focus (parts props).trigger ]
+          [ Action.Focus (parts props).trigger ]
         else
           []
       )

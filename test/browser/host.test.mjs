@@ -426,7 +426,7 @@ test("element key handlers: payload, ~prevent only when handled", () => {
   const w = setup("");
   App.mount_events("root");
   const down = keydown(w, $("prevent"), { key: "ArrowDown", ctrlKey: true, shiftKey: true });
-  assert.ok(down.defaultPrevented, "~prevent cancels the default action at once");
+  assert.ok(down.defaultPrevented, "~prevent cancels the default behavior at once");
   assert.equal(text("log"), "prevent:Ctrl+Shift+ArrowDown");
   const other = keydown(w, $("prevent"), { key: "a" });
   assert.ok(!other.defaultPrevented, "the handler returned None: no prevent");
@@ -576,10 +576,10 @@ test("load_script loads a src once per page", () => {
   const scripts = (src) => [...document.querySelectorAll("script")].filter((s) => s.getAttribute("src") === src);
   click(w, $("load-a"));
   click(w, $("load-a"));
-  assert.equal(scripts("/a.js").length, 1, "one script element for two commands");
+  assert.equal(scripts("/a.js").length, 1, "one script element for two actions");
   assert.equal(gadgetLog(), "", "no answer before the load");
   scripts("/a.js")[0].dispatchEvent(new w.Event("load"));
-  assert.equal(gadgetLog(), "load:/a.js:true|load:/a.js:true", "both commands get the load");
+  assert.equal(gadgetLog(), "load:/a.js:true|load:/a.js:true", "both actions get the load");
   click(w, $("load-a"));
   assert.equal(gadgetLog(), "load:/a.js:true|load:/a.js:true|load:/a.js:true", "a loaded src answers at once");
   assert.equal(scripts("/a.js").length, 1, "and is not loaded again");
@@ -588,7 +588,7 @@ test("load_script loads a src once per page", () => {
   assert.match(gadgetLog(), /load:\/b.js:false$/, "a failed load answers false");
   assert.equal(scripts("/b.js").length, 0, "the failed script element is removed");
   click(w, $("load-b"));
-  assert.equal(scripts("/b.js").length, 1, "a later command tries again");
+  assert.equal(scripts("/b.js").length, 1, "a later action tries again");
 });
 
 test("scroll, visibility and online sources report and stop", () => {
@@ -643,7 +643,7 @@ function stubMedia(w, matches) {
   };
 }
 
-test("document attribute and cookie commands, cookie reader", () => {
+test("document attribute and cookie actions, cookie reader", () => {
   const w = setup("");
   App.mount_document("root");
   const root = document.documentElement;

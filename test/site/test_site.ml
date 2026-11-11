@@ -301,7 +301,7 @@ let test_every_component_has_a_page () =
 let test_search_targets () =
   let url value =
     match Site_search.target value with
-    | Some (Silica.Cmd.Navigate url) ->
+    | Some (Silica.Action.Navigate url) ->
         Silica.Url.to_string url
     | Some _ ->
         Alcotest.failf "%s: not a navigation" value

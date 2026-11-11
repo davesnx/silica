@@ -93,7 +93,8 @@ let machine =
         | Changed false ->
             Search_machine.goto Closed ()
         | Ran value ->
-            Search_machine.goto Closed () ~cmds:(Option.to_list (target value))
+            Search_machine.goto Closed ()
+              ~actions:(Option.to_list (target value))
         | Open_search | Changed true ->
             Search_machine.unhandled
         );

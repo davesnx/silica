@@ -2,7 +2,7 @@
 
 [silica-ui] (see {!page-ui}) ships a theme API in the module
 [Silica_ui.Theme]. It uses only
-the public API of Silica: a machine, two commands, a source and CSS. An app
+the public API of Silica: a machine, two actions, a source and CSS. An app
 could write it, but it does not have to.
 
 {1:model Themes and tokens}
@@ -97,8 +97,8 @@ setting and does not see the theme that the user chose.
 The choice is [Silica_ui.Theme.choice]: [System], which follows the system
 setting live, or [Fixed theme]. The theme component holds it. At the start and
 at each change it sets [data-theme] on the [<html>] element with
-{!Silica.Cmd.Set_document_attribute}. A change made in the page is also stored
-in the cookie [silica-theme] for one year ({!Silica.Cmd.Set_cookie}).
+{!Silica.Action.Set_document_attribute}. A change made in the page is also stored
+in the cookie [silica-theme] for one year ({!Silica.Action.Set_cookie}).
 
 Put one theme component in the page, here in the mini Linear header:
 

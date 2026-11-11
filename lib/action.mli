@@ -1,7 +1,7 @@
-(** Effects a machine asks its host to run. App code builds {!t} values only.
-    Timers and calls are not commands: a state owns them through [after] and
-    [invoke] (see {!Machine}), and hosts see them as {!host} values that only
-    the library builds. *)
+(** Requests that a machine asks its host to carry out. App code builds {!t}
+    values only. Timers and calls are not actions: a state owns them through
+    [after] and [invoke] (see {!Machine}), and hosts see them as {!host} values
+    that only the library builds. *)
 
 type 'e t =
   | Focus of Ref.t
@@ -11,9 +11,9 @@ type 'e t =
   | Scroll_into_view of Ref.t
       (** Scroll the element into view by the smallest distance, as
           [scrollIntoView({ block: "nearest" })]. The browser does it after the
-          other commands and the sources of the same step, so an {!Anchor}
-          places a new popup first and the page does not scroll to where the
-          popup was before. *)
+          other actions and the sources of the same step, so an {!Anchor} places
+          a new popup first and the page does not scroll to where the popup was
+          before. *)
   | Scroll_to of { target : Ref.t option; left : int; top : int }
       (** Scroll the element with the ref [target], or the window when [target]
           is [None], so that the point ([left], [top]) of its content is at its
@@ -28,7 +28,7 @@ type 'e t =
   | Load_script of { src : string; on_result : bool -> 'e }
       (** Load the script at the URL [src] and raise [on_result] with [true]
           when it ran, or with [false] when it failed to load. A [src] loads
-          once per page: a second command for a loaded [src] raises
+          once per page: a second action for a loaded [src] raises
           [on_result true] at once, and one for a [src] that is still loading
           waits for the same load. *)
   | Navigate of Url.t
@@ -98,7 +98,7 @@ type 'e source =
       rate : Rate.t option;
     }
       (** A key press anywhere in the page that equals a key of [bindings]
-          raises its event. With [prevent] the default action of that key is
+          raises its event. With [prevent] the default behavior of that key is
           prevented. A key that an element handler prevented does not count.
           While focus is in a text field (an input, a textarea, a select or
           editable content), only keys with Ctrl or Meta, and Escape, count:
@@ -159,7 +159,7 @@ type 'e source =
 
 val check : 'e t -> unit
 (** Raises [Invalid_argument] for a {!Set_document_attribute} or {!Set_cookie}
-    with a name or value outside the rules of those commands. Hosts call it
+    with a name or value outside the rules of those actions. Hosts call it
     before they run either. *)
 
 val source_name : 'e source -> string
@@ -213,8 +213,8 @@ type 'e host =
           id that is not running does nothing. *)
 
 val map : ('a -> 'b) -> 'a t -> 'b t
-(** Change the events of a command, for example to put a child command into a
+(** Change the events of an action, for example to put a child action into a
     parent machine. *)
 
 val map_host : ('a -> 'b) -> 'a host -> 'b host
-(** Change the events of a host command, as {!map} does. *)
+(** Change the events of a host action, as {!map} does. *)

@@ -203,7 +203,7 @@ let to_quint ?(labels = []) t =
     else
       snake e
   in
-  let actions =
+  let transitions =
     List.map
       (fun (a, c, e) ->
         ( a,
@@ -257,7 +257,7 @@ let to_quint ?(labels = []) t =
     (set
        (List.filter_map
           (fun s ->
-            if List.exists (fun (a, _, _) -> a = s.name) actions then
+            if List.exists (fun (a, _, _) -> a = s.name) transitions then
               Some (state s.name)
             else
               None
@@ -278,8 +278,10 @@ let to_quint ?(labels = []) t =
     \    last' = OnStart,\n\
     \  }\n\n"
     (state t.init) (state t.init);
-  List.iter (fun (_, name, body) -> pr "  action %s = %s\n" name body) actions;
-  ( match actions with
+  List.iter
+    (fun (_, name, body) -> pr "  action %s = %s\n" name body)
+    transitions;
+  ( match transitions with
   | [] ->
       pr
         "  action step = all {\n\
@@ -289,7 +291,7 @@ let to_quint ?(labels = []) t =
         \  }\n\n"
   | _ ->
       pr "\n  action step = any {\n";
-      List.iter (fun (_, name, _) -> pr "    %s,\n" name) actions;
+      List.iter (fun (_, name, _) -> pr "    %s,\n" name) transitions;
       pr "  }\n\n"
   );
   pr "  val resources_owned = running.subseteq(owned(state))\n";

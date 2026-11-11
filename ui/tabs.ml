@@ -108,7 +108,8 @@ let machine =
             | Some value ->
                 Tabs_machine.goto Ready
                   { model with focused = value }
-                  ~cmds:[ Cmd.Focus (Ref.make (tab_id model.props.id value)) ]
+                  ~actions:
+                    [ Action.Focus (Ref.make (tab_id model.props.id value)) ]
             | None ->
                 Tabs_machine.unhandled
           )

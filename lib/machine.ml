@@ -4,8 +4,8 @@ exception Missing_case of { machine : string; index : int }
 
 type ('s, 'e) outcome =
   | Unhandled
-  | Stay of 'e Cmd.t list
-  | Goto of { reenter : bool; target : 's; cmds : 'e Cmd.t list }
+  | Stay of 'e Action.t list
+  | Goto of { reenter : bool; target : 's; actions : 'e Action.t list }
 
 type resource =
   | Timer of { id : string; ms : int }
@@ -18,12 +18,13 @@ type ('s, 'e) t = {
   init : 's;
   key : 's -> string;
   final : 's -> bool;
-  step : 's -> 'e -> 's * 'e Cmd.host list * [ `Unhandled | `Kept | `Entered ];
-  enter : 's -> 'e Cmd.host list;
-  first : 'e Cmd.host list;
-  exit : 's -> 'e Cmd.host list;
+  step :
+    's -> 'e -> 's * 'e Action.host list * [ `Unhandled | `Kept | `Entered ];
+  enter : 's -> 'e Action.host list;
+  first : 'e Action.host list;
+  exit : 's -> 'e Action.host list;
   active : 's -> resource list;
-  held : 's -> 'e Cmd.source list;
+  held : 's -> 'e Action.source list;
   covered : int list;
   spec : Spec.t;
   type_id : ('s * 'e) Type.Id.t;
@@ -39,14 +40,14 @@ let active m = m.active
 let held m = m.held
 let exit m = m.exit
 let step m = m.step
-let run commands = List.map (fun command -> Cmd.Run command) commands
+let run actions = List.map (fun action -> Action.Run action) actions
 
 let send m snapshot event =
   match m.step snapshot event with
-  | s, cmds, `Unhandled ->
-      (s, cmds, `Unhandled)
-  | s, cmds, (`Kept | `Entered) ->
-      (s, cmds, `Handled)
+  | s, actions, `Unhandled ->
+      (s, actions, `Unhandled)
+  | s, actions, (`Kept | `Entered) ->
+      (s, actions, `Handled)
 
 let start m =
   let s = m.init in
@@ -60,8 +61,8 @@ let map_snapshot m ~get ~set =
     final = (fun s -> m.final (set s));
     step =
       (fun s e ->
-        let s', cmds, handled = m.step (set s) e in
-        (get s', cmds, handled)
+        let s', actions, handled = m.step (set s) e in
+        (get s', actions, handled)
       );
     enter = (fun s -> m.enter (set s));
     first = m.first;
@@ -96,8 +97,8 @@ struct
     state : 'p State.t;
     name : string;
     to_ : any list;
-    entry : 'p -> 'e Cmd.t list;
-    exit : 'p -> 'e Cmd.t list;
+    entry : 'p -> 'e Action.t list;
+    exit : 'p -> 'e Action.t list;
     hooks : bool;
     after : (int * 'e) list;
     invoke : ('p, 'e) Source.t list;
@@ -128,13 +129,13 @@ struct
     else
       -1
 
-  let goto ?(cmds = []) state data =
-    Goto { reenter = false; target = At (state, data); cmds }
+  let goto ?(actions = []) state data =
+    Goto { reenter = false; target = At (state, data); actions }
 
-  let reenter ?(cmds = []) state data =
-    Goto { reenter = true; target = At (state, data); cmds }
+  let reenter ?(actions = []) state data =
+    Goto { reenter = true; target = At (state, data); actions }
 
-  let stay cmds = Stay cmds
+  let stay actions = Stay actions
   let unhandled = Unhandled
   let ignore _ _ = Unhandled
 
@@ -187,9 +188,11 @@ struct
     let call_id c i = id ^ "/" ^ c.name ^ "/invoke" ^ string_of_int i in
     let enter (At (state, data)) =
       let c = find state in
-      List.map (fun command -> Cmd.Run command) (c.entry data)
+      List.map (fun action -> Action.Run action) (c.entry data)
       @ List.mapi
-          (fun i (ms, event) -> Cmd.Start_timer { id = timer_id c i; ms; event })
+          (fun i (ms, event) ->
+            Action.Start_timer { id = timer_id c i; ms; event }
+          )
           c.after
       @ List.mapi
           (fun i source -> Source.start (call_id c i) data source)
@@ -197,9 +200,9 @@ struct
     in
     let exit (At (state, data)) =
       let c = find state in
-      List.map (fun command -> Cmd.Run command) (c.exit data)
-      @ List.mapi (fun i _ -> Cmd.Stop (timer_id c i)) c.after
-      @ List.mapi (fun i _ -> Cmd.Stop (call_id c i)) c.invoke
+      List.map (fun action -> Action.Run action) (c.exit data)
+      @ List.mapi (fun i _ -> Action.Stop (timer_id c i)) c.after
+      @ List.mapi (fun i _ -> Action.Stop (call_id c i)) c.invoke
     in
     let active (At (state, _)) =
       let c = find state in
@@ -247,14 +250,14 @@ struct
         match handle current event with
         | Unhandled ->
             (current, [], `Unhandled)
-        | Stay cmds ->
-            (current, run cmds, `Kept)
-        | Goto { reenter; target; cmds } ->
+        | Stay actions ->
+            (current, run actions, `Kept)
+        | Goto { reenter; target; actions } ->
             let (At (next, _)) = target in
             if reenter || not (same state next) then
-              (target, exit current @ run cmds @ enter target, `Entered)
+              (target, exit current @ run actions @ enter target, `Entered)
             else
-              (target, run cmds, `Kept)
+              (target, run actions, `Kept)
     in
     let (At (init_state, _)) = init in
     let spec =
@@ -335,7 +338,7 @@ struct
       type_id = Type.Id.make ();
     }
 
-  let no_commands _ = []
+  let no_actions _ = []
   let empty_list = []
 
   type targets = Targets.t = [] | ( :: ) : 'p State.t * targets -> targets
@@ -347,8 +350,8 @@ struct
         state;
         name;
         to_ = Targets.to_list to_;
-        entry = Option.value entry ~default:no_commands;
-        exit = Option.value exit ~default:no_commands;
+        entry = Option.value entry ~default:no_actions;
+        exit = Option.value exit ~default:no_actions;
         hooks = Option.is_some entry || Option.is_some exit;
         after;
         invoke;

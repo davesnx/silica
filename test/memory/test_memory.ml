@@ -147,9 +147,9 @@ let link_press () =
   string "h1" "about" (h1 t);
   string "title" "About" (Memory.title t)
 
-let navigate_command () =
+let navigate_action () =
   let t = router "/home" in
-  press t "cmd-nav";
+  press t "action-nav";
   string "url" "/about" (Memory.url t);
   string "h1" "about" (h1 t)
 
@@ -270,7 +270,7 @@ let block_stops_link_press () =
   strings "no new entry" [ "/home"; "/edit" ] (Memory.history t);
   bool "leaving does not ask" false (Memory.leave_asks t)
 
-let block_stops_commands () =
+let block_stops_actions () =
   let t = edit (router "/home") in
   press t "edit-home";
   string "navigate stopped" "asking push /home" (text t "edit-status");
@@ -476,12 +476,12 @@ let kind socket t =
 
 let welcome socket =
   Memory.socket_open socket;
-  Memory.socket_message socket {|{"t":"hello","v":1}|}
+  Memory.socket_message socket {|{"t":"hello","v":2}|}
 
 let state socket seq value =
   Memory.socket_message socket
-    (Printf.sprintf {|{"t":"state","seq":%d,"ack":0,"state":%d,"cmds":[]}|} seq
-       value
+    (Printf.sprintf {|{"t":"state","seq":%d,"ack":0,"state":%d,"actions":[]}|}
+       seq value
     )
 
 let socket t n = List.nth (Memory.sockets t) n
@@ -500,10 +500,10 @@ let topic_lifecycle () =
     "hello"
     [
       json
-        {|{"t":"hello","v":1,"csrf":"tok-t","sub":{"topic":"news","key":"room"}}|};
+        {|{"t":"hello","v":2,"csrf":"tok-t","sub":{"topic":"news","key":"room"}}|};
     ]
     (messages ws);
-  Memory.socket_message ws {|{"t":"hello","v":1}|};
+  Memory.socket_message ws {|{"t":"hello","v":2}|};
   state ws 3 30;
   string "ready" "ready 30 seq 3" (status ());
   state ws 3 31;
@@ -865,11 +865,11 @@ let first_paint_waits_while_a_sibling_steps () =
         );
     }
   in
-  let t = M.mount root in
-  M.advance t 20;
-  int "a sibling stepped, the chunk still loads: no paint" 0 (M.paints t);
+  let t = Memory.mount root in
+  Memory.advance t 20;
+  int "a sibling stepped, the chunk still loads: no paint" 0 (Memory.paints t);
   Lazy_page.finish loader (Ok Lazy_page.page);
-  bool "painted" true (M.paints t > 0);
+  bool "painted" true (Memory.paints t > 0);
   string "the page" "page 0" (text t "page")
 
 let a_ready_chunk_paints_at_once () =
@@ -989,8 +989,8 @@ let () =
           case "starting a call again drops the answer of the first" call_again;
           case "link press pushes history, ignores modified clicks, sets title"
             link_press;
-          case "Navigate command pushes history and changes the view"
-            navigate_command;
+          case "Navigate action pushes history and changes the view"
+            navigate_action;
           case "popstate goes back and forward" back_and_forward;
           case "unknown URL renders not_found" not_found;
           case
@@ -1033,7 +1033,7 @@ let () =
           case "a link with no preload attribute"
             hover_without_preload_attribute;
           case "a block stops back, and Resume goes back" block_stops_link_press;
-          case "a block stops Navigate; Stay and Leave" block_stops_commands;
+          case "a block stops Navigate; Stay and Leave" block_stops_actions;
           case "guard Cancel reverts the push" guard_cancel_reverts;
           case "focus and announcement after navigation" focus_after_navigation;
         ]

@@ -1,7 +1,7 @@
 open Silica
 
 let machine (type s e) ~id ~(init : s) ?final
-    (step : s -> e -> (s * e Cmd.t list) option) : (s, e) Machine.t =
+    (step : s -> e -> (s * e Action.t list) option) : (s, e) Machine.t =
   let module Phase = struct
     type _ t = Active : s t | Final : s t
   end in
@@ -19,11 +19,11 @@ let machine (type s e) ~id ~(init : s) ?final
     match step data event with
     | None ->
         Phase_machine.unhandled
-    | Some (data, cmds) ->
+    | Some (data, actions) ->
         if is_final data then
-          Phase_machine.goto ~cmds Phase.Final data
+          Phase_machine.goto ~actions Phase.Final data
         else
-          Phase_machine.goto ~cmds Phase.Active data
+          Phase_machine.goto ~actions Phase.Active data
   in
   let table =
     Phase_machine.make ~id ~init:(at init)

@@ -124,7 +124,7 @@ test("submit is prevented and delivered", () => {
   assert.equal(text("submits"), "1");
 });
 
-test("focus command moves focus, focus and blur events are delivered", () => {
+test("focus action moves focus, focus and blur events are delivered", () => {
   const w = setup();
   App.mount_basic("root");
   click(w, $("focus-btn"));
@@ -277,10 +277,10 @@ test("a replace link replaces the history entry", () => {
   assert.deepEqual(scroll.calls, []);
 });
 
-test("Navigate command pushes history and changes the view", () => {
+test("Navigate action pushes history and changes the view", () => {
   const w = setup("http://localhost/home");
   App.mount_router("root");
-  click(w, $("cmd-nav"));
+  click(w, $("action-nav"));
   assert.equal(location.pathname, "/about");
   assert.equal(document.querySelector("h1").textContent, "about");
 });
@@ -399,7 +399,7 @@ test("scroll: a user scroll ends a restore that waits", async () => {
 test("scroll: a push with a hash scrolls to its target after paint", () => {
   const w = setup("http://localhost/home");
   App.mount_router("root");
-  click(w, $("cmd-hash"));
+  click(w, $("action-hash"));
   assert.equal(location.pathname, "/about");
   assert.equal(location.hash, "#section");
   assert.deepEqual(scroll.intoView, ["section"]);
@@ -688,11 +688,11 @@ function fakeSockets() {
     }
     welcome() {
       this.open();
-      this.receive('{"t":"hello","v":1}');
+      this.receive('{"t":"hello","v":2}');
     }
-    state(seq, value, cmds = []) {
+    state(seq, value, actions = []) {
       this.receive(
-        JSON.stringify({ t: "state", seq, ack: 0, state: value, cmds }),
+        JSON.stringify({ t: "state", seq, ack: 0, state: value, actions }),
       );
     }
     drop(code = 1006) {
@@ -708,7 +708,7 @@ function fakeSockets() {
 
 const live_url = "ws://localhost:8080/_silica/live";
 
-test("live renders server state, sends events, runs host commands", () => {
+test("live renders server state, sends events, runs host actions", () => {
   const w = setup("http://localhost:8080/");
   const sockets = fakeSockets();
   App.mount_live("root");
@@ -730,7 +730,7 @@ test("live renders server state, sends events, runs host commands", () => {
   assert.equal(ws.binaryType, "arraybuffer");
   ws.receive(
     new TextEncoder().encode(
-      '{"t":"state","seq":3,"ack":1,"state":5,"cmds":[]}',
+      '{"t":"state","seq":3,"ack":1,"state":5,"actions":[]}',
     ).buffer,
   );
   assert.equal(text("n"), "5");
@@ -1019,7 +1019,7 @@ test("island hello: version, csrf from the meta, channel, instance id", async ()
   sockets[0].open();
   const [hello] = sockets[0].messages();
   assert.equal(hello.t, "hello");
-  assert.equal(hello.v, 1);
+  assert.equal(hello.v, 2);
   assert.equal(hello.csrf, "tok-9");
   assert.equal(hello.sub.island, "counter");
   assert.match(hello.sub.id, /^[0-9a-f]{16}$/);
@@ -1072,7 +1072,7 @@ test("a state before Hello_ok is ignored", () => {
   sockets[0].open();
   sockets[0].state(1, 9);
   assert.ok($("stale"));
-  sockets[0].receive('{"t":"hello","v":1}');
+  sockets[0].receive('{"t":"hello","v":2}');
   sockets[0].state(1, 9);
   assert.equal(text("n"), "9");
 });
@@ -1281,7 +1281,7 @@ test("events are dropped while the socket is down; offline attribute; ids contin
   ws.open();
   click(w, $("plus"));
   assert.equal(ws.messages().filter((m) => m.t === "event").length, 0);
-  ws.receive('{"t":"hello","v":1}');
+  ws.receive('{"t":"hello","v":2}');
   assert.equal(root.hasAttribute("data-silica-offline"), true);
   ws.state(1, 2);
   assert.equal(root.hasAttribute("data-silica-offline"), false);
@@ -1306,12 +1306,12 @@ test("topic: hello, loading, ready, stale after loss, fresh after reconnect", as
   assert.deepEqual(ws.messages(), [
     {
       t: "hello",
-      v: 1,
+      v: 2,
       csrf: "tok-t",
       sub: { topic: "news", key: "room" },
     },
   ]);
-  ws.receive('{"t":"hello","v":1}');
+  ws.receive('{"t":"hello","v":2}');
   ws.state(3, 30);
   assert.equal(status(), "ready 30 seq 3");
   ws.state(3, 31);

@@ -25,7 +25,7 @@ val start :
   io:Platform.io ->
   sub:Protocol.subscription ->
   on_state:
-    (seq:int -> state:Silica_json.Json.t -> cmds:Protocol.host list -> unit) ->
+    (seq:int -> state:Silica_json.Json.t -> actions:Protocol.host list -> unit) ->
   on_down:(unit -> unit) ->
   on_fatal:(fatal -> unit) ->
   unit ->
@@ -56,4 +56,4 @@ val subscribe :
   unit ->
   unit
 (** Subscribe to the topic under the key. [deliver] gets the updates that
-    {!Cmd.Start_live} describes. The result stops the subscription. *)
+    {!Action.Start_live} describes. The result stops the subscription. *)

@@ -96,13 +96,13 @@ val component :
     with [true] and with [false]. A [Block] gives [on_attempt] with a push and
     with a back, both to ["/"]. A [Dismiss] layer gives its Escape event, its
     outside event and its focus-out event. A [Focus_trap], [Scroll_lock] and
-    [Anchor] give no event. A command with a result event answers once, at any
+    [Anchor] give no event. An action with a result event answers once, at any
     later step and in any state: [Measure] with [Some Silica.Rect.zero], [Copy]
     and [Load_script] with [true]. The checker treats {!Silica.Rate} limits as
     pass-through: every value arrives, and none is held back. Elements inside a
     {!Silica.Node.Portal} and the body of a {!Silica.Node.Boundary} are part of
     the view. Time is abstract: a running timer can fire at any step, in any
-    order. A timer, call or subscription starts with its start command and stops
+    order. A timer, call or subscription starts with its start action and stops
     with [Stop]; a call ends with its answer and a timer when it fires. So
     nothing of a state that was left arrives.
 
@@ -148,10 +148,10 @@ val live :
     or [anchor], [scroll], [visibility], [online], [block]) is a [Violation]
     named ["live-uses-client-source"]: the server has no page to run it on. A
     step that runs [Measure], [Copy] or [Load_script] is a [Violation] named
-    ["live-uses-client-command"]: the protocol carries no answer of the client
-    back to the machine (see {!Silica.Protocol.host_of_cmd}). So is a step that
-    runs [Resume], [Revert_navigation], [Preload] or [Set_status]: they never
-    cross the wire. *)
+    ["live-uses-client-action"]: the protocol carries no answer of the client
+    back to the machine (see {!Silica.Protocol.host_of_host_action}). So is a
+    step that runs [Resume], [Revert_navigation], [Preload] or [Set_status]:
+    they never cross the wire. *)
 
 type 's app_state = {
   router : 's;  (** The snapshot of the root machine. *)
@@ -187,7 +187,7 @@ val app :
     [Router.make], started at [print] of the first route, with a simulated
     history. The root view is the only view rendered: the page is a component
     node in it, so the page is listed in [not_explored] and its machine is not
-    run. Commands [Navigate], [Replace], [Back], [Forward] and [Reload] change
+    run. Actions [Navigate], [Replace], [Back], [Forward] and [Reload] change
     the simulated history and become the event [url_event url] of the root
     machine. [Resume], [Revert_navigation], [Preload] and [Set_status] do
     nothing here. [max_history] (default 4) bounds the history; the oldest

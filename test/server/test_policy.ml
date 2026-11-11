@@ -806,7 +806,7 @@ let shown_t =
 
 let shown fake = List.map show (messages fake)
 
-let hello ?(v = 1) ?csrf (c : client) sub =
+let hello ?(v = Protocol.version) ?csrf (c : client) sub =
   Protocol.encode_client
     (Protocol.Hello { v; csrf = Option.value csrf ~default:c.csrf; sub })
 
@@ -956,7 +956,7 @@ let island_tests =
           (pair (option int) (list shown_t))
           "version"
           (Some Protocol.close_version, [])
-          (close_code (hello ~v:2 c (island ())));
+          (close_code (hello ~v:1 c (island ())));
         check
           (pair (option int) (list shown_t))
           "token of another session"
@@ -1276,11 +1276,11 @@ let topic_tests =
         let published = ref false in
         let socket =
           {
-            S.send =
+            Server.send =
               (fun text ->
                 if not !published then (
                   published := true;
-                  ignore (S.publish t counts_topic ~key:"k" 42)
+                  ignore (Server.publish t counts_topic ~key:"k" 42)
                 );
                 sent := text :: !sent
               );
@@ -1289,12 +1289,12 @@ let topic_tests =
         in
         let connection =
           match upgrade t (ws_headers (Some c)) with
-          | S.Accepted attach ->
+          | Server.Accepted attach ->
               attach socket
-          | S.Refused r ->
+          | Server.Refused r ->
               Alcotest.failf "refused with %d" r.status
         in
-        connection.S.receive (hello c (sub ()));
+        connection.Server.receive (hello c (sub ()));
         let shown_list =
           List.rev_map
             (fun text ->

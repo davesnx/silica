@@ -1,17 +1,17 @@
-(** Live protocol, version 1. Wire messages between a live client and the
+(** Live protocol, version 2. Wire messages between a live client and the
     server, shared by both sides. One socket serves one subscription: an island
     or a topic key. Every message is one JSON object with a ["t"] tag.
 
-    The client sends first [{"t":"hello","v":1,"csrf":...,"sub":...}] where
+    The client sends first [{"t":"hello","v":2,"csrf":...,"sub":...}] where
     [sub] is [{"island":channel,"id":instance}] or [{"topic":name,"key":key}].
-    The server answers [{"t":"hello","v":1}], or closes the socket with a close
-    code. Then: [{"t":"state","seq":n,"ack":n,"state":...,"cmds":[...]}] from
+    The server answers [{"t":"hello","v":2}], or closes the socket with a close
+    code. Then: [{"t":"state","seq":n,"ack":n,"state":...,"actions":[...]}] from
     the server, [{"t":"event","id":n,"event":...}] from the client,
     [{"t":"error","code":...}] from the server, and [{"t":"ping"}] from the
     client, answered by [{"t":"pong"}]. *)
 
 val version : int
-(** The protocol version, [1]. A hello with another version closes the socket.
+(** The protocol version, [2]. A hello with another version closes the socket.
 *)
 
 type host =
@@ -25,27 +25,27 @@ type host =
   | Forward
   | Reload
 
-val host_of_cmd : 'e Cmd.host -> host option
+val host_of_host_action : 'e Action.host -> host option
 (** [None] for [Start_timer], [Start_call], [Start_live], [Start_source],
     [Stop], [Set_title] and [Remount], which never cross the wire, and for the
-    commands with a result event ([Measure], [Copy], [Load_script]): the event
+    actions with a result event ([Measure], [Copy], [Load_script]): the event
     would be made by a function on the server, and the protocol carries no
-    answer from the client to a command. [None] too for the navigation and page
-    commands that only make sense for the page that owns them: [Resume] answers
-    a [Block] source, which a Live machine cannot hold; [Revert_navigation]
+    answer from the client to an action. [None] too for the navigation and page
+    actions that only make sense for the page that owns them: [Resume] answers a
+    [Block] source, which a Live machine cannot hold; [Revert_navigation]
     belongs to the router of the page; [Preload] fills the call cache of the
     page runtime, which a Live machine does not use; [Set_status] is for a
     server render, and an island renders from its initial state. The checker
     ([Check.live]) reports a Live machine that runs one of these. *)
 
-val host_to_cmd : host -> 'e Cmd.t
-(** The command that a host message stands for. *)
+val host_to_action : host -> 'e Action.t
+(** The action that a host message stands for. *)
 
 val encode_host : host -> Silica_json.Json.t
-(** The JSON form of a host command. *)
+(** The JSON form of a host action. *)
 
 val decode_host : Silica_json.Json.t -> (host, string) result
-(** Read a host command from JSON. *)
+(** Read a host action from JSON. *)
 
 type subscription =
   | Island of { channel : string; instance : string }
@@ -65,7 +65,7 @@ type server =
       seq : int;
       ack : int;
       state : Silica_json.Json.t;
-      cmds : host list;
+      actions : host list;
     }
       (** The full state. [seq] grows with each state of the subscription; [ack]
           is the id of the last event the server handled (0 for none). *)

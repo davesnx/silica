@@ -1,5 +1,5 @@
 (** A simulated host around {!Silica.Instance}, for tests. It keeps the timers
-    and calls that the commands started, and a log of every command. *)
+    and calls that the actions started, and a log of every action. *)
 
 type ('s, 'e) t
 
@@ -37,7 +37,7 @@ val running : ('s, 'e) t -> string list
 (** The ids of the running timers and calls, sorted. *)
 
 val sources : ('s, 'e) t -> (string * string) list
-(** The running held sources, as (id, {!Silica.Cmd.source_name}), in start
+(** The running held sources, as (id, {!Silica.Action.source_name}), in start
     order. *)
 
 val press_key : ('s, 'e) t -> Silica.Key.t -> bool

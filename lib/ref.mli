@@ -1,4 +1,4 @@
-(** Names for nodes that commands can target (focus, blur, scroll). *)
+(** Names for nodes that actions can target (focus, blur, scroll). *)
 
 type t
 

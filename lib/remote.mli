@@ -24,8 +24,8 @@ val output_id : ('i, 'o) endpoint -> 'o Type.Id.t
 
 type request =
   | Request : ('i, 'o) endpoint * 'i -> request
-      (** One call of an endpoint with its input, as {!Cmd.Preload} carries it.
-      *)
+      (** One call of an endpoint with its input, as {!Action.Preload} carries
+          it. *)
 
 val request : ('i, 'o) endpoint -> 'i -> request
 (** [request endpoint input] is [Request (endpoint, input)]. *)

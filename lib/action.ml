@@ -127,7 +127,7 @@ let is_cookie_char c =
   || is_digit c || c = '-' || c = '_' || c = '.'
 
 let reject what text =
-  invalid_arg ("Silica.Cmd: bad " ^ what ^ " \"" ^ String.escaped text ^ "\"")
+  invalid_arg ("Silica.Action: bad " ^ what ^ " \"" ^ String.escaped text ^ "\"")
 
 let check = function
   | Set_document_attribute { name; _ } ->
@@ -237,8 +237,8 @@ let map_refs f = function
       source
 
 let map_host (type a b) (f : a -> b) : a host -> b host = function
-  | Run command ->
-      Run (map f command)
+  | Run action ->
+      Run (map f action)
   | Start_source { id; source } ->
       Start_source { id; source = map_source f source }
   | Start_timer { id; ms; event } ->

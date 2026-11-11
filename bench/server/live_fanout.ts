@@ -59,7 +59,7 @@ try {
     };
     await new Promise<void>((ok, fail) => {
       client.socket.onopen = () => {
-        client.socket.send(JSON.stringify({ t: "hello", v: 1, csrf, sub: { topic: "issues", key: "all" } }));
+        client.socket.send(JSON.stringify({ t: "hello", v: 2, csrf, sub: { topic: "issues", key: "all" } }));
       };
       client.socket.onmessage = (m) => {
         if (!String(m.data).startsWith('{"t":"state"')) return;

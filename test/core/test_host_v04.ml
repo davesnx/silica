@@ -341,21 +341,21 @@ end
 
 let test_machine_sources () =
   let machine = Held.machine in
-  let state, commands = Machine.start machine in
-  Alcotest.(check int) "no source in the first state" 0 (List.length commands);
+  let state, actions = Machine.start machine in
+  Alcotest.(check int) "no source in the first state" 0 (List.length actions);
   Alcotest.(check int)
     "no held source" 0
     (List.length (Machine.held machine state));
-  let state, commands, _ = Machine.send machine state Held.Open in
+  let state, actions, _ = Machine.send machine state Held.Open in
   let started =
     List.filter_map
       (function
-        | Cmd.Start_source { id; source } ->
-            Some (id ^ " " ^ Cmd.source_name source)
+        | Action.Start_source { id; source } ->
+            Some (id ^ " " ^ Action.source_name source)
         | _ ->
             None
         )
-      commands
+      actions
   in
   Alcotest.check strings "sources start on entry"
     [
@@ -389,9 +389,9 @@ let test_machine_sources () =
     ]
     popup.held;
   Alcotest.check strings "calls are not held" [] popup.sources;
-  let _, commands, _ = Machine.send machine state Held.Escape in
+  let _, actions, _ = Machine.send machine state Held.Escape in
   let stopped =
-    List.filter_map (function Cmd.Stop id -> Some id | _ -> None) commands
+    List.filter_map (function Action.Stop id -> Some id | _ -> None) actions
   in
   Alcotest.(check int) "every source stops on exit" 6 (List.length stopped)
 

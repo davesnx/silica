@@ -20,7 +20,7 @@ each element into a call of {!Silica.Node.element}.
   name that is an OCaml keyword: [class_], [for_], [aria_label]. The ppx checks
   the name and the type of the value for the tag.
 - A boolean attribute takes a [bool]: [disabled=(n = 0)].
-- [ref] connects the element to a {!Silica.Ref.t}, so that commands can focus,
+- [ref] connects the element to a {!Silica.Ref.t}, so that actions can focus,
   measure or scroll it.
 - An attribute that JSX cannot name, such as a [data-*] attribute, is written
   with {!Silica.Node.element} and {!Silica.Attr}.
@@ -40,7 +40,7 @@ The event attributes take an event value, not a function that runs code:
 }
 
 The key and pointer attributes take a companion attribute with the suffix
-[_prevent], which cancels the default action of the browser when the handler
+[_prevent], which cancels the default behavior of the browser when the handler
 gives an event: [on_key_down_prevent=true]. Those attributes and [on_input]
 also take the suffix [_rate] with a {!Silica.Rate.t}, which holds back values
 that come too fast: [on_input_rate=(Rate.Debounce 300)]. The ppx rejects the

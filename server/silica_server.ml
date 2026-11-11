@@ -315,25 +315,27 @@ module Make (Io : IO) = struct
   let outcome ~title =
     { title; status = None; redirect = None; attributes = [] }
 
-  let apply outcome commands =
+  let apply outcome actions =
     List.fold_left
       (fun o -> function
-        | Cmd.Run (Cmd.Set_title title) ->
+        | Action.Run (Action.Set_title title) ->
             { o with title }
-        | Cmd.Run (Cmd.Set_status status) ->
+        | Action.Run (Action.Set_status status) ->
             { o with status = Some status }
-        | Cmd.Run (Cmd.Set_document_attribute { name; value } as command) ->
-            Cmd.check command;
+        | Action.Run (Action.Set_document_attribute { name; value } as action)
+          ->
+            Action.check action;
             {
               o with
               attributes = (name, value) :: List.remove_assoc name o.attributes;
             }
-        | Cmd.Run (Cmd.Navigate url | Cmd.Replace url) when o.redirect = None ->
+        | Action.Run (Action.Navigate url | Action.Replace url)
+          when o.redirect = None ->
             { o with redirect = Some url }
         | _ ->
             o
         )
-      outcome commands
+      outcome actions
 
   let respond ?answers ?csrf ?preload ~status ~scripts ~head outcome body =
     match outcome.redirect with
@@ -357,8 +359,8 @@ module Make (Io : IO) = struct
 
   let rendered ?dev ?on_error ?(islands = []) (c : (_, _) Component.t) ~title =
     let tree = Instance.mount ?dev ?on_error c in
-    let node, commands = update tree None in
-    let outcome = apply (outcome ~title) commands in
+    let node, actions = update tree None in
+    let outcome = apply (outcome ~title) actions in
     ( Instance.snapshot tree,
       outcome,
       fun b -> Render.to_buffer ~island:(island_html islands) b node
@@ -432,8 +434,8 @@ module Make (Io : IO) = struct
     let pending = ref [] in
     let bell = ref (Io.promise ()) in
     let deadline = Io.now () +. (float_of_int timeout_ms /. 1000.) in
-    let start : Instance.message Cmd.host -> unit = function
-      | Cmd.Start_call { id; endpoint; input; on_result; _ } -> (
+    let start : Instance.message Action.host -> unit = function
+      | Action.Start_call { id; endpoint; input; on_result; _ } -> (
           let path = Remote.path endpoint in
           match List.find_opt (fun h -> h.path = path) handlers with
           | None ->
@@ -465,9 +467,12 @@ module Make (Io : IO) = struct
                   Io.return ()
               )
         )
-      | Cmd.Stop id ->
+      | Action.Stop id ->
           pending := List.filter (fun slot -> slot.id <> id) !pending
-      | Cmd.Start_timer _ | Cmd.Start_source _ | Cmd.Start_live _ | Cmd.Run _ ->
+      | Action.Start_timer _
+      | Action.Start_source _
+      | Action.Start_live _
+      | Action.Run _ ->
           ()
     in
     let take_ready () =
@@ -483,12 +488,12 @@ module Make (Io : IO) = struct
           Some (slot, Option.get (Atomic.get slot.result))
     in
     let rec go message =
-      let node, commands = update tree message in
-      result := apply !result commands;
+      let node, actions = update tree message in
+      result := apply !result actions;
       if !result.redirect <> None then
         Io.return node
       else (
-        List.iter start commands;
+        List.iter start actions;
         wait node
       )
     and wait node =
@@ -651,7 +656,7 @@ module Make (Io : IO) = struct
         drain ()
       )
     in
-    let send_state cmds =
+    let send_state actions =
       match !sender with
       | None ->
           Io.return ()
@@ -659,25 +664,25 @@ module Make (Io : IO) = struct
           incr seq;
           send
             (Protocol.encode_state live.state ~seq:!seq ~ack:!last_id !state
-               (List.filter_map Protocol.host_of_cmd cmds)
+               (List.filter_map Protocol.host_of_host_action actions)
             )
     in
-    let rec publish cmds =
-      let* () = send_state cmds in
-      List.iter run cmds;
+    let rec publish actions =
+      let* () = send_state actions in
+      List.iter run actions;
       Io.return ()
     and step event () =
-      let s, cmds, _ = Machine.send machine !state event in
+      let s, actions, _ = Machine.send machine !state event in
       state := s;
-      publish cmds
+      publish actions
     and run = function
-      | Cmd.Start_timer { id; ms; event } ->
+      | Action.Start_timer { id; ms; event } ->
           let token = start id in
           Io.async (fun () ->
               let* () = Io.sleep (float_of_int ms /. 1000.) in
               enqueue (deliver id token (step event))
           )
-      | Cmd.Start_call { id; endpoint; input; timeout_ms; on_result } ->
+      | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
           let token = start id in
           Io.async (fun () ->
               let* result = call_endpoint handlers context endpoint input in
@@ -694,9 +699,9 @@ module Make (Io : IO) = struct
               )
             )
             timeout_ms
-      | Cmd.Stop id ->
+      | Action.Stop id ->
           Hashtbl.remove owned id
-      | Cmd.Start_source _ | Cmd.Start_live _ | Cmd.Run _ ->
+      | Action.Start_source _ | Action.Start_live _ | Action.Run _ ->
           ()
     and start id =
       incr next_token;
@@ -711,9 +716,9 @@ module Make (Io : IO) = struct
     in
     let* () =
       enqueue (fun () ->
-          let s, cmds = Machine.start machine in
+          let s, actions = Machine.start machine in
           state := s;
-          publish cmds
+          publish actions
       )
     in
     let event id json =
@@ -1166,7 +1171,7 @@ module Make (Io : IO) = struct
 
   let state_message ~seq json =
     Protocol.encode_server
-      (Protocol.State { seq; ack = 0; state = json; cmds = [] })
+      (Protocol.State { seq; ack = 0; state = json; actions = [] })
 
   let publish_json t ~name ~key json =
     let seq, subscribers =
@@ -1271,10 +1276,16 @@ module Make (Io : IO) = struct
                       match existing with
                       | Some inst ->
                           attached := `Island inst;
-                          let* () = send_server (Protocol.Hello_ok { v = 1 }) in
+                          let* () =
+                            send_server
+                              (Protocol.Hello_ok { v = Protocol.version })
+                          in
                           inst.runner.resend ()
                       | None ->
-                          let* () = send_server (Protocol.Hello_ok { v = 1 }) in
+                          let* () =
+                            send_server
+                              (Protocol.Hello_ok { v = Protocol.version })
+                          in
                           let drop_instance () =
                             let sock =
                               locked t (fun () ->
@@ -1366,7 +1377,10 @@ module Make (Io : IO) = struct
                             | _ ->
                                 ()
                           in
-                          let* () = send_server (Protocol.Hello_ok { v = 1 }) in
+                          let* () =
+                            send_server
+                              (Protocol.Hello_ok { v = Protocol.version })
+                          in
                           let seq, value =
                             locked t (fun () ->
                                 let entry = topic_entry t name key in

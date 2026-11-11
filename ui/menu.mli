@@ -1,6 +1,6 @@
 (** A menu button (WAI-ARIA menu button pattern; Base UI Menu).
 
-    A trigger button opens a list of actions, [role="menu"], painted in a portal
+    A trigger button opens a list of items, [role="menu"], painted in a portal
     at the end of the body and kept below the trigger. Keyboard focus moves to
     the highlighted item: Enter, Space and ArrowDown on the trigger open the
     menu on the first enabled item, ArrowUp on the last. In the menu, ArrowDown

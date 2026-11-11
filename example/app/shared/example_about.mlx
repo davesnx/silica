@@ -13,8 +13,8 @@ let machine =
     ~init:(About_machine.at About ())
     [
       About_machine.state About "about"
-        ~entry:(fun () -> [ Cmd.Set_title "About" ])
-        (fun () -> function Go_back -> About_machine.stay [ Cmd.Back ]);
+        ~entry:(fun () -> [ Action.Set_title "About" ])
+        (fun () -> function Go_back -> About_machine.stay [ Action.Back ]);
     ]
 
 let history =

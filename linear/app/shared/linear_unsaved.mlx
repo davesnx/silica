@@ -10,7 +10,8 @@ module Unsaved_machine = Machine.Make (States)
 
 let keep_button = Ref.make "unsaved-keep"
 let block () = Source.block (fun nav -> Attempt nav)
-let ask nav = Unsaved_machine.goto Asking ~cmds:[ Cmd.Focus keep_button ] nav
+let ask nav =
+  Unsaved_machine.goto Asking ~actions:[ Action.Focus keep_button ] nav
 
 let machine =
   Unsaved_machine.make ~id:"unsaved"
@@ -27,7 +28,7 @@ let machine =
           | Attempt nav ->
               ask nav
           | Discard ->
-              Unsaved_machine.goto Held ~cmds:[ Cmd.Resume nav ] ()
+              Unsaved_machine.goto Held ~actions:[ Action.Resume nav ] ()
           | Keep ->
               Unsaved_machine.goto Held ()
           );

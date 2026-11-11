@@ -50,11 +50,12 @@ val to_quint : ?labels:label list -> t -> string
     [state] (one constructor for each state), [running] (the timers and sources
     that run, as strings ["state/after 300ms"], ["state/invoke /api/path"] and
     ["state/hold name"]) and [last] (the event of the last step: [Start] at
-    init, the label of the edge, or [Any] for an edge with no label). One action
-    for each pair of a declared or labelled edge and its event; [enter] starts
-    the resources of the target and stops the others. One action for each kept
-    step, named [<state>_stays_on_<event>], which changes only [last].
-    Invariants: [resources_owned] (every running resource belongs to the current
-    state), [can_move] (the state is final, has an edge or a kept step) and
-    [inv], both together. Handler code and data are not exported: the model
-    holds the edges only, so it allows more runs than the machine. *)
+    init, the label of the edge, or [Any] for an edge with no label). One
+    transition for each pair of a declared or labelled edge and its event, and
+    one for each kept step; each transition is written as a Quint [action].
+    [enter] starts the resources of the target and stops the others. The
+    transition of a kept step is named [<state>_stays_on_<event>] and changes
+    only [last]. Invariants: [resources_owned] (every running resource belongs
+    to the current state), [can_move] (the state is final, has an edge or a kept
+    step) and [inv], both together. Handler code and data are not exported: the
+    model holds the edges only, so it allows more runs than the machine. *)

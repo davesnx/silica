@@ -39,7 +39,7 @@ val rated : Rate.t -> 'e Node.attr -> 'e Node.attr
 val on_key_down :
   ?prevent:bool -> ?rate:Rate.t -> (Key.t -> 'e option) -> 'e Node.attr
 (** A key goes down while the element or a descendant has focus. With [prevent],
-    the default action of the key is cancelled when the handler returns
+    the default behavior of the key is cancelled when the handler returns
     [Some _]. *)
 
 val on_key_up :

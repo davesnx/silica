@@ -17,7 +17,7 @@
   components.mld
   data.mld
   optimistic.mld
-  commands.mld
+  actions.mld
   platform.mld
   router.mld
   server.mld

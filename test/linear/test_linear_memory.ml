@@ -88,7 +88,7 @@ let test_create_in_flight_survives () =
   answer t;
   to_detail_and_back t;
   let focused () =
-    List.mem (Cmd.Focus Linear_refs.new_issue) (Memory.commands t)
+    List.mem (Action.Focus Linear_refs.new_issue) (Memory.actions t)
   in
   Alcotest.(check bool) "no answer yet" false (focused ());
   Memory.reply create

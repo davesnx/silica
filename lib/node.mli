@@ -5,9 +5,9 @@
 type ('p, 'e) handler = { run : 'p -> 'e option; prevent : bool }
 (** A handler for an event with payload ['p]. [run] sees the payload at the
     moment the event happens. It returns [None] to ignore the event. [prevent]
-    asks the renderer to cancel the default action of the platform event at that
-    moment, but only when [run] returned [Some _]. The answer to [prevent] does
-    not wait for the machine. *)
+    asks the renderer to cancel the default behavior of the platform event at
+    that moment, but only when [run] returned [Some _]. The answer to [prevent]
+    does not wait for the machine. *)
 
 type error = { id : string; message : string; detail : string option }
 (** What a boundary fallback gets. [id] names the failure in the console and in

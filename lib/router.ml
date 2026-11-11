@@ -84,10 +84,10 @@ struct
   let url_of ?hash routes snapshot = { (print routes snapshot) with hash }
 
   let navigate ?hash routes state data =
-    Cmd.Navigate (url_of ?hash routes (At (state, data)))
+    Action.Navigate (url_of ?hash routes (At (state, data)))
 
   let replace ?hash routes state data =
-    Cmd.Replace (url_of ?hash routes (At (state, data)))
+    Action.Replace (url_of ?hash routes (At (state, data)))
 
   let current_attrs routes (link : Url.t) = function
     | None ->
@@ -166,14 +166,14 @@ struct
   type decision = Allow | Redirect of snapshot | Cancel
 
   let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
-      ?(exit = fun _ -> ([] : event Cmd.t list)) ?title
+      ?(exit = fun _ -> ([] : event Action.t list)) ?title
       ?(chunks = fun _ -> ([] : Chunk.any list)) ~render =
-    let titled snapshot (cmds : event Cmd.t list) =
+    let titled snapshot (actions : event Action.t list) =
       match title with
       | Some title ->
-          List.cons (Cmd.Set_title (title snapshot)) cmds
+          List.cons (Action.Set_title (title snapshot)) actions
       | None ->
-          cmds
+          actions
     in
     let all : targets =
       List.fold_right
@@ -186,12 +186,13 @@ struct
         (fun (Any listed) -> Route_machine.same listed state)
         routes.reenter
     in
-    let move ?(cmds : event Cmd.t list = []) (At (state, data) as target) =
-      let cmds = titled target cmds in
+    let move ?(actions : event Action.t list = []) (At (state, data) as target)
+        =
+      let actions = titled target actions in
       if restart state then
-        Route_machine.reenter ~cmds:(Cmd.Remount :: cmds) state data
+        Route_machine.reenter ~actions:(Action.Remount :: actions) state data
       else
-        Route_machine.goto ~cmds state data
+        Route_machine.goto ~actions state data
     in
     let same_url a b =
       Url.to_string (print routes a) = Url.to_string (print routes b)
@@ -200,9 +201,11 @@ struct
       | Preload url ->
           let target = parse routes url in
           Route_machine.stay
-            (List.map (fun request -> Cmd.Preload request) (calls routes target)
+            (List.map
+               (fun request -> Action.Preload request)
+               (calls routes target)
             @ List.map
-                (fun chunk -> Cmd.Load_chunk { chunk; on_ready = None })
+                (fun chunk -> Action.Load_chunk { chunk; on_ready = None })
                 (chunks target)
             )
       | Url_changed url -> (
@@ -214,9 +217,9 @@ struct
             | Allow ->
                 move target
             | Redirect other ->
-                move ~cmds:[ Cmd.Replace (print routes other) ] other
+                move ~actions:[ Action.Replace (print routes other) ] other
             | Cancel ->
-                Route_machine.stay [ Cmd.Revert_navigation ]
+                Route_machine.stay [ Action.Revert_navigation ]
         )
     in
     let cases =
@@ -232,12 +235,12 @@ struct
     in
     fun url ->
       let target = parse routes url in
-      let init, (start : event Cmd.t list) =
+      let init, (start : event Action.t list) =
         match guard ~from:None ~target with
         | Allow | Cancel ->
             (target, [])
         | Redirect other ->
-            (other, [ Cmd.Replace (print routes other) ])
+            (other, [ Action.Replace (print routes other) ])
       in
       let start = titled init start in
       {

@@ -7,9 +7,9 @@
 
     Timers ([after]) and sources ([invoke]) belong to the state. They start on
     entry and stop on exit. [reenter] to the current state stops and starts them
-    again. Hosts carry this out through the commands {!Cmd.host}: [Start_timer],
-    [Start_call] and [Stop]; a host drops a timer or answer whose id was
-    stopped. *)
+    again. Hosts carry this out through the actions {!Action.host}:
+    [Start_timer], [Start_call] and [Stop]; a host drops a timer or answer whose
+    id was stopped. *)
 
 exception
   Undeclared_target of { machine : string; from : string; target : string }
@@ -37,9 +37,9 @@ type resource =
   | Subscription of { id : string; topic : string }
   | Held of { id : string; name : string }
       (** A timer, call, subscription or held source that the state of a
-          snapshot owns. [id] is the id used by the commands [Start_timer],
-          [Start_call], [Start_source], [Start_live] and [Stop] of {!Cmd.host}.
-      *)
+          snapshot owns. [id] is the id used by the actions [Start_timer],
+          [Start_call], [Start_source], [Start_live] and [Stop] of
+          {!Action.host}. *)
 
 val id : ('s, 'e) t -> string
 (** The id of the machine, as given to {!Make.make}. *)
@@ -64,37 +64,36 @@ val type_id : ('s, 'e) t -> ('s * 'e) Type.Id.t
 
 val active : ('s, 'e) t -> 's -> resource list
 (** The timers and sources that the state of the snapshot owns. After [start] or
-    [send], the commands and this list agree: a resource is running if and only
+    [send], the actions and this list agree: a resource is running if and only
     if its id was started and not stopped. *)
 
-val held : ('s, 'e) t -> 's -> 'e Cmd.source list
+val held : ('s, 'e) t -> 's -> 'e Action.source list
 (** The held sources (see {!Source.focus_trap}) that the state of the snapshot
     owns. The checker reads them to know which presses can happen. *)
 
-val start : ('s, 'e) t -> 's * 'e Cmd.host list
-(** The initial snapshot, the [start] commands of the machine and the commands
-    of entering it. *)
+val start : ('s, 'e) t -> 's * 'e Action.host list
+(** The initial snapshot, the [start] actions of the machine and the actions of
+    entering it. *)
 
-val exit : ('s, 'e) t -> 's -> 'e Cmd.host list
-(** The commands of leaving the snapshot: [exit], then timer and source stops.
-*)
+val exit : ('s, 'e) t -> 's -> 'e Action.host list
+(** The actions of leaving the snapshot: [exit], then timer and source stops. *)
 
 val step :
   ('s, 'e) t ->
   's ->
   'e ->
-  's * 'e Cmd.host list * [ `Unhandled | `Kept | `Entered ]
+  's * 'e Action.host list * [ `Unhandled | `Kept | `Entered ]
 (** Like {!send}, and tells whether the step entered a state: [`Entered] when
     the state changed or the handler used [reenter], [`Kept] when the state
     stayed (a [goto] to the current state, or [stay]). Hosts use it to give each
     entry of a state its own instance (see {!Instance}). *)
 
 val send :
-  ('s, 'e) t -> 's -> 'e -> 's * 'e Cmd.host list * [ `Handled | `Unhandled ]
+  ('s, 'e) t -> 's -> 'e -> 's * 'e Action.host list * [ `Handled | `Unhandled ]
 (** Run the handler of the current state, then the [always] handlers in order. A
     final state handles nothing. An unhandled event leaves the snapshot
-    unchanged. On a change of state the commands are: [exit] and stops of the
-    old state, the commands of the handler, [entry] and starts of the new state.
+    unchanged. On a change of state the actions are: [exit] and stops of the old
+    state, the actions of the handler, [entry] and starts of the new state.
     [goto] to the current state keeps the state's timers and sources; [reenter]
     restarts them.
 
@@ -124,17 +123,18 @@ end) : sig
   val same : 'a State.t -> 'b State.t -> bool
   (** Two states are the same when they are the same constructor. *)
 
-  val goto : ?cmds:'e Cmd.t list -> 'p State.t -> 'p -> (snapshot, 'e) outcome
+  val goto :
+    ?actions:'e Action.t list -> 'p State.t -> 'p -> (snapshot, 'e) outcome
   (** Go to a state. Going to the current state only changes its data: no exit,
       no entry, timers and sources keep running. *)
 
   val reenter :
-    ?cmds:'e Cmd.t list -> 'p State.t -> 'p -> (snapshot, 'e) outcome
+    ?actions:'e Action.t list -> 'p State.t -> 'p -> (snapshot, 'e) outcome
   (** Like [goto], but exit and enter the state even when it is the current one.
       A debounce is [reenter] on a state with an [after] timer. *)
 
-  val stay : 'e Cmd.t list -> (snapshot, 'e) outcome
-  (** Handle the event, keep the snapshot, run the commands. *)
+  val stay : 'e Action.t list -> (snapshot, 'e) outcome
+  (** Handle the event, keep the snapshot, run the actions. *)
 
   val unhandled : (snapshot, 'e) outcome
   (** The event has no handler in this state. The [always] handlers get it next;
@@ -147,8 +147,8 @@ end) : sig
     'p State.t ->
     string ->
     ?to_:targets ->
-    ?entry:('p -> 'e Cmd.t list) ->
-    ?exit:('p -> 'e Cmd.t list) ->
+    ?entry:('p -> 'e Action.t list) ->
+    ?exit:('p -> 'e Action.t list) ->
     ?after:(int * 'e) list ->
     ?invoke:('p, 'e) Source.t list ->
     ?final:bool ->
@@ -166,10 +166,10 @@ end) : sig
   val make :
     id:string ->
     init:snapshot ->
-    ?start:'e Cmd.t list ->
+    ?start:'e Action.t list ->
     'e case list ->
     (snapshot, 'e) t
-  (** [start] are commands that run once when the machine starts, before the
+  (** [start] are actions that run once when the machine starts, before the
       entry of [init].
 
       @raise Missing_case

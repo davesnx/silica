@@ -83,7 +83,7 @@ val mount :
     exception, machine, state and a trace; otherwise only a short message and an
     id. The page has "Try again" (starts the root again with fresh state) and
     "Reload the page". A step that raises changes nothing: the state, the view
-    and the commands of that step are dropped with the tree. In dev mode an
+    and the actions of that step are dropped with the tree. In dev mode an
     exception during the first paint is raised again after the error page shows,
     so a test sees it. *)
 
@@ -103,18 +103,18 @@ val mount_app :
     history entry and sends [Url_changed]; when the anchor has
     [data-silica-replace], the press replaces the entry instead. A press with a
     modifier key, another button, or on an anchor with [target] or [download] is
-    left to the browser. [popstate] and the commands [Navigate] and [Replace]
-    send [Url_changed] too. A page sets [document.title] with the command
+    left to the browser. [popstate] and the actions [Navigate] and [Replace]
+    send [Url_changed] too. A page sets [document.title] with the action
     [Set_title]; [Set_status] is ignored.
 
-    Blocks. While a {!Silica.Cmd.Block} source runs, a link press, [Navigate],
-    [Replace], back and forward change nothing and raise [on_attempt] of the
-    newest block. For back and forward the host goes back to the entry it left
-    with [history.go] and reports nothing for that move. [Resume] does the
-    navigation past every block. While a block runs, [beforeunload] asks the
-    user. [Revert_navigation] undoes the last change the host reported: back one
-    entry after a push, the old URL after a replace, the other way after back or
-    forward.
+    Blocks. While a {!Silica.Action.Block} source runs, a link press,
+    [Navigate], [Replace], back and forward change nothing and raise
+    [on_attempt] of the newest block. For back and forward the host goes back to
+    the entry it left with [history.go] and reports nothing for that move.
+    [Resume] does the navigation past every block. While a block runs,
+    [beforeunload] asks the user. [Revert_navigation] undoes the last change the
+    host reported: back one entry after a push, the old URL after a replace, the
+    other way after back or forward.
 
     History. The host keeps a key and an index in [history.state] for each
     entry, and the scroll position of each entry in [sessionStorage], so a
@@ -129,7 +129,7 @@ val mount_app :
     that change are done, the host moves focus, with no scroll, to the first
     element in the root with [data-silica-route-focus], or else to the root; it
     gives the element [tabindex="-1"] when it has no [tabindex]. A [Focus]
-    command after the change cancels this move. A polite live region
+    action after the change cancels this move. A polite live region
     ([data-silica-announcer], added to the body) then reads the document title.
 
     Preload. The pointer entering, or focus on, an anchor with

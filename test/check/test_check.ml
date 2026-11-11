@@ -103,7 +103,7 @@ let test_missing_focus_ref () =
         else
           Node.text "done"
       )
-      ~inc:(fun _ -> Some (1, [ Cmd.Focus (Ref.make "x") ]))
+      ~inc:(fun _ -> Some (1, [ Action.Focus (Ref.make "x") ]))
   in
   violation "focus-target" [ "Inc" ] (Check.component ~inputs:(fun _ -> []) c)
 
@@ -118,7 +118,7 @@ let test_present_focus_ref () =
             [ Attr.ref_ (Ref.make "x"); Attr.on_press Go ]
             [ Node.text "x" ]
       )
-      ~inc:(fun _ -> Some (1, [ Cmd.Focus (Ref.make "x") ]))
+      ~inc:(fun _ -> Some (1, [ Action.Focus (Ref.make "x") ]))
   in
   match Check.component c with
   | Check.Ok { states; _ } ->
@@ -960,7 +960,7 @@ module Gadget = struct
 
   let ask =
     [
-      Cmd.Measure
+      Action.Measure
         {
           target = Ref.make "box";
           on_rect =
@@ -971,13 +971,13 @@ module Gadget = struct
                 Got "rect:none"
             );
         };
-      Cmd.Copy
+      Action.Copy
         {
           text = "t";
           on_result = Some (fun ok -> Got (Printf.sprintf "copy:%b" ok));
         };
-      Cmd.Copy { text = "quiet"; on_result = None };
-      Cmd.Load_script
+      Action.Copy { text = "quiet"; on_result = None };
+      Action.Load_script
         {
           src = "/a.js";
           on_result = (fun ok -> Got (Printf.sprintf "load:%b" ok));
@@ -1002,7 +1002,7 @@ module Gadget = struct
   let component = { Component.machine; view }
 end
 
-let test_command_results_arrive () =
+let test_action_results_arrive () =
   ( match Check.component Gadget.component with
   | Check.Ok { states; _ } ->
       Alcotest.(check int)
@@ -1091,7 +1091,7 @@ let test_scroll_to_missing_ref () =
           Some
             ( (),
               [
-                Cmd.Scroll_to
+                Action.Scroll_to
                   { target = Some (Ref.make "gone"); left = 0; top = 0 };
               ]
             )
@@ -1102,14 +1102,14 @@ let test_scroll_to_missing_ref () =
   violation "focus-target" [ "Go" ]
     (Check.component { Component.machine; view = (fun () -> btn "go" Go) })
 
-let test_live_rejects_result_command () =
+let test_live_rejects_result_action () =
   let machine =
     simple ~id:"m" ~init:0 (fun n -> function
       | Go ->
           Some
             ( n,
               [
-                Cmd.Measure
+                Action.Measure
                   { target = Ref.make "box"; on_rect = (fun _ -> Inc) };
               ]
             )
@@ -1126,15 +1126,15 @@ let test_live_rejects_result_command () =
         )
       { Component.machine; view = (fun _ -> btn "go" Go) }
   in
-  violation "live-uses-client-command" [ "Go" ] (Check.live live)
+  violation "live-uses-client-action" [ "Go" ] (Check.live live)
 
-let test_live_rejects_page_commands () =
+let test_live_rejects_page_actions () =
   List.iter
-    (fun command ->
+    (fun action ->
       let machine =
         simple ~id:"m" ~init:0 (fun n -> function
           | Go ->
-              Some (n, [ command ])
+              Some (n, [ action ])
           | Inc | Dec ->
               None
           )
@@ -1148,13 +1148,13 @@ let test_live_rejects_page_commands () =
             )
           { Component.machine; view = (fun _ -> btn "go" Go) }
       in
-      violation "live-uses-client-command" [ "Go" ] (Check.live live)
+      violation "live-uses-client-action" [ "Go" ] (Check.live live)
     )
     [
-      Cmd.Set_status 404;
-      Cmd.Revert_navigation;
-      Cmd.Resume (Nav.Push (Url.of_string "/"));
-      Cmd.Preload
+      Action.Set_status 404;
+      Action.Revert_navigation;
+      Action.Resume (Nav.Push (Url.of_string "/"));
+      Action.Preload
         (Remote.request
            (Remote.declare ~path:"/p" ~input:Codec.int ~output:Codec.int)
            1
@@ -1217,16 +1217,16 @@ let () =
             test_portal_handlers_are_explored;
           Alcotest.test_case "boundary needs a reset" `Quick
             test_boundary_needs_a_reset;
-          Alcotest.test_case "command results arrive" `Quick
-            test_command_results_arrive;
+          Alcotest.test_case "action results arrive" `Quick
+            test_action_results_arrive;
           Alcotest.test_case "scroll, visibility and online give events" `Quick
             test_new_sources_give_events;
           Alcotest.test_case "scroll_to a missing ref" `Quick
             test_scroll_to_missing_ref;
-          Alcotest.test_case "live rejects a command with a result" `Quick
-            test_live_rejects_result_command;
-          Alcotest.test_case "live rejects navigation and page commands" `Quick
-            test_live_rejects_page_commands;
+          Alcotest.test_case "live rejects an action with a result" `Quick
+            test_live_rejects_result_action;
+          Alcotest.test_case "live rejects navigation and page actions" `Quick
+            test_live_rejects_page_actions;
           Alcotest.test_case "live rejects a client-only source" `Quick
             test_live_rejects_client_only_source;
         ]

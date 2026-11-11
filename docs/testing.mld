@@ -6,7 +6,7 @@ browser:
 {t
 | Level | Tool | What it shows |
 |-------|------|---------------|
-| one machine | {!Silica.Machine.send} | a step gives the next state and the commands |
+| one machine | {!Silica.Machine.send} | a step gives the next state and the actions |
 | every state | {!Check} | no state that the machine can reach breaks a property |
 | the runtime | {!Silica_memory} | the components, timers, calls and history work together |
 | the server | [Server.handle] | the HTTP policy, the handlers and the first HTML |
@@ -16,7 +16,7 @@ browser:
 {1:machines Machines}
 
 A machine is a value: start it, send events, and compare the snapshot, the
-key of the state and the commands. The {{!page-tutorial}tutorial} and
+key of the state and the actions. The {{!page-tutorial}tutorial} and
 {!page-machines.run} show it. This is the fastest test, and the right one for
 the rules of one machine.
 
@@ -88,7 +88,7 @@ val field : Silica_memory.element = <abstr>
 
 [mount ~answers] answers calls before the first paint, as a server render
 does. {!Silica_memory.mount_app} runs a router app with a history: see
-{!page-router.app}. The platform also records the commands, the running
+{!page-router.app}. The platform also records the actions, the running
 sources, the title, the cookies, the log and the Live sockets, which the test
 opens and feeds with messages.
 

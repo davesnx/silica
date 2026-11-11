@@ -23,7 +23,7 @@ type ('s, 'e) t = {
   mutable node : Instance.message Node.t;
   mutable timers : (string * Instance.message) list;
   mutable calls : call list;
-  mutable sources : (string * Instance.message Cmd.source) list;
+  mutable sources : (string * Instance.message Action.source) list;
   mutable subscriptions : subscription list;
   mutable ever : (string * (unit -> unit)) list;
   mutable log : string list;
@@ -39,17 +39,17 @@ let nav_text = function
   | Nav.Traverse { delta; url } ->
       Printf.sprintf "traverse %d %s" delta (Url.to_string url)
 
-let rec apply t cmds =
+let rec apply t actions =
   List.iter
     (function
-      | Cmd.Start_timer { id; event; _ } ->
+      | Action.Start_timer { id; event; _ } ->
           note t ("start " ^ id);
           t.timers <- (id, event) :: List.remove_assoc id t.timers;
           t.ever <- (id, fun () -> deliver t event) :: t.ever
-      | Cmd.Start_source { id; source } ->
+      | Action.Start_source { id; source } ->
           note t ("start " ^ id);
           t.sources <- (id, source) :: List.remove_assoc id t.sources
-      | Cmd.Start_call { id; endpoint; input; timeout_ms; on_result } ->
+      | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
           note t ("start " ^ id);
           let call =
             {
@@ -70,75 +70,75 @@ let rec apply t cmds =
           in
           t.calls <- call :: List.filter (fun c -> c.id <> id) t.calls;
           t.ever <- (id, fun () -> call.fail (Remote.Network "stale")) :: t.ever
-      | Cmd.Start_live { id; topic; key; on_update } ->
+      | Action.Start_live { id; topic; key; on_update } ->
           note t ("start " ^ id);
           t.subscriptions <-
             Subscription { id; topic; key; on_update }
             :: List.filter (fun (Subscription s) -> s.id <> id) t.subscriptions
-      | Cmd.Stop id ->
+      | Action.Stop id ->
           note t ("stop " ^ id);
           t.subscriptions <-
             List.filter (fun (Subscription s) -> s.id <> id) t.subscriptions;
           t.timers <- List.remove_assoc id t.timers;
           t.sources <- List.remove_assoc id t.sources;
           t.calls <- List.filter (fun c -> c.id <> id) t.calls
-      | Cmd.Run (Cmd.Focus r) ->
+      | Action.Run (Action.Focus r) ->
           note t ("focus " ^ Ref.name r)
-      | Cmd.Run (Cmd.Blur r) ->
+      | Action.Run (Action.Blur r) ->
           note t ("blur " ^ Ref.name r)
-      | Cmd.Run (Cmd.Scroll_into_view r) ->
+      | Action.Run (Action.Scroll_into_view r) ->
           note t ("scroll " ^ Ref.name r)
-      | Cmd.Run (Cmd.Scroll_to { target; left; top }) ->
+      | Action.Run (Action.Scroll_to { target; left; top }) ->
           note t
             (Printf.sprintf "scroll_to %s %d %d"
                (Option.fold ~none:"window" ~some:Ref.name target)
                left top
             )
-      | Cmd.Run (Cmd.Measure { target; _ }) ->
+      | Action.Run (Action.Measure { target; _ }) ->
           note t ("measure " ^ Ref.name target)
-      | Cmd.Run (Cmd.Copy { text; _ }) ->
+      | Action.Run (Action.Copy { text; _ }) ->
           note t ("copy " ^ text)
-      | Cmd.Run (Cmd.Load_script { src; _ }) ->
+      | Action.Run (Action.Load_script { src; _ }) ->
           note t ("load_script " ^ src)
-      | Cmd.Run (Cmd.Navigate u) ->
+      | Action.Run (Action.Navigate u) ->
           note t ("navigate " ^ Url.to_string u)
-      | Cmd.Run (Cmd.Replace u) ->
+      | Action.Run (Action.Replace u) ->
           note t ("replace " ^ Url.to_string u)
-      | Cmd.Run Cmd.Back ->
+      | Action.Run Action.Back ->
           note t "back"
-      | Cmd.Run Cmd.Forward ->
+      | Action.Run Action.Forward ->
           note t "forward"
-      | Cmd.Run Cmd.Reload ->
+      | Action.Run Action.Reload ->
           note t "reload"
-      | Cmd.Run (Cmd.Set_title title) ->
+      | Action.Run (Action.Set_title title) ->
           note t ("title " ^ title)
-      | Cmd.Run Cmd.Remount ->
+      | Action.Run Action.Remount ->
           note t "remount"
-      | Cmd.Run (Cmd.Set_status status) ->
+      | Action.Run (Action.Set_status status) ->
           note t ("status " ^ string_of_int status)
-      | Cmd.Run (Cmd.Set_document_attribute { name; value }) ->
+      | Action.Run (Action.Set_document_attribute { name; value }) ->
           note t
             ("document " ^ name ^ " " ^ Option.value value ~default:"(none)")
-      | Cmd.Run (Cmd.Set_cookie { name; value; _ }) ->
+      | Action.Run (Action.Set_cookie { name; value; _ }) ->
           note t ("cookie " ^ name ^ " " ^ value)
-      | Cmd.Run (Cmd.Resume nav) ->
+      | Action.Run (Action.Resume nav) ->
           note t ("resume " ^ nav_text nav)
-      | Cmd.Run Cmd.Revert_navigation ->
+      | Action.Run Action.Revert_navigation ->
           note t "revert"
-      | Cmd.Run (Cmd.Preload (Remote.Request (endpoint, input))) ->
+      | Action.Run (Action.Preload (Remote.Request (endpoint, input))) ->
           note t
             ("preload " ^ Remote.path endpoint ^ " "
             ^ Codec.to_string (Remote.input endpoint) input
             )
-      | Cmd.Run (Cmd.Load_chunk _) ->
+      | Action.Run (Action.Load_chunk _) ->
           note t "load chunk"
       )
-    cmds
+    actions
 
 and deliver t message =
-  let node, cmds = Instance.update t.tree (Some message) in
+  let node, actions = Instance.update t.tree (Some message) in
   t.node <- node;
-  apply t cmds
+  apply t actions
 
 let mount ?dev ?props component =
   let tree = Instance.mount ?dev ~on_error:(fun _ _ -> ()) ?props component in
@@ -154,9 +154,9 @@ let mount ?dev ?props component =
       log = [];
     }
   in
-  let node, cmds = Instance.update tree None in
+  let node, actions = Instance.update tree None in
   t.node <- node;
-  apply t cmds;
+  apply t actions;
   t
 
 let node t = t.node
@@ -288,14 +288,14 @@ let running t =
     )
 
 let sources t =
-  List.rev_map (fun (id, source) -> (id, Cmd.source_name source)) t.sources
+  List.rev_map (fun (id, source) -> (id, Action.source_name source)) t.sources
 
 let press_key t key =
   let delivered = ref false in
   List.iter
     (fun (_, source) ->
       match source with
-      | Cmd.Global_keys { bindings; _ } ->
+      | Action.Global_keys { bindings; _ } ->
           List.iter
             (fun (bound, message) ->
               if (not !delivered) && Key.equal bound key then (
@@ -314,10 +314,10 @@ let outside_press t =
   let events =
     List.filter_map
       (fun (_, source) ->
-        match (source : Instance.message Cmd.source) with
-        | Cmd.Outside_press { event; _ } ->
+        match (source : Instance.message Action.source) with
+        | Action.Outside_press { event; _ } ->
             Some event
-        | Cmd.Dismiss { on_outside; _ } ->
+        | Action.Dismiss { on_outside; _ } ->
             on_outside
         | _ ->
             None
@@ -334,8 +334,8 @@ let escape t =
   match
     List.find_map
       (fun (_, source) ->
-        match (source : Instance.message Cmd.source) with
-        | Cmd.Dismiss { on_escape; _ } ->
+        match (source : Instance.message Action.source) with
+        | Action.Dismiss { on_escape; _ } ->
             on_escape
         | _ ->
             None

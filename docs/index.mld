@@ -38,7 +38,7 @@ Concepts:
 - {!page-components}: views in JSX, child components, props and output.
 - {!page-data}: Local, Remote and Live data, and [Status].
 - {!page-optimistic}: show a change before the server confirms it.
-- {!page-commands}: what a machine asks the host to do, and the sources that
+- {!page-actions}: what a machine asks the host to do, and the sources that
   a state owns.
 - {!page-platform}: the runtime, the platform and the three renderers.
 - {!page-router}: routes, links, guards, blocks, preload and titles.
@@ -73,7 +73,7 @@ Reference:
 
 Package [silica]:
 
-- {!Silica}: the core. Machines, components, views, commands, routes, codecs.
+- {!Silica}: the core. Machines, components, views, actions, routes, codecs.
 - {!Silica_browser}: the browser platform ([silica.browser], Melange only).
   The host runtime itself is {!Silica.Runtime}; it reaches a platform only
   through {!Silica.Platform.t}.

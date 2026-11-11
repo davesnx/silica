@@ -23,22 +23,22 @@ let endpoint =
   Remote.declare ~path:"/api/search" ~input:Codec.string
     ~output:(Codec.list Codec.string)
 
-let note text = Cmd.Focus (Ref.make text)
+let note text = Action.Focus (Ref.make text)
 
-let describe : type e. e Cmd.host -> string = function
-  | Cmd.Start_timer { id; ms; _ } ->
+let describe : type e. e Action.host -> string = function
+  | Action.Start_timer { id; ms; _ } ->
       Printf.sprintf "start %s %dms" id ms
-  | Cmd.Start_call { id; endpoint; _ } ->
+  | Action.Start_call { id; endpoint; _ } ->
       Printf.sprintf "call %s %s" id (Remote.path endpoint)
-  | Cmd.Stop id ->
+  | Action.Stop id ->
       "stop " ^ id
-  | Cmd.Run (Cmd.Focus r) ->
+  | Action.Run (Action.Focus r) ->
       "note " ^ Ref.name r
   | _ ->
       "other"
 
-let described : type e. e Cmd.host list -> string list =
- fun cmds -> List.map describe cmds
+let described : type e. e Action.host list -> string list =
+ fun actions -> List.map describe actions
 let strings = Alcotest.(list string)
 
 let search =
@@ -80,45 +80,45 @@ let search =
     ]
 
 let send snapshot event =
-  let snapshot, cmds, handled = Machine.send search snapshot event in
-  (snapshot, described cmds, handled)
+  let snapshot, actions, handled = Machine.send search snapshot event in
+  (snapshot, described actions, handled)
 
 let state_name = Machine.key search
 let start () = fst (Machine.start search)
 
 let test_start () =
-  let snapshot, cmds = Machine.start search in
+  let snapshot, actions = Machine.start search in
   Alcotest.(check string) "init" "idle" (state_name snapshot);
-  Alcotest.check strings "no entry" [] (described cmds);
+  Alcotest.check strings "no entry" [] (described actions);
   Alcotest.(check string) "id" "search" (Machine.id search);
   Alcotest.(check bool) "not final" false (Machine.is_final search snapshot)
 
 let test_timer_starts_on_entry () =
-  let snapshot, cmds, handled = send (start ()) (Input "ab") in
+  let snapshot, actions, handled = send (start ()) (Input "ab") in
   Alcotest.(check string) "state" "typing" (state_name snapshot);
   Alcotest.(check bool) "handled" true (handled = `Handled);
-  Alcotest.check strings "start" [ "start search/typing/after0 300ms" ] cmds
+  Alcotest.check strings "start" [ "start search/typing/after0 300ms" ] actions
 
 let test_timer_stops_on_exit () =
   let snapshot, _, _ = send (start ()) (Input "ab") in
-  let snapshot, cmds, _ = send snapshot Fire in
+  let snapshot, actions, _ = send snapshot Fire in
   Alcotest.(check string) "state" "searching" (state_name snapshot);
   Alcotest.check strings "stop then call"
     [ "stop search/typing/after0"; "call search/searching/invoke0 /api/search" ]
-    cmds;
+    actions;
   let typing, _, _ = send (start ()) (Input "x") in
-  let _, cmds, _ = send typing Clear in
+  let _, actions, _ = send typing Clear in
   Alcotest.check strings "clear stops the timer"
     [ "stop search/typing/after0" ]
-    cmds
+    actions
 
 let test_reenter_restarts () =
   let snapshot, _, _ = send (start ()) (Input "a") in
-  let snapshot, cmds, _ = send snapshot (Input "ab") in
+  let snapshot, actions, _ = send snapshot (Input "ab") in
   Alcotest.(check string) "state" "typing" (state_name snapshot);
   Alcotest.check strings "debounce"
     [ "stop search/typing/after0"; "start search/typing/after0 300ms" ]
-    cmds;
+    actions;
   let query : Search.snapshot -> string option = function
     | Search.At (Typing, query) ->
         Some query
@@ -130,28 +130,28 @@ let test_reenter_restarts () =
 let test_source_stops_on_exit () =
   let snapshot, _, _ = send (start ()) (Input "q") in
   let snapshot, _, _ = send snapshot Fire in
-  let snapshot, cmds, _ = send snapshot (Got (Ok [ "hit" ])) in
+  let snapshot, actions, _ = send snapshot (Got (Ok [ "hit" ])) in
   Alcotest.(check string) "state" "shown" (state_name snapshot);
-  Alcotest.check strings "stop" [ "stop search/searching/invoke0" ] cmds;
+  Alcotest.check strings "stop" [ "stop search/searching/invoke0" ] actions;
   let snapshot, _, _ = send (start ()) (Input "q") in
   let snapshot, _, _ = send snapshot Fire in
-  let _, cmds, _ = send snapshot Clear in
+  let _, actions, _ = send snapshot Clear in
   Alcotest.check strings "leaving early stops the call"
     [ "stop search/searching/invoke0" ]
-    cmds
+    actions
 
 let test_late_result_is_unhandled () =
   let snapshot, _, _ = send (start ()) (Input "q") in
-  let late, cmds, handled = send snapshot (Got (Ok [ "old" ])) in
+  let late, actions, handled = send snapshot (Got (Ok [ "old" ])) in
   Alcotest.(check bool) "unhandled" true (handled = `Unhandled);
-  Alcotest.check strings "no commands" [] cmds;
+  Alcotest.check strings "no actions" [] actions;
   Alcotest.(check bool) "same snapshot" true (late == snapshot)
 
 let test_start_input_uses_data () =
   let snapshot, _, _ = send (start ()) (Input "cats") in
-  let _, cmds, _ = Machine.send search snapshot Fire in
-  match cmds with
-  | [ _; Cmd.Start_call { input; endpoint; _ } ] ->
+  let _, actions, _ = Machine.send search snapshot Fire in
+  match actions with
+  | [ _; Action.Start_call { input; endpoint; _ } ] ->
       Alcotest.(check string)
         "input" "\"cats\""
         (Codec.to_string (Remote.input endpoint) input)
@@ -169,28 +169,28 @@ let resource_ids machine snapshot =
       )
     (Machine.active machine snapshot)
 
-let test_active_follows_commands () =
+let test_active_follows_actions () =
   let running = ref [] in
-  let apply cmds =
+  let apply actions =
     List.iter
       (function
-        | Cmd.Start_timer { id; _ } | Cmd.Start_call { id; _ } ->
+        | Action.Start_timer { id; _ } | Action.Start_call { id; _ } ->
             running := List.sort_uniq compare (id :: !running)
-        | Cmd.Stop id ->
+        | Action.Stop id ->
             running := List.filter (( <> ) id) !running
         | _ ->
             ()
         )
-      cmds
+      actions
   in
-  let snapshot, cmds = Machine.start search in
-  apply cmds;
+  let snapshot, actions = Machine.start search in
+  apply actions;
   let snapshot = ref snapshot in
   List.iter
     (fun event ->
-      let next, cmds, _ = Machine.send search !snapshot event in
+      let next, actions, _ = Machine.send search !snapshot event in
       snapshot := next;
-      apply cmds;
+      apply actions;
       Alcotest.check strings
         (state_name next ^ " resources")
         (List.sort compare (resource_ids search next))
@@ -223,35 +223,35 @@ let test_entry_exit_order () =
           ~entry:(fun () -> [ note "enter a" ])
           ~exit:(fun () -> [ note "exit a" ])
           ~after:[ (5, ()) ]
-          (fun () () -> Pair_machine.goto ~cmds:[ note "move" ] Pair.B ());
+          (fun () () -> Pair_machine.goto ~actions:[ note "move" ] Pair.B ());
         Pair_machine.state Pair.B "b"
           ~entry:(fun () -> [ note "enter b" ])
           ~after:[ (7, ()) ]
           Pair_machine.ignore;
       ]
   in
-  let describe cmds =
+  let describe actions =
     List.map
       (function
-        | Cmd.Start_timer { id; _ } ->
+        | Action.Start_timer { id; _ } ->
             "start " ^ id
-        | Cmd.Stop id ->
+        | Action.Stop id ->
             "stop " ^ id
-        | Cmd.Run (Cmd.Focus r) ->
+        | Action.Run (Action.Focus r) ->
             Ref.name r
         | _ ->
             "other"
         )
-      cmds
+      actions
   in
-  let snapshot, cmds = Machine.start machine in
+  let snapshot, actions = Machine.start machine in
   Alcotest.check strings "start"
     [ "enter a"; "start pair/a/after0" ]
-    (describe cmds);
-  let _, cmds, _ = Machine.send machine snapshot () in
+    (describe actions);
+  let _, actions, _ = Machine.send machine snapshot () in
   Alcotest.check strings "transition"
     [ "exit a"; "stop pair/a/after0"; "move"; "enter b"; "start pair/b/after0" ]
-    (describe cmds);
+    (describe actions);
   Alcotest.check strings "exit"
     [ "exit a"; "stop pair/a/after0" ]
     (describe (Machine.exit machine snapshot))
@@ -278,10 +278,11 @@ let test_self_goto_keeps_resources () =
       ]
   in
   let snapshot, _ = Machine.start machine in
-  let snapshot, cmds, _ = Machine.send machine snapshot `Tick in
-  Alcotest.(check int) "goto: no commands" 0 (List.length cmds);
-  let _, cmds, _ = Machine.send machine snapshot `Again in
-  Alcotest.(check int) "reenter: exit, stop, enter, start" 4 (List.length cmds)
+  let snapshot, actions, _ = Machine.send machine snapshot `Tick in
+  Alcotest.(check int) "goto: no actions" 0 (List.length actions);
+  let _, actions, _ = Machine.send machine snapshot `Again in
+  Alcotest.(check int)
+    "reenter: exit, stop, enter, start" 4 (List.length actions)
 
 let declared_error f =
   match f () with
@@ -427,9 +428,9 @@ let test_final_ignores_events () =
   Alcotest.(check bool) "final" true (Machine.is_final machine closed);
   List.iter
     (fun event ->
-      let next, cmds, handled = Machine.send machine closed event in
+      let next, actions, handled = Machine.send machine closed event in
       Alcotest.(check bool) "unhandled" true (handled = `Unhandled);
-      Alcotest.(check int) "no commands" 0 (List.length cmds);
+      Alcotest.(check int) "no actions" 0 (List.length actions);
       Alcotest.(check bool) "same" true (next == closed)
     )
     [ `Close; `Reopen ];
@@ -471,8 +472,10 @@ let test_always_order () =
   in
   let snapshot, _ = Machine.start machine in
   let names event =
-    let _, cmds, _ = Machine.send machine snapshot event in
-    List.map (function Cmd.Run (Cmd.Focus r) -> Ref.name r | _ -> "?") cmds
+    let _, actions, _ = Machine.send machine snapshot event in
+    List.map
+      (function Action.Run (Action.Focus r) -> Ref.name r | _ -> "?")
+      actions
   in
   Alcotest.check strings "state first" [ "own" ] (names `Both);
   Alcotest.check strings "always in list order" [ "second always" ]
@@ -624,14 +627,14 @@ let test_map_snapshot () =
   let doubled =
     Machine.map_snapshot search ~get:(fun snapshot -> (snapshot, 1)) ~set:fst
   in
-  let snapshot, cmds = Machine.start doubled in
+  let snapshot, actions = Machine.start doubled in
   Alcotest.(check int) "view" 1 (snd snapshot);
-  Alcotest.(check int) "no commands" 0 (List.length cmds);
-  let next, cmds, _ = Machine.send doubled snapshot (Input "a") in
+  Alcotest.(check int) "no actions" 0 (List.length actions);
+  let next, actions, _ = Machine.send doubled snapshot (Input "a") in
   Alcotest.(check string) "key" "typing" (Machine.key doubled next);
-  Alcotest.check strings "commands"
+  Alcotest.check strings "actions"
     [ "start search/typing/after0 300ms" ]
-    (described cmds);
+    (described actions);
   Alcotest.(check bool)
     "spec shared" true
     (Machine.spec doubled == Machine.spec search)
@@ -641,18 +644,19 @@ let test_remote_machine () =
     Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
   in
   let machine = Remote_machine.make ~id:"r" ep in
-  let snapshot, cmds = Machine.start machine in
+  let snapshot, actions = Machine.start machine in
   let status (state : (int, int) Remote_machine.state) = state.status in
   Alcotest.(check bool) "idle" true (status snapshot = Status.Idle);
-  Alcotest.(check int) "no entry" 0 (List.length cmds);
-  let loading, cmds, _ =
+  Alcotest.(check int) "no entry" 0 (List.length actions);
+  let loading, actions, _ =
     Machine.send machine snapshot (Remote_machine.Load 4)
   in
   Alcotest.(check bool) "loading" true (status loading = Status.Loading None);
   let first_id =
-    match cmds with
-    | [ Cmd.Start_call { id; endpoint; input; on_result; timeout_ms = None } ]
-      -> (
+    match actions with
+    | [
+     Action.Start_call { id; endpoint; input; on_result; timeout_ms = None };
+    ] -> (
         Alcotest.(check string) "path" "/api/double" (Remote.path endpoint);
         Alcotest.(check string)
           "input" "4"
@@ -666,13 +670,15 @@ let test_remote_machine () =
     | _ ->
         Alcotest.fail "expected one Start_call"
   in
-  let loaded, cmds, _ =
+  let loaded, actions, _ =
     Machine.send machine loading (Remote_machine.Settled (Ok 8))
   in
   Alcotest.(check bool)
     "ready" true
     (status loaded = Status.Ready { data = 8; stale = false });
-  Alcotest.check strings "stops the call" [ "stop " ^ first_id ] (described cmds);
+  Alcotest.check strings "stops the call"
+    [ "stop " ^ first_id ]
+    (described actions);
   let failed, _, _ =
     Machine.send machine loading (Remote_machine.Settled (Error (Http 500)))
   in
@@ -708,16 +714,16 @@ let test_call_timeout () =
         Slow_machine.state Done "done" Slow_machine.ignore;
       ]
   in
-  let _, cmds = Machine.start machine in
+  let _, actions = Machine.start machine in
   let timeouts =
     List.map
       (function
-        | Cmd.Start_call { timeout_ms; _ } ->
+        | Action.Start_call { timeout_ms; _ } ->
             timeout_ms
         | _ ->
             Alcotest.fail "expected Start_call"
         )
-      cmds
+      actions
   in
   Alcotest.(check (list (option int)))
     "timeout only where asked" [ Some 250; None ] timeouts
@@ -729,7 +735,7 @@ let test_remote_machine_reload () =
   let machine = Remote_machine.make ~id:"r" ep in
   let snapshot, _ = Machine.start machine in
   let snapshot, _, _ = Machine.send machine snapshot (Remote_machine.Load 1) in
-  let snapshot, cmds, _ =
+  let snapshot, actions, _ =
     Machine.send machine snapshot (Remote_machine.Load 2)
   in
   Alcotest.(check bool)
@@ -737,11 +743,11 @@ let test_remote_machine_reload () =
     (snapshot.Remote_machine.input = Some 2);
   Alcotest.check strings "old call stops, new call starts"
     [ "stop r/loading/invoke0"; "call r/loading/invoke0 /api/double" ]
-    (described cmds);
-  let _, cmds, _ = Machine.send machine snapshot Reset in
+    (described actions);
+  let _, actions, _ = Machine.send machine snapshot Reset in
   Alcotest.check strings "reset stops"
     [ "stop r/loading/invoke0" ]
-    (described cmds)
+    (described actions)
 
 let () =
   let t name f = Alcotest.test_case name `Quick f in
@@ -756,7 +762,7 @@ let () =
           t "source stops on exit" test_source_stops_on_exit;
           t "late result is unhandled" test_late_result_is_unhandled;
           t "source input uses the data" test_start_input_uses_data;
-          t "active follows the commands" test_active_follows_commands;
+          t "active follows the actions" test_active_follows_actions;
           t "entry and exit order" test_entry_exit_order;
           t "self goto keeps resources" test_self_goto_keeps_resources;
           t "undeclared target" test_undeclared_target;

@@ -1,9 +1,9 @@
-{0 Commands and sources}
+{0 Actions and sources}
 
 A machine does not touch the page, the network or the clock. It asks its host.
 There are two forms of request:
 
-- A {e command} ({!Silica.Cmd.t}) is done once, at a step: focus an element,
+- An {e action} ({!Silica.Action.t}) is done once, at a step: focus an element,
   push a URL, copy a text.
 - A {e source} belongs to a state. It starts when the machine enters the state
   and stops when the machine leaves it: a timer, a Remote call, a Live
@@ -13,14 +13,14 @@ Because a source belongs to a state, it cannot run after its state is left.
 The checker uses this rule: every running timer, call and subscription must
 belong to the current state.
 
-{1:commands Commands}
+{1:actions Actions}
 
-A step gives commands in [goto ~cmds], [reenter ~cmds] and [stay cmds], and a
+A step gives actions in [goto ~actions], [reenter ~actions] and [stay actions], and a
 case gives them in [entry] and [exit]. [Copy_machine.make ?start] gives the
-commands of the start.
+actions of the start.
 
 {t
-| Command | What the host does |
+| Action | What the host does |
 |---------|--------------------|
 | [Focus ref], [Blur ref] | move keyboard focus to the element, or take it away |
 | [Scroll_into_view ref] | scroll the element into view by the smallest distance |
@@ -38,7 +38,7 @@ commands of the start.
 | [Remount] | end the child components of this machine, so they start again |
 }
 
-A command with a result ([Measure], [Copy], [Load_script]) raises its event in
+An action with a result ([Measure], [Copy], [Load_script]) raises its event in
 the instance that ran it, in any state. When that instance has ended, the
 event is dropped.
 
@@ -64,7 +64,7 @@ let machine =
       Copy_machine.state Ready "ready" ~to_:[ Shown ] (fun () -> function
         | Copy ->
             Copy_machine.stay
-              [ Cmd.Copy { text; on_result = Some (fun ok -> Result ok) } ]
+              [ Action.Copy { text; on_result = Some (fun ok -> Result ok) } ]
         | Result ok ->
             Copy_machine.goto Shown ok
         | Back ->
@@ -95,17 +95,17 @@ let view (snapshot : Copy_machine.snapshot) : event Node.t =
 let component = Component.make machine view
 ]}
 
-The step gives the command to the host as [Run]:
+The step gives the action to the host as [Run]:
 
 {@ocaml[
 # let snapshot, _ = Silica.Machine.start Doc_copy.machine;;
 val snapshot : Doc_copy.Copy_machine.snapshot =
   Doc_copy.Copy_machine.At (Doc_copy.States.Ready, <poly>)
-# let _, commands, _ = Silica.Machine.send Doc_copy.machine snapshot Doc_copy.Copy;;
-val commands : Doc_copy.event Silica.Cmd.host list =
-  [Silica.Cmd.Run
-    (Silica.Cmd.Copy
-      {Silica.Cmd.text = "Hello from Silica"; on_result = Some <fun>})]
+# let _, actions, _ = Silica.Machine.send Doc_copy.machine snapshot Doc_copy.Copy;;
+val actions : Doc_copy.event Silica.Action.host list =
+  [Silica.Action.Run
+    (Silica.Action.Copy
+      {Silica.Action.text = "Hello from Silica"; on_result = Some <fun>})]
 ]}
 
 {1:sources Sources}

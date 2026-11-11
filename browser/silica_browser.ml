@@ -55,14 +55,14 @@ let rec session :
         Option.iter (fun c -> Live_client.send_event c live.event e) !client
     )
   in
-  let on_state ~seq:_ ~state ~cmds =
+  let on_state ~seq:_ ~state ~actions =
     match Protocol.decode_state live.state state with
     | Error m ->
         Js.log2 "silica: bad state message" m
     | Ok s ->
         Dom.remove_attribute root "data-silica-offline";
         renderer.paint (live.component.view s);
-        List.iter (fun h -> renderer.run (Protocol.host_to_cmd h)) cmds
+        List.iter (fun h -> renderer.run (Protocol.host_to_action h)) actions
   in
   let c =
     Live_client.start ?config:live_config
