@@ -105,6 +105,75 @@ val map_snapshot : ('s, 'e) t -> get:('s -> 'a) -> set:('a -> 's) -> ('a, 'e) t
     [a]. Used by {!Remote_machine} and by machines that show a plain record or
     variant while they run on a GADT snapshot. *)
 
+(** {1 Machines over a plain variant}
+
+    The states are the constructors of a plain variant, with their data inside,
+    and one function decides every step:
+
+    {[
+      type state = Idle | Saving | Saved of string | Failed of Remote.error
+
+      let machine =
+        Machine.make ~id:"save" ~init:Idle ~name:state_name
+          ~owns:(function
+            | Saving ->
+                [ Source.call save (fun () -> "draft") answer ]
+            | Saved _ ->
+                [ Source.after 2000 Reset ]
+            | Idle | Failed _ ->
+                []
+            )
+          (fun state event ->
+            match (state, event) with
+            | (Idle | Failed _), Save ->
+                Go Saving
+            | _ ->
+                Ignore
+          )
+    ]}
+
+    The machine enters a state when [name] changes. A step to a state with the
+    same name keeps its timers and sources running; [Reenter] stops and starts
+    them again. *)
+
+type ('s, 'e) next =
+  | Ignore  (** The event is not handled: the snapshot does not change. *)
+  | Stay of 'e Cmd.t list
+      (** Handled: keep the snapshot and run the commands. *)
+  | Go of 's
+      (** Go to the snapshot. When its name is the name of the current one, only
+          the data changes: no exit, no entry, timers and sources keep running.
+      *)
+  | Go_with of 's * 'e Cmd.t list
+      (** Like [Go], and run the commands between the exit and the entry. *)
+  | Reenter of 's
+      (** Like [Go], but exit and enter also when the name does not change. *)
+
+val make :
+  id:string ->
+  init:'s ->
+  name:('s -> string) ->
+  ?owns:('s -> (unit, 'e) Source.t list) ->
+  ?entry:('s -> 'e Cmd.t list) ->
+  ?exit:('s -> 'e Cmd.t list) ->
+  ?final:('s -> bool) ->
+  ?start:'e Cmd.t list ->
+  ('s -> 'e -> ('s, 'e) next) ->
+  ('s, 'e) t
+(** [make ~id ~init ~name update] is a machine over the snapshots ['s].
+
+    [name] names the state of a snapshot in the spec, the checker and the ids of
+    timers and sources. [owns] lists the timers ({!Source.after}) and sources of
+    a snapshot: they start on entry, with the data of the snapshot then, and
+    stop on exit. For one name, [owns] must give the same list of sources, in
+    the same order. [entry] and [exit] give the commands of entering and
+    leaving. A [final] snapshot handles no event. [start] are commands that run
+    once, before the entry of [init].
+
+    The machine declares no edges: {!spec} lists the initial state only and no
+    edge. The checker finds the states and edges by running the machine; see the
+    [spec] of [Check.Ok]. *)
+
 module Make (State : sig
   type 'p t
 end) : sig

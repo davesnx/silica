@@ -1,0 +1,71 @@
+(library
+ (name spike_checks)
+ (modules spike_checks)
+ (libraries
+  silica
+  silica.check
+  silica-ui
+  silica_spike
+  silica_docs_examples_native
+  silica_linear_app_native
+  silica_test_support
+  ui_samples
+  linear_checks
+  ui_checks
+  alcotest))
+
+(test
+ (name test_spike)
+ (modules test_spike)
+ (libraries spike_checks alcotest))
+
+(executable
+ (name export)
+ (modules export)
+ (libraries silica silica.check spike_checks))
+
+(rule
+ (targets
+  save.qnt
+  save.dot
+  note-dialog.qnt
+  note-dialog.dot
+  issue-list.qnt
+  issue-list.dot)
+ (action
+  (run ./export.exe)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/save.qnt save.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/save.dot save.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/note-dialog.qnt note-dialog.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/note-dialog.dot note-dialog.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.qnt issue-list.qnt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.dot issue-list.dot)))
+
+(alias
+ (name runtest)
+ (deps
+  (alias spec)))

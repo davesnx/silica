@@ -1,0 +1,14 @@
+digraph "save" {
+rankdir=LR;
+"save.__init" [shape=point];
+"save.__init" -> "save.idle";
+"save.idle" [label="idle" shape=box];
+"save.failed" [label="failed" shape=box];
+"save.saved" [label="saved\nafter 2000ms" shape=box];
+"save.saving" [label="saving\ninvoke /api/save" shape=box];
+"save.failed" -> "save.saving" [label="save"];
+"save.idle" -> "save.saving" [label="save"];
+"save.saved" -> "save.idle" [label="reset"];
+"save.saving" -> "save.failed" [label="answer error"];
+"save.saving" -> "save.saved" [label="answer ok"];
+}

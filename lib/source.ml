@@ -13,6 +13,9 @@ type ('p, 'e) t =
     }
       -> ('p, 'e) t
   | Held : { kind : string; make : 'p -> 'e Cmd.source } -> ('p, 'e) t
+  | Timer : { ms : int; event : 'e } -> ('p, 'e) t
+
+let after ms event = Timer { ms; event }
 
 let call ?timeout_ms endpoint input on_result =
   Call { endpoint; input; timeout_ms; on_result }
@@ -72,10 +75,19 @@ let name = function
       "live:" ^ Topic.name l.topic
   | Held h ->
       h.kind
+  | Timer t ->
+      "after " ^ string_of_int t.ms ^ "ms"
+
+let delay = function Timer t -> Some t.ms | _ -> None
 
 let topic = function Live l -> Some (Topic.name l.topic) | _ -> None
-let is_held = function Call _ | Live _ -> false | Held _ -> true
-let held data = function Call _ | Live _ -> None | Held h -> Some (h.make data)
+let is_held = function Call _ | Live _ | Timer _ -> false | Held _ -> true
+
+let held data = function
+  | Call _ | Live _ | Timer _ ->
+      None
+  | Held h ->
+      Some (h.make data)
 
 let map_refs f = function
   | Held h ->
@@ -98,3 +110,5 @@ let start id data = function
         { id; topic = l.topic; key = l.key data; on_update = l.on_update }
   | Held h ->
       Cmd.Start_source { id; source = h.make data }
+  | Timer t ->
+      Cmd.Start_timer { id; ms = t.ms; event = t.event }

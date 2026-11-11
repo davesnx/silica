@@ -1,0 +1,7 @@
+(library
+ (name silica_spike)
+ (wrapped false)
+ (modes native)
+ (libraries silica silica-ui silica_linear_app_native)
+ (preprocess
+  (pps silica.ppx)))

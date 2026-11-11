@@ -1,0 +1,53 @@
+open Silica
+
+let save =
+  Remote.declare ~path:"/api/save" ~input:Codec.string ~output:Codec.string
+
+type event = Save | Answer of (string, Remote.error) result | Reset
+type state = Idle | Saving | Saved of string | Failed of Remote.error
+
+let state_name = function
+  | Idle ->
+      "idle"
+  | Saving ->
+      "saving"
+  | Saved _ ->
+      "saved"
+  | Failed _ ->
+      "failed"
+
+let machine =
+  Machine.make ~id:"save" ~init:Idle ~name:state_name
+    ~owns:(function
+      | Saving ->
+          [ Source.call save (fun () -> "draft") (fun result -> Answer result) ]
+      | Saved _ ->
+          [ Source.after 2000 Reset ]
+      | Idle | Failed _ ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | (Idle | Failed _), Save ->
+          Go Saving
+      | Saving, Answer (Ok time) ->
+          Go (Saved time)
+      | Saving, Answer (Error error) ->
+          Go (Failed error)
+      | Saved _, Reset ->
+          Go Idle
+      | _ ->
+          Ignore
+    )
+
+let view : state -> event Node.t = function
+  | Idle ->
+      <button on_press=Save>"Save the draft"</button>
+  | Saving ->
+      <button disabled=true>"Saving"</button>
+  | Saved time ->
+      <p>(Node.text ("Saved at " ^ time))</p>
+  | Failed _ ->
+      <button on_press=Save>"Not saved. Try again"</button>
+
+let component = Component.make machine view

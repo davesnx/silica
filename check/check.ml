@@ -45,6 +45,7 @@ type ('s, 'ev) report =
       not_explored : string list;
       edges : Spec.label list;
       children : children;
+      spec : Spec.t;
     }
   | Violation of { invariant : string; trace : 'ev list; state : 's }
   | Unreached of { edges : (string * string) list }
@@ -455,6 +456,7 @@ let search ~max_states ~within ~model ~checks ~command_checks ~to_state =
           not_explored = List.sort_uniq String.compare !not_explored;
           edges = [];
           children = List.rev !children;
+          spec = { Spec.id = ""; init = ""; states = []; edges = [] };
         }
 
 let run ?(extra_commands = []) ~max_states ~within ~model ~invariants ~extra
@@ -752,10 +754,63 @@ let owner_checks m =
 type 'e recorder = {
   taken : (Spec.label, unit) Hashtbl.t;
   label : 'e -> string;
+  seen : (string, Spec.state) Hashtbl.t;
+  mutable order : string list;
 }
+
+let recorder label =
+  { taken = Hashtbl.create 64; label; seen = Hashtbl.create 16; order = [] }
+
+let see recorder m s =
+  let name = Machine.key m s in
+  if not (Hashtbl.mem recorder.seen name) then begin
+    let active = Machine.active m s in
+    let pick f = List.filter_map f active in
+    Hashtbl.replace recorder.seen name
+      {
+        Spec.name;
+        final = Machine.is_final m s;
+        timers = pick (function Machine.Timer { ms; _ } -> Some ms | _ -> None);
+        sources =
+          pick (function
+            | Machine.Call { path; _ } ->
+                Some path
+            | Machine.Subscription { topic; _ } ->
+                Some ("live:" ^ topic)
+            | _ ->
+                None
+            );
+        held =
+          pick (function Machine.Held { name; _ } -> Some name | _ -> None);
+      };
+    recorder.order <- name :: recorder.order
+  end
+
+let explored recorder m taken =
+  let init = Machine.key m (Machine.init m) in
+  {
+    Spec.id = Machine.id m;
+    init;
+    states =
+      List.rev_map (Hashtbl.find recorder.seen) recorder.order
+      |> List.sort_uniq (fun (a : Spec.state) b ->
+          compare (a.name <> init, a.name) (b.name <> init, b.name)
+      );
+    edges =
+      List.filter_map
+        (fun (l : Spec.label) ->
+          if l.kept then
+            None
+          else
+            Some (l.from, l.target)
+        )
+        taken
+      |> List.sort_uniq compare;
+  }
 
 let send recorder m w e =
   let s, cmds, how = Machine.step m w.s e in
+  see recorder m s;
   ( match how with
   | `Entered | `Kept ->
       Hashtbl.replace recorder.taken
@@ -773,6 +828,7 @@ let send recorder m w e =
 
 let finish ~recorder ~allow_unreached m = function
   | Ok ok ->
+      see recorder m (Machine.init m);
       let taken =
         Hashtbl.fold (fun edge () acc -> edge :: acc) recorder.taken []
         |> List.sort_uniq compare
@@ -796,7 +852,7 @@ let finish ~recorder ~allow_unreached m = function
       if unreached <> [] then
         Unreached { edges = unreached }
       else
-        Ok { ok with edges = taken }
+        Ok { ok with edges = taken; spec = explored recorder m taken }
   | (Violation _ | Unreached _ | Limit _ | Error _) as r ->
       r
 
@@ -832,7 +888,7 @@ let component_with ~client_only_sources ~max_states ~within ~inputs ~props
       feeds = Hashtbl.create 16;
     }
   in
-  let recorder = { taken = Hashtbl.create 64; label } in
+  let recorder = recorder label in
   let exec w cmds = List.fold_left (host_cmd host) w cmds in
   let w0 s =
     { s; timers = []; calls = []; subs = []; results = []; hist = []; idx = 0 }
@@ -940,7 +996,7 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
           feeds = Hashtbl.create 16;
         }
       in
-      let recorder = { taken = Hashtbl.create 64; label } in
+      let recorder = recorder label in
       let rec apply depth (w, acc) cmds =
         List.fold_left
           (fun (w, acc) c ->

@@ -83,9 +83,18 @@ val block : (Nav.t -> 'e) -> ('p, 'e) t
     {!Cmd.Resume} with the navigation to let it happen. Closing or reloading the
     page asks the user first. See {!Cmd.Block}. *)
 
+val after : int -> 'e -> ('p, 'e) t
+(** A timer: the event is raised once, this many milliseconds after the entry of
+    the state, unless the state was exited first. For {!Machine.make}; the
+    states of {!Machine.Make} take timers with [~after]. *)
+
+val delay : ('p, 'e) t -> int option
+(** The milliseconds of an {!after} timer. *)
+
 val name : ('p, 'e) t -> string
-(** The endpoint path of a {!call}, ["live:" ^ topic name] for a {!live}, or the
-    name of a held source as {!Cmd.source_name} gives it. *)
+(** The endpoint path of a {!call}, ["live:" ^ topic name] for a {!live},
+    ["after <ms>ms"] for a timer, or the name of a held source as
+    {!Cmd.source_name} gives it. *)
 
 val topic : ('p, 'e) t -> string option
 (** The topic name of a {!live} source. *)
@@ -98,11 +107,11 @@ val map_refs : ('p -> Ref.t -> Ref.t) -> ('p, 'e) t -> ('p, 'e) t
     returned unchanged. *)
 
 val is_held : ('p, 'e) t -> bool
-(** A source that is not a call or a subscription. *)
+(** A source that is not a call, a subscription or a timer. *)
 
 val held : 'p -> ('p, 'e) t -> 'e Cmd.source option
-(** The held resource for the data of the state, for a source that is not a call
-    or a subscription. *)
+(** The held resource for the data of the state, for a source that is not a
+    call, a subscription or a timer. *)
 
 val start : string -> 'p -> ('p, 'e) t -> 'e Cmd.host
 (** [start id data source] is the command that starts [source] under [id]. *)

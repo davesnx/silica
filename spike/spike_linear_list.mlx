@@ -1,0 +1,438 @@
+open Silica
+open Linear_model
+open Linear_routes
+
+type event = Linear_list.event =
+  | Props of Linear_view.t
+  | Loaded of (Issues.t, Remote.error) result
+  | Updated of Issues.t Topic.update
+  | Retry
+  | Reconnect
+  | Filter_open of bool
+  | Filter_changed of Linear_view.Filter.t
+  | Grouping_picked of string
+  | Ordering_picked of string
+  | Toggle_group of Linear_view.group
+  | Cursor_next
+  | Cursor_previous
+  | Row_focused of int
+  | Menu_open of bool
+  | Command of string
+  | Create_key
+  | Saved of int * (Change.answer, Remote.error) result
+  | Toast_closed of string
+
+type ready = {
+  view : Linear_view.t;
+  data : Linear_data.t;
+  collapsed : Linear_view.group list;
+  filter_open : bool;
+  cursor : int option;
+  menu_open : bool;
+  toasts : Silica_ui.Toast.toast list;
+}
+
+type state =
+  | Loading of Linear_view.t
+  | Ready of ready
+  | Failed of Linear_view.t * Remote.error
+
+let state_name = function
+  | Loading _ ->
+      "loading"
+  | Ready _ ->
+      "ready"
+  | Failed _ ->
+      "failed"
+
+let show view = Router.replace routes State.Issues { create = false; view }
+let row_ref number = Ref.make ("issue-row-" ^ string_of_int number)
+
+let visible (r : ready) =
+  List.concat_map
+    (fun (group, members) ->
+      if List.mem group r.collapsed then
+        []
+      else
+        List.map (fun (i : Issue.t) -> i.number) members
+    )
+    (Linear_view.groups r.view (Linear_data.issues r.data))
+
+let move (r : ready) step : (state, event) Machine.next =
+  let rows = visible r in
+  let rec after = function
+    | a :: (b :: _ as rest) ->
+        if Some a = r.cursor then
+          Some b
+        else
+          after rest
+    | [ _ ] | [] ->
+        None
+  in
+  let target =
+    match r.cursor with
+    | Some current when List.mem current rows -> (
+        let ordered =
+          match step with `Next -> rows | `Previous -> List.rev rows
+        in
+        match after ordered with Some next -> Some next | None -> Some current
+      )
+    | Some _ | None -> (
+        match rows with first :: _ -> Some first | [] -> None
+      )
+  in
+  match target with
+  | Some number ->
+      Go_with
+        (Ready { r with cursor = Some number }, [ Cmd.Focus (row_ref number) ])
+  | None ->
+      Ignore
+
+let add_toast (r : ready) request outcome =
+  let key = "toast-" ^ string_of_int (List.length r.toasts) in
+  match Linear_data.toast ~key request outcome with
+  | Some toast ->
+      { r with toasts = r.toasts @ [ toast ] }
+  | None ->
+      r
+
+let create view = Router.navigate routes State.Issues { create = true; view }
+
+let ready_event (r : ready) : event -> (state, event) Machine.next = function
+  | Props view ->
+      Go (Ready { r with view })
+  | Updated update ->
+      Go (Ready { r with data = Linear_data.apply update r.data })
+  | Reconnect ->
+      Reenter (Ready r)
+  | Filter_open filter_open ->
+      Go (Ready { r with filter_open })
+  | Filter_changed filter ->
+      Stay [ show { r.view with filter } ]
+  | Grouping_picked name -> (
+      match List.assoc_opt name Linear_view.grouping_names with
+      | Some grouping ->
+          Stay [ show { r.view with grouping } ]
+      | None ->
+          Ignore
+    )
+  | Ordering_picked name -> (
+      match List.assoc_opt name Linear_view.ordering_names with
+      | Some ordering ->
+          Stay [ show { r.view with ordering } ]
+      | None ->
+          Ignore
+    )
+  | Toggle_group group ->
+      let collapsed =
+        if List.mem group r.collapsed then
+          List.filter (fun g -> g <> group) r.collapsed
+        else
+          group :: r.collapsed
+      in
+      Go (Ready { r with collapsed })
+  | Cursor_next ->
+      move r `Next
+  | Cursor_previous ->
+      move r `Previous
+  | Row_focused number ->
+      Go (Ready { r with cursor = Some number })
+  | Menu_open menu_open ->
+      Go (Ready { r with menu_open })
+  | Create_key ->
+      Stay [ create r.view ]
+  | Command value -> (
+      let issues = Linear_data.issues r.data in
+      let focused =
+        Option.bind r.cursor (fun number -> Linear_data.find number r.data)
+      in
+      match (Linear_commands.parse ~issues ~focused value, focused) with
+      | Some Linear_commands.Create, _ ->
+          Stay [ create r.view ]
+      | Some Linear_commands.Go_list, _ ->
+          Stay [ Router.navigate routes State.Issues list ]
+      | Some (Linear_commands.Open number), _ ->
+          Stay [ Router.navigate routes State.Issue number ]
+      | Some (Linear_commands.Set change), Some issue ->
+          Go
+            (Ready
+               { r with data = Linear_data.start issue.number change r.data }
+            )
+      | Some (Linear_commands.Set _), None | None, _ ->
+          Ignore
+    )
+  | Saved (id, result) -> (
+      let data, outcome = Linear_data.finish id result r.data in
+      let r = { r with data } in
+      match outcome with
+      | Some (request, outcome) ->
+          Go (Ready (add_toast r request outcome))
+      | None ->
+          Go (Ready r)
+    )
+  | Toast_closed key ->
+      Go
+        (Ready
+           {
+             r with
+             toasts =
+               List.filter
+                 (fun (t : Silica_ui.Toast.toast) -> t.key <> key)
+                 r.toasts;
+           }
+        )
+  | Loaded _ | Retry ->
+      Ignore
+
+let list_keys =
+  [
+    (Key.make "f", Filter_open true);
+    (Key.make "j", Cursor_next);
+    (Key.make "k", Cursor_previous);
+    (Key.arrow_down, Cursor_next);
+    (Key.arrow_up, Cursor_previous);
+    (Key.make "c", Create_key);
+  ]
+  @ Linear_commands.keys (Menu_open true)
+
+let machine =
+  Machine.make ~id:"issue-list" ~init:(Loading Linear_view.default)
+    ~name:state_name
+    ~entry:(function Loading _ -> [ Cmd.Set_title "Issues" ] | _ -> [])
+    ~owns:(function
+      | Loading _ ->
+          [ Source.call issues_endpoint (fun () -> ()) (fun r -> Loaded r) ]
+      | Ready _ ->
+          [
+            Source.live issues_topic
+              (fun () -> issues_key)
+              (fun update -> Updated update);
+            Source.keys ~prevent:true list_keys;
+          ]
+      | Failed _ ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | Loading _, Props view ->
+          Go (Loading view)
+      | Loading view, Loaded (Ok issues) ->
+          Go
+            (Ready
+               {
+                 view;
+                 data = Linear_data.loaded issues;
+                 collapsed = [];
+                 filter_open = false;
+                 cursor = None;
+                 menu_open = false;
+                 toasts = [];
+               }
+            )
+      | Loading view, Loaded (Error error) ->
+          Go (Failed (view, error))
+      | Ready r, event ->
+          ready_event r event
+      | Failed (view, _), Retry ->
+          Go (Loading view)
+      | Failed (_, error), Props view ->
+          Go (Failed (view, error))
+      | _ ->
+          Ignore
+    )
+
+let text = Node.text
+
+let error_text : Remote.error -> string = function
+  | Http code ->
+      "The server answered " ^ string_of_int code
+  | Decode _ ->
+      "The server sent data that cannot be read"
+  | Network _ ->
+      "The network failed"
+
+let row cursor (issue : Issue.t) =
+  Node.keyed
+    (string_of_int issue.number)
+    <li class_="border-b border-ui-border">
+      (Router.link routes State.Issue issue.number
+         ([
+            Attr.ref_ (row_ref issue.number);
+            Attr.string "id" ("issue-row-" ^ string_of_int issue.number);
+            Attr.on_focus (Row_focused issue.number);
+            Attr.string "class"
+              "flex items-center gap-3 px-2 py-2 hover:bg-ui-highlight \
+               focus:outline-2 focus:outline-ui-focus \
+               data-cursor:bg-ui-highlight";
+          ]
+         @
+         if cursor = Some issue.number then
+           [ Attr.string "data-cursor" "" ]
+         else
+           []
+         )
+         [
+           <span class_="w-16 shrink-0 text-sm text-ui-muted">
+             (text (Issue.identifier issue))
+           </span>;
+           <span
+             class_=(Class.join
+                       [
+                         "grow truncate";
+                         ( if Issue_status.is_closed issue.status then
+                             "text-ui-muted line-through"
+                           else
+                             ""
+                         );
+                       ]
+                    )>
+             (text issue.title)
+           </span>;
+           <span class_="shrink-0 text-sm text-ui-muted">
+             (text (Issue_status.label issue.status))
+           </span>;
+         ]
+      )
+    </li>
+
+let section (r : ready) (group, members) =
+  let rows = <ul>(Node.list (List.map (row r.cursor) members))</ul> in
+  match group with
+  | Linear_view.All ->
+      rows
+  | group ->
+      let key = Linear_view.group_key group in
+      let open_ = not (List.mem group r.collapsed) in
+      Node.keyed key
+        <section class_="mb-2">
+          <button
+            id=("group-" ^ key)
+            type_=`button
+            aria_expanded=open_
+            class_="flex w-full items-center gap-2 rounded-ui bg-ui-highlight \
+                    px-2 py-1 text-left text-sm font-medium"
+            on_press=(Toggle_group group)>
+            (text (Linear_view.group_label group))
+            <span class_="text-ui-muted">
+              (text (string_of_int (List.length members)))
+            </span>
+          </button>
+          ( if open_ then
+              rows
+            else
+              Node.list []
+          )
+        </section>
+
+let select_items names label =
+  List.map
+    (fun (value, v) ->
+      { Silica_ui.Select.value; label = label v; disabled = false }
+    )
+    names
+
+let grouping_label = function
+  | Linear_view.By_status ->
+      "Status"
+  | By_assignee ->
+      "Assignee"
+  | By_priority ->
+      "Priority"
+  | No_grouping ->
+      "No grouping"
+
+let ordering_label = function
+  | Linear_view.Priority_order ->
+      "Priority"
+  | Updated ->
+      "Last updated"
+  | Created ->
+      "Created"
+
+let toolbar (r : ready) =
+  <div class_="mb-4 flex flex-wrap items-center gap-2">
+    (Linear_filter.make ~open_:r.filter_open
+       ~on_open_change:(fun open_ _ -> Filter_open open_)
+       ~on_change:(fun filter -> Filter_changed filter)
+       r.view.filter
+    )
+    (Silica_ui.Select.make
+       ~on_value_change:(fun name -> Grouping_picked name)
+       (Silica_ui.Select.props ~id:"issue-grouping" ~label:"Grouping"
+          ~value:(Linear_view.name_of Linear_view.grouping_names r.view.grouping)
+          ~classes:Silica_ui.Style.select
+          (select_items Linear_view.grouping_names grouping_label)
+       )
+    )
+    (Silica_ui.Select.make
+       ~on_value_change:(fun name -> Ordering_picked name)
+       (Silica_ui.Select.props ~id:"issue-ordering" ~label:"Ordering"
+          ~value:(Linear_view.name_of Linear_view.ordering_names r.view.ordering)
+          ~classes:Silica_ui.Style.select
+          (select_items Linear_view.ordering_names ordering_label)
+       )
+    )
+  </div>
+
+let view : state -> event Node.t = function
+  | Loading _ ->
+      <section id="issue-list">
+        <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
+          "Issues"
+        </h1>
+        <p class_="text-ui-muted">"Loading issues..."</p>
+      </section>
+  | Failed (_, error) ->
+      <section id="issue-list">
+        <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
+          "Issues"
+        </h1>
+        <p role=`alert class_="text-ui-danger">(text (error_text error))</p>
+        <button
+          id="issues-retry"
+          class_="mt-2 rounded-ui border border-ui-border px-3 py-1"
+          on_press=Retry>
+          "Try again"
+        </button>
+      </section>
+  | Ready r ->
+      let groups = Linear_view.groups r.view (Linear_data.issues r.data) in
+      <section id="issue-list">
+        <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
+          "Issues"
+        </h1>
+        (toolbar r)
+        ( if r.data.stale then
+            <p id="issues-offline" class_="mb-2 text-sm text-warning">
+              "Offline. Showing the last issues received. "
+              <button class_="underline" on_press=Reconnect>"Reconnect"</button>
+            </p>
+          else
+            Node.list []
+        )
+        ( if groups = [] then
+            <p id="issues-empty" class_="text-ui-muted">
+              "No issues match the filter."
+            </p>
+          else
+            Node.list (List.map (section r) groups)
+        )
+        (Linear_commands.make ~open_:r.menu_open
+           ~on_open_change:(fun opened -> Menu_open opened)
+           ~on_run:(fun value -> Command value)
+           ~issues:(Linear_data.issues r.data)
+           ~focused:
+             (Option.bind r.cursor (fun number -> Linear_data.find number r.data)
+             )
+        )
+        (Linear_data.calls r.data (fun id result -> Saved (id, result)))
+        (Silica_ui.Toast.make
+           ~on_close:(fun key -> Toast_closed key)
+           (Silica_ui.Toast.props ~id:"list-toasts"
+              ~classes:Silica_ui.Style.toast r.toasts
+           )
+        )
+      </section>
+
+let component = Component.make machine view
+let make ?key ~view () = Component.node ?key ~props:(Props view) component

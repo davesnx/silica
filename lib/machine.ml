@@ -367,3 +367,113 @@ struct
       )
       (Targets.to_list states)
 end
+
+type ('s, 'e) next =
+  | Ignore
+  | Stay of 'e Cmd.t list
+  | Go of 's
+  | Go_with of 's * 'e Cmd.t list
+  | Reenter of 's
+
+let no_commands _ = []
+let owns_nothing _ = []
+let never _ = false
+
+let make ~id ~init ~name ?(owns = owns_nothing) ?(entry = no_commands)
+    ?(exit = no_commands) ?(final = never) ?(start = []) update =
+  let owned state =
+    let prefix = id ^ "/" ^ name state in
+    let timers, others =
+      List.partition
+        (fun source -> Option.is_some (Source.delay source))
+        (owns state)
+    in
+    List.mapi
+      (fun i source -> (prefix ^ "/after" ^ string_of_int i, source))
+      timers
+    @ List.mapi
+        (fun i source -> (prefix ^ "/invoke" ^ string_of_int i, source))
+        others
+  in
+  let enter state =
+    run (entry state)
+    @ List.map (fun (id, source) -> Source.start id () source) (owned state)
+  in
+  let leave state =
+    run (exit state) @ List.map (fun (id, _) -> Cmd.Stop id) (owned state)
+  in
+  let active state =
+    List.map
+      (fun (id, source) ->
+        match (Source.delay source, Source.topic source) with
+        | Some ms, _ ->
+            Timer { id; ms }
+        | None, Some topic ->
+            Subscription { id; topic }
+        | None, None when Source.is_held source ->
+            Held { id; name = Source.name source }
+        | None, None ->
+            Call { id; path = Source.name source }
+      )
+      (owned state)
+  in
+  let move state next ~reenter cmds =
+    if reenter || name next <> name state then
+      (next, leave state @ run cmds @ enter next, `Entered)
+    else
+      (next, run cmds, `Kept)
+  in
+  let step state event =
+    if final state then
+      (state, [], `Unhandled)
+    else
+      match update state event with
+      | Ignore ->
+          (state, [], `Unhandled)
+      | Stay cmds ->
+          (state, run cmds, `Kept)
+      | Go next ->
+          move state next ~reenter:false []
+      | Go_with (next, cmds) ->
+          move state next ~reenter:false cmds
+      | Reenter next ->
+          move state next ~reenter:true []
+  in
+  let describe state =
+    let sources = owns state in
+    let named keep =
+      List.filter_map
+        (fun source ->
+          if keep source then
+            Some (Source.name source)
+          else
+            None
+        )
+        sources
+    in
+    {
+      Spec.name = name state;
+      final = final state;
+      timers = List.filter_map Source.delay sources;
+      sources =
+        named (fun source ->
+            Option.is_none (Source.delay source) && not (Source.is_held source)
+        );
+      held = named Source.is_held;
+    }
+  in
+  {
+    id;
+    init;
+    key = name;
+    final;
+    step;
+    enter;
+    first = run start;
+    exit = leave;
+    active;
+    held = (fun state -> List.filter_map (Source.held ()) (owns state));
+    covered = [];
+    spec = { Spec.id; init = name init; states = [ describe init ]; edges = [] };
+    type_id = Type.Id.make ();
+  }

@@ -47,6 +47,7 @@ type ('s, 'ev) report =
       not_explored : string list;
       edges : Silica.Spec.label list;
       children : children;
+      spec : Silica.Spec.t;
     }
       (** [transitions] counts every explored (state, event) pair.
           [not_explored] lists, sorted and without duplicates, what the checker
@@ -59,7 +60,11 @@ type ('s, 'ev) report =
           each listed machine alone with {!component}, with the props from
           [children]. [edges] are the steps that the run took, sorted, with the
           event names from [label]: a state entered from another state or
-          entered again, and the steps that kept the state ([kept]). *)
+          entered again, and the steps that kept the state ([kept]). [spec] is
+          the spec that the run found: the states it reached, initial state
+          first then by name, each with the timers and sources of the first
+          snapshot reached in it, and the edges it took. It is the only spec
+          with edges of a machine made by {!Silica.Machine.make}. *)
   | Violation of { invariant : string; trace : 'ev list; state : 's }
   | Unreached of { edges : (string * string) list }
       (** The search ended with no violation, but these declared edges between
