@@ -8,13 +8,13 @@ module States = struct
   type _ t = Page : page t
 end
 
-module M = Machine.Make (States)
+module Toast_events_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"toast-events"
-    ~init:(M.at Page { toasts = []; next = 1; events = [] })
+  Toast_events_machine.make ~id:"toast-events"
+    ~init:(Toast_events_machine.at Page { toasts = []; next = 1; events = [] })
     [
-      M.state Page "page" (fun page -> function
+      Toast_events_machine.state Page "page" (fun page -> function
         | Add priority ->
             let key = "t" ^ string_of_int page.next in
             let toast =
@@ -26,14 +26,14 @@ let machine =
                   Toast.toast ~key ~priority ~description:"Try again later."
                     ("Failed " ^ key)
             in
-            M.goto Page
+            Toast_events_machine.goto Page
               {
                 toasts = page.toasts @ [ toast ];
                 next = page.next + 1;
                 events = page.events @ [ "add " ^ key ];
               }
         | Closed key ->
-            M.goto Page
+            Toast_events_machine.goto Page
               {
                 page with
                 toasts =
@@ -45,7 +45,7 @@ let machine =
         );
     ]
 
-let view (M.At (Page, page)) =
+let view (Toast_events_machine.At (Page, page)) =
   <section class_="flex flex-col gap-4">
     <div class_="flex gap-2">
       <button

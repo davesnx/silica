@@ -8,15 +8,15 @@ module States = struct
   type _ t = Page : page t
 end
 
-module M = Machine.Make (States)
+module Switch_events_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"switch-events"
-    ~init:(M.at Page { checked = false; events = [] })
+  Switch_events_machine.make ~id:"switch-events"
+    ~init:(Switch_events_machine.at Page { checked = false; events = [] })
     [
-      M.state Page "page" (fun page -> function
+      Switch_events_machine.state Page "page" (fun page -> function
         | Changed checked ->
-            M.goto Page
+            Switch_events_machine.goto Page
               {
                 checked;
                 events = page.events @ [ Printf.sprintf "checked %b" checked ];
@@ -24,7 +24,7 @@ let machine =
         );
     ]
 
-let view (M.At (Page, page)) =
+let view (Switch_events_machine.At (Page, page)) =
   <section class_="flex flex-col gap-4">
     <form id="wifi-form">
       (Switch.make

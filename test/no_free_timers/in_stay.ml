@@ -1,5 +1,5 @@
-module S = struct
+module States = struct
   type _ t = A : unit t
 end
-module M = Silica.Machine.Make (S)
-let _ = M.stay [ Silica.Cmd.Stop "t" ]
+module Timer_machine = Silica.Machine.Make (States)
+let _ = Timer_machine.stay [ Silica.Cmd.Stop "t" ]

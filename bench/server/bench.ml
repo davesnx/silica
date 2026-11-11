@@ -1,5 +1,5 @@
-module A = Silica_example_adapter
-module S = A.Server
+module Adapter = Silica_example_adapter
+module Server = Adapter.Server
 
 let metafile =
   {|{"outputs":{"dist/client_main-AAAAAAAA.js":{"entryPoint":"out/client_main.mjs"},"dist/app-AAAAAAAA.css":{"entryPoint":"app.css"}}}|}
@@ -51,7 +51,7 @@ let request ?cookie path =
   }
 
 let session_cookie server path =
-  let res = S.handle server (request path) in
+  let res = Server.handle server (request path) in
   match List.assoc_opt "set-cookie" res.headers with
   | Some value ->
       List.hd (String.split_on_char ';' value)
@@ -65,7 +65,7 @@ let percentile sorted p =
 let measure ~runs name server path =
   let cookie = session_cookie server path in
   let once () =
-    let res = S.handle server (request ~cookie path) in
+    let res = Server.handle server (request ~cookie path) in
     if res.status <> 200 then
       failwith (Printf.sprintf "%s: status %d" name res.status);
     String.length res.body

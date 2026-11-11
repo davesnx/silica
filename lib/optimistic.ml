@@ -5,7 +5,7 @@ module type CHANGE = sig
   val apply : value -> change -> value
 end
 
-module type S = sig
+module type OPTIMISTIC = sig
   type value
   type change
   type t
@@ -21,9 +21,9 @@ module type S = sig
   val is_pending : id:int -> t -> bool
 end
 
-module Make (C : CHANGE) = struct
-  type value = C.value
-  type change = C.change
+module Make (Change : CHANGE) = struct
+  type value = Change.value
+  type change = Change.change
   type t = { confirmed : value; pending : (int * change) list }
 
   let make confirmed = { confirmed; pending = [] }
@@ -56,7 +56,7 @@ module Make (C : CHANGE) = struct
             | Some value ->
                 value
             | None ->
-                C.apply t.confirmed change
+                Change.apply t.confirmed change
             );
           pending = List.remove_assoc id t.pending;
         }
@@ -66,7 +66,7 @@ module Make (C : CHANGE) = struct
 
   let value t =
     List.fold_left
-      (fun value (_, change) -> C.apply value change)
+      (fun value (_, change) -> Change.apply value change)
       t.confirmed t.pending
 
   let confirmed t = t.confirmed

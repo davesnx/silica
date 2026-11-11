@@ -6,13 +6,13 @@ module States = struct
   type _ t = Watching : int Status.t t
 end
 
-module M = Machine.Make (States)
+module Votes_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"votes"
-    ~init:(M.at Watching Status.Idle)
+  Votes_machine.make ~id:"votes"
+    ~init:(Votes_machine.at Watching Status.Idle)
     [
-      M.state Watching "watching"
+      Votes_machine.state Watching "watching"
         ~invoke:
           [
             Source.live Example_model.votes_topic
@@ -21,15 +21,16 @@ let machine =
           ]
         (fun status -> function
           | Update { status; _ } ->
-              M.goto Watching status
+              Votes_machine.goto Watching status
           | Reconnect ->
-              M.reenter Watching status
+              Votes_machine.reenter Watching status
           );
     ]
 
 let text = Node.text
 
-let view (M.At (Watching, status) : M.snapshot) : event Node.t =
+let view (Votes_machine.At (Watching, status) : Votes_machine.snapshot) :
+    event Node.t =
   let count =
     match Status.data status with Some n -> string_of_int n | None -> "..."
   in

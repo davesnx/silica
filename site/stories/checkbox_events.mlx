@@ -8,26 +8,29 @@ module States = struct
   type _ t = Page : page t
 end
 
-module M = Machine.Make (States)
+module Checkbox_events_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"checkbox-events"
-    ~init:(M.at Page { checked = false; indeterminate = false; events = [] })
+  Checkbox_events_machine.make ~id:"checkbox-events"
+    ~init:
+      (Checkbox_events_machine.at Page
+         { checked = false; indeterminate = false; events = [] }
+      )
     [
-      M.state Page "page" (fun page -> function
+      Checkbox_events_machine.state Page "page" (fun page -> function
         | Changed checked ->
-            M.goto Page
+            Checkbox_events_machine.goto Page
               {
                 checked;
                 indeterminate = false;
                 events = page.events @ [ Printf.sprintf "checked %b" checked ];
               }
         | Mixed ->
-            M.goto Page { page with indeterminate = true }
+            Checkbox_events_machine.goto Page { page with indeterminate = true }
         );
     ]
 
-let view (M.At (Page, page)) =
+let view (Checkbox_events_machine.At (Page, page)) =
   <section class_="flex flex-col gap-4">
     <form id="terms-form" class_="flex flex-col gap-2">
       (Checkbox.make

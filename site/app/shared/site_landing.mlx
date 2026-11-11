@@ -7,17 +7,18 @@ module States = struct
 end
 
 open States
-module M = Machine.Make (States)
+module Landing_machine = Machine.Make (States)
 
 let demo = Landing_save.machine
 let spec = Machine.spec demo
 
 let machine =
-  M.make ~id:"landing" ~init:(M.at Watching spec.init)
+  Landing_machine.make ~id:"landing"
+    ~init:(Landing_machine.at Watching spec.init)
     [
-      M.state Watching "watching" (fun _ -> function
+      Landing_machine.state Watching "watching" (fun _ -> function
         | Moved state ->
-            M.goto Watching state
+            Landing_machine.goto Watching state
         );
     ]
 
@@ -195,7 +196,7 @@ let ideas =
     );
   ]
 
-let view (M.At (Watching, current)) : event Node.t =
+let view (Landing_machine.At (Watching, current)) : event Node.t =
   <div>
     <section
       class_="grid items-center gap-12 pt-10 pb-20 \

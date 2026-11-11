@@ -9,22 +9,23 @@ module States = struct
   type _ t = Idle : unit t | Page : page t
 end
 
-module M = Machine.Make (States)
+module Tabs_basic_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"tabs-basic" ~init:(M.at Idle ())
+  Tabs_basic_machine.make ~id:"tabs-basic"
+    ~init:(Tabs_basic_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Page ] (fun () -> function
+      Tabs_basic_machine.state Idle "idle" ~to_:[ Page ] (fun () -> function
         | Props props ->
-            M.goto Page { props; selected = "overview" }
+            Tabs_basic_machine.goto Page { props; selected = "overview" }
         | Changed _ ->
-            M.unhandled
+            Tabs_basic_machine.unhandled
         );
-      M.state Page "page" (fun page -> function
+      Tabs_basic_machine.state Page "page" (fun page -> function
         | Props props ->
-            M.goto Page { page with props }
+            Tabs_basic_machine.goto Page { page with props }
         | Changed selected ->
-            M.goto Page { page with selected }
+            Tabs_basic_machine.goto Page { page with selected }
         );
     ]
 
@@ -37,9 +38,9 @@ let tabs =
   ]
 
 let view = function
-  | M.At (Idle, ()) ->
+  | Tabs_basic_machine.At (Idle, ()) ->
       <div />
-  | M.At (Page, { props = { id; orientation }; selected }) ->
+  | Tabs_basic_machine.At (Page, { props = { id; orientation }; selected }) ->
       let panel value text =
         Tabs.panel ~class_:Style.tab_panel ~id ~value ~selected
           [ Node.text text ]

@@ -1,5 +1,5 @@
 open Silica
-module M = Silica_memory
+module Memory = Silica_memory
 module Theme = Silica_ui.Theme
 
 let dark_query = "(prefers-color-scheme: dark)"
@@ -80,17 +80,17 @@ module Host = struct
 end
 
 let mount ?listen ?(dark = false) choice =
-  M.mount ~media:[ (dark_query, dark) ] (Host.component ?listen choice)
+  Memory.mount ~media:[ (dark_query, dark) ] (Host.component ?listen choice)
 
-let seen t = M.text (M.by_id t "seen")
-let theme_attr t = M.document_attribute t "data-theme"
+let seen t = Memory.text (Memory.by_id t "seen")
+let theme_attr t = Memory.document_attribute t "data-theme"
 
 let media_sources t =
-  List.filter (fun (_, s) -> Cmd.source_name s = "media") (M.sources t)
+  List.filter (fun (_, s) -> Cmd.source_name s = "media") (Memory.sources t)
 
 let choose t label =
-  M.press (M.by_id t "theme-trigger");
-  M.press (M.by_text t label)
+  Memory.press (Memory.by_id t "theme-trigger");
+  Memory.press (Memory.by_text t label)
 
 let find css needle =
   let n = String.length needle in
@@ -368,12 +368,12 @@ let system_follows_the_setting () =
   let t = mount ~dark:false Theme.System in
   Alcotest.check opt "data-theme" (Some "system") (theme_attr t);
   Alcotest.(check (list (pair string string)))
-    "no cookie at the start" [] (M.cookies t);
+    "no cookie at the start" [] (Memory.cookies t);
   Alcotest.(check string) "the light theme at the start" "light" (seen t);
-  M.set_media t dark_query true;
+  Memory.set_media t dark_query true;
   Alcotest.(check string) "live follow" "light,dark" (seen t);
   Alcotest.check opt "the attribute stays system" (Some "system") (theme_attr t);
-  M.set_media t dark_query false;
+  Memory.set_media t dark_query false;
   Alcotest.(check string) "and back" "light,dark,light" (seen t);
   let t = mount ~dark:true Theme.System in
   Alcotest.(check string) "dark at the start" "dark" (seen t)
@@ -385,48 +385,48 @@ let choose_a_theme () =
   Alcotest.(check (list (pair string string)))
     "the cookie"
     [ ("silica-theme", "high-contrast") ]
-    (M.cookies t);
+    (Memory.cookies t);
   Alcotest.(check string) "on_change" "light,high-contrast" (seen t);
   Alcotest.(check int)
     "no media source outside System" 0
     (List.length (media_sources t));
-  M.set_media t dark_query true;
+  Memory.set_media t dark_query true;
   Alcotest.(check string)
     "the setting does not matter now" "light,high-contrast" (seen t);
   check_contains "the switcher shows it"
-    (M.text (M.by_id t "theme-trigger"))
+    (Memory.text (Memory.by_id t "theme-trigger"))
     "High contrast";
   choose t "System";
   Alcotest.check opt "back to system" (Some "system") (theme_attr t);
   Alcotest.(check (list (pair string string)))
     "the cookie"
     [ ("silica-theme", "system") ]
-    (M.cookies t);
+    (Memory.cookies t);
   Alcotest.(check string) "resolved at once" "light,high-contrast,dark" (seen t);
   Alcotest.(check int) "one media source" 1 (List.length (media_sources t))
 
 let fixed_at_start () =
   let t = mount (Theme.Fixed Theme.ocean) in
   Alcotest.check opt "data-theme" (Some "ocean") (theme_attr t);
-  Alcotest.(check (list (pair string string))) "no cookie" [] (M.cookies t);
+  Alcotest.(check (list (pair string string))) "no cookie" [] (Memory.cookies t);
   Alcotest.(check int) "no media source" 0 (List.length (media_sources t));
   check_contains "the switcher shows the choice"
-    (M.text (M.by_id t "theme-trigger"))
+    (Memory.text (Memory.by_id t "theme-trigger"))
     "Ocean"
 
 let props_change_is_a_change () =
   let t = mount Theme.System in
-  M.press (M.by_id t "to-ocean");
+  Memory.press (Memory.by_id t "to-ocean");
   Alcotest.check opt "data-theme" (Some "ocean") (theme_attr t);
   Alcotest.(check (list (pair string string)))
     "the cookie"
     [ ("silica-theme", "ocean") ]
-    (M.cookies t);
-  M.press (M.by_id t "to-ocean");
+    (Memory.cookies t);
+  Memory.press (Memory.by_id t "to-ocean");
   Alcotest.(check (list (pair string string)))
     "same props, no new write"
     [ ("silica-theme", "ocean") ]
-    (M.cookies t)
+    (Memory.cookies t)
 
 let new_props_with_the_same_choice_keep_the_pick () =
   let t = mount Theme.System in
@@ -437,12 +437,14 @@ let new_props_with_the_same_choice_keep_the_pick () =
   Alcotest.(check (list (pair string string)))
     "one write"
     [ ("silica-theme", "dark") ]
-    (M.cookies t)
+    (Memory.cookies t)
 
 let switch_costs_no_extra_render () =
   let renders f =
-    let t = M.mount ~media:[] (Host.component ~listen:false Theme.System) in
-    let before = !Host.renders and html = M.html t in
+    let t =
+      Memory.mount ~media:[] (Host.component ~listen:false Theme.System)
+    in
+    let before = !Host.renders and html = Memory.html t in
     f t;
     (!Host.renders - before, html, t)
   in
@@ -450,21 +452,21 @@ let switch_costs_no_extra_render () =
   Alcotest.check opt "switched" (Some "dark") (theme_attr t);
   let browse, html, t =
     renders (fun t ->
-        M.press (M.by_id t "theme-trigger");
-        M.press (M.by_id t "theme-trigger")
+        Memory.press (Memory.by_id t "theme-trigger");
+        Memory.press (Memory.by_id t "theme-trigger")
     )
   in
   Alcotest.(check int)
     "a switch renders as often as open and close" browse switch;
   Alcotest.(check string)
-    "open and close leave the page as it was" html (M.html t)
+    "open and close leave the page as it was" html (Memory.html t)
 
 let scope_marks_the_subtree () =
   let t = mount Theme.System in
-  let scoped = M.by_text t "scoped" in
+  let scoped = Memory.by_text t "scoped" in
   Alcotest.check opt "data-theme on the scope" (Some "high-contrast")
-    (M.attribute scoped "data-theme");
-  Alcotest.(check string) "a div" "div" (M.tag scoped)
+    (Memory.attribute scoped "data-theme");
+  Alcotest.(check string) "a div" "div" (Memory.tag scoped)
 
 let server_html_has_the_theme () =
   let html = Render.to_string (Theme.scope Theme.ocean [ Node.text "x" ]) in

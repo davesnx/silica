@@ -54,47 +54,49 @@ module States = struct
     | Failed : Remote.error t
 end
 
-module M = Machine.Make (States)
+module Save_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"save" ~init:(M.at Idle ())
+  Save_machine.make ~id:"save" ~init:(Save_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Saving ] (fun () -> function
+      Save_machine.state Idle "idle" ~to_:[ Saving ] (fun () -> function
         | Save ->
-            M.goto Saving ()
+            Save_machine.goto Saving ()
         | Answer _ | Reset ->
-            M.unhandled
+            Save_machine.unhandled
         );
-      M.state Saving "saving" ~to_:[ Saved; Failed ]
+      Save_machine.state Saving "saving" ~to_:[ Saved; Failed ]
         ~invoke:[ Source.call save (fun () -> "draft") (fun r -> Answer r) ]
         (fun () -> function
           | Answer (Ok time) ->
-              M.goto Saved time
+              Save_machine.goto Saved time
           | Answer (Error error) ->
-              M.goto Failed error
+              Save_machine.goto Failed error
           | Save | Reset ->
-              M.unhandled
+              Save_machine.unhandled
           );
-      M.state Saved "saved" ~to_:[ Idle ]
+      Save_machine.state Saved "saved" ~to_:[ Idle ]
         ~after:[ (2000, Reset) ]
-        (fun _ -> function Reset -> M.goto Idle () | _ -> M.unhandled);
-      M.state Failed "failed" ~to_:[ Saving ] (fun _ -> function
+        (fun _ -> function
+          | Reset -> Save_machine.goto Idle () | _ -> Save_machine.unhandled
+          );
+      Save_machine.state Failed "failed" ~to_:[ Saving ] (fun _ -> function
         | Save ->
-            M.goto Saving ()
+            Save_machine.goto Saving ()
         | Answer _ | Reset ->
-            M.unhandled
+            Save_machine.unhandled
         );
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Save_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Idle, ()) ->
+  | Save_machine.At (Idle, ()) ->
       <button on_press=Save>"Save the draft"</button>
-  | M.At (Saving, ()) ->
+  | Save_machine.At (Saving, ()) ->
       <button disabled=true>"Saving"</button>
-  | M.At (Saved, time) ->
+  | Save_machine.At (Saved, time) ->
       <p>(Node.text ("Saved at " ^ time))</p>
-  | M.At (Failed, _) ->
+  | Save_machine.At (Failed, _) ->
       <button on_press=Save>"Not saved. Try again"</button>
 
 let component = Component.make machine view

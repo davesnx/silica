@@ -7,21 +7,23 @@ module States = struct
   type _ t = Party : party t
 end
 
-module M = Machine.Make (States)
+module Party_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"party"
-    ~init:(M.at Party { adults = 0; children = 0 })
+  Party_machine.make ~id:"party"
+    ~init:(Party_machine.at Party { adults = 0; children = 0 })
     [
-      M.state Party "party" (fun party -> function
+      Party_machine.state Party "party" (fun party -> function
         | Adults adults ->
-            M.goto Party { party with adults }
+            Party_machine.goto Party { party with adults }
         | Children children ->
-            M.goto Party { party with children }
+            Party_machine.goto Party { party with children }
         );
     ]
 
-let view (M.At (Party, { adults; children }) : M.snapshot) : event Node.t =
+let view
+    (Party_machine.At (Party, { adults; children }) : Party_machine.snapshot) :
+    event Node.t =
   <div>
     <Doc_stepper key="adults" label="Adults" on_change=(fun n -> Adults n) />
     <Doc_stepper

@@ -26,17 +26,18 @@ module States = struct
   type _ t = Page : (string option * string list) t
 end
 
-module P = Machine.Make (States)
+module Page_machine = Machine.Make (States)
 
 let machine =
-  P.make ~id:"select-page"
-    ~init:(P.at Page (None, []))
+  Page_machine.make ~id:"select-page"
+    ~init:(Page_machine.at Page (None, []))
     [
-      P.state Page "page" (fun (value, log) -> function
+      Page_machine.state Page "page" (fun (value, log) -> function
         | Changed (id, v) ->
-            P.goto Page (value, log @ [ Printf.sprintf "%s value %s" id v ])
+            Page_machine.goto Page
+              (value, log @ [ Printf.sprintf "%s value %s" id v ])
         | Opened (id, opened, why) ->
-            P.goto Page
+            Page_machine.goto Page
               ( value,
                 log
                 @ [
@@ -45,7 +46,7 @@ let machine =
                   ]
               )
         | Set_value value ->
-            P.goto Page (value, log)
+            Page_machine.goto Page (value, log)
         );
     ]
 
@@ -55,7 +56,7 @@ let select ?value ?name id =
     ~on_open_change:(fun opened why -> Opened (id, opened, why))
     (props ?value ?name id)
 
-let view (P.At (Page, (value, log))) =
+let view (Page_machine.At (Page, (value, log))) =
   Node.element "main" []
     [
       Node.element "p"

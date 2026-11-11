@@ -7,17 +7,18 @@ module States = struct
   type _ t = Not_found : unit t
 end
 
-module M = Machine.Make (States)
+module Not_found_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"not_found" ~init:(M.at Not_found ())
+  Not_found_machine.make ~id:"not_found"
+    ~init:(Not_found_machine.at Not_found ())
     [
-      M.state Not_found "not_found"
+      Not_found_machine.state Not_found "not_found"
         ~entry:(fun () -> [ Cmd.Set_title "Not found" ])
-        M.ignore;
+        Not_found_machine.ignore;
     ]
 
-let view (_ : M.snapshot) : event Node.t =
+let view (_ : Not_found_machine.snapshot) : event Node.t =
   <div>
     <h1>"Not found"</h1>
     (Router.link routes State.Home () [] [ Node.text "Home" ])

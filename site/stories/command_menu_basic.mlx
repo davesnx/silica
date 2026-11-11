@@ -17,31 +17,34 @@ module States = struct
   type _ t = Idle : unit t | Page : page t
 end
 
-module M = Machine.Make (States)
+module Command_menu_basic_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"command-menu-basic" ~init:(M.at Idle ())
+  Command_menu_basic_machine.make ~id:"command-menu-basic"
+    ~init:(Command_menu_basic_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Page ] (fun () -> function
+      Command_menu_basic_machine.state Idle "idle" ~to_:[ Page ]
+        (fun () -> function
         | Props id ->
-            M.goto Page { id; open_ = None }
+            Command_menu_basic_machine.goto Page { id; open_ = None }
         | Open | Changed _ ->
-            M.unhandled
+            Command_menu_basic_machine.unhandled
         );
-      M.state Page "page" (fun page -> function
+      Command_menu_basic_machine.state Page "page" (fun page -> function
         | Props id ->
-            M.goto Page { page with id }
+            Command_menu_basic_machine.goto Page { page with id }
         | Open ->
-            M.goto Page { page with open_ = Some true }
+            Command_menu_basic_machine.goto Page { page with open_ = Some true }
         | Changed opened ->
-            M.goto Page { page with open_ = Some opened }
+            Command_menu_basic_machine.goto Page
+              { page with open_ = Some opened }
         );
     ]
 
 let view = function
-  | M.At (Idle, ()) ->
+  | Command_menu_basic_machine.At (Idle, ()) ->
       <div />
-  | M.At (Page, page) ->
+  | Command_menu_basic_machine.At (Page, page) ->
       <div>
         <button type_=`button class_=Style.button on_press=Open>
           "Open commands"

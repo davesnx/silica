@@ -28,51 +28,57 @@ module States = struct
   type _ t = Empty : unit t | Typing : string t | Settled : string t
 end
 
-module M = Machine.Make (States)
+module Debounce_machine = Machine.Make (States)
 
-let typed = function "" -> M.goto Empty () | text -> M.reenter Typing text
+let typed = function
+  | "" ->
+      Debounce_machine.goto Empty ()
+  | text ->
+      Debounce_machine.reenter Typing text
 
 let machine =
-  M.make ~id:"debounce" ~init:(M.at Empty ())
+  Debounce_machine.make ~id:"debounce"
+    ~init:(Debounce_machine.at Empty ())
     [
-      M.state Empty "empty" ~to_:[ Typing ] (fun () -> function
+      Debounce_machine.state Empty "empty" ~to_:[ Typing ] (fun () -> function
         | Typed text ->
             typed text
         | Settle | Clear ->
-            M.unhandled
+            Debounce_machine.unhandled
         );
-      M.state Typing "typing" ~to_:[ Empty; Settled ]
+      Debounce_machine.state Typing "typing" ~to_:[ Empty; Settled ]
         ~after:[ (500, Settle) ]
         (fun text -> function
           | Typed text ->
               typed text
           | Settle ->
-              M.goto Settled text
+              Debounce_machine.goto Settled text
           | Clear ->
-              M.unhandled
+              Debounce_machine.unhandled
           );
-      M.state Settled "settled" ~to_:[ Empty; Typing ] (fun _ -> function
+      Debounce_machine.state Settled "settled" ~to_:[ Empty; Typing ]
+        (fun _ -> function
         | Typed text ->
             typed text
         | Settle | Clear ->
-            M.unhandled
+            Debounce_machine.unhandled
         );
-      M.always ~to_:[ Empty ] (function
+      Debounce_machine.always ~to_:[ Empty ] (function
         | Clear ->
-            M.goto Empty ()
+            Debounce_machine.goto Empty ()
         | Typed _ | Settle ->
-            M.unhandled
+            Debounce_machine.unhandled
         );
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Debounce_machine.snapshot) : event Node.t =
   let text, note =
     match snapshot with
-    | M.At (Empty, ()) ->
+    | Debounce_machine.At (Empty, ()) ->
         ("", "Type a word.")
-    | M.At (Typing, text) ->
+    | Debounce_machine.At (Typing, text) ->
         (text, "Waiting for you to stop.")
-    | M.At (Settled, text) ->
+    | Debounce_machine.At (Settled, text) ->
         (text, "You typed " ^ text ^ ".")
   in
   <div>
@@ -86,13 +92,14 @@ let component = Component.make machine view
 
 {1:cases The table of cases}
 
-[M.make ~id ~init cases] makes the machine. [id] names the machine in the
-spec, in the checker and in the ids of timers and sources. [init] is the first
-snapshot. [?start] gives commands that run once, before the entry of [init].
+[Debounce_machine.make ~id ~init cases] makes the machine. [id] names the
+machine in the spec, in the checker and in the ids of timers and sources.
+[init] is the first snapshot. [?start] gives commands that run once, before the
+entry of [init].
 
-Each state has one case, made with [M.state state name handler]. The handler
-gets the data of the state and the event, and gives an outcome. The options
-of a case:
+Each state has one case, made with
+[Debounce_machine.state state name handler]. The handler gets the data of the
+state and the event, and gives an outcome. The options of a case:
 
 {t
 | Option | Meaning |
@@ -108,24 +115,30 @@ Timers and sources belong to the state. They start when the machine enters
 the state and stop when it leaves the state, so a timer or an answer of a left
 state never arrives. See {!page-commands} for the sources.
 
-[M.always ~to_ handler] is a handler that every state that is not final tries
-after its own handler gives [unhandled]. In the example, [Clear] works in every
-state.
+[Debounce_machine.always ~to_ handler] is a handler that every state that is
+not final tries after its own handler gives [unhandled]. In the example,
+[Clear] works in every state.
 
 A machine that the checker cannot reach is a bug. Two exceptions catch the
 most common ones when the machine is made or stepped:
 
 - {!Silica.Machine.Missing_case}: a state in [init] or in a [to_] list has no
-  case. [M.make] raises it.
+  case. [Debounce_machine.make] raises it.
 - {!Silica.Machine.Undeclared_target}: a handler went to a state that is not
   in the [to_] list of its case. The step raises it.
 
 {@ocaml[
 # let broken () =
     let open Doc_debounce in
-    M.make ~id:"broken" ~init:(M.at States.Empty ())
-      [ M.state States.Empty "empty" ~to_:[ States.Typing ] M.ignore ];;
-val broken : unit -> (Doc_debounce.M.snapshot, 'a) Silica.Machine.t = <fun>
+    Debounce_machine.make ~id:"broken"
+      ~init:(Debounce_machine.at States.Empty ())
+      [
+        Debounce_machine.state States.Empty "empty" ~to_:[ States.Typing ]
+          Debounce_machine.ignore;
+      ];;
+val broken :
+  unit -> (Doc_debounce.Debounce_machine.snapshot, 'a) Silica.Machine.t =
+  <fun>
 # broken ();;
 Exception: Silica.Machine.Missing_case {machine = "broken"; index = 1}.
 ]}
@@ -135,10 +148,10 @@ Exception: Silica.Machine.Missing_case {machine = "broken"; index = 1}.
 {t
 | Outcome | Meaning |
 |---------|---------|
-| [M.goto state data] | Go to the state. To the current state, only the data changes: no exit, no entry, the timers and sources keep running. |
-| [M.reenter state data] | Like [goto], but exit and enter again, also to the current state. Timers and sources start again. |
-| [M.stay cmds] | Keep the snapshot and run the commands. |
-| [M.unhandled] | This state does not handle the event. The [always] handlers get it next. |
+| [Debounce_machine.goto state data] | Go to the state. To the current state, only the data changes: no exit, no entry, the timers and sources keep running. |
+| [Debounce_machine.reenter state data] | Like [goto], but exit and enter again, also to the current state. Timers and sources start again. |
+| [Debounce_machine.stay cmds] | Keep the snapshot and run the commands. |
+| [Debounce_machine.unhandled] | This state does not handle the event. The [always] handlers get it next. |
 }
 
 [goto] and [reenter] take [?cmds], the commands of the step. A debounce is
@@ -154,15 +167,16 @@ the current state owns.
 
 {@ocaml[
 # let machine = Doc_debounce.machine;;
-val machine : (Doc_debounce.M.snapshot, Doc_debounce.event) Silica.Machine.t =
-  <abstr>
+val machine :
+  (Doc_debounce.Debounce_machine.snapshot, Doc_debounce.event)
+  Silica.Machine.t = <abstr>
 # let snapshot, _ = Silica.Machine.start machine;;
-val snapshot : Doc_debounce.M.snapshot =
-  Doc_debounce.M.At (Doc_debounce.States.Empty, <poly>)
+val snapshot : Doc_debounce.Debounce_machine.snapshot =
+  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Empty, <poly>)
 # let snapshot, commands, _ =
     Silica.Machine.send machine snapshot (Doc_debounce.Typed "oc");;
-val snapshot : Doc_debounce.M.snapshot =
-  Doc_debounce.M.At (Doc_debounce.States.Typing, <poly>)
+val snapshot : Doc_debounce.Debounce_machine.snapshot =
+  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Typing, <poly>)
 val commands : Doc_debounce.event Silica.Cmd.host list =
   [Silica.Cmd.Start_timer
     {Silica.Cmd.id = "debounce/typing/after0"; ms = 500;
@@ -179,16 +193,16 @@ a new one:
 {@ocaml[
 # let snapshot, commands, _ =
     Silica.Machine.send machine snapshot (Doc_debounce.Typed "ocaml");;
-val snapshot : Doc_debounce.M.snapshot =
-  Doc_debounce.M.At (Doc_debounce.States.Typing, <poly>)
+val snapshot : Doc_debounce.Debounce_machine.snapshot =
+  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Typing, <poly>)
 val commands : Doc_debounce.event Silica.Cmd.host list =
   [Silica.Cmd.Stop "debounce/typing/after0";
    Silica.Cmd.Start_timer
     {Silica.Cmd.id = "debounce/typing/after0"; ms = 500;
      event = Doc_debounce.Settle}]
 # let snapshot, _, _ = Silica.Machine.send machine snapshot Doc_debounce.Settle;;
-val snapshot : Doc_debounce.M.snapshot =
-  Doc_debounce.M.At (Doc_debounce.States.Settled, <poly>)
+val snapshot : Doc_debounce.Debounce_machine.snapshot =
+  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Settled, <poly>)
 # Silica.Machine.key machine snapshot;;
 - : string = "settled"
 ]}

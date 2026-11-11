@@ -7,14 +7,15 @@ module States = struct
   type _ t = Page : string list t
 end
 
-module M = Machine.Make (States)
+module Tooltip_events_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"tooltip-events" ~init:(M.at Page [])
+  Tooltip_events_machine.make ~id:"tooltip-events"
+    ~init:(Tooltip_events_machine.at Page [])
     [
-      M.state Page "page" (fun events -> function
+      Tooltip_events_machine.state Page "page" (fun events -> function
         | Changed (id, opened, reason) ->
-            M.goto Page
+            Tooltip_events_machine.goto Page
               (events
               @ [
                   Printf.sprintf "%s %s %s" id
@@ -31,7 +32,7 @@ let machine =
 
 let changed id opened reason = Changed (id, opened, reason)
 
-let view (M.At (Page, events)) =
+let view (Tooltip_events_machine.At (Page, events)) =
   <section class_="flex flex-col gap-4">
     <div class_="flex gap-2 pt-12">
       (Tooltip.make ~on_open_change:(changed "save")

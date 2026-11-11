@@ -1,16 +1,16 @@
 open Silica
-module M = Silica_memory
+module Memory = Silica_memory
 
 let string = Alcotest.(check string)
 let int = Alcotest.(check int)
 let bool = Alcotest.(check bool)
-let text t id = M.text (M.by_id t id)
-let press t id = M.press (M.by_id t id)
+let text t id = Memory.text (Memory.by_id t id)
+let press t id = Memory.press (Memory.by_id t id)
 
 let h1 t =
-  match List.filter (fun e -> M.tag e = "h1") (M.all t) with
+  match List.filter (fun e -> Memory.tag e = "h1") (Memory.all t) with
   | e :: _ ->
-      M.text e
+      Memory.text e
   | [] ->
       Alcotest.fail "no h1"
 
@@ -23,7 +23,7 @@ let contains haystack needle =
 
 let only = function [ x ] -> x | l -> Alcotest.failf "%d items" (List.length l)
 
-let basic () = M.mount Test_apps.component
+let basic () = Memory.mount Test_apps.component
 
 let press_re_renders () =
   let t = basic () in
@@ -33,89 +33,89 @@ let press_re_renders () =
 
 let input_delivers_the_value () =
   let t = basic () in
-  M.input (M.by_id t "input") "hello";
+  Memory.input (Memory.by_id t "input") "hello";
   string "typed" "hello" (text t "typed");
   Alcotest.(check (option string))
     "value" (Some "hello")
-    (M.attribute (M.by_id t "input") "value")
+    (Memory.attribute (Memory.by_id t "input") "value")
 
 let after_fires_later () =
   let t = basic () in
   press t "ask";
   string "ticks" "0" (text t "ticks");
-  M.advance t 4;
+  Memory.advance t 4;
   string "not yet" "0" (text t "ticks");
-  M.advance t 1;
+  Memory.advance t 1;
   string "tick" "1" (text t "ticks")
 
 let call_success () =
   let t = basic () in
   press t "ask";
-  let request = only (M.pending t) in
-  M.reply request "42";
+  let request = only (Memory.pending t) in
+  Memory.reply request "42";
   string "answer" "ok 42" (text t "answer");
   Alcotest.(check (list (pair string string)))
     "wire request"
     [ ("/api/double", "21") ]
-    (List.map (fun r -> (M.path r, M.body r)) (M.requests t))
+    (List.map (fun r -> (Memory.path r, Memory.body r)) (Memory.requests t))
 
 let call_errors () =
   let t = basic () in
   press t "ask";
-  M.reply ~status:500 (only (M.pending t)) "boom";
+  Memory.reply ~status:500 (only (Memory.pending t)) "boom";
   string "http" "http 500" (text t "answer");
   press t "ask";
-  M.reply (only (M.pending t)) "{nope";
+  Memory.reply (only (Memory.pending t)) "{nope";
   string "decode" "decode" (text t "answer");
   press t "ask";
-  M.network_error (only (M.pending t)) "offline";
+  Memory.network_error (only (Memory.pending t)) "offline";
   string "network" "network" (text t "answer")
 
 let call_timeout () =
   let t = basic () in
   press t "ask-timed";
-  let request = only (M.pending t) in
+  let request = only (Memory.pending t) in
   string "nothing yet" "" (text t "answer");
-  M.advance t 40;
+  Memory.advance t 40;
   string "timeout" "timeout" (text t "answer");
-  M.reply request "42";
-  M.advance t 40;
+  Memory.reply request "42";
+  Memory.advance t 40;
   string "late answer dropped" "timeout" (text t "answer")
 
 let answer_before_timeout () =
   let t = basic () in
   press t "ask-timed";
-  M.reply (only (M.pending t)) "7";
+  Memory.reply (only (Memory.pending t)) "7";
   string "answer" "ok 7" (text t "answer");
-  M.advance t 80;
+  Memory.advance t 80;
   string "no timeout" "ok 7" (text t "answer")
 
 let timer = Test_apps.timer_component
 
 let timer_after_exit () =
-  let t = M.mount timer in
+  let t = Memory.mount timer in
   press t "leave";
   string "left" "left" (text t "phase");
-  M.advance t 80;
+  Memory.advance t 80;
   string "still left" "left" (text t "phase")
 
 let timer_reentered () =
-  let t = M.mount timer in
+  let t = Memory.mount timer in
   press t "leave";
   press t "back";
   string "waiting" "waiting" (text t "phase");
-  Alcotest.(check (list int)) "one timer" [ 20 ] (M.timers t);
-  M.advance t 20;
+  Alcotest.(check (list int)) "one timer" [ 20 ] (Memory.timers t);
+  Memory.advance t 20;
   string "fired" "fired" (text t "phase");
-  M.advance t 60;
+  Memory.advance t 60;
   string "still fired" "fired" (text t "phase")
 
 let stopped_call_dropped () =
   let t = basic () in
   press t "ask";
   press t "cancel-ask";
-  M.reply (only (M.pending t)) "42";
-  M.advance t 60;
+  Memory.reply (only (Memory.pending t)) "42";
+  Memory.advance t 60;
   string "answer" "" (text t "answer");
   string "ticks" "0" (text t "ticks")
 
@@ -123,221 +123,227 @@ let call_again () =
   let t = basic () in
   press t "ask";
   press t "ask";
-  match M.pending t with
+  match Memory.pending t with
   | [ first; second ] ->
-      M.reply first "1";
-      M.advance t 40;
+      Memory.reply first "1";
+      Memory.advance t 40;
       string "first dropped" "" (text t "answer");
-      M.reply second "2";
+      Memory.reply second "2";
       string "second" "ok 2" (text t "answer");
       string "ticks" "1" (text t "ticks")
   | l ->
       Alcotest.failf "%d requests" (List.length l)
 
-let router url = M.mount_app ~url Test_apps.app
+let router url = Memory.mount_app ~url Test_apps.app
 
 let link_press () =
   let t = router "/home" in
-  bool "home" true (contains (M.html t) "home");
-  string "title" "Home" (M.title t);
-  let before = List.length (M.history t) in
+  bool "home" true (contains (Memory.html t) "home");
+  string "title" "Home" (Memory.title t);
+  let before = List.length (Memory.history t) in
   press t "to-about";
-  string "url" "/about" (M.url t);
-  int "pushed" (before + 1) (List.length (M.history t));
+  string "url" "/about" (Memory.url t);
+  int "pushed" (before + 1) (List.length (Memory.history t));
   string "h1" "about" (h1 t);
-  string "title" "About" (M.title t)
+  string "title" "About" (Memory.title t)
 
 let navigate_command () =
   let t = router "/home" in
   press t "cmd-nav";
-  string "url" "/about" (M.url t);
+  string "url" "/about" (Memory.url t);
   string "h1" "about" (h1 t)
 
 let back_and_forward () =
   let t = router "/home" in
   press t "to-item";
   string "item" "item 7" (h1 t);
-  M.back t;
+  Memory.back t;
   string "back" "home" (h1 t);
-  string "url" "/home" (M.url t);
-  string "title" "Home" (M.title t);
-  M.forward t;
+  string "url" "/home" (Memory.url t);
+  string "title" "Home" (Memory.title t);
+  Memory.forward t;
   string "forward" "item 7" (h1 t);
-  string "title" "Item 7" (M.title t)
+  string "title" "Item 7" (Memory.title t)
 
 let not_found () =
   let t = router "/nowhere" in
   string "h1" "404" (h1 t);
-  string "title" "Not found" (M.title t)
+  string "title" "Not found" (Memory.title t)
 
 let strings = Alcotest.(check (list string))
 let data_requests t =
-  List.filter (fun r -> M.path r = "/api/data") (M.requests t)
+  List.filter (fun r -> Memory.path r = "/api/data") (Memory.requests t)
 
 let preload_on_hover_then_press_uses_it () =
   let t = router "/home" in
-  M.hover (M.by_id t "to-data");
+  Memory.hover (Memory.by_id t "to-data");
   let preload = only (data_requests t) in
-  string "body" "\"7\"" (M.body preload);
-  string "the page does not change" "/home" (M.url t);
-  M.hover (M.by_id t "to-data");
+  string "body" "\"7\"" (Memory.body preload);
+  string "the page does not change" "/home" (Memory.url t);
+  Memory.hover (Memory.by_id t "to-data");
   int "a second hover sends nothing" 1 (List.length (data_requests t));
-  M.reply preload "\"seven\"";
+  Memory.reply preload "\"seven\"";
   press t "to-data";
-  string "url" "/data/7" (M.url t);
+  string "url" "/data/7" (Memory.url t);
   string "the kept answer, no request" "seven" (text t "data");
   int "one request" 1 (List.length (data_requests t))
 
 let call_waits_for_preload_in_flight () =
   let t = router "/home" in
-  M.focus (M.by_id t "to-data");
+  Memory.focus (Memory.by_id t "to-data");
   let preload = only (data_requests t) in
   press t "to-data";
   string "loading" "loading" (text t "data");
   int "the call waits" 1 (List.length (data_requests t));
-  M.reply preload "\"seven\"";
+  Memory.reply preload "\"seven\"";
   string "answer" "seven" (text t "data")
 
 let preload_kept_for_one_use () =
   let t = router "/home" in
-  M.hover (M.by_id t "to-data");
-  M.reply (only (data_requests t)) "\"seven\"";
+  Memory.hover (Memory.by_id t "to-data");
+  Memory.reply (only (data_requests t)) "\"seven\"";
   press t "to-data";
   string "first use" "seven" (text t "data");
-  M.back t;
+  Memory.back t;
   press t "to-data";
   int "a second call sends its own request" 2 (List.length (data_requests t))
 
 let preload_expires () =
   let t = router "/home" in
-  M.hover (M.by_id t "to-data");
-  M.reply (only (data_requests t)) "\"seven\"";
-  M.advance t 29_999;
-  M.hover (M.by_id t "to-data");
+  Memory.hover (Memory.by_id t "to-data");
+  Memory.reply (only (data_requests t)) "\"seven\"";
+  Memory.advance t 29_999;
+  Memory.hover (Memory.by_id t "to-data");
   int "still kept" 1 (List.length (data_requests t));
-  M.advance t 1;
+  Memory.advance t 1;
   press t "to-data";
   int "expired after 30 s: a new request" 2 (List.length (data_requests t))
 
 let failed_preload_not_kept () =
   let t = router "/home" in
-  M.hover (M.by_id t "to-data");
-  M.reply ~status:500 (only (data_requests t)) "boom";
+  Memory.hover (Memory.by_id t "to-data");
+  Memory.reply ~status:500 (only (data_requests t)) "boom";
   press t "to-data";
   int "a non-200 preload is not used" 2 (List.length (data_requests t));
-  M.back t;
-  M.hover (M.by_id t "to-data");
-  M.network_error (List.nth (data_requests t) 2) "offline";
+  Memory.back t;
+  Memory.hover (Memory.by_id t "to-data");
+  Memory.network_error (List.nth (data_requests t) 2) "offline";
   press t "to-data";
   int "a failed preload is not used" 4 (List.length (data_requests t))
 
 let waiting_call_after_failed_preload () =
   let t = router "/home" in
-  M.hover (M.by_id t "to-data");
+  Memory.hover (Memory.by_id t "to-data");
   press t "to-data";
-  M.reply ~status:503 (only (data_requests t)) "busy";
+  Memory.reply ~status:503 (only (data_requests t)) "busy";
   string "still loading" "loading" (text t "data");
-  let own = only (M.pending t) in
-  M.reply own "\"fresh\"";
+  let own = only (Memory.pending t) in
+  Memory.reply own "\"fresh\"";
   string "its own answer" "fresh" (text t "data")
 
 let hover_without_preload_attribute () =
   let t = router "/home" in
-  M.hover (M.by_id t "to-about");
-  M.hover (M.by_id t "to-data-viewport");
-  int "no request" 0 (List.length (M.requests t))
+  Memory.hover (Memory.by_id t "to-about");
+  Memory.hover (Memory.by_id t "to-data-viewport");
+  int "no request" 0 (List.length (Memory.requests t))
 
 let edit t =
   press t "to-edit";
-  M.input (M.by_id t "draft") "draft";
+  Memory.input (Memory.by_id t "draft") "draft";
   string "dirty" "dirty" (text t "edit-status");
   t
 
 let block_stops_link_press () =
   let t = edit (router "/home") in
-  bool "leaving asks" true (M.leave_asks t);
+  bool "leaving asks" true (Memory.leave_asks t);
   press t "edit-about";
   string "a link press is stopped" "asking push /about" (text t "edit-status");
-  string "no URL change" "/edit" (M.url t);
+  string "no URL change" "/edit" (Memory.url t);
   press t "stay";
-  M.back t;
-  string "the URL stays" "/edit" (M.url t);
+  Memory.back t;
+  string "the URL stays" "/edit" (Memory.url t);
   string "the attempt" "asking traverse -1 /home" (text t "edit-status");
-  int "the position stays" 1 (M.history_index t);
+  int "the position stays" 1 (Memory.history_index t);
   press t "leave";
-  string "resumed" "/home" (M.url t);
-  int "back is still back" 0 (M.history_index t);
-  strings "no new entry" [ "/home"; "/edit" ] (M.history t);
-  bool "leaving does not ask" false (M.leave_asks t)
+  string "resumed" "/home" (Memory.url t);
+  int "back is still back" 0 (Memory.history_index t);
+  strings "no new entry" [ "/home"; "/edit" ] (Memory.history t);
+  bool "leaving does not ask" false (Memory.leave_asks t)
 
 let block_stops_commands () =
   let t = edit (router "/home") in
   press t "edit-home";
   string "navigate stopped" "asking push /home" (text t "edit-status");
-  string "url" "/edit" (M.url t);
+  string "url" "/edit" (Memory.url t);
   press t "stay";
   string "stay" "dirty" (text t "edit-status");
-  strings "history" [ "/home"; "/edit" ] (M.history t);
+  strings "history" [ "/home"; "/edit" ] (Memory.history t);
   press t "edit-home";
   press t "leave";
-  string "resumed push" "/home" (M.url t);
-  strings "pushed" [ "/home"; "/edit"; "/home" ] (M.history t);
-  M.back t;
+  string "resumed push" "/home" (Memory.url t);
+  strings "pushed" [ "/home"; "/edit"; "/home" ] (Memory.history t);
+  Memory.back t;
   string "back to the editor, clean" "clean" (text t "edit-status");
-  M.forward t;
-  string "forward" "/home" (M.url t)
+  Memory.forward t;
+  string "forward" "/home" (Memory.url t)
 
 let guard_cancel_reverts () =
   let t = router "/home" in
   press t "to-locked";
-  string "push reverted" "/home" (M.url t);
-  int "back one entry" 0 (M.history_index t);
+  string "push reverted" "/home" (Memory.url t);
+  int "back one entry" 0 (Memory.history_index t);
   string "page" "home" (h1 t);
-  M.advance t 0;
-  strings "a reverted push announces nothing" [] (M.announcements t);
+  Memory.advance t 0;
+  strings "a reverted push announces nothing" [] (Memory.announcements t);
   let t = router "/locked" in
   press t "locked-home";
-  M.back t;
-  string "back reverted" "/home" (M.url t);
-  int "the position stays" 1 (M.history_index t);
+  Memory.back t;
+  string "back reverted" "/home" (Memory.url t);
+  int "the position stays" 1 (Memory.history_index t);
   string "page stays" "home" (h1 t)
 
 let focus_after_navigation () =
   let t = router "/home" in
   press t "to-about";
-  bool "not before the step ends" true (M.announcements t = []);
-  M.advance t 0;
+  bool "not before the step ends" true (Memory.announcements t = []);
+  Memory.advance t 0;
   bool "focus on the route focus target" true
-    ( match M.focused t with
+    ( match Memory.focused t with
     | Some e ->
-        M.attribute e "data-silica-route-focus" = Some ""
+        Memory.attribute e "data-silica-route-focus" = Some ""
     | None ->
         false
     );
-  strings "announced" [ "About" ] (M.announcements t);
-  M.back t;
-  M.advance t 0;
-  bool "no target: no element has focus" true (M.focused t = None);
-  strings "announced" [ "About"; "Home" ] (M.announcements t);
+  strings "announced" [ "About" ] (Memory.announcements t);
+  Memory.back t;
+  Memory.advance t 0;
+  bool "no target: no element has focus" true (Memory.focused t = None);
+  strings "announced" [ "About"; "Home" ] (Memory.announcements t);
   press t "to-about-replace";
-  M.advance t 0;
-  strings "a replace announces nothing" [ "About"; "Home" ] (M.announcements t)
+  Memory.advance t 0;
+  strings "a replace announces nothing" [ "About"; "Home" ]
+    (Memory.announcements t)
 
-let parent () = M.mount Test_apps.parent_component
+let parent () = Memory.mount Test_apps.parent_component
 
 let children t section =
   List.map
     (fun child ->
-      let part cls = M.text (only (M.select ~within:child t "class" cls)) in
-      ( Option.get (M.attribute child "data-n"),
+      let part cls =
+        Memory.text (only (Memory.select ~within:child t "class" cls))
+      in
+      ( Option.get (Memory.attribute child "data-n"),
         part "child-clicks",
         part "child-prop"
       )
     )
-    (M.select ~within:(M.by_id t section) t "class" "child")
+    (Memory.select ~within:(Memory.by_id t section) t "class" "child")
 
 let child_press t section =
-  M.press (only (M.select ~within:(M.by_id t section) t "class" "child-press"))
+  Memory.press
+    (only
+       (Memory.select ~within:(Memory.by_id t section) t "class" "child-press")
+    )
 
 let child_triple = Alcotest.(triple string string string)
 
@@ -381,11 +387,11 @@ let keyed_children () =
     let kid =
       only
         (List.filter
-           (fun e -> M.attribute e "data-n" = Some n)
-           (M.select ~within:(M.by_id t "kids") t "class" "child")
+           (fun e -> Memory.attribute e "data-n" = Some n)
+           (Memory.select ~within:(Memory.by_id t "kids") t "class" "child")
         )
     in
-    M.press (only (M.select ~within:kid t "class" "child-press"))
+    Memory.press (only (Memory.select ~within:kid t "class" "child-press"))
   in
   press_kid "1";
   press_kid "1";
@@ -403,33 +409,33 @@ let keyed_children () =
     (pairs ())
 
 let independent_timers () =
-  let t = M.mount Test_apps.ticker_host_component in
-  let active () = List.length (List.filter (( = ) 20) (M.timers t)) in
+  let t = Memory.mount Test_apps.ticker_host_component in
+  let active () = List.length (List.filter (( = ) 20) (Memory.timers t)) in
   let tick label =
     int_of_string
-      (M.text
+      (Memory.text
          (only
             (List.filter
-               (fun e -> M.attribute e "data-label" = Some label)
-               (M.select t "class" "tick")
+               (fun e -> Memory.attribute e "data-label" = Some label)
+               (Memory.select t "class" "tick")
             )
          )
       )
   in
   let missing label =
     List.for_all
-      (fun e -> M.attribute e "data-label" <> Some label)
-      (M.select t "class" "tick")
+      (fun e -> Memory.attribute e "data-label" <> Some label)
+      (Memory.select t "class" "tick")
   in
   int "two timers" 2 (active ());
-  M.advance t 40;
+  Memory.advance t 40;
   bool "both tick" true (tick "a" >= 2 && tick "b" >= 2);
   int "two timers" 2 (active ());
   press t "toggle-a";
   bool "a gone" true (missing "a");
   int "one timer" 1 (active ());
   let before = tick "b" in
-  M.advance t 20;
+  Memory.advance t 20;
   bool "b still ticks" true (tick "b" > before);
   int "one timer" 1 (active ());
   press t "toggle-b";
@@ -459,7 +465,7 @@ let json text =
   | Error message ->
       Alcotest.failf "bad JSON %s: %s" text message
 
-let messages socket = List.map json (M.sent socket)
+let messages socket = List.map json (Memory.sent socket)
 
 let kind socket t =
   List.length
@@ -469,27 +475,27 @@ let kind socket t =
     )
 
 let welcome socket =
-  M.socket_open socket;
-  M.socket_message socket {|{"t":"hello","v":1}|}
+  Memory.socket_open socket;
+  Memory.socket_message socket {|{"t":"hello","v":1}|}
 
 let state socket seq value =
-  M.socket_message socket
+  Memory.socket_message socket
     (Printf.sprintf {|{"t":"state","seq":%d,"ack":0,"state":%d,"cmds":[]}|} seq
        value
     )
 
-let socket t n = List.nth (M.sockets t) n
+let socket t n = List.nth (Memory.sockets t) n
 let watch =
   { Component.machine = Test_apps.watch_machine; view = Test_apps.watch_view }
 let fast = { Live_client.ping_ms = 30; pong_ms = 30 }
 
 let topic_lifecycle () =
-  let t = M.mount ~csrf:"tok-t" watch in
+  let t = Memory.mount ~csrf:"tok-t" watch in
   let status () = text t "status" and updates () = text t "updates" in
   string "loading" "loading seq 0" (status ());
   string "updates" "1" (updates ());
   let ws = socket t 0 in
-  M.socket_open ws;
+  Memory.socket_open ws;
   Alcotest.(check (list string))
     "hello"
     [
@@ -497,87 +503,89 @@ let topic_lifecycle () =
         {|{"t":"hello","v":1,"csrf":"tok-t","sub":{"topic":"news","key":"room"}}|};
     ]
     (messages ws);
-  M.socket_message ws {|{"t":"hello","v":1}|};
+  Memory.socket_message ws {|{"t":"hello","v":1}|};
   state ws 3 30;
   string "ready" "ready 30 seq 3" (status ());
   state ws 3 31;
   state ws 2 32;
   string "old seq dropped" "ready 30 seq 3" (status ());
-  M.socket_close ws 1006;
+  Memory.socket_close ws 1006;
   string "stale" "stale 30 seq 0" (status ());
   string "updates" "3" (updates ());
-  M.advance t 300;
+  Memory.advance t 300;
   string "stale is delivered once per loss" "3" (updates ());
   welcome (socket t 1);
   state (socket t 1) 1 40;
   string "fresh" "ready 40 seq 1" (status ())
 
 let backoff () =
-  let t = M.mount watch in
+  let t = Memory.mount watch in
   welcome (socket t 0);
   state (socket t 0) 1 1;
-  M.socket_close (socket t 0) 1006;
-  int "not at once" 1 (List.length (M.sockets t));
-  M.advance t 300;
-  int "reconnected" 2 (List.length (M.sockets t));
+  Memory.socket_close (socket t 0) 1006;
+  int "not at once" 1 (List.length (Memory.sockets t));
+  Memory.advance t 300;
+  int "reconnected" 2 (List.length (Memory.sockets t));
   welcome (socket t 1);
   state (socket t 1) 1 2;
-  M.socket_close (socket t 1) 1006;
-  M.advance t 170;
-  int "attempt went back to 0 after a state" 3 (List.length (M.sockets t))
+  Memory.socket_close (socket t 1) 1006;
+  Memory.advance t 170;
+  int "attempt went back to 0 after a state" 3 (List.length (Memory.sockets t))
 
 let session_gone () =
-  let t = M.mount watch in
+  let t = Memory.mount watch in
   welcome (socket t 0);
   state (socket t 0) 1 5;
-  M.socket_close (socket t 0) 4005;
+  Memory.socket_close (socket t 0) 4005;
   string "failed" "failed http 401 last 5 seq 0" (text t "status");
-  M.advance t 300;
-  int "no reconnect" 1 (List.length (M.sockets t));
-  int "hook once" 1 (M.session_gone t)
+  Memory.advance t 300;
+  int "no reconnect" 1 (List.length (Memory.sockets t));
+  int "hook once" 1 (Memory.session_gone t)
 
 let heartbeat_pong () =
-  let t = M.mount ~live_config:fast watch in
+  let t = Memory.mount ~live_config:fast watch in
   let ws = socket t 0 in
   welcome ws;
   int "no ping yet" 0 (kind ws "ping");
-  M.advance t 30;
+  Memory.advance t 30;
   int "ping" 1 (kind ws "ping");
-  M.socket_message ws {|{"t":"pong"}|};
-  M.advance t 30;
+  Memory.socket_message ws {|{"t":"pong"}|};
+  Memory.advance t 30;
   int "second ping" 2 (kind ws "ping");
-  M.socket_message ws {|{"t":"pong"}|};
-  Alcotest.(check (option int)) "open" None (M.closed ws);
-  int "one socket" 1 (List.length (M.sockets t))
+  Memory.socket_message ws {|{"t":"pong"}|};
+  Alcotest.(check (option int)) "open" None (Memory.closed ws);
+  int "one socket" 1 (List.length (Memory.sockets t))
 
 let heartbeat_no_pong () =
-  let t = M.mount ~live_config:fast watch in
+  let t = Memory.mount ~live_config:fast watch in
   welcome (socket t 0);
-  M.advance t 60;
-  bool "closed after missing pong" true (M.closed (socket t 0) <> None);
-  M.advance t 300;
-  int "reconnect" 2 (List.length (M.sockets t))
+  Memory.advance t 60;
+  bool "closed after missing pong" true (Memory.closed (socket t 0) <> None);
+  Memory.advance t 300;
+  int "reconnect" 2 (List.length (Memory.sockets t))
 
 let settle_replay () =
   let html, answers = Test_apps.lookup_server () in
   bool "server html" true (contains html "ready 8");
-  let t = M.mount ~answers Test_apps.Lookup.component in
-  int "the call did not run" 0 (List.length (M.requests t));
+  let t = Memory.mount ~answers Test_apps.Lookup.component in
+  int "the call did not run" 0 (List.length (Memory.requests t));
   string "answer" "ready 8" (text t "answer");
-  string "the first paint is the server HTML" html (M.html t);
-  int "one paint" 1 (M.paints t);
+  string "the first paint is the server HTML" html (Memory.html t);
+  int "one paint" 1 (Memory.paints t);
   press t "again";
-  let request = only (M.requests t) in
-  string "a call that is not in the table runs" "8" (M.body request);
-  M.reply request "16";
+  let request = only (Memory.requests t) in
+  string "a call that is not in the table runs" "8" (Memory.body request);
+  Memory.reply request "16";
   string "answer" "ready 16" (text t "answer");
-  int "one call" 1 (List.length (M.requests t))
+  int "one call" 1 (List.length (Memory.requests t))
 
 let error_page t =
-  List.find_opt (fun e -> M.attribute e "data-silica-error" <> None) (M.all t)
+  List.find_opt
+    (fun e -> Memory.attribute e "data-silica-error" <> None)
+    (Memory.all t)
 
 let top_level_boundary () =
-  let t = M.mount (Test_apps.Shell.component ~guarded:false) in
+  let t = Memory.mount (Test_apps.Shell.component ~guarded:false) in
   press t "bump";
   string "bumps" "1" (text t "bumps");
   press t "bomb-boom";
@@ -588,9 +596,9 @@ let top_level_boundary () =
     | None ->
         Alcotest.fail "error page"
   in
-  let body = M.text page in
+  let body = Memory.text page in
   bool "Something went wrong" true (contains body "Something went wrong");
-  let id = Option.get (M.attribute page "data-silica-error") in
+  let id = Option.get (Memory.attribute page "data-silica-error") in
   bool "error id" true
     (String.length id = 6
     && String.for_all
@@ -599,8 +607,8 @@ let top_level_boundary () =
     && contains body ("Error id: " ^ id)
     );
   bool "prod hides the exception" false (contains body "secret boom");
-  bool "the log got it" true (M.logs t <> []);
-  M.press (M.by_text ~within:page t "Try again");
+  bool "the log got it" true (Memory.logs t <> []);
+  Memory.press (Memory.by_text ~within:page t "Try again");
   bool "no error page" true (error_page t = None);
   string "the root starts again with fresh state" "0" (text t "bumps");
   press t "bump";
@@ -687,7 +695,7 @@ module Family = struct
     }
 
   let mount () =
-    let t = M.mount ~on_error:(fun _ _ -> ()) component in
+    let t = Memory.mount ~on_error:(fun _ _ -> ()) component in
     Hashtbl.reset views;
     t
 
@@ -813,30 +821,30 @@ module Lazy_page = struct
     }
 
   let mount ~shown chunk =
-    M.mount ~on_error:(fun _ _ -> ()) (component ~shown chunk)
+    Memory.mount ~on_error:(fun _ _ -> ()) (component ~shown chunk)
 end
 
-let ids t = List.filter_map (fun e -> M.attribute e "id") (M.all t)
+let ids t = List.filter_map (fun e -> Memory.attribute e "id") (Memory.all t)
 
 let first_paint_waits_for_a_chunk () =
   let loader, chunk = Lazy_page.fresh () in
   let t = Lazy_page.mount ~shown:true chunk in
-  int "no paint while the chunk loads" 0 (M.paints t);
+  int "no paint while the chunk loads" 0 (Memory.paints t);
   int "the loader ran once" 1 loader.calls;
   Lazy_page.finish loader (Ok Lazy_page.page);
-  int "one paint" 1 (M.paints t);
+  int "one paint" 1 (Memory.paints t);
   string "the page, not the loading view" "page 0" (text t "page");
   bool "no loading view" false (List.mem "loading" (ids t))
 
 let a_ready_chunk_paints_at_once () =
   let t = Lazy_page.mount ~shown:true (Chunk.ready Lazy_page.page) in
-  int "one paint" 1 (M.paints t);
+  int "one paint" 1 (Memory.paints t);
   string "the page" "page 0" (text t "page")
 
 let a_chunk_after_the_first_paint_shows_loading () =
   let loader, chunk = Lazy_page.fresh () in
   let t = Lazy_page.mount ~shown:false chunk in
-  int "painted" 1 (M.paints t);
+  int "painted" 1 (Memory.paints t);
   int "nothing loads yet" 0 loader.calls;
   press t "show";
   string "the loading view" "loading" (text t "loading");
@@ -874,7 +882,7 @@ module Lazy_routes = struct
           Route.rest
   end
 
-  module R = Router.Make (State)
+  module Lazy_router = Router.Make (State)
 
   let loader = { Lazy_page.calls = 0; answer = None }
 
@@ -890,30 +898,33 @@ module Lazy_routes = struct
     )
 
   let routes =
-    R.routes ~chunked:[ State.Far ] [ State.Home; State.Far; State.Other ]
+    Lazy_router.routes ~chunked:[ State.Far ]
+      [ State.Home; State.Far; State.Other ]
 
-  let render (snapshot : R.snapshot) =
+  let render (snapshot : Lazy_router.snapshot) =
     match snapshot with
-    | R.At (State.Far, ()) ->
+    | Lazy_router.At (State.Far, ()) ->
         Node.chunk far ~loading:(Node.text "loading") (fun page -> page ())
-    | R.At (State.Home, ()) | R.At (State.Other, _) ->
-        R.link routes State.Far ()
+    | Lazy_router.At (State.Home, ()) | Lazy_router.At (State.Other, _) ->
+        Lazy_router.link routes State.Far ()
           [ Attr.string "id" "to-far" ]
           [ Node.text "far" ]
 
   let app url =
-    R.make routes
-      ~chunks:(function R.At (State.Far, ()) -> [ Chunk.Any far ] | _ -> [])
+    Lazy_router.make routes
+      ~chunks:(function
+        | Lazy_router.At (State.Far, ()) -> [ Chunk.Any far ] | _ -> []
+        )
       ~render url
 end
 
 let a_link_preloads_the_chunk_of_its_route () =
-  let t = M.mount_app ~url:"/" Lazy_routes.app in
+  let t = Memory.mount_app ~url:"/" Lazy_routes.app in
   Alcotest.(check (option string))
     "the link preloads" (Some "intent")
-    (M.attribute (M.by_id t "to-far") "data-silica-preload");
+    (Memory.attribute (Memory.by_id t "to-far") "data-silica-preload");
   int "not loaded yet" 0 Lazy_routes.loader.calls;
-  M.hover (M.by_id t "to-far");
+  Memory.hover (Memory.by_id t "to-far");
   int "hover loads the chunk" 1 Lazy_routes.loader.calls;
   press t "to-far";
   string "the page shows at once" "far" (text t "far");

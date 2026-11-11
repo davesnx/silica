@@ -7,9 +7,10 @@ module Make (State : sig
   val path : 'data t -> 'data Route.t
 end) =
 struct
-  module M = Machine.Make (State)
+  module Route_machine = Machine.Make (State)
 
-  type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+  type snapshot = Route_machine.snapshot =
+    | At : 'data State.t * 'data -> snapshot
 
   type any = Any : 'data State.t -> any
 
@@ -68,7 +69,7 @@ struct
   let is_not_found routes (At (state, _)) =
     match routes.not_found with
     | Some (Any not_found) ->
-        M.same not_found state
+        Route_machine.same not_found state
     | None ->
         false
 
@@ -76,7 +77,9 @@ struct
     match routes.preload with Some f -> f snapshot | None -> []
 
   let chunked routes (At (state, _)) =
-    List.exists (fun (Any listed) -> M.same listed state) routes.chunked
+    List.exists
+      (fun (Any listed) -> Route_machine.same listed state)
+      routes.chunked
 
   let url_of ?hash routes snapshot = { (print routes snapshot) with hash }
 
@@ -139,7 +142,9 @@ struct
       [ Attr.bool "data-silica-replace" true ]
       ?hash ?preload ?current routes state data attrs children
 
-  type targets = M.targets = [] | ( :: ) : 'data State.t * targets -> targets
+  type targets = Route_machine.targets =
+    | []
+    | ( :: ) : 'data State.t * targets -> targets
 
   let rec any_list : targets -> any list = function
     | [] ->
@@ -177,14 +182,16 @@ struct
         ([] : targets)
     in
     let restart state =
-      List.exists (fun (Any listed) -> M.same listed state) routes.reenter
+      List.exists
+        (fun (Any listed) -> Route_machine.same listed state)
+        routes.reenter
     in
     let move ?(cmds : event Cmd.t list = []) (At (state, data) as target) =
       let cmds = titled target cmds in
       if restart state then
-        M.reenter ~cmds:(Cmd.Remount :: cmds) state data
+        Route_machine.reenter ~cmds:(Cmd.Remount :: cmds) state data
       else
-        M.goto ~cmds state data
+        Route_machine.goto ~cmds state data
     in
     let same_url a b =
       Url.to_string (print routes a) = Url.to_string (print routes b)
@@ -192,7 +199,7 @@ struct
     let handle current = function
       | Preload url ->
           let target = parse routes url in
-          M.stay
+          Route_machine.stay
             (List.map (fun request -> Cmd.Preload request) (calls routes target)
             @ List.map
                 (fun chunk -> Cmd.Load_chunk { chunk; on_ready = None })
@@ -201,7 +208,7 @@ struct
       | Url_changed url -> (
           let target = parse routes url in
           if same_url target current then
-            M.stay []
+            Route_machine.stay []
           else
             match guard ~from:(Some current) ~target with
             | Allow ->
@@ -209,13 +216,13 @@ struct
             | Redirect other ->
                 move ~cmds:[ Cmd.Replace (print routes other) ] other
             | Cancel ->
-                M.stay [ Cmd.Revert_navigation ]
+                Route_machine.stay [ Cmd.Revert_navigation ]
         )
     in
     let cases =
       List.map
         (fun (Any state) ->
-          M.state state
+          Route_machine.state state
             (Route.describe (State.path state))
             ~to_:all
             ~exit:(fun data -> exit (At (state, data)))
@@ -234,7 +241,7 @@ struct
       in
       let start = titled init start in
       {
-        Component.machine = M.make ~id:"router" ~init ~start cases;
+        Component.machine = Route_machine.make ~id:"router" ~init ~start cases;
         view = render;
       }
 end

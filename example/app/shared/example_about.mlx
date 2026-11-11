@@ -6,14 +6,15 @@ module States = struct
   type _ t = About : unit t
 end
 
-module M = Machine.Make (States)
+module About_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"about" ~init:(M.at About ())
+  About_machine.make ~id:"about"
+    ~init:(About_machine.at About ())
     [
-      M.state About "about"
+      About_machine.state About "about"
         ~entry:(fun () -> [ Cmd.Set_title "About" ])
-        (fun () -> function Go_back -> M.stay [ Cmd.Back ]);
+        (fun () -> function Go_back -> About_machine.stay [ Cmd.Back ]);
     ]
 
 let history =
@@ -21,7 +22,7 @@ let history =
       <p>(Node.text (Printf.sprintf "Release note %d." (i + 1)))</p>
   )
 
-let view (_ : M.snapshot) : event Node.t =
+let view (_ : About_machine.snapshot) : event Node.t =
   <div>
     (Node.element "h1"
        [ Attr.bool "data-silica-route-focus" true ]

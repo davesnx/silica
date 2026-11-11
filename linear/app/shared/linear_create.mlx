@@ -22,7 +22,7 @@ module States = struct
     | Failed : (Linear_view.t * Draft.t * Remote.error) t
 end
 
-module M = Machine.Make (States)
+module Create_machine = Machine.Make (States)
 
 let fresh view = { view; draft = Draft.empty; error = None }
 let focus_opener = Cmd.Focus Linear_refs.new_issue
@@ -43,67 +43,68 @@ let edited (draft : Draft.t) = function
       None
 
 let machine =
-  M.make ~id:"create-issue"
-    ~init:(M.at Closed Linear_view.default)
+  Create_machine.make ~id:"create-issue"
+    ~init:(Create_machine.at Closed Linear_view.default)
     [
-      M.state Closed "closed" ~to_:[ Editing ] (fun _ -> function
+      Create_machine.state Closed "closed" ~to_:[ Editing ] (fun _ -> function
         | Props { create = true; view } ->
-            M.goto Editing (fresh view)
+            Create_machine.goto Editing (fresh view)
         | Props { create = false; view } ->
-            M.goto Closed view
+            Create_machine.goto Closed view
         | _ ->
-            M.unhandled
+            Create_machine.unhandled
         );
-      M.state Editing "editing" ~to_:[ Submitting; Closed ] (fun form event ->
+      Create_machine.state Editing "editing" ~to_:[ Submitting; Closed ]
+        (fun form event ->
           match event with
           | Submit -> (
               match Draft.check form.draft with
               | Ok draft ->
-                  M.goto Submitting (form.view, draft)
+                  Create_machine.goto Submitting (form.view, draft)
               | Error message ->
-                  M.goto Editing { form with error = Some message }
+                  Create_machine.goto Editing { form with error = Some message }
             )
           | Cancel ->
-              M.goto Closed form.view ~cmds:(close form.view)
+              Create_machine.goto Closed form.view ~cmds:(close form.view)
           | Props { create = false; view } ->
-              M.goto Closed view ~cmds:[ focus_opener ]
+              Create_machine.goto Closed view ~cmds:[ focus_opener ]
           | Props { create = true; view } ->
-              M.goto Editing { form with view }
+              Create_machine.goto Editing { form with view }
           | event -> (
               match edited form.draft event with
               | Some draft ->
-                  M.goto Editing { form with draft; error = None }
+                  Create_machine.goto Editing { form with draft; error = None }
               | None ->
-                  M.unhandled
+                  Create_machine.unhandled
             )
       );
-      M.state Submitting "submitting" ~to_:[ Closed; Failed ]
+      Create_machine.state Submitting "submitting" ~to_:[ Closed; Failed ]
         ~invoke:[ Source.call create_endpoint snd (fun r -> Created r) ]
         (fun (view, draft) -> function
           | Created (Ok _) ->
-              M.goto Closed view ~cmds:(close view)
+              Create_machine.goto Closed view ~cmds:(close view)
           | Created (Error error) ->
-              M.goto Failed (view, draft, error)
+              Create_machine.goto Failed (view, draft, error)
           | _ ->
-              M.unhandled
+              Create_machine.unhandled
           );
-      M.state Failed "failed" ~to_:[ Submitting; Editing; Closed ]
+      Create_machine.state Failed "failed" ~to_:[ Submitting; Editing; Closed ]
         (fun (view, draft, error) event ->
           match event with
           | Submit ->
-              M.goto Submitting (view, draft)
+              Create_machine.goto Submitting (view, draft)
           | Cancel ->
-              M.goto Closed view ~cmds:(close view)
+              Create_machine.goto Closed view ~cmds:(close view)
           | Props { create = false; view } ->
-              M.goto Closed view ~cmds:[ focus_opener ]
+              Create_machine.goto Closed view ~cmds:[ focus_opener ]
           | Props { create = true; view } ->
-              M.goto Failed (view, draft, error)
+              Create_machine.goto Failed (view, draft, error)
           | event -> (
               match edited draft event with
               | Some draft ->
-                  M.goto Editing { view; draft; error = None }
+                  Create_machine.goto Editing { view; draft; error = None }
               | None ->
-                  M.unhandled
+                  Create_machine.unhandled
             )
       );
     ]
@@ -294,26 +295,26 @@ let trigger view =
     ]
     [ text "New issue" ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Create_machine.snapshot) : event Node.t =
   <div>
     ( match snapshot with
-    | M.At (Closed, view) ->
+    | Create_machine.At (Closed, view) ->
         trigger view
-    | M.At (Editing, form) ->
+    | Create_machine.At (Editing, form) ->
         trigger form.view
-    | M.At (Submitting, (view, _)) ->
+    | Create_machine.At (Submitting, (view, _)) ->
         trigger view
-    | M.At (Failed, (view, _, _)) ->
+    | Create_machine.At (Failed, (view, _, _)) ->
         trigger view
     )
     ( match snapshot with
-    | M.At (Closed, _) ->
+    | Create_machine.At (Closed, _) ->
         closed_dialog
-    | M.At (Editing, form) ->
+    | Create_machine.At (Editing, form) ->
         dialog ~busy:false ~message:form.error form.draft
-    | M.At (Submitting, (_, draft)) ->
+    | Create_machine.At (Submitting, (_, draft)) ->
         dialog ~busy:true ~message:None draft
-    | M.At (Failed, (_, draft, error)) ->
+    | Create_machine.At (Failed, (_, draft, error)) ->
         dialog ~busy:false
           ~message:(Some ("Could not create the issue. " ^ error_text error))
           draft

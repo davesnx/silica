@@ -1,5 +1,5 @@
-module A = Silica_example_adapter
-module S = A.Server
+module Adapter = Silica_example_adapter
+module Server = Adapter.Server
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
@@ -62,16 +62,18 @@ let () =
   let vote _ () =
     let n = Atomic.fetch_and_add votes 1 + 1 in
     ignore
-      (S.publish (Option.get !server) Example_model.votes_topic ~key:"main" n);
+      (Server.publish (Option.get !server) Example_model.votes_topic ~key:"main"
+         n
+      );
     Ok n
   in
   let handlers =
     [
-      S.implement Example_model.item_endpoint item;
-      S.implement Example_model.vote_endpoint vote;
+      Server.implement Example_model.item_endpoint item;
+      Server.implement Example_model.vote_endpoint vote;
     ]
   in
-  let islands = [ S.Island Example_counter.live ] in
+  let islands = [ Server.Island Example_counter.live ] in
   let config =
     Silica_server.default_config
       ~origins:
@@ -94,17 +96,18 @@ let () =
         exit 1
   in
   let t =
-    S.create config ~assets ~read:(A.read_dir !static) ~handlers ~islands
+    Server.create config ~assets ~read:(Adapter.read_dir !static) ~handlers
+      ~islands
       ~topics:
         [
-          S.Topic_def
+          Server.Topic_def
             {
               topic = Example_model.votes_topic;
               init = (fun _ ~key:_ -> Ok (Atomic.get votes));
             };
         ]
-      ~page:(fun (page : S.page) ->
-        S.render_page_settled Example_app.app ~status:Example_app.status
+      ~page:(fun (page : Server.page) ->
+        Server.render_page_settled Example_app.app ~status:Example_app.status
           ~scripts:[ page.asset "client_main.js" ]
           ~csrf:page.csrf ~nonce:page.nonce ~islands ~handlers
           ~context:page.context page.url
@@ -112,4 +115,4 @@ let () =
       ()
   in
   server := Some t;
-  A.run ~port:!port t
+  Adapter.run ~port:!port t

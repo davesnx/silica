@@ -1,4 +1,4 @@
-module S = Silica_example_adapter.Server
+module Server = Silica_example_adapter.Server
 
 let metafile =
   {|{"outputs":{"dist/client_main-AAAAAAAA.js":{"entryPoint":"out/client_main.mjs"},"dist/app-BBBBBBBB.css":{"entryPoint":"app.css"}}}|}
@@ -17,7 +17,7 @@ let server =
     )
 
 let get ?(headers = []) path =
-  S.handle (Lazy.force server)
+  Server.handle (Lazy.force server)
     { Silica_server.meth = "GET"; path; query = []; headers; body = "" }
 
 let contains hay needle =
@@ -516,7 +516,7 @@ let test_static_export () =
   let pages = List.map (fun (path, _, _) -> path) routes in
   let export () =
     Silica_static_export.run
-      ~handle:(fun r -> S.handle (Lazy.force server) r)
+      ~handle:(fun r -> Server.handle (Lazy.force server) r)
       ~pages ~not_found:"/404" ~files:[] ~prefix:"/silica-answers/" ~out
   in
   let first = export () in

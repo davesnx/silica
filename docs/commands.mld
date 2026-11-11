@@ -16,8 +16,8 @@ belong to the current state.
 {1:commands Commands}
 
 A step gives commands in [goto ~cmds], [reenter ~cmds] and [stay cmds], and a
-case gives them in [entry] and [exit]. [M.make ?start] gives the commands of
-the start.
+case gives them in [entry] and [exit]. [Copy_machine.make ?start] gives the
+commands of the start.
 
 {t
 | Command | What the host does |
@@ -54,38 +54,42 @@ module States = struct
   type _ t = Ready : unit t | Shown : bool t
 end
 
-module M = Machine.Make (States)
+module Copy_machine = Machine.Make (States)
 
 let text = "Hello from Silica"
 
 let machine =
-  M.make ~id:"copy" ~init:(M.at Ready ())
+  Copy_machine.make ~id:"copy" ~init:(Copy_machine.at Ready ())
     [
-      M.state Ready "ready" ~to_:[ Shown ] (fun () -> function
+      Copy_machine.state Ready "ready" ~to_:[ Shown ] (fun () -> function
         | Copy ->
-            M.stay [ Cmd.Copy { text; on_result = Some (fun ok -> Result ok) } ]
+            Copy_machine.stay
+              [ Cmd.Copy { text; on_result = Some (fun ok -> Result ok) } ]
         | Result ok ->
-            M.goto Shown ok
+            Copy_machine.goto Shown ok
         | Back ->
-            M.unhandled
+            Copy_machine.unhandled
         );
-      M.state Shown "shown" ~to_:[ Ready ]
+      Copy_machine.state Shown "shown" ~to_:[ Ready ]
         ~after:[ (2000, Back) ]
         (fun _ -> function
-          | Back -> M.goto Ready () | Copy | Result _ -> M.unhandled
+          | Back ->
+              Copy_machine.goto Ready ()
+          | Copy | Result _ ->
+              Copy_machine.unhandled
           );
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Copy_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Ready, ()) ->
+  | Copy_machine.At (Ready, ()) ->
       <div>
         <code>(Node.text text)</code>
         <button on_press=Copy>"Copy the text"</button>
       </div>
-  | M.At (Shown, true) ->
+  | Copy_machine.At (Shown, true) ->
       <p>"Copied."</p>
-  | M.At (Shown, false) ->
+  | Copy_machine.At (Shown, false) ->
       <p>"The browser did not allow the copy."</p>
 
 let component = Component.make machine view
@@ -95,8 +99,8 @@ The step gives the command to the host as [Run]:
 
 {@ocaml[
 # let snapshot, _ = Silica.Machine.start Doc_copy.machine;;
-val snapshot : Doc_copy.M.snapshot =
-  Doc_copy.M.At (Doc_copy.States.Ready, <poly>)
+val snapshot : Doc_copy.Copy_machine.snapshot =
+  Doc_copy.Copy_machine.At (Doc_copy.States.Ready, <poly>)
 # let _, commands, _ = Silica.Machine.send Doc_copy.machine snapshot Doc_copy.Copy;;
 val commands : Doc_copy.event Silica.Cmd.host list =
   [Silica.Cmd.Run

@@ -11,35 +11,39 @@ module States = struct
     | Failed : Remote.error t
 end
 
-module M = Machine.Make (States)
+module Item_machine = Machine.Make (States)
 
 let title text = [ Cmd.Set_title text ]
 
 let machine =
-  M.make ~id:"item" ~init:(M.at Idle ())
+  Item_machine.make ~id:"item" ~init:(Item_machine.at Idle ())
     [
-      M.always ~to_:[ Loading ] (function
+      Item_machine.always ~to_:[ Loading ] (function
         | Props id ->
-            M.reenter Loading id
+            Item_machine.reenter Loading id
         | Settled _ ->
-            M.unhandled
+            Item_machine.unhandled
         );
-      M.state Idle "idle" ~entry:(fun () -> title "Item") M.ignore;
-      M.state Loading "loading" ~to_:[ Loaded; Failed ]
+      Item_machine.state Idle "idle"
+        ~entry:(fun () -> title "Item")
+        Item_machine.ignore;
+      Item_machine.state Loading "loading" ~to_:[ Loaded; Failed ]
         ~entry:(fun _ -> title "Item")
         ~invoke:[ Source.call item_endpoint Fun.id (fun r -> Settled r) ]
         (fun _ -> function
           | Settled (Ok item) ->
-              M.goto Loaded item
+              Item_machine.goto Loaded item
           | Settled (Error error) ->
-              M.goto Failed error
+              Item_machine.goto Failed error
           | Props _ ->
-              M.unhandled
+              Item_machine.unhandled
           );
-      M.state Loaded "loaded"
+      Item_machine.state Loaded "loaded"
         ~entry:(fun (item : Item.t) -> title item.title)
-        M.ignore;
-      M.state Failed "failed" ~entry:(fun _ -> title "Item") M.ignore;
+        Item_machine.ignore;
+      Item_machine.state Failed "failed"
+        ~entry:(fun _ -> title "Item")
+        Item_machine.ignore;
     ]
 
 let text = Node.text
@@ -53,18 +57,18 @@ let error_text : Remote.error -> string = function
   | Network msg ->
       "Network error: " ^ msg
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Item_machine.snapshot) : event Node.t =
   <div>
     <h1>"Item"</h1>
     (Example_nav.make ())
     ( match snapshot with
-    | M.At (Idle, ()) ->
+    | Item_machine.At (Idle, ()) ->
         <p>"Nothing loaded."</p>
-    | M.At (Loading, id) ->
+    | Item_machine.At (Loading, id) ->
         <p>(text (Printf.sprintf "Loading item %d..." id))</p>
-    | M.At (Failed, error) ->
+    | Item_machine.At (Failed, error) ->
         <p>(text (error_text error))</p>
-    | M.At (Loaded, item) ->
+    | Item_machine.At (Loaded, item) ->
         <article>
           <h2>(text item.title)</h2>
           <p>(text (price item.price_cents))</p>

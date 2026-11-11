@@ -31,9 +31,9 @@ module State = struct
   type _ t = Idle : unit t | Closed : props t | Open : opened t
 end
 
-module M = Machine.Make (State)
+module Menu_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Menu_machine.snapshot = At : 'data State.t * 'data -> snapshot
 
 let item_id id i = id ^ "-item-" ^ string_of_int i
 let parts (props : props) = Popup.parts props.id
@@ -91,10 +91,10 @@ let focus (o : opened) =
   | None ->
       Cmd.Focus (parts o.props).popup
 
-let show (o : opened) = M.goto Open o ~cmds:[ focus o ]
+let show (o : opened) = Menu_machine.goto Open o ~cmds:[ focus o ]
 
 let close ?(focus = true) (props : props) =
-  M.goto Closed props
+  Menu_machine.goto Closed props
     ~cmds:
       ( if focus then
           [ Cmd.Focus (parts props).trigger ]
@@ -110,30 +110,31 @@ let closed_by (previous : props) (props : props) =
   props.open_ = Some false && previous.open_ <> Some false
 
 let machine =
-  M.make ~id:"menu" ~init:(M.at Idle ())
+  Menu_machine.make ~id:"menu" ~init:(Menu_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Closed; Open ] (fun () -> function
+      Menu_machine.state Idle "idle" ~to_:[ Closed; Open ] (fun () -> function
         | Props props when opened_by None props ->
             show { props; highlighted = None }
         | Props props ->
-            M.goto Closed props
+            Menu_machine.goto Closed props
         | _ ->
-            M.unhandled
+            Menu_machine.unhandled
         );
-      M.state Closed "closed" ~to_:[ Open ] (fun previous -> function
+      Menu_machine.state Closed "closed" ~to_:[ Open ] (fun previous -> function
         | Props props when opened_by (Some previous) props ->
             show { props; highlighted = None }
         | Props props ->
-            M.goto Closed props
+            Menu_machine.goto Closed props
         | Trigger_press ->
             show { props = previous; highlighted = None }
         | Open_key (_, edge) ->
             let nav = match edge with Start -> First | End -> Last in
             show { props = previous; highlighted = navigate previous None nav }
         | Move _ | Highlight _ | Choose _ | Close _ ->
-            M.unhandled
+            Menu_machine.unhandled
         );
-      M.state Open "open" ~to_:[ Closed ] ~invoke:sources (fun o -> function
+      Menu_machine.state Open "open" ~to_:[ Closed ] ~invoke:sources
+        (fun o -> function
         | Props props when closed_by o.props props ->
             close props
         | Props props ->
@@ -145,19 +146,19 @@ let machine =
                     None
               )
             in
-            M.goto Open { props; highlighted }
+            Menu_machine.goto Open { props; highlighted }
         | Trigger_press ->
             close o.props
         | Move nav -> (
             match navigate o.props o.highlighted nav with
             | highlighted when highlighted = o.highlighted ->
-                M.stay []
+                Menu_machine.stay []
             | highlighted ->
                 show { o with highlighted }
           )
         | Highlight i when enabled o.props i ->
             if o.highlighted = Some i then
-              M.stay []
+              Menu_machine.stay []
             else
               show { o with highlighted = Some i }
         | Choose i when enabled o.props i ->
@@ -167,7 +168,7 @@ let machine =
         | Close _ ->
             close o.props
         | Highlight _ | Choose _ | Open_key _ ->
-            M.unhandled
+            Menu_machine.unhandled
         );
     ]
 

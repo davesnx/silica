@@ -52,9 +52,10 @@ module Make (Content : CONTENT) = struct
     type _ t = Idle : unit t | Closed : props t | Open : props t
   end
 
-  module M = Machine.Make (State)
+  module Dialog_machine = Machine.Make (State)
 
-  type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+  type snapshot = Dialog_machine.snapshot =
+    | At : 'data State.t * 'data -> snapshot
 
   let parts (props : props) = Popup.parts props.id
 
@@ -91,45 +92,48 @@ module Make (Content : CONTENT) = struct
       | None ->
           []
     in
-    M.goto Closed props ~cmds
+    Dialog_machine.goto Closed props ~cmds
 
   let machine =
-    M.make ~id:Content.id ~init:(M.at Idle ())
+    Dialog_machine.make ~id:Content.id
+      ~init:(Dialog_machine.at Idle ())
       [
-        M.state Idle "idle" ~to_:[ Closed; Open ] (fun () -> function
+        Dialog_machine.state Idle "idle" ~to_:[ Closed; Open ]
+          (fun () -> function
           | Props props when opened_by None props ->
-              M.goto Open props
+              Dialog_machine.goto Open props
           | Props props ->
-              M.goto Closed props
+              Dialog_machine.goto Closed props
           | _ ->
-              M.unhandled
+              Dialog_machine.unhandled
           );
-        M.state Closed "closed" ~to_:[ Open ] (fun previous -> function
+        Dialog_machine.state Closed "closed" ~to_:[ Open ]
+          (fun previous -> function
           | Props props when opened_by (Some previous) props ->
-              M.goto Open props
+              Dialog_machine.goto Open props
           | Props props ->
-              M.goto Closed props
+              Dialog_machine.goto Closed props
           | Open_request _ ->
-              M.goto Open previous
+              Dialog_machine.goto Open previous
           | Close_request _ | Content _ ->
-              M.unhandled
+              Dialog_machine.unhandled
           );
-        M.state Open "open" ~to_:[ Closed ] ~invoke:sources
+        Dialog_machine.state Open "open" ~to_:[ Closed ] ~invoke:sources
           (fun previous -> function
           | Props props when closed_by previous props ->
               close props
           | Props props ->
-              M.goto Open props
+              Dialog_machine.goto Open props
           | Close_request reason when dismisses previous reason ->
               close previous
           | Close_request _ ->
-              M.unhandled
+              Dialog_machine.unhandled
           | Content event when Content.closes event ->
               close previous
           | Content _ ->
-              M.stay []
+              Dialog_machine.stay []
           | Open_request _ ->
-              M.unhandled
+              Dialog_machine.unhandled
           );
       ]
 

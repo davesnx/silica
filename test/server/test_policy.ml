@@ -27,7 +27,7 @@ module Io = struct
     !p
 end
 
-module S = Silica_server.Make (Io)
+module Server = Silica_server.Make (Io)
 
 let flush () =
   while not (Queue.is_empty pending) do
@@ -74,10 +74,12 @@ let echo_session =
 
 let handlers =
   [
-    S.implement double (fun _ n -> Ok (n * 2));
-    S.implement boom (fun _ _ -> Error "secret kaput detail");
-    S.implement ghost (fun _ _ -> failwith "handler raised");
-    S.implement echo_session (fun (ctx : S.context) () -> Ok ctx.session.id);
+    Server.implement double (fun _ n -> Ok (n * 2));
+    Server.implement boom (fun _ _ -> Error "secret kaput detail");
+    Server.implement ghost (fun _ _ -> failwith "handler raised");
+    Server.implement echo_session (fun (ctx : Server.context) () ->
+        Ok ctx.session.id
+    );
   ]
 
 let metafile =
@@ -128,13 +130,13 @@ let make ?(modify = Fun.id) ?(topics = true) () =
     | Error e ->
         Alcotest.fail e
   in
-  S.create config ~assets
+  Server.create config ~assets
     ~read:(fun name -> List.assoc_opt name files)
-    ~handlers ~islands:[ S.Island live ]
+    ~handlers ~islands:[ Server.Island live ]
     ~topics:
       ( if topics then
           [
-            S.Topic_def
+            Server.Topic_def
               {
                 topic = counts_topic;
                 init =
@@ -150,7 +152,7 @@ let make ?(modify = Fun.id) ?(topics = true) () =
         else
           []
       )
-    ~page:(fun (page : S.page) ->
+    ~page:(fun (page : Server.page) ->
       {
         Silica_server.status = 200;
         headers = [ ("content-type", "text/html; charset=utf-8") ];
@@ -189,7 +191,7 @@ let word_after marker body =
 type client = { cookie : string; csrf : string; id : string }
 
 let visit t =
-  let r = S.handle t (request "/") in
+  let r = Server.handle t (request "/") in
   let set_cookie =
     match header "set-cookie" r with
     | Some c ->
@@ -218,7 +220,7 @@ let post ?(origin = Some origin) ?(extra = [])
     @ (match origin with Some o -> [ ("origin", o) ] | None -> [])
     @ extra
   in
-  S.handle t (request ~meth:"POST" ~headers ~body path)
+  Server.handle t (request ~meth:"POST" ~headers ~body path)
 
 let status (r : Silica_server.response) = r.status
 
@@ -227,7 +229,7 @@ let page_tests =
   [
     test_case "the first page sets a session cookie" `Quick (fun () ->
         let t = make () in
-        let r = S.handle t (request "/") in
+        let r = Server.handle t (request "/") in
         let cookie = Option.get (header "set-cookie" r) in
         check bool "name" true (contains cookie "silica_sid=");
         check bool "HttpOnly" true (contains cookie "; HttpOnly");
@@ -249,21 +251,24 @@ let page_tests =
     );
     test_case "Secure is added when configured" `Quick (fun () ->
         let t = make ~modify:(fun c -> { c with secure_cookie = true }) () in
-        let r = S.handle t (request "/") in
+        let r = Server.handle t (request "/") in
         check bool "Secure" true
           (contains (Option.get (header "set-cookie" r)) "; Secure")
     );
     test_case "a visitor with a session gets no new cookie" `Quick (fun () ->
         let t = make () in
         let c = visit t in
-        let r = S.handle t (request ~headers:[ ("cookie", c.cookie) ] "/") in
+        let r =
+          Server.handle t (request ~headers:[ ("cookie", c.cookie) ] "/")
+        in
         check (option string) "no set-cookie" None (header "set-cookie" r);
         check string "same csrf token" c.csrf (word_after "csrf=" r.body)
     );
     test_case "an unknown cookie gets a new session" `Quick (fun () ->
         let t = make () in
         let r =
-          S.handle t (request ~headers:[ ("cookie", "silica_sid=ffff") ] "/")
+          Server.handle t
+            (request ~headers:[ ("cookie", "silica_sid=ffff") ] "/")
         in
         check bool "new cookie" true (header "set-cookie" r <> None)
     );
@@ -277,7 +282,7 @@ let page_tests =
     test_case "pages are private and not stored, with security headers" `Quick
       (fun () ->
         let t = make () in
-        let r = S.handle t (request "/") in
+        let r = Server.handle t (request "/") in
         check (option string) "cache" (Some "private, no-store")
           (header "cache-control" r);
         check (option string) "nosniff" (Some "nosniff")
@@ -303,7 +308,8 @@ let page_tests =
     );
     test_case "each page gets a new nonce" `Quick (fun () ->
         let t = make () in
-        let a = S.handle t (request "/") and b = S.handle t (request "/") in
+        let a = Server.handle t (request "/")
+        and b = Server.handle t (request "/") in
         check bool "different" true
           (word_after "nonce=" a.body <> word_after "nonce=" b.body)
     );
@@ -311,17 +317,19 @@ let page_tests =
       (fun () ->
         let t = make () in
         let r =
-          S.handle t (request ~headers:[ ("host", "app.test:8080") ] "/")
+          Server.handle t (request ~headers:[ ("host", "app.test:8080") ] "/")
         in
         let csp = Option.get (header "content-security-policy" r) in
         check bool "ws" true (contains csp "ws://app.test:8080");
-        let r = S.handle t (request ~headers:[ ("host", "bad host;x") ] "/") in
+        let r =
+          Server.handle t (request ~headers:[ ("host", "bad host;x") ] "/")
+        in
         check bool "unsafe host is not copied" false
           (contains (Option.get (header "content-security-policy" r)) "bad host")
     );
     test_case "health" `Quick (fun () ->
         let t = make () in
-        let r = S.handle t (request "/_silica/health") in
+        let r = Server.handle t (request "/_silica/health") in
         check int "status" 200 r.status;
         check string "body" "ok" r.body;
         check (option string) "no cookie" None (header "set-cookie" r);
@@ -339,7 +347,7 @@ let page_tests =
     );
     test_case "page requests reach the observer" `Quick (fun () ->
         let t = make () in
-        ignore (S.handle t (request "/"));
+        ignore (Server.handle t (request "/"));
         check bool "seen" true (List.mem ("GET", "/", 200) !requests)
     );
   ]
@@ -420,7 +428,9 @@ let call_tests =
         in
         check int "status" 403
           (status
-             (S.handle t (request ~meth:"POST" ~headers ~body:"1" "/api/double"))
+             (Server.handle t
+                (request ~meth:"POST" ~headers ~body:"1" "/api/double")
+             )
           )
     );
     test_case "a wrong or missing CSRF token is refused" `Quick (fun () ->
@@ -439,7 +449,9 @@ let call_tests =
         in
         check int "missing" 403
           (status
-             (S.handle t (request ~meth:"POST" ~headers ~body:"1" "/api/double"))
+             (Server.handle t
+                (request ~meth:"POST" ~headers ~body:"1" "/api/double")
+             )
           )
     );
     test_case "the content type must be JSON" `Quick (fun () ->
@@ -467,9 +479,9 @@ let call_tests =
     test_case "GET on an endpoint is 405, unknown POST path is 404" `Quick
       (fun () ->
         let t = make () in
-        check int "get" 405 (status (S.handle t (request "/api/double")));
+        check int "get" 405 (status (Server.handle t (request "/api/double")));
         check int "put" 405
-          (status (S.handle t (request ~meth:"PUT" "/api/double")));
+          (status (Server.handle t (request ~meth:"PUT" "/api/double")));
         check int "unknown" 404 (status (post t "/api/nothing" "1"))
     );
     test_case "bad input is 400" `Quick (fun () ->
@@ -538,7 +550,7 @@ let localhost_tests =
   let ok ~host ~origin =
     let t = t () in
     let c = visit t in
-    S.handle t
+    Server.handle t
       (request ~meth:"POST"
          ~headers:
            [
@@ -577,7 +589,7 @@ let asset_tests =
   [
     test_case "a hashed file is immutable" `Quick (fun () ->
         let t = make () in
-        let r = S.handle t (request "/static/client_main-4F2A9C1B.js") in
+        let r = Server.handle t (request "/static/client_main-4F2A9C1B.js") in
         check int "status" 200 r.status;
         check string "body" "console.log(1)" r.body;
         check (option string) "cache"
@@ -590,7 +602,7 @@ let asset_tests =
       `Quick (fun () ->
         let t = make () in
         let get ?accept path =
-          S.handle t
+          Server.handle t
             (request
                ~headers:
                  (Option.to_list
@@ -633,20 +645,20 @@ let asset_tests =
     );
     test_case "another file is no-cache with an ETag" `Quick (fun () ->
         let t = make () in
-        let r = S.handle t (request "/static/plain.css") in
+        let r = Server.handle t (request "/static/plain.css") in
         check int "status" 200 r.status;
         check (option string) "cache" (Some "no-cache")
           (header "cache-control" r);
         let etag = Option.get (header "etag" r) in
         check string "etag is the content hash" (Kit.Assets.etag "body{}") etag;
         let again =
-          S.handle t
+          Server.handle t
             (request ~headers:[ ("if-none-match", etag) ] "/static/plain.css")
         in
         check int "304" 304 again.status;
         check string "no body" "" again.body;
         let other =
-          S.handle t
+          Server.handle t
             (request ~headers:[ ("if-none-match", "\"x\"") ] "/static/plain.css")
         in
         check int "stale tag gets the file" 200 other.status
@@ -656,7 +668,7 @@ let asset_tests =
         List.iter
           (fun path ->
             check int path 404
-              (status (S.handle t (request ("/static/" ^ path))))
+              (status (Server.handle t (request ("/static/" ^ path))))
           )
           [
             "nothing.js";
@@ -670,7 +682,7 @@ let asset_tests =
     );
     test_case "the page gets the hashed URL of a logical name" `Quick (fun () ->
         let t = make () in
-        let r = S.handle t (request "/") in
+        let r = Server.handle t (request "/") in
         check string "script" "/static/client_main-4F2A9C1B.js"
           (word_after "script=" r.body)
     );
@@ -679,7 +691,7 @@ let asset_tests =
         let t = make () in
         ignore t;
         let t =
-          S.create
+          Server.create
             (Silica_server.default_config
                ~origins:(Silica_server.Origins [ origin ]) ~secret
             )
@@ -693,21 +705,21 @@ let asset_tests =
             )
             ()
         in
-        ignore (S.handle t (request "/"));
+        ignore (Server.handle t (request "/"));
         check bool "Failure" true !seen
     );
     test_case "static files are GET only and need no session" `Quick (fun () ->
         let t = make () in
         check int "post" 404
-          (status (S.handle t (request ~meth:"POST" "/static/plain.css")))
+          (status (Server.handle t (request ~meth:"POST" "/static/plain.css")))
     );
   ]
 
 type fake = {
   sent : string list ref;
   mutable closed_with : int option;
-  mutable connection : S.connection option;
-  socket : S.socket;
+  mutable connection : Server.connection option;
+  socket : Server.socket;
 }
 
 let fake_socket () =
@@ -719,7 +731,7 @@ let fake_socket () =
       connection = None;
       socket =
         {
-          S.send = (fun s -> sent := s :: !sent);
+          Server.send = (fun s -> sent := s :: !sent);
           close =
             (fun code ->
               if fake.closed_with = None then fake.closed_with <- Some code
@@ -735,20 +747,20 @@ let ws_headers ?(origin = Some origin) ?(extra = []) (c : client option) =
   @ extra
 
 let upgrade t ?(path = "/_silica/live") ?(meth = "GET") headers =
-  S.upgrade t (request ~meth ~headers path)
+  Server.upgrade t (request ~meth ~headers path)
 
 let connect t (c : client) =
   match upgrade t (ws_headers (Some c)) with
-  | S.Refused r ->
+  | Server.Refused r ->
       Alcotest.failf "refused with %d" r.status
-  | S.Accepted attach ->
+  | Server.Accepted attach ->
       let fake = fake_socket () in
       let connection = attach fake.socket in
       fake.connection <- Some connection;
       fake
 
-let send fake text = (Option.get fake.connection).S.receive text
-let close fake = (Option.get fake.connection).S.closed ()
+let send fake text = (Option.get fake.connection).Server.receive text
+let close fake = (Option.get fake.connection).Server.closed ()
 
 let messages fake =
   List.rev_map
@@ -807,9 +819,9 @@ let upgrade_tests =
   let open Alcotest in
   let refused ?path ?meth headers t =
     match upgrade t ?path ?meth headers with
-    | S.Refused r ->
+    | Server.Refused r ->
         r.status
-    | S.Accepted _ ->
+    | Server.Accepted _ ->
         0
   in
   [
@@ -852,9 +864,9 @@ let upgrade_tests =
         let t = make () in
         let gone headers =
           match upgrade t headers with
-          | S.Refused r ->
+          | Server.Refused r ->
               Alcotest.failf "refused with %d" r.status
-          | S.Accepted attach ->
+          | Server.Accepted attach ->
               let fake = fake_socket () in
               let connection = attach fake.socket in
               fake.connection <- Some connection;
@@ -1038,7 +1050,7 @@ let island_tests =
         send f (event 1 Inc);
         send f (event 2 Inc);
         close f;
-        check int "held" 1 (S.islands t);
+        check int "held" 1 (Server.islands t);
         let g = connect t c in
         send g (hello c (island ()));
         check (list shown_t) "fresh full state with a higher seq"
@@ -1049,7 +1061,7 @@ let island_tests =
         check (list shown_t) "old id dropped, new one handled"
           [ Hello_ok; State (4, 2, 2); State (5, 3, 3) ]
           (shown g);
-        check int "one island" 1 (S.islands t)
+        check int "one island" 1 (Server.islands t)
     );
     test_case "messages sent while detached are not sent to the new socket"
       `Quick (fun () ->
@@ -1082,7 +1094,7 @@ let island_tests =
           [ Hello_ok; State (1, 0, 0); State (2, 1, 1) ]
           (shown a);
         check (list shown_t) "b" [ Hello_ok; State (1, 0, 0) ] (shown b);
-        check int "two" 2 (S.islands t)
+        check int "two" 2 (Server.islands t)
     );
     test_case "another session cannot attach to the island" `Quick (fun () ->
         let t = make () in
@@ -1095,7 +1107,7 @@ let island_tests =
         check (list shown_t) "own fresh island"
           [ Hello_ok; State (1, 0, 0) ]
           (shown b);
-        check int "two" 2 (S.islands t)
+        check int "two" 2 (Server.islands t)
     );
     test_case "a new socket for a held island closes the old one" `Quick
       (fun () ->
@@ -1120,15 +1132,15 @@ let island_tests =
         send f (event 1 Inc);
         close f;
         clock := 1000. +. 1799.;
-        S.sweep t;
-        check int "kept" 1 (S.islands t);
+        Server.sweep t;
+        check int "kept" 1 (Server.islands t);
         let g = connect t c in
         send g (hello c (island ()));
         check bool "found" true (List.mem (State (3, 1, 1)) (shown g));
         close g;
         clock := !clock +. 1801.;
-        S.sweep t;
-        check int "dropped" 0 (S.islands t);
+        Server.sweep t;
+        check int "dropped" 0 (Server.islands t);
         let h = connect t c in
         send h (hello c (island ()));
         check (list shown_t) "fresh" [ Hello_ok; State (1, 0, 0) ] (shown h);
@@ -1162,8 +1174,8 @@ let island_tests =
         let f = connect t c in
         send f (hello c (island ()));
         clock := !clock +. 5000.;
-        S.sweep t;
-        check int "kept" 1 (S.islands t);
+        Server.sweep t;
+        check int "kept" 1 (Server.islands t);
         clock := 1000.
     );
     test_case "a socket with no traffic for two heartbeats is closed" `Quick
@@ -1174,14 +1186,14 @@ let island_tests =
         let f = connect t c in
         send f (hello c (island ()));
         clock := !clock +. 59.;
-        S.sweep t;
+        Server.sweep t;
         check (option int) "still open" None f.closed_with;
         send f (Protocol.encode_client Protocol.Ping);
         clock := !clock +. 59.;
-        S.sweep t;
+        Server.sweep t;
         check (option int) "the ping reset the clock" None f.closed_with;
         clock := !clock +. 2.;
-        S.sweep t;
+        Server.sweep t;
         check (option int) "idle" (Some Protocol.close_idle) f.closed_with;
         clock := 1000.
     );
@@ -1189,16 +1201,16 @@ let island_tests =
         let t = make () in
         let c = visit t in
         let f = connect t c in
-        check int "open" 1 (S.sockets t);
+        check int "open" 1 (Server.sockets t);
         check int "observer opened" 1 !sockets_opened;
         close f;
-        check int "closed" 0 (S.sockets t);
+        check int "closed" 0 (Server.sockets t);
         check int "observer closed" 1 !sockets_closed
     );
     test_case "a step that raises closes the socket and ends the island" `Quick
       (fun () ->
         let raising =
-          S.create
+          Server.create
             (Silica_server.default_config
                ~origins:(Silica_server.Origins [ origin ]) ~secret
             )
@@ -1206,7 +1218,7 @@ let island_tests =
             ~handlers:[]
             ~islands:
               [
-                S.Island
+                Server.Island
                   (Live.declare ~channel:"counter" ~state:Codec.int
                      ~event:ev_codec
                      {
@@ -1231,11 +1243,11 @@ let island_tests =
         let c = visit raising in
         let f = connect raising c in
         send f (hello c (island ()));
-        check int "held" 1 (S.islands raising);
+        check int "held" 1 (Server.islands raising);
         send f (event 1 Inc);
         check (option int) "closed with a server error"
           (Some Protocol.close_server_error) f.closed_with;
-        check int "ended" 0 (S.islands raising)
+        check int "ended" 0 (Server.islands raising)
     );
   ]
 
@@ -1262,7 +1274,7 @@ let topic_tests =
         send a (hello c (sub ()));
         send b (hello d (sub ()));
         send other (hello c (sub ~key:"other" ()));
-        ignore (S.publish t counts_topic ~key:"k" 42);
+        ignore (Server.publish t counts_topic ~key:"k" 42);
         check (list shown_t) "a"
           [ Hello_ok; State (1, 0, 10); State (2, 0, 42) ]
           (shown a);
@@ -1280,8 +1292,8 @@ let topic_tests =
         let c = visit t in
         let a = connect t c in
         send a (hello c (sub ()));
-        ignore (S.publish t counts_topic ~key:"k" 1);
-        ignore (S.publish t counts_topic ~key:"k" 2);
+        ignore (Server.publish t counts_topic ~key:"k" 1);
+        ignore (Server.publish t counts_topic ~key:"k" 2);
         let b = connect t c in
         send b (hello c (sub ()));
         check (list shown_t) "state 3" [ Hello_ok; State (3, 0, 2) ] (shown b);
@@ -1290,7 +1302,7 @@ let topic_tests =
     test_case "a publish before any subscriber is kept" `Quick (fun () ->
         let t = make () in
         let c = visit t in
-        ignore (S.publish t counts_topic ~key:"k" 7);
+        ignore (Server.publish t counts_topic ~key:"k" 7);
         let a = connect t c in
         send a (hello c (sub ()));
         check (list shown_t) "published state"
@@ -1304,7 +1316,7 @@ let topic_tests =
         let a = connect t c in
         send a (hello c (sub ()));
         close a;
-        ignore (S.publish t counts_topic ~key:"k" 5);
+        ignore (Server.publish t counts_topic ~key:"k" 5);
         check int "same count" 2 (List.length (shown a))
     );
     test_case "an unknown topic is an error and closes" `Quick (fun () ->
@@ -1342,16 +1354,16 @@ let topic_tests =
         let c = visit t in
         let a = connect t c in
         send a (hello c (sub ()));
-        ignore (S.publish t counts_topic ~key:"k" 9);
+        ignore (Server.publish t counts_topic ~key:"k" 9);
         close a;
         clock := !clock +. 1700.;
-        S.sweep t;
+        Server.sweep t;
         let b = connect t c in
         send b (hello c (sub ()));
         check (list shown_t) "kept" [ Hello_ok; State (2, 0, 9) ] (shown b);
         close b;
         clock := !clock +. 1801.;
-        S.sweep t;
+        Server.sweep t;
         let d = connect t c in
         send d (hello c (sub ()));
         check (list shown_t) "re-initialised"
@@ -1364,7 +1376,7 @@ let topic_tests =
         let c = visit t in
         let a = connect t c in
         send a (hello c (sub ()));
-        ignore (S.publish t counts_topic ~key:"k" 3);
+        ignore (Server.publish t counts_topic ~key:"k" 3);
         check bool "published" true (List.mem (State (2, 0, 3)) (shown a))
     );
   ]

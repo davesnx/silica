@@ -48,7 +48,7 @@ module States = struct
     | Failed : (int * Remote.error) t
 end
 
-module M = Machine.Make (States)
+module Detail_machine = Machine.Make (States)
 
 let title number = [ Cmd.Set_title ("ENG-" ^ string_of_int number) ]
 let title_input = Ref.make "title-input"
@@ -114,11 +114,11 @@ let finished state id result =
   let state = { state with data } in
   match outcome with
   | None | Some (_, Linear_data.Saved) ->
-      M.goto Ready state
+      Detail_machine.goto Ready state
   | Some (request, (Linear_data.Conflict current as outcome)) -> (
       match field_of_change request.change with
       | Some (field, draft) ->
-          M.goto Ready
+          Detail_machine.goto Ready
             ~cmds:[ Cmd.Focus (input_ref field) ]
             {
               state with
@@ -132,18 +132,18 @@ let finished state id result =
                   };
             }
       | None ->
-          M.goto Ready (add_toast state request outcome)
+          Detail_machine.goto Ready (add_toast state request outcome)
     )
   | Some (request, (Linear_data.Failed _ as outcome)) ->
-      M.goto Ready (add_toast state request outcome)
+      Detail_machine.goto Ready (add_toast state request outcome)
 
 let save state (editor : editor) =
   match Change.check (change_of editor.field editor.draft) with
   | Error message ->
-      M.goto Ready
+      Detail_machine.goto Ready
         { state with editor = Some { editor with note = Some message } }
   | Ok change ->
-      M.goto Ready
+      Detail_machine.goto Ready
         {
           state with
           editor = None;
@@ -153,13 +153,14 @@ let save state (editor : editor) =
 
 let ready state = function
   | Updated update ->
-      M.goto Ready { state with data = Linear_data.apply update state.data }
+      Detail_machine.goto Ready
+        { state with data = Linear_data.apply update state.data }
   | Reconnect ->
-      M.reenter Ready state
+      Detail_machine.reenter Ready state
   | Edit field -> (
       match Linear_data.find state.number state.data with
       | Some issue ->
-          M.goto Ready
+          Detail_machine.goto Ready
             ~cmds:[ Cmd.Focus (input_ref field) ]
             {
               state with
@@ -173,45 +174,46 @@ let ready state = function
                   };
             }
       | None ->
-          M.unhandled
+          Detail_machine.unhandled
     )
   | Draft_changed draft -> (
       match state.editor with
       | Some editor ->
-          M.goto Ready { state with editor = Some { editor with draft } }
+          Detail_machine.goto Ready
+            { state with editor = Some { editor with draft } }
       | None ->
-          M.unhandled
+          Detail_machine.unhandled
     )
   | Save -> (
       match state.editor with
       | Some editor ->
           save state editor
       | None ->
-          M.unhandled
+          Detail_machine.unhandled
     )
   | Cancel_edit -> (
       match state.editor with
       | Some _ ->
-          M.goto Ready { state with editor = None }
+          Detail_machine.goto Ready { state with editor = None }
       | None ->
-          M.unhandled
+          Detail_machine.unhandled
     )
   | Keep_editing -> (
       match state.editor with
       | Some editor ->
-          M.stay [ Cmd.Focus (input_ref editor.field) ]
+          Detail_machine.stay [ Cmd.Focus (input_ref editor.field) ]
       | None ->
-          M.unhandled
+          Detail_machine.unhandled
     )
   | Picker picker ->
-      M.goto Ready { state with picker }
+      Detail_machine.goto Ready { state with picker }
   | Pick change ->
-      M.goto Ready
+      Detail_machine.goto Ready
         { state with data = Linear_data.start state.number change state.data }
   | Saved (id, result) ->
       finished state id result
   | Toast_closed key ->
-      M.goto Ready
+      Detail_machine.goto Ready
         {
           state with
           toasts =
@@ -220,31 +222,32 @@ let ready state = function
               state.toasts;
         }
   | Menu_open menu_open ->
-      M.goto Ready { state with menu_open }
+      Detail_machine.goto Ready { state with menu_open }
   | Create_key ->
-      M.stay [ Router.navigate routes State.Issues { list with create = true } ]
+      Detail_machine.stay
+        [ Router.navigate routes State.Issues { list with create = true } ]
   | Command value -> (
       let issues = Linear_data.issues state.data in
       let focused = Linear_data.find state.number state.data in
       match Linear_commands.parse ~issues ~focused value with
       | Some Linear_commands.Create ->
-          M.stay
+          Detail_machine.stay
             [ Router.navigate routes State.Issues { list with create = true } ]
       | Some Linear_commands.Go_list ->
-          M.stay [ Router.navigate routes State.Issues list ]
+          Detail_machine.stay [ Router.navigate routes State.Issues list ]
       | Some (Linear_commands.Open number) ->
-          M.stay [ Router.navigate routes State.Issue number ]
+          Detail_machine.stay [ Router.navigate routes State.Issue number ]
       | Some (Linear_commands.Set change) ->
-          M.goto Ready
+          Detail_machine.goto Ready
             {
               state with
               data = Linear_data.start state.number change state.data;
             }
       | None ->
-          M.unhandled
+          Detail_machine.unhandled
     )
   | Props _ | Loaded _ | Retry ->
-      M.unhandled
+      Detail_machine.unhandled
 
 let picker_keys =
   Linear_pickers.
@@ -258,16 +261,17 @@ let picker_keys =
   @ Linear_commands.keys (Menu_open true)
 
 let machine =
-  M.make ~id:"issue-detail" ~init:(M.at Idle ())
+  Detail_machine.make ~id:"issue-detail"
+    ~init:(Detail_machine.at Idle ())
     [
-      M.always ~to_:[ Loading ] (function
+      Detail_machine.always ~to_:[ Loading ] (function
         | Props number ->
-            M.reenter Loading number
+            Detail_machine.reenter Loading number
         | _ ->
-            M.unhandled
+            Detail_machine.unhandled
         );
-      M.state Idle "idle" M.ignore;
-      M.state Loading "loading"
+      Detail_machine.state Idle "idle" Detail_machine.ignore;
+      Detail_machine.state Loading "loading"
         ~to_:[ Ready; Not_found; Failed ]
         ~entry:title
         ~invoke:
@@ -277,7 +281,7 @@ let machine =
               let data = Linear_data.loaded issues in
               match Linear_data.find number data with
               | Some issue ->
-                  M.goto Ready
+                  Detail_machine.goto Ready
                     ~cmds:
                       [
                         Cmd.Set_title
@@ -292,14 +296,15 @@ let machine =
                       menu_open = false;
                     }
               | None ->
-                  M.goto Not_found ~cmds:[ Cmd.Set_status 404 ] number
+                  Detail_machine.goto Not_found ~cmds:[ Cmd.Set_status 404 ]
+                    number
             )
           | Loaded (Error error) ->
-              M.goto Failed (number, error)
+              Detail_machine.goto Failed (number, error)
           | _ ->
-              M.unhandled
+              Detail_machine.unhandled
           );
-      M.state Ready "ready"
+      Detail_machine.state Ready "ready"
         ~invoke:
           [
             Source.live issues_topic
@@ -308,12 +313,13 @@ let machine =
             Source.keys ~prevent:true picker_keys;
           ]
         ready;
-      M.state Not_found "not_found" M.ignore;
-      M.state Failed "failed" ~to_:[ Loading ] (fun (number, _) -> function
+      Detail_machine.state Not_found "not_found" Detail_machine.ignore;
+      Detail_machine.state Failed "failed" ~to_:[ Loading ]
+        (fun (number, _) -> function
         | Retry ->
-            M.goto Loading number
+            Detail_machine.goto Loading number
         | _ ->
-            M.unhandled
+            Detail_machine.unhandled
         );
     ]
 
@@ -497,17 +503,17 @@ let issue_view (state : view_state) (issue : Issue.t) : event Node.t =
         );
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Detail_machine.snapshot) : event Node.t =
   <section>
     <p class_="mb-4">back</p>
     ( match snapshot with
-    | M.At (Idle, ()) | M.At (Loading, _) ->
+    | Detail_machine.At (Idle, ()) | Detail_machine.At (Loading, _) ->
         <p class_="text-ui-muted">"Loading issue..."</p>
-    | M.At (Not_found, number) ->
+    | Detail_machine.At (Not_found, number) ->
         <p id="issue-not-found">
           (text ("There is no issue ENG-" ^ string_of_int number ^ "."))
         </p>
-    | M.At (Failed, (_, error)) ->
+    | Detail_machine.At (Failed, (_, error)) ->
         <div>
           <p role=`alert class_="text-ui-danger">(text (error_text error))</p>
           <button
@@ -517,7 +523,7 @@ let view (snapshot : M.snapshot) : event Node.t =
             "Try again"
           </button>
         </div>
-    | M.At (Ready, state) -> (
+    | Detail_machine.At (Ready, state) -> (
         match Linear_data.find state.number state.data with
         | Some issue ->
             issue_view state issue

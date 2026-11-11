@@ -125,7 +125,7 @@ start the theme component with the same choice. The server render writes the
 
 From [linear/server/linear_server.ml]:
 {@ocaml skip[
-        S.render_page_settled
+        Server.render_page_settled
           (Linear_app.make
              (Linear_theme.choice
                 (Silica_server.cookie page.context.request

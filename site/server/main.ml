@@ -1,4 +1,4 @@
-module A = Silica_example_adapter
+module Adapter = Silica_example_adapter
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
@@ -116,5 +116,5 @@ let () =
         prerr_endline ("site: bad metafile: " ^ message);
         exit 1
   in
-  A.run ~port:!port ~max_connections:!max_connections ~addr:!addr
-    (Site_server.create config ~assets ~read:(A.read_dir !static) ())
+  Adapter.run ~port:!port ~max_connections:!max_connections ~addr:!addr
+    (Site_server.create config ~assets ~read:(Adapter.read_dir !static) ())

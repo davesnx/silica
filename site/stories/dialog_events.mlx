@@ -69,17 +69,20 @@ module States = struct
   type _ t = Page : page t
 end
 
-module M = Machine.Make (States)
+module Dialog_events_machine = Machine.Make (States)
 
 let note page line = { page with events = page.events @ [ line ] }
 
 let machine =
-  M.make ~id:"dialog-events"
-    ~init:(M.at Page { name = "Ada"; saved = "Ada"; events = []; open_ = None })
+  Dialog_events_machine.make ~id:"dialog-events"
+    ~init:
+      (Dialog_events_machine.at Page
+         { name = "Ada"; saved = "Ada"; events = []; open_ = None }
+      )
     [
-      M.state Page "page" (fun page -> function
+      Dialog_events_machine.state Page "page" (fun page -> function
         | Changed (opened, reason) ->
-            M.goto Page
+            Dialog_events_machine.goto Page
               (note
                  { page with open_ = Some opened }
                  (Printf.sprintf "%s %s"
@@ -92,16 +95,17 @@ let machine =
                  )
               )
         | Edited (Rename.Name name) ->
-            M.goto Page { page with name }
+            Dialog_events_machine.goto Page { page with name }
         | Edited Rename.Save ->
-            M.goto Page (note { page with saved = page.name } "save")
+            Dialog_events_machine.goto Page
+              (note { page with saved = page.name } "save")
         | Open_from_outside ->
-            M.goto Page
+            Dialog_events_machine.goto Page
               (note { page with open_ = Some true } "open from outside")
         );
     ]
 
-let view (M.At (Page, page)) =
+let view (Dialog_events_machine.At (Page, page)) =
   <section class_="flex flex-col gap-4">
     <p id="saved">(Node.text ("Name: " ^ page.saved))</p>
     <div class_="flex gap-2">

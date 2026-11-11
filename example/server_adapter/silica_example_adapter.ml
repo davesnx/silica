@@ -1,4 +1,3 @@
-module S = Tiny_httpd
 module Ws = Silica_server_kit.Ws
 
 module Timers : sig
@@ -112,7 +111,7 @@ type drain = {
   next : int Atomic.t;
 }
 
-type t = { server : S.t; running : bool Atomic.t; drain : drain }
+type t = { server : Tiny_httpd.t; running : bool Atomic.t; drain : drain }
 
 let read_dir dir name =
   let path = Filename.concat dir name in
@@ -123,28 +122,28 @@ let read_dir dir name =
       None
 
 let to_response (r : Silica_server.response) =
-  S.Response.make_raw ~headers:r.headers ~code:r.status r.body
+  Tiny_httpd.Response.make_raw ~headers:r.headers ~code:r.status r.body
 
-let request_of (req : string S.Request.t) =
+let request_of (req : string Tiny_httpd.Request.t) =
   {
-    Silica_server.meth = S.Meth.to_string (S.Request.meth req);
-    path = S.Request.path req;
-    query = S.Request.query req;
-    headers = S.Request.headers req;
-    body = S.Request.body req;
+    Silica_server.meth = Tiny_httpd.Meth.to_string (Tiny_httpd.Request.meth req);
+    path = Tiny_httpd.Request.path req;
+    query = Tiny_httpd.Request.query req;
+    headers = Tiny_httpd.Request.headers req;
+    body = Tiny_httpd.Request.body req;
   }
 
-let bodyless (req : unit S.Request.t) =
+let bodyless (req : unit Tiny_httpd.Request.t) =
   {
-    Silica_server.meth = S.Meth.to_string (S.Request.meth req);
-    path = S.Request.path req;
-    query = S.Request.query req;
-    headers = S.Request.headers req;
+    Silica_server.meth = Tiny_httpd.Meth.to_string (Tiny_httpd.Request.meth req);
+    path = Tiny_httpd.Request.path req;
+    query = Tiny_httpd.Request.query req;
+    headers = Tiny_httpd.Request.headers req;
     body = "";
   }
 
-let too_big ~max_body (req : unit S.Request.t) =
-  match S.Request.get_header req "content-length" with
+let too_big ~max_body (req : unit Tiny_httpd.Request.t) =
+  match Tiny_httpd.Request.get_header req "content-length" with
   | Some length
     when Option.value (int_of_string_opt length) ~default:0 > max_body ->
       Error (413, "payload too large")
@@ -158,8 +157,8 @@ let serve_socket drain (attach : Server.socket -> Server.connection) ic oc =
     if not (Atomic.get dead) then
       try
         Mutex.protect lock (fun () ->
-            List.iter (S.IO.Output.output_string oc) parts;
-            S.IO.Output.flush oc
+            List.iter (Tiny_httpd.IO.Output.output_string oc) parts;
+            Tiny_httpd.IO.Output.flush oc
         )
       with _ -> Atomic.set dead true
   in
@@ -179,7 +178,7 @@ let serve_socket drain (attach : Server.socket -> Server.connection) ic oc =
   let connection = attach socket in
   let read n =
     let buffer = Bytes.create n in
-    match S.IO.Input.really_input ic buffer 0 n with
+    match Tiny_httpd.IO.Input.really_input ic buffer 0 n with
     | () ->
         Some (Bytes.unsafe_to_string buffer)
     | exception End_of_file ->
@@ -217,7 +216,7 @@ let serve_socket drain (attach : Server.socket -> Server.connection) ic oc =
     )
     loop
 
-let ws_upgrade drain server : S.upgrade_handler =
+let ws_upgrade drain server : Tiny_httpd.upgrade_handler =
   (module struct
     type handshake_state = Server.socket -> Server.connection
 
@@ -225,7 +224,7 @@ let ws_upgrade drain server : S.upgrade_handler =
 
     let handshake _addr req =
       match
-        ( S.Request.get_header req "sec-websocket-key",
+        ( Tiny_httpd.Request.get_header req "sec-websocket-key",
           Server.upgrade server (bodyless req)
         )
       with
@@ -241,16 +240,16 @@ let ws_upgrade drain server : S.upgrade_handler =
 )
 
 let configure ~max_body drain server http =
-  S.add_route_handler ~accept:(too_big ~max_body) http S.Route.rest_of_path
-    (fun _rest req ->
+  Tiny_httpd.add_route_handler ~accept:(too_big ~max_body) http
+    Tiny_httpd.Route.rest_of_path (fun _rest req ->
       Atomic.incr drain.requests;
       Fun.protect
         ~finally:(fun () -> Atomic.decr drain.requests)
         (fun () -> to_response (Server.handle server (request_of req)))
   );
-  S.add_upgrade_handler http
+  Tiny_httpd.add_upgrade_handler http
     ~accept:(fun req ->
-      if S.Request.path req <> Silica_server.live_path then
+      if Tiny_httpd.Request.path req <> Silica_server.live_path then
         Ok ()
       else
         match Server.upgrade server (bodyless req) with
@@ -259,7 +258,7 @@ let configure ~max_body drain server http =
         | Server.Accepted _ ->
             Ok ()
     )
-    (S.Route.exact_path "_silica/live" S.Route.return)
+    (Tiny_httpd.Route.exact_path "_silica/live" Tiny_httpd.Route.return)
     (ws_upgrade drain server)
 
 let sweeper server running =
@@ -278,7 +277,7 @@ let default_max_connections = 1024
 
 let create ~port ~addr ~max_body ~max_connections server =
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-  let http = S.create ~addr ~port ~max_connections () in
+  let http = Tiny_httpd.create ~addr ~port ~max_connections () in
   let drain =
     {
       requests = Atomic.make 0;
@@ -299,7 +298,9 @@ let start ?(port = 0) ?(addr = "127.0.0.1") ?(max_body = 1_048_576)
   ignore
     (Thread.create
        (fun () ->
-         S.run_exn ~after_init:(fun () -> Atomic.set ready true) t.server
+         Tiny_httpd.run_exn
+           ~after_init:(fun () -> Atomic.set ready true)
+           t.server
        )
        ()
     );
@@ -308,11 +309,11 @@ let start ?(port = 0) ?(addr = "127.0.0.1") ?(max_body = 1_048_576)
   done;
   t
 
-let port t = S.port t.server
+let port t = Tiny_httpd.port t.server
 
 let stop t =
   Atomic.set t.running false;
-  S.stop t.server
+  Tiny_httpd.stop t.server
 
 let run ?(port = 8080) ?(addr = "127.0.0.1") ?(max_body = 1_048_576)
     ?(max_connections = default_max_connections) ?(grace = 10.) server =
@@ -339,8 +340,9 @@ let run ?(port = 8080) ?(addr = "127.0.0.1") ?(max_body = 1_048_576)
        )
        ()
     );
-  S.run_exn
+  Tiny_httpd.run_exn
     ~after_init:(fun () ->
-      Printf.printf "listening on http://%s:%d\n%!" addr (S.port t.server)
+      Printf.printf "listening on http://%s:%d\n%!" addr
+        (Tiny_httpd.port t.server)
     )
     t.server

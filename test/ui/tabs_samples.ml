@@ -8,18 +8,18 @@ module Page_state = struct
   type _ t = Page : page t
 end
 
-module P = Machine.Make (Page_state)
+module Page_machine = Machine.Make (Page_state)
 
 let machine =
-  P.make ~id:"tabs-page"
-    ~init:(P.at Page { selected = "a"; log = [] })
+  Page_machine.make ~id:"tabs-page"
+    ~init:(Page_machine.at Page { selected = "a"; log = [] })
     [
-      P.state Page "page" (fun page -> function
+      Page_machine.state Page "page" (fun page -> function
         | Changed value ->
-            P.goto Page
+            Page_machine.goto Page
               { selected = value; log = page.log @ [ "value " ^ value ] }
         | Set_value value ->
-            P.goto Page { page with selected = value }
+            Page_machine.goto Page { page with selected = value }
         );
     ]
 
@@ -31,7 +31,7 @@ let tabs =
     Tabs.tab ~value:"d" "Danger";
   ]
 
-let view ~orientation (P.At (Page, page)) =
+let view ~orientation (Page_machine.At (Page, page)) =
   let panel value text =
     Tabs.panel ~id:"set" ~value ~selected:page.selected [ Node.text text ]
   in

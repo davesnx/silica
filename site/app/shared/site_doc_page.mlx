@@ -17,45 +17,47 @@ module State = struct
 end
 
 open State
-module M = Machine.Make (State)
+module Doc_page_machine = Machine.Make (State)
 
-let load slug = M.reenter Loading slug
+let load slug = Doc_page_machine.reenter Loading slug
 
 let props current = function
   | Props slug when slug <> current ->
       load slug
   | Props _ | Loaded _ | Retry ->
-      M.unhandled
+      Doc_page_machine.unhandled
 
 let machine =
-  M.make ~id:"doc-page" ~init:(M.at Idle ())
+  Doc_page_machine.make ~id:"doc-page"
+    ~init:(Doc_page_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Loading ] (fun () -> function
+      Doc_page_machine.state Idle "idle" ~to_:[ Loading ] (fun () -> function
         | Props slug ->
             load slug
         | Loaded _ | Retry ->
-            M.unhandled
+            Doc_page_machine.unhandled
         );
-      M.state Loading "loading"
+      Doc_page_machine.state Loading "loading"
         ~to_:[ Loading; Ready; Missing; Failed ]
         ~invoke:[ Source.call Site_doc.endpoint Fun.id (fun r -> Loaded r) ]
         (fun slug -> function
           | Loaded (Ok (Site_doc.Page page)) ->
-              M.goto Ready page
+              Doc_page_machine.goto Ready page
           | Loaded (Ok Site_doc.Missing) ->
-              M.goto Missing slug
+              Doc_page_machine.goto Missing slug
           | Loaded (Error error) ->
-              M.goto Failed { slug; error }
+              Doc_page_machine.goto Failed { slug; error }
           | event ->
               props slug event
           );
-      M.state Ready "ready" ~to_:[ Loading ] (fun page event ->
+      Doc_page_machine.state Ready "ready" ~to_:[ Loading ] (fun page event ->
           props page.slug event
       );
-      M.state Missing "missing" ~to_:[ Loading ] (fun slug event ->
-          props slug event
+      Doc_page_machine.state Missing "missing" ~to_:[ Loading ]
+        (fun slug event -> props slug event
       );
-      M.state Failed "failed" ~to_:[ Loading ] (fun { slug; _ } -> function
+      Doc_page_machine.state Failed "failed" ~to_:[ Loading ]
+        (fun { slug; _ } -> function
         | Retry ->
             load slug
         | event ->
@@ -162,15 +164,15 @@ let article slug title body =
     <div />
   </div>
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Doc_page_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Idle, ()) ->
+  | Doc_page_machine.At (Idle, ()) ->
       <div />
-  | M.At (Loading, slug) ->
+  | Doc_page_machine.At (Loading, slug) ->
       article slug
         (Option.value (Site_nav.title slug) ~default:"Loading")
         <p class_="mt-6 text-ui-muted" aria_busy=true>"Loading the page."</p>
-  | M.At (Ready, page) ->
+  | Doc_page_machine.At (Ready, page) ->
       <div class_="grid gap-12 xl:grid-cols-[minmax(0,1fr)_14rem]">
         <article id="doc" class_="min-w-0 max-w-[72ch]">
           (Node.element "h1"
@@ -187,13 +189,13 @@ let view (snapshot : M.snapshot) : event Node.t =
         </article>
         (toc page.slug page.blocks)
       </div>
-  | M.At (Missing, slug) ->
+  | Doc_page_machine.At (Missing, slug) ->
       article slug "Page not found"
         <p class_="mt-6">
           "There is no documentation page with this name. Pick one from the \
            list."
         </p>
-  | M.At (Failed, { slug; error }) ->
+  | Doc_page_machine.At (Failed, { slug; error }) ->
       article slug "This page did not load"
         <div class_="mt-6 flex flex-col items-start gap-3">
           <p class_="text-ui-danger">(Node.text (error_text error))</p>

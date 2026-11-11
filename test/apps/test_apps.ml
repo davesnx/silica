@@ -5,22 +5,25 @@ let simple (type s e) ~id ~(init : s)
   let module Only = struct
     type _ t = Only : s t
   end in
-  let module M = Machine.Make (Only) in
+  let module Only_machine = Machine.Make (Only) in
   let table =
-    M.make ~id ~init:(M.at Only.Only init)
+    Only_machine.make ~id
+      ~init:(Only_machine.at Only.Only init)
       [
-        M.state Only.Only "only" (fun data event ->
+        Only_machine.state Only.Only "only" (fun data event ->
             match step data event with
             | None ->
-                M.unhandled
+                Only_machine.unhandled
             | Some (data, cmds) ->
-                M.goto ~cmds Only.Only data
+                Only_machine.goto ~cmds Only.Only data
         );
       ]
   in
   Machine.map_snapshot table
-    ~get:(fun (M.At (Only.Only, data) : M.snapshot) : s -> data)
-    ~set:(fun data -> M.at Only.Only data)
+    ~get:(fun (Only_machine.At (Only.Only, data) : Only_machine.snapshot) : s ->
+      data
+    )
+    ~set:(fun data -> Only_machine.at Only.Only data)
 
 type event =
   | Inc
@@ -555,23 +558,25 @@ let describe (update : int Topic.update) =
   status ^ " seq " ^ string_of_int update.seq
 
 let watch_machine =
-  let module W = Watching_machine in
   let handle self s = function
     | Update update ->
-        W.goto self { text = describe update; updates = s.updates + 1 }
+        Watching_machine.goto self
+          { text = describe update; updates = s.updates + 1 }
     | Leave ->
-        W.goto Watch_state.Away s
+        Watching_machine.goto Watch_state.Away s
     | Return ->
-        W.goto Watch_state.Watching s
+        Watching_machine.goto Watch_state.Watching s
   in
-  let to_ = W.[ Watch_state.Watching; Watch_state.Away ] in
-  W.make ~id:"watch"
-    ~init:(W.at Watch_state.Watching { text = "none"; updates = 0 })
+  let to_ = Watching_machine.[ Watch_state.Watching; Watch_state.Away ] in
+  Watching_machine.make ~id:"watch"
+    ~init:
+      (Watching_machine.at Watch_state.Watching { text = "none"; updates = 0 })
     [
-      W.state Watch_state.Watching "watching" ~to_
+      Watching_machine.state Watch_state.Watching "watching" ~to_
         ~invoke:[ Source.live news (fun _ -> "room") (fun u -> Update u) ]
         (handle Watch_state.Watching);
-      W.state Watch_state.Away "away" ~to_ (handle Watch_state.Away);
+      Watching_machine.state Watch_state.Away "away" ~to_
+        (handle Watch_state.Away);
     ]
 
 let watch_state : Watching_machine.snapshot -> watch = function
@@ -875,40 +880,42 @@ module Lookup = struct
     type _ t = Loading : int t | Ready : int t | Failed : int t
   end
 
-  module M = Machine.Make (States)
+  module Lookup_machine = Machine.Make (States)
 
   let machine =
-    let to_ = M.[ States.Loading; States.Ready; States.Failed ] in
+    let to_ = Lookup_machine.[ States.Loading; States.Ready; States.Failed ] in
     let loading input =
-      M.state States.Loading "loading" ~to_
+      Lookup_machine.state States.Loading "loading" ~to_
         ~invoke:[ Source.call double_ep (fun n -> n) (fun r -> Answered r) ]
         (fun _ -> function
           | Answered (Ok n) ->
-              M.goto States.Ready n
+              Lookup_machine.goto States.Ready n
           | Answered (Error _) ->
-              M.goto States.Failed input
+              Lookup_machine.goto States.Failed input
           | Again ->
-              M.unhandled
+              Lookup_machine.unhandled
           )
     in
-    M.make ~id:"lookup" ~init:(M.at States.Loading 4)
+    Lookup_machine.make ~id:"lookup"
+      ~init:(Lookup_machine.at States.Loading 4)
       [
         loading 4;
-        M.state States.Ready "ready" ~to_ (fun n -> function
+        Lookup_machine.state States.Ready "ready" ~to_ (fun n -> function
           | Again ->
-              M.reenter States.Loading n
+              Lookup_machine.reenter States.Loading n
           | _ ->
-              M.unhandled
+              Lookup_machine.unhandled
           );
-        M.state States.Failed "failed" ~to_ (fun n -> function
+        Lookup_machine.state States.Failed "failed" ~to_ (fun n -> function
           | Again ->
-              M.reenter States.Loading n
+              Lookup_machine.reenter States.Loading n
           | _ ->
-              M.unhandled
+              Lookup_machine.unhandled
           );
       ]
 
-  let view (M.At (state, n) : M.snapshot) : event Node.t =
+  let view (Lookup_machine.At (state, n) : Lookup_machine.snapshot) :
+      event Node.t =
     el "main" []
       [
         el "p"
@@ -968,24 +975,26 @@ module Bomb = struct
     type _ t = Live : int t
   end
 
-  module M = Machine.Make (States)
+  module Bomb_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"bomb" ~init:(M.at States.Live 0)
+    Bomb_machine.make ~id:"bomb"
+      ~init:(Bomb_machine.at States.Live 0)
       [
-        M.state States.Live "live" (fun count -> function
+        Bomb_machine.state States.Live "live" (fun count -> function
           | Inc ->
-              M.goto States.Live (count + 1)
+              Bomb_machine.goto States.Live (count + 1)
           | Boom ->
               failwith "secret boom"
           | Break_view ->
-              M.goto States.Live (-1)
+              Bomb_machine.goto States.Live (-1)
           | Quiet ->
-              M.unhandled
+              Bomb_machine.unhandled
           );
       ]
 
-  let view (M.At (States.Live, count) : M.snapshot) : event Node.t =
+  let view (Bomb_machine.At (States.Live, count) : Bomb_machine.snapshot) :
+      event Node.t =
     if count < 0 then failwith "secret view";
     el "div"
       [ id "bomb" ]

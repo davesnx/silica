@@ -214,19 +214,20 @@ let test_entry_exit_order () =
   let module Pair = struct
     type _ t = A : unit t | B : unit t
   end in
-  let module M = Machine.Make (Pair) in
+  let module Pair_machine = Machine.Make (Pair) in
   let machine =
-    M.make ~id:"pair" ~init:(M.at Pair.A ())
+    Pair_machine.make ~id:"pair"
+      ~init:(Pair_machine.at Pair.A ())
       [
-        M.state Pair.A "a" ~to_:[ Pair.B ]
+        Pair_machine.state Pair.A "a" ~to_:[ Pair.B ]
           ~entry:(fun () -> [ note "enter a" ])
           ~exit:(fun () -> [ note "exit a" ])
           ~after:[ (5, ()) ]
-          (fun () () -> M.goto ~cmds:[ note "move" ] Pair.B ());
-        M.state Pair.B "b"
+          (fun () () -> Pair_machine.goto ~cmds:[ note "move" ] Pair.B ());
+        Pair_machine.state Pair.B "b"
           ~entry:(fun () -> [ note "enter b" ])
           ~after:[ (7, ()) ]
-          M.ignore;
+          Pair_machine.ignore;
       ]
   in
   let describe cmds =
@@ -259,19 +260,20 @@ let test_self_goto_keeps_resources () =
   let module Counter = struct
     type _ t = Count : int t
   end in
-  let module M = Machine.Make (Counter) in
+  let module Counter_machine = Machine.Make (Counter) in
   let machine =
-    M.make ~id:"counter" ~init:(M.at Counter.Count 0)
+    Counter_machine.make ~id:"counter"
+      ~init:(Counter_machine.at Counter.Count 0)
       [
-        M.state Counter.Count "count"
+        Counter_machine.state Counter.Count "count"
           ~entry:(fun _ -> [ note "enter" ])
           ~exit:(fun _ -> [ note "exit" ])
           ~after:[ (10, `Tick) ]
           (fun n -> function
             | `Tick ->
-                M.goto Counter.Count (n + 1)
+                Counter_machine.goto Counter.Count (n + 1)
             | `Again ->
-                M.reenter Counter.Count (n + 1)
+                Counter_machine.reenter Counter.Count (n + 1)
             );
       ]
   in
@@ -292,30 +294,31 @@ let test_undeclared_target () =
   let module Pair = struct
     type _ t = A : unit t | B : unit t | C : unit t
   end in
-  let module M = Machine.Make (Pair) in
+  let module Pair_machine = Machine.Make (Pair) in
   let machine =
-    M.make ~id:"bad" ~init:(M.at Pair.A ())
+    Pair_machine.make ~id:"bad"
+      ~init:(Pair_machine.at Pair.A ())
       [
-        M.always ~to_:[ Pair.A ] (function
+        Pair_machine.always ~to_:[ Pair.A ] (function
           | `To_c ->
-              M.goto Pair.C ()
+              Pair_machine.goto Pair.C ()
           | _ ->
-              M.unhandled
+              Pair_machine.unhandled
           );
-        M.state Pair.A "a" ~to_:[ Pair.B ] (fun () -> function
+        Pair_machine.state Pair.A "a" ~to_:[ Pair.B ] (fun () -> function
           | `To_b ->
-              M.goto Pair.B ()
+              Pair_machine.goto Pair.B ()
           | `To_c_here ->
-              M.goto Pair.C ()
+              Pair_machine.goto Pair.C ()
           | `Self ->
-              M.goto Pair.A ()
+              Pair_machine.goto Pair.A ()
           | `Again ->
-              M.reenter Pair.A ()
+              Pair_machine.reenter Pair.A ()
           | _ ->
-              M.unhandled
+              Pair_machine.unhandled
           );
-        M.state Pair.B "b" M.ignore;
-        M.state Pair.C "c" M.ignore;
+        Pair_machine.state Pair.B "b" Pair_machine.ignore;
+        Pair_machine.state Pair.C "c" Pair_machine.ignore;
       ]
   in
   let snapshot, _ = Machine.start machine in
@@ -334,34 +337,48 @@ let test_missing_case () =
   let module Pair = struct
     type _ t = A : unit t | B : unit t | Orphan : unit t
   end in
-  let module M = Machine.Make (Pair) in
+  let module Pair_machine = Machine.Make (Pair) in
   let table =
     [
-      M.state Pair.A "a" ~to_:[ Pair.B ] (fun () () -> M.goto Pair.B ());
-      M.state Pair.B "b" M.ignore;
+      Pair_machine.state Pair.A "a" ~to_:[ Pair.B ] (fun () () ->
+          Pair_machine.goto Pair.B ()
+      );
+      Pair_machine.state Pair.B "b" Pair_machine.ignore;
     ]
   in
   Alcotest.check_raises "initial state"
     (Machine.Missing_case { machine = "m"; index = 2 })
-    (fun () -> ignore (M.make ~id:"m" ~init:(M.at Pair.Orphan ()) table));
-  let machine = M.make ~id:"m" ~init:(M.at Pair.A ()) table in
-  M.cases_cover machine [ Pair.A; Pair.B ];
+    (fun () ->
+      ignore
+        (Pair_machine.make ~id:"m" ~init:(Pair_machine.at Pair.Orphan ()) table)
+    );
+  let machine =
+    Pair_machine.make ~id:"m" ~init:(Pair_machine.at Pair.A ()) table
+  in
+  Pair_machine.cases_cover machine [ Pair.A; Pair.B ];
   Alcotest.check_raises "cases_cover"
     (Machine.Missing_case { machine = "m"; index = 2 })
-    (fun () -> M.cases_cover machine [ Pair.A; Pair.Orphan ]);
+    (fun () -> Pair_machine.cases_cover machine [ Pair.A; Pair.Orphan ]);
   Alcotest.check_raises "to_ lists a state with no case"
     (Machine.Missing_case { machine = "m"; index = 2 })
     (fun () ->
       ignore
-        (M.make ~id:"m" ~init:(M.at Pair.A ())
-           [ M.state Pair.A "a" ~to_:[ Pair.Orphan ] M.ignore ]
+        (Pair_machine.make ~id:"m"
+           ~init:(Pair_machine.at Pair.A ())
+           [
+             Pair_machine.state Pair.A "a" ~to_:[ Pair.Orphan ]
+               Pair_machine.ignore;
+           ]
         )
     );
   let wild =
-    M.make ~id:"m" ~init:(M.at Pair.A ())
+    Pair_machine.make ~id:"m"
+      ~init:(Pair_machine.at Pair.A ())
       [
-        M.state Pair.A "a" (fun () () -> M.goto Pair.Orphan ());
-        M.state Pair.B "b" M.ignore;
+        Pair_machine.state Pair.A "a" (fun () () ->
+            Pair_machine.goto Pair.Orphan ()
+        );
+        Pair_machine.state Pair.B "b" Pair_machine.ignore;
       ]
   in
   let snapshot, _ = Machine.start wild in
@@ -378,28 +395,30 @@ let test_final_ignores_events () =
   let module Gate = struct
     type _ t = Open : unit t | Closed : unit t
   end in
-  let module M = Machine.Make (Gate) in
+  let module Gate_machine = Machine.Make (Gate) in
   let machine =
-    M.make ~id:"gate" ~init:(M.at Gate.Open ())
+    Gate_machine.make ~id:"gate"
+      ~init:(Gate_machine.at Gate.Open ())
       [
-        M.always ~to_:[ Gate.Open ] (function
+        Gate_machine.always ~to_:[ Gate.Open ] (function
           | `Reopen ->
-              M.goto Gate.Open ()
+              Gate_machine.goto Gate.Open ()
           | _ ->
-              M.unhandled
+              Gate_machine.unhandled
           );
-        M.state Gate.Open "open" ~to_:[ Gate.Closed ] (fun () -> function
-          | `Close ->
-              M.goto Gate.Closed ()
-          | _ ->
-              M.unhandled
-          );
-        M.state Gate.Closed "closed" ~final:true ~to_:[ Gate.Open ]
+        Gate_machine.state Gate.Open "open" ~to_:[ Gate.Closed ]
           (fun () -> function
           | `Close ->
-              M.stay [ note "ignored" ]
+              Gate_machine.goto Gate.Closed ()
           | _ ->
-              M.unhandled
+              Gate_machine.unhandled
+          );
+        Gate_machine.state Gate.Closed "closed" ~final:true ~to_:[ Gate.Open ]
+          (fun () -> function
+          | `Close ->
+              Gate_machine.stay [ note "ignored" ]
+          | _ ->
+              Gate_machine.unhandled
           );
       ]
   in
@@ -425,27 +444,28 @@ let test_always_order () =
   let module One = struct
     type _ t = Only : unit t
   end in
-  let module M = Machine.Make (One) in
+  let module One_machine = Machine.Make (One) in
   let machine =
-    M.make ~id:"one" ~init:(M.at One.Only ())
+    One_machine.make ~id:"one"
+      ~init:(One_machine.at One.Only ())
       [
-        M.always (function
+        One_machine.always (function
           | `Both ->
-              M.stay [ note "first always" ]
+              One_machine.stay [ note "first always" ]
           | _ ->
-              M.unhandled
+              One_machine.unhandled
           );
-        M.always (function
+        One_machine.always (function
           | `Both | `Second ->
-              M.stay [ note "second always" ]
+              One_machine.stay [ note "second always" ]
           | _ ->
-              M.unhandled
+              One_machine.unhandled
           );
-        M.state One.Only "only" (fun () -> function
+        One_machine.state One.Only "only" (fun () -> function
           | `Own | `Both ->
-              M.stay [ note "own" ]
+              One_machine.stay [ note "own" ]
           | _ ->
-              M.unhandled
+              One_machine.unhandled
           );
       ]
   in
@@ -500,21 +520,23 @@ let test_spec_self_edges () =
       | Hooked : unit t
       | Next : unit t
   end in
-  let module M = Machine.Make (Pair) in
+  let module Pair_machine = Machine.Make (Pair) in
   let machine =
-    M.make ~id:"self" ~init:(M.at Pair.Plain ())
+    Pair_machine.make ~id:"self"
+      ~init:(Pair_machine.at Pair.Plain ())
       [
-        M.state Pair.Plain "plain" ~to_:[ Pair.Timed; Pair.Hooked; Pair.Next ]
-          (fun () () -> M.goto Pair.Plain ()
+        Pair_machine.state Pair.Plain "plain"
+          ~to_:[ Pair.Timed; Pair.Hooked; Pair.Next ] (fun () () ->
+            Pair_machine.goto Pair.Plain ()
         );
-        M.state Pair.Timed "timed"
+        Pair_machine.state Pair.Timed "timed"
           ~after:[ (1, ()) ]
           ~to_:[ Pair.Next ]
-          (fun () () -> M.goto Pair.Timed ());
-        M.state Pair.Hooked "hooked"
+          (fun () () -> Pair_machine.goto Pair.Timed ());
+        Pair_machine.state Pair.Hooked "hooked"
           ~exit:(fun () -> [])
-          ~to_:[ Pair.Next ] M.ignore;
-        M.state Pair.Next "next" ~final:true M.ignore;
+          ~to_:[ Pair.Next ] Pair_machine.ignore;
+        Pair_machine.state Pair.Next "next" ~final:true Pair_machine.ignore;
       ]
   in
   let edges = (Machine.spec machine).edges in
@@ -541,15 +563,20 @@ let test_lint () =
       | Timed : unit t
       | Done : unit t
   end in
-  let module M = Machine.Make (Bad) in
+  let module Bad_machine = Machine.Make (Bad) in
   let machine =
-    M.make ~id:"bad" ~init:(M.at Bad.Start ())
+    Bad_machine.make ~id:"bad"
+      ~init:(Bad_machine.at Bad.Start ())
       [
-        M.state Bad.Start "start" ~to_:[ Bad.Sink; Bad.Timed ] M.ignore;
-        M.state Bad.Island "island" ~to_:[ Bad.Done ] M.ignore;
-        M.state Bad.Sink "sink" M.ignore;
-        M.state Bad.Timed "timed" ~after:[ (1, ()) ] M.ignore;
-        M.state Bad.Done "done" ~final:true M.ignore;
+        Bad_machine.state Bad.Start "start" ~to_:[ Bad.Sink; Bad.Timed ]
+          Bad_machine.ignore;
+        Bad_machine.state Bad.Island "island" ~to_:[ Bad.Done ]
+          Bad_machine.ignore;
+        Bad_machine.state Bad.Sink "sink" Bad_machine.ignore;
+        Bad_machine.state Bad.Timed "timed"
+          ~after:[ (1, ()) ]
+          Bad_machine.ignore;
+        Bad_machine.state Bad.Done "done" ~final:true Bad_machine.ignore;
       ]
   in
   Alcotest.(check (list string))
@@ -663,21 +690,22 @@ let test_call_timeout () =
   let module Slow = struct
     type _ t = Waiting : unit t | Done : unit t
   end in
-  let module M = Machine.Make (Slow) in
+  let module Slow_machine = Machine.Make (Slow) in
   let ep =
     Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
   in
   let machine =
-    M.make ~id:"slow" ~init:(M.at Waiting ())
+    Slow_machine.make ~id:"slow"
+      ~init:(Slow_machine.at Waiting ())
       [
-        M.state Waiting "waiting" ~to_:[ Done ]
+        Slow_machine.state Waiting "waiting" ~to_:[ Done ]
           ~invoke:
             [
               Source.call ~timeout_ms:250 ep (fun () -> 1) (fun r -> r);
               Source.call ep (fun () -> 2) (fun r -> r);
             ]
-          (fun () -> function Ok _ | Error _ -> M.goto Done ());
-        M.state Done "done" M.ignore;
+          (fun () -> function Ok _ | Error _ -> Slow_machine.goto Done ());
+        Slow_machine.state Done "done" Slow_machine.ignore;
       ]
   in
   let _, cmds = Machine.start machine in

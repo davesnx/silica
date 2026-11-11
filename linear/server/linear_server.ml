@@ -1,5 +1,5 @@
 open Linear_model
-module S = Silica_example_adapter.Server
+module Server = Silica_example_adapter.Server
 
 let user_key = "user"
 
@@ -23,7 +23,7 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
   let store = Linear_store.create ?count () in
   let next_user = Linear_store.next_user () in
   let server = ref None in
-  let me (context : S.context) () =
+  let me (context : Server.context) () =
     Ok (assigned_user ~config ~next_user context.session)
   in
   let list _ () = Ok (Linear_store.issues store) in
@@ -36,7 +36,7 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
     | Error message ->
         Error message
     | Ok issue ->
-        S.publish (Option.get !server) issues_topic ~key:issues_key
+        Server.publish (Option.get !server) issues_topic ~key:issues_key
           (Linear_store.issues store);
         Ok issue
   in
@@ -48,18 +48,19 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
     in
     ( match answer with
     | Ok (Change.Saved _) ->
-        S.publish (Option.get !server) issues_topic ~key:issues_key
+        Server.publish (Option.get !server) issues_topic ~key:issues_key
           (Linear_store.issues store)
     | Ok (Change.Conflict _) | Error _ ->
         ()
     );
     answer
   in
-  let viewer (context : S.context) =
+  let viewer (context : Server.context) =
     assigned_user ~config ~next_user context.session
   in
   let publish_comments number =
-    S.publish (Option.get !server) comments_topic ~key:(string_of_int number)
+    Server.publish (Option.get !server) comments_topic
+      ~key:(string_of_int number)
       (Linear_store.comments store number)
   in
   let thread context number =
@@ -94,20 +95,20 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
   in
   let handlers =
     [
-      S.implement me_endpoint me;
-      S.implement issues_endpoint list;
-      S.implement create_endpoint create;
-      S.implement update_endpoint update;
-      S.implement comments_endpoint thread;
-      S.implement add_comment_endpoint add_comment;
-      S.implement edit_comment_endpoint edit_comment;
+      Server.implement me_endpoint me;
+      Server.implement issues_endpoint list;
+      Server.implement create_endpoint create;
+      Server.implement update_endpoint update;
+      Server.implement comments_endpoint thread;
+      Server.implement add_comment_endpoint add_comment;
+      Server.implement edit_comment_endpoint edit_comment;
     ]
   in
   let t =
-    S.create config ~assets ~read ~handlers ~islands:[]
+    Server.create config ~assets ~read ~handlers ~islands:[]
       ~topics:
         [
-          S.Topic_def
+          Server.Topic_def
             {
               topic = issues_topic;
               init =
@@ -118,7 +119,7 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
                     Error ("no such key: " ^ key)
                 );
             };
-          S.Topic_def
+          Server.Topic_def
             {
               topic = comments_topic;
               init =
@@ -134,8 +135,8 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
                 );
             };
         ]
-      ~page:(fun (page : S.page) ->
-        S.render_page_settled
+      ~page:(fun (page : Server.page) ->
+        Server.render_page_settled
           (Linear_app.make
              (Linear_theme.choice
                 (Silica_server.cookie page.context.request

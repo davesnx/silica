@@ -225,7 +225,7 @@ let list () =
       {
         Check.name = "a ready list shows one row for each issue";
         holds =
-          (fun (M.At (state, data) : M.snapshot) view ->
+          (fun (List_machine.At (state, data) : List_machine.snapshot) view ->
             match state with
             | States.Ready ->
                 count_rows view
@@ -248,7 +248,7 @@ let list () =
       {
         Check.name = "the offline note shows exactly when the data is stale";
         holds =
-          (fun (M.At (state, data) : M.snapshot) view ->
+          (fun (List_machine.At (state, data) : List_machine.snapshot) view ->
             match state with
             | States.Ready ->
                 shows view "Offline" = data.data.stale
@@ -266,14 +266,14 @@ let list () =
   in
   Check.component ~max_states:50_000 ~samples:[ issues; topic ]
     ~props:[ Props Linear_view.default; Props filtered ]
-    ~within:(fun (M.At (state, data)) ->
+    ~within:(fun (List_machine.At (state, data)) ->
       match state with
       | States.Ready ->
           data.data.next_id <= 2 && List.length data.toasts <= 1
       | States.Loading | States.Failed ->
           true
     )
-    ~inputs:(fun (M.At (state, data)) ->
+    ~inputs:(fun (List_machine.At (state, data)) ->
       match state with
       | States.Ready ->
           [
@@ -366,8 +366,10 @@ let pp_detail_event f = function
   | event ->
       Format.pp_print_string f (detail_label event)
 
-let detail_inputs (Linear_detail.M.At (state, data) : Linear_detail.M.snapshot)
-    =
+let detail_inputs
+    (Linear_detail.Detail_machine.At (state, data) :
+      Linear_detail.Detail_machine.snapshot
+      ) =
   let open Linear_detail in
   match state with
   | States.Ready ->
@@ -410,8 +412,10 @@ let detail_inputs (Linear_detail.M.At (state, data) : Linear_detail.M.snapshot)
   | States.Idle | States.Loading | States.Not_found | States.Failed ->
       []
 
-let detail_within (Linear_detail.M.At (state, data) : Linear_detail.M.snapshot)
-    =
+let detail_within
+    (Linear_detail.Detail_machine.At (state, data) :
+      Linear_detail.Detail_machine.snapshot
+      ) =
   match state with
   | Linear_detail.States.Ready ->
       data.data.next_id <= 2 && List.length data.toasts <= 1
@@ -425,7 +429,9 @@ let detail ~props () =
       {
         Check.name = "ready shows the title of the issue";
         holds =
-          (fun (M.At (state, data) : M.snapshot) view ->
+          (fun (Detail_machine.At (state, data) : Detail_machine.snapshot)
+            view
+          ->
             match state with
             | States.Ready -> (
                 match Linear_data.find data.number data.data with
@@ -450,7 +456,7 @@ let detail ~props () =
       {
         Check.name = "every pending change has a call in flight";
         holds =
-          (fun (M.At (state, data) : M.snapshot) _ ->
+          (fun (Detail_machine.At (state, data) : Detail_machine.snapshot) _ ->
             match state with
             | States.Ready ->
                 Linear_data.pending data.data
@@ -486,8 +492,11 @@ let unsaved () =
       {
         Check.name = "the confirm shows only while a navigation waits";
         holds =
-          (fun (M.At (state, _) : M.snapshot) view ->
-            M.same state States.Asking = shows view "unsaved changes"
+          (fun (Unsaved_machine.At (state, _) : Unsaved_machine.snapshot)
+            view
+          ->
+            Unsaved_machine.same state States.Asking
+            = shows view "unsaved changes"
           );
       };
       {
@@ -575,7 +584,10 @@ let dialog_request view =
   | _ ->
       failwith "the create view has not exactly one dialog with props"
 
-let create_inputs (Linear_create.M.At (state, _) : Linear_create.M.snapshot) =
+let create_inputs
+    (Linear_create.Create_machine.At (state, _) :
+      Linear_create.Create_machine.snapshot
+      ) =
   let open Linear_create in
   match state with
   | States.Closed | States.Submitting ->
@@ -598,7 +610,7 @@ let create_invariants =
       Check.name =
         "the dialog is asked open exactly when the machine is not closed";
       holds =
-        (fun (M.At (state, _) : M.snapshot) view ->
+        (fun (Create_machine.At (state, _) : Create_machine.snapshot) view ->
           (dialog_request view).open_
           = Some
               ( match state with
@@ -612,7 +624,7 @@ let create_invariants =
     {
       Check.name = "the dialog cannot be dismissed while sending";
       holds =
-        (fun (M.At (state, _) : M.snapshot) view ->
+        (fun (Create_machine.At (state, _) : Create_machine.snapshot) view ->
           let request = dialog_request view in
           match state with
           | States.Submitting ->
@@ -624,7 +636,7 @@ let create_invariants =
     {
       Check.name = "only a draft with a title is ever sent";
       holds =
-        (fun (M.At (state, data) : M.snapshot) _ ->
+        (fun (Create_machine.At (state, data) : Create_machine.snapshot) _ ->
           match state with
           | States.Submitting ->
               let _, (draft : Draft.t) = data in
@@ -636,7 +648,7 @@ let create_invariants =
     {
       Check.name = "the message of a failed send is shown";
       holds =
-        (fun (M.At (state, _) : M.snapshot) view ->
+        (fun (Create_machine.At (state, _) : Create_machine.snapshot) view ->
           let message = (dialog_request view).content.message in
           match state with
           | States.Failed ->
@@ -650,7 +662,7 @@ let create_invariants =
     {
       Check.name = "the title error shows only in editing";
       holds =
-        (fun (M.At (state, form) : M.snapshot) view ->
+        (fun (Create_machine.At (state, form) : Create_machine.snapshot) view ->
           let message = (dialog_request view).content.message in
           match state with
           | States.Editing ->
@@ -732,7 +744,9 @@ let comments () =
       {
         Check.name = "ready shows every comment and one composer";
         holds =
-          (fun (Linear_comments.M.At (state, data) : Linear_comments.M.snapshot)
+          (fun (Linear_comments.Comments_machine.At (state, data) :
+                 Linear_comments.Comments_machine.snapshot
+                 )
             view
           ->
             match state with
@@ -789,7 +803,9 @@ let composer () =
       {
         Check.name = "only a comment with text is ever sent";
         holds =
-          (fun (Linear_composer.M.At (state, data) : Linear_composer.M.snapshot)
+          (fun (Linear_composer.Composer_machine.At (state, data) :
+                 Linear_composer.Composer_machine.snapshot
+                 )
             _
           ->
             match state with
@@ -834,7 +850,9 @@ let comment () =
       {
         Check.name = "only the author can edit";
         holds =
-          (fun (Linear_comment.M.At (state, data) : Linear_comment.M.snapshot)
+          (fun (Linear_comment.Comment_machine.At (state, data) :
+                 Linear_comment.Comment_machine.snapshot
+                 )
             _
           ->
             match state with
