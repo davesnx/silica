@@ -1,0 +1,4 @@
+machine todo
+initial todo
+state todo
+stay todo on add delete draft toggle

@@ -1,0 +1,15 @@
+stateDiagram-v2
+  direction LR
+  state "empty" as s0
+  state "drafting" as s1
+  state "failed" as s2
+  state "sending (invoke /api/comments/add)" as s3
+  [*] --> s0
+  s1 --> s0 : clear, props, typed
+  s1 --> s3 : send
+  s0 --> s1 : typed
+  s2 --> s1 : typed
+  s2 --> s0 : clear, props, typed
+  s2 --> s3 : send
+  s3 --> s0 : props, sent ok
+  s3 --> s2 : sent error

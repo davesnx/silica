@@ -1,0 +1,12 @@
+stateDiagram-v2
+  direction LR
+  state "/?new&status&assignee&priority&label&group&order" as s0
+  state "/*" as s1
+  state "/issue/:int" as s2
+  [*] --> s0
+  s1 --> s0 : url changed
+  s1 --> s2 : url changed
+  s0 --> s1 : url changed
+  s0 --> s2 : url changed
+  s2 --> s1 : url changed
+  s2 --> s0 : url changed

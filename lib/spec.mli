@@ -42,6 +42,10 @@ type label = { from : string; target : string; event : string; kept : bool }
     kept the state ([Go] to a state with the same name, or [Stay]: the data may
     change, the timers and sources keep running); then [target = from]. *)
 
+val details : state -> string list
+(** The timers and sources of a state as lines: ["after 300ms"],
+    ["invoke /api/save"], ["hold focus_trap"]. *)
+
 val to_dot : ?labels:label list -> t -> string
 (** A Graphviz digraph. Timers and sources are listed in the state label; final
     states are double circles. An edge shows the events of its [labels]; kept
@@ -61,3 +65,43 @@ val to_quint : ?labels:label list -> t -> string
     [can_move] (the state is final, has an edge or a kept step) and [inv], both
     together. Handler code and data are not exported: the model holds the edges
     only, so it allows more runs than the machine. *)
+
+val to_text : ?labels:label list -> t -> string
+(** A line based text form to read and diff. One line for each item, in the
+    order of [t]:
+    {v
+machine toast
+initial empty
+state empty
+state done final
+state running
+  after 100ms
+  invoke /api/save
+  hold focus_trap
+edge running -> done on tick
+edge running -> empty
+stay running on props tick
+    v}
+    [edge] lines list the events of the step labels that enter the target;
+    [stay] lines list the events of the kept steps of a state. A word with a
+    space, a quote, a backslash or no character is written in double quotes with
+    backslash escapes. Labels whose states are not an edge (or, for kept steps,
+    a state) of [t] are left out. *)
+
+val of_text : string -> (t * label list, string) result
+(** Reads {!to_text}. The labels come back sorted, without duplicates, as
+    {!Check} gives them. [Error] names the line it cannot read. *)
+
+val to_mermaid : ?labels:label list -> t -> string
+(** A Mermaid [stateDiagram-v2] block, left to right. A state shows its
+    {!details} in parentheses; an edge shows the events of its [labels]; final
+    states lead to [[*]]. Kept steps are not shown. *)
+
+val to_json : ?labels:label list -> t -> Silica_json.Json.t
+(** An object with the fields ["id"], ["init"], ["states"] (objects with
+    ["name"], ["final"], ["timers"], ["sources"], ["held"]), ["edges"] (pairs of
+    names) and ["labels"] (objects with ["from"], ["target"], ["event"],
+    ["kept"]). *)
+
+val of_json : Silica_json.Json.t -> (t * label list, string) result
+(** Reads {!to_json}. [Error] names the field it cannot read. *)

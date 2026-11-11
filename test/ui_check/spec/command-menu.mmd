@@ -1,0 +1,7 @@
+stateDiagram-v2
+  direction LR
+  state "closed" as s0
+  state "open (hold focus_trap, hold scroll_lock, hold dismiss)" as s1
+  [*] --> s0
+  s0 --> s1 : props
+  s1 --> s0 : close escape-key, close outside-press, props, run

@@ -1,0 +1,5 @@
+machine theme 461 106
+node system 40,35 90 50 initial
+node fixed 373,42 72 36
+edge fixed -> system back 373,55 325,34 178,34 130,53 label 251,30 choose system, props
+edge system -> fixed 130,67 178,86 325,86 373,65 label 251,82 choose high-contrast, | choose light, props

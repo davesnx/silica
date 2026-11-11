@@ -1,0 +1,6 @@
+machine filter-popover 500 162
+node closed 40,77 72 36 initial
+node open 381,63 103 64
+edge closed -> open 112,90 160,48 333,48 381,86 label 247,44 open trigger-press, | props
+edge open -> closed back 381,104 333,142 160,142 112,100 label 247,138 apply, close close-press, | close escape-key, | close outside-press, | close trigger-press, | props
+edge open -> open 419,63 403,33 463,33 447,63 label 433,31 props

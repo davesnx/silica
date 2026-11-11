@@ -17,28 +17,64 @@
  (targets
   note-dialog.qnt
   note-dialog.dot
+  note-dialog.txt
+  note-dialog.mmd
+  note-dialog.layout
   filter-popover.qnt
   filter-popover.dot
+  filter-popover.txt
+  filter-popover.mmd
+  filter-popover.layout
   tooltip.qnt
   tooltip.dot
+  tooltip.txt
+  tooltip.mmd
+  tooltip.layout
   menu.qnt
   menu.dot
+  menu.txt
+  menu.mmd
+  menu.layout
   select.qnt
   select.dot
+  select.txt
+  select.mmd
+  select.layout
   combobox.qnt
   combobox.dot
+  combobox.txt
+  combobox.mmd
+  combobox.layout
   command-menu.qnt
   command-menu.dot
+  command-menu.txt
+  command-menu.mmd
+  command-menu.layout
   checkbox.qnt
   checkbox.dot
+  checkbox.txt
+  checkbox.mmd
+  checkbox.layout
   switch.qnt
   switch.dot
+  switch.txt
+  switch.mmd
+  switch.layout
   theme.qnt
   theme.dot
+  theme.txt
+  theme.mmd
+  theme.layout
   tabs.qnt
   tabs.dot
+  tabs.txt
+  tabs.mmd
+  tabs.layout
   toast.qnt
-  toast.dot)
+  toast.dot
+  toast.txt
+  toast.mmd
+  toast.layout)
  (action
   (run ./export.exe)))
 
@@ -55,12 +91,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/note-dialog.txt note-dialog.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/note-dialog.mmd note-dialog.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/note-dialog.layout note-dialog.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/filter-popover.qnt filter-popover.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/filter-popover.dot filter-popover.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/filter-popover.txt filter-popover.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/filter-popover.mmd filter-popover.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/filter-popover.layout filter-popover.layout)))
 
 (rule
  (alias spec)
@@ -75,12 +141,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/tooltip.txt tooltip.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tooltip.mmd tooltip.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tooltip.layout tooltip.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/menu.qnt menu.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/menu.dot menu.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/menu.txt menu.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/menu.mmd menu.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/menu.layout menu.layout)))
 
 (rule
  (alias spec)
@@ -95,12 +191,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/select.txt select.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/select.mmd select.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/select.layout select.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/combobox.qnt combobox.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/combobox.dot combobox.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/combobox.txt combobox.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/combobox.mmd combobox.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/combobox.layout combobox.layout)))
 
 (rule
  (alias spec)
@@ -115,12 +241,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/command-menu.txt command-menu.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/command-menu.mmd command-menu.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/command-menu.layout command-menu.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/checkbox.qnt checkbox.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/checkbox.dot checkbox.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/checkbox.txt checkbox.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/checkbox.mmd checkbox.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/checkbox.layout checkbox.layout)))
 
 (rule
  (alias spec)
@@ -135,6 +291,21 @@
 (rule
  (alias spec)
  (action
+  (diff spec/switch.txt switch.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/switch.mmd switch.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/switch.layout switch.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/tabs.qnt tabs.qnt)))
 
 (rule
@@ -145,12 +316,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/tabs.txt tabs.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tabs.mmd tabs.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/tabs.layout tabs.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/toast.qnt toast.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/toast.dot toast.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/toast.txt toast.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/toast.mmd toast.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/toast.layout toast.layout)))
 
 (alias
  (name runtest)
@@ -166,3 +367,18 @@
  (alias spec)
  (action
   (diff spec/theme.dot theme.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/theme.txt theme.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/theme.mmd theme.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/theme.layout theme.layout)))

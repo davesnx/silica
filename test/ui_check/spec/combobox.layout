@@ -1,0 +1,9 @@
+machine combobox 709 178
+node closed 40,90 72 44 initial
+node inline 621,78 72 36
+node open 381,65 103 64
+edge closed -> inline 112,101 160,34 333,34 381,47 484,47 532,60 573,60 621,89 label 247,30 props
+edge closed -> open 112,108 160,86 333,86 381,87 label 247,82 next, previous, show, | type
+edge inline -> closed back 621,103 573,134 532,134 484,147 381,147 333,160 160,160 112,123 label 553,130 props
+edge open -> closed back 381,106 333,138 160,138 112,116 label 247,134 enter, escape, focus-out, | outside, press
+edge open -> inline 484,97 532,96 573,96 621,96 label 553,92 props

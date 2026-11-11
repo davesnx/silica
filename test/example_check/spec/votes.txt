@@ -1,0 +1,6 @@
+machine votes
+initial watching
+state watching
+  invoke live:votes
+edge watching -> watching on reconnect
+stay watching on update

@@ -1,0 +1,14 @@
+machine checkbox
+initial unchecked
+state unchecked
+state checked
+state indeterminate
+edge checked -> indeterminate on props
+edge checked -> unchecked on props toggle
+edge indeterminate -> checked on props toggle
+edge indeterminate -> unchecked on props
+edge unchecked -> checked on props toggle
+edge unchecked -> indeterminate on props
+stay unchecked on enter props
+stay checked on enter props
+stay indeterminate on enter

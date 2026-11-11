@@ -1,0 +1,22 @@
+machine tooltip
+initial closed
+state closed
+state closing
+  after 300ms
+  hold dismiss
+  hold anchor
+state open
+  hold dismiss
+  hold anchor
+state opening
+  after 600ms
+edge closed -> open on focus hover
+edge closed -> opening on hover
+edge closing -> closed on "close escape-key" "close trigger-focus" "close trigger-press" "elapsed 0" "elapsed 300"
+edge closing -> open on resume
+edge open -> closed on "close escape-key" "close trigger-focus" "close trigger-press" leave
+edge open -> closing on leave
+edge opening -> closed on cancel
+edge opening -> open on "elapsed 0" "elapsed 600"
+stay closing on props
+stay opening on props

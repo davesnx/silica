@@ -1,0 +1,11 @@
+stateDiagram-v2
+  direction LR
+  state "closed" as s0
+  state "inline" as s1
+  state "open (hold dismiss, hold anchor)" as s2
+  [*] --> s0
+  s0 --> s1 : props
+  s0 --> s2 : next, previous, show, type
+  s1 --> s0 : props
+  s2 --> s0 : enter, escape, focus-out, outside, press
+  s2 --> s1 : props

@@ -1,0 +1,10 @@
+machine filter-popover
+initial closed
+state closed
+state open
+  hold dismiss
+  hold anchor
+edge closed -> open on "open trigger-press" props
+edge open -> closed on apply "close close-press" "close escape-key" "close outside-press" "close trigger-press" props
+edge open -> open on props
+stay open on query

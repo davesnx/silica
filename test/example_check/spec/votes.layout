@@ -1,0 +1,3 @@
+machine votes 192 128
+node watching 40,62 136 50 initial
+edge watching -> watching 94,62 78,32 138,32 122,62 label 108,30 reconnect

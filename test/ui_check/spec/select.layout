@@ -1,0 +1,5 @@
+machine select 474 204
+node closed 40,105 72 36 initial
+node open 355,91 103 64
+edge closed -> open 112,118 160,62 307,62 355,114 label 233,58 open list-navigation, | open trigger-press, | trigger press
+edge open -> closed back 355,132 307,184 160,184 112,128 label 233,180 close escape-key, | close focus-out, | close item-press, | close outside-press, | select focus-out, | select item-press, | trigger press

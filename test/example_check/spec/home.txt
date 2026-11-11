@@ -1,0 +1,3 @@
+machine home
+initial home
+state home final

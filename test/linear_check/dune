@@ -22,24 +22,54 @@
  (targets
   router.qnt
   router.dot
+  router.txt
+  router.mmd
+  router.layout
   issue-list.qnt
   issue-list.dot
+  issue-list.txt
+  issue-list.mmd
+  issue-list.layout
   issue-detail.qnt
   issue-detail.dot
+  issue-detail.txt
+  issue-detail.mmd
+  issue-detail.layout
   create-issue.qnt
   create-issue.dot
+  create-issue.txt
+  create-issue.mmd
+  create-issue.layout
   create-issue-dialog.qnt
   create-issue-dialog.dot
+  create-issue-dialog.txt
+  create-issue-dialog.mmd
+  create-issue-dialog.layout
   me.qnt
   me.dot
+  me.txt
+  me.mmd
+  me.layout
   comments.qnt
   comments.dot
+  comments.txt
+  comments.mmd
+  comments.layout
   comment-composer.qnt
   comment-composer.dot
+  comment-composer.txt
+  comment-composer.mmd
+  comment-composer.layout
   comment.qnt
   comment.dot
+  comment.txt
+  comment.mmd
+  comment.layout
   unsaved.qnt
-  unsaved.dot)
+  unsaved.dot
+  unsaved.txt
+  unsaved.mmd
+  unsaved.layout)
  (action
   (run ./export.exe)))
 
@@ -56,12 +86,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/router.txt router.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.mmd router.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/router.layout router.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/issue-list.qnt issue-list.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/issue-list.dot issue-list.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.txt issue-list.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.mmd issue-list.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-list.layout issue-list.layout)))
 
 (rule
  (alias spec)
@@ -76,12 +136,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/issue-detail.txt issue-detail.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-detail.mmd issue-detail.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/issue-detail.layout issue-detail.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/create-issue.qnt create-issue.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/create-issue.dot create-issue.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue.txt create-issue.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue.mmd create-issue.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue.layout create-issue.layout)))
 
 (rule
  (alias spec)
@@ -96,12 +186,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/create-issue-dialog.txt create-issue-dialog.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue-dialog.mmd create-issue-dialog.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/create-issue-dialog.layout create-issue-dialog.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/me.qnt me.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/me.dot me.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/me.txt me.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/me.mmd me.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/me.layout me.layout)))
 
 (rule
  (alias spec)
@@ -116,12 +236,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/comments.txt comments.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comments.mmd comments.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comments.layout comments.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/comment-composer.qnt comment-composer.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/comment-composer.dot comment-composer.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment-composer.txt comment-composer.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment-composer.mmd comment-composer.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment-composer.layout comment-composer.layout)))
 
 (rule
  (alias spec)
@@ -136,12 +286,42 @@
 (rule
  (alias spec)
  (action
+  (diff spec/comment.txt comment.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment.mmd comment.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/comment.layout comment.layout)))
+
+(rule
+ (alias spec)
+ (action
   (diff spec/unsaved.qnt unsaved.qnt)))
 
 (rule
  (alias spec)
  (action
   (diff spec/unsaved.dot unsaved.dot)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/unsaved.txt unsaved.txt)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/unsaved.mmd unsaved.mmd)))
+
+(rule
+ (alias spec)
+ (action
+  (diff spec/unsaved.layout unsaved.layout)))
 
 (alias
  (name runtest)

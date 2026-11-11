@@ -1,0 +1,8 @@
+machine me
+initial loading
+state loading
+  invoke /api/me
+state failed final
+state ready final
+edge loading -> failed on "loaded error"
+edge loading -> ready on "loaded ok"

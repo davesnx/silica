@@ -1,0 +1,9 @@
+machine theme
+initial system
+state system
+  hold media
+state fixed
+edge fixed -> system on "choose system" props
+edge system -> fixed on "choose high-contrast" "choose light" props
+stay system on "choose system" props "system dark false" "system dark true"
+stay fixed on "choose high-contrast" "choose light" props

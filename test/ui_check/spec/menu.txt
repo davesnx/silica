@@ -1,0 +1,9 @@
+machine menu
+initial closed
+state closed
+state open
+  hold dismiss
+  hold anchor
+edge closed -> open on "open first list-navigation" "open first trigger-press" "open last list-navigation" props "trigger press"
+edge open -> closed on choose "close escape-key" "close focus-out" "close outside-press" props "trigger press"
+stay open on highlight "move first" "move last" "move letter" "move next" "move previous"

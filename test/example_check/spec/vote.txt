@@ -1,0 +1,16 @@
+machine vote
+initial idle
+state idle
+state failed
+state loading
+  invoke /api/vote
+state ready
+state rejected
+edge failed -> loading on load retry
+edge idle -> loading on load
+edge loading -> failed on "settled error"
+edge loading -> loading on load
+edge loading -> ready on "settled ok"
+edge loading -> rejected on "settled rejected"
+edge ready -> loading on load
+edge rejected -> loading on load retry

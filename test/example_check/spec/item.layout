@@ -1,0 +1,11 @@
+machine item 474 244
+node loading 40,98 130 62 initial
+node failed 383,35 72 36
+node loaded 383,111 72 36
+node missing 379,187 79 36
+edge failed -> loading back 383,48 379,48 331,34 218,34 170,110 label 274,30 props
+edge loaded -> loading back 383,124 379,124 331,110 218,110 170,125 label 274,106 props
+edge loading -> failed 170,117 218,72 331,72 379,58 383,58 label 274,68 settled error
+edge loading -> loaded 170,133 218,148 331,148 379,134 383,134 label 274,144 settled ok
+edge loading -> missing 170,141 218,186 331,186 379,200 label 274,182 settled rejected
+edge missing -> loading back 379,210 331,224 218,224 170,148 label 274,220 props

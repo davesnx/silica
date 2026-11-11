@@ -1,0 +1,71 @@
+(executable
+ (name embed)
+ (modules embed))
+
+(rule
+ (targets golden_specs.ml)
+ (deps
+  (glob_files ../example_check/spec/*.txt)
+  (glob_files ../linear_check/spec/*.txt)
+  (glob_files ../ui_check/spec/*.txt))
+ (action
+  (with-stdout-to
+   %{targets}
+   (run ./embed.exe %{deps}))))
+
+(library
+ (name statechart_goldens)
+ (modules golden_specs layouts)
+ (modes byte native melange)
+ (libraries silica))
+
+(test
+ (name test_statechart)
+ (modules test_statechart)
+ (libraries silica statechart_goldens alcotest))
+
+(executable
+ (name native_layouts)
+ (modules native_layouts)
+ (libraries silica statechart_goldens))
+
+(melange.emit
+ (target melange)
+ (alias statechart-melange)
+ (modules melange_layouts)
+ (module_systems
+  (commonjs js))
+ (libraries silica silica.json-melange statechart_goldens))
+
+(rule
+ (with-stdout-to
+  native_layouts.txt
+  (run ./native_layouts.exe)))
+
+(rule
+ (deps
+  (alias statechart-melange))
+ (action
+  (with-stdout-to
+   melange_layouts.txt
+   (run node melange/test/statechart/melange_layouts.js))))
+
+(rule
+ (alias runtest)
+ (action
+  (diff native_layouts.txt melange_layouts.txt)))
+
+(executable
+ (name svg)
+ (modules svg)
+ (libraries silica statechart_goldens))
+
+(rule
+ (targets
+  (dir svg))
+ (action
+  (run ./svg.exe svg)))
+
+(alias
+ (name statechart-svg)
+ (deps svg))

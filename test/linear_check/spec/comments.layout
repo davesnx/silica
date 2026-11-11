@@ -1,0 +1,9 @@
+machine comments 551 170
+node loading 40,66 156 50 initial
+node failed 421,35 72 36
+node ready 379,104 156 50
+edge failed -> loading back 421,48 379,48 331,34 244,34 196,78 label 288,30 props, retry
+edge loading -> failed 196,87 244,72 331,72 379,58 421,58 label 288,68 loaded error
+edge loading -> loading 104,66 88,36 148,36 132,66 label 118,34 props
+edge loading -> ready 196,95 244,110 331,110 379,122 label 288,106 loaded ok
+edge ready -> loading back 379,136 331,148 244,148 196,104 label 288,144 props

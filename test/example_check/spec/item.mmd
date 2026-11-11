@@ -1,0 +1,13 @@
+stateDiagram-v2
+  direction LR
+  state "loading (invoke /api/item)" as s0
+  state "failed" as s1
+  state "loaded" as s2
+  state "missing" as s3
+  [*] --> s0
+  s1 --> s0 : props
+  s2 --> s0 : props
+  s0 --> s1 : settled error
+  s0 --> s2 : settled ok
+  s0 --> s3 : settled rejected
+  s3 --> s0 : props

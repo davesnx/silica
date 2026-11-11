@@ -1,0 +1,9 @@
+machine command-menu
+initial closed
+state closed
+state open
+  hold focus_trap
+  hold scroll_lock
+  hold dismiss
+edge closed -> open on props
+edge open -> closed on "close escape-key" "close outside-press" props run

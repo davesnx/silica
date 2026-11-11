@@ -1,0 +1,6 @@
+machine me 428 120
+node loading 40,35 116 50 initial
+node failed 340,16 72 36 final
+node ready 340,68 72 36 final
+edge loading -> failed 156,53 204,41 292,41 340,34 label 248,37 loaded error
+edge loading -> ready 156,67 204,79 292,79 340,86 label 248,75 loaded ok

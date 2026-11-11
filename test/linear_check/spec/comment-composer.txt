@@ -1,0 +1,17 @@
+machine comment-composer
+initial empty
+state empty
+state drafting
+state failed
+state sending
+  invoke /api/comments/add
+edge drafting -> empty on clear props typed
+edge drafting -> sending on send
+edge empty -> drafting on typed
+edge failed -> drafting on typed
+edge failed -> empty on clear props typed
+edge failed -> sending on send
+edge sending -> empty on props "sent ok"
+edge sending -> failed on "sent error"
+stay empty on clear props typed
+stay drafting on typed

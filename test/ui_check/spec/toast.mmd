@@ -1,0 +1,18 @@
+stateDiagram-v2
+  direction LR
+  state "empty" as s0
+  state "expired" as s1
+  state "paused" as s2
+  state "running (after 100ms)" as s3
+  [*] --> s0
+  s0 --> s2 : props
+  s0 --> s3 : props
+  s1 --> s0 : props
+  s1 --> s2 : props
+  s1 --> s3 : props
+  s2 --> s0 : props
+  s2 --> s3 : close a, close b, focus false, hover false
+  s3 --> s0 : props
+  s3 --> s1 : tick
+  s3 --> s2 : focus true, hover true
+  s3 --> s3 : props, tick

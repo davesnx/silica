@@ -1,0 +1,8 @@
+machine switch
+initial unchecked
+state unchecked
+state checked
+edge checked -> unchecked on props toggle
+edge unchecked -> checked on props toggle
+stay unchecked on props
+stay checked on props

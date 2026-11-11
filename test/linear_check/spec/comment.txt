@@ -1,0 +1,16 @@
+machine comment
+initial viewing
+state viewing
+state edited
+state editing
+state saving
+  invoke /api/comments/edit
+edge edited -> editing on edit
+edge edited -> viewing on props
+edge editing -> saving on save
+edge editing -> viewing on cancel props
+edge saving -> edited on "saved ok"
+edge saving -> editing on "saved error"
+edge saving -> viewing on props
+edge viewing -> editing on edit
+stay editing on save typed

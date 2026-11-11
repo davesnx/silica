@@ -1,0 +1,10 @@
+stateDiagram-v2
+  direction LR
+  state "loading (invoke /api/me)" as s0
+  state "failed" as s1
+  state "ready" as s2
+  [*] --> s0
+  s0 --> s1 : loaded error
+  s0 --> s2 : loaded ok
+  s1 --> [*]
+  s2 --> [*]

@@ -1,0 +1,22 @@
+machine toast
+initial empty
+state empty
+state expired
+state paused
+state running
+  after 100ms
+edge empty -> paused on props
+edge empty -> running on props
+edge expired -> empty on props
+edge expired -> paused on props
+edge expired -> running on props
+edge paused -> empty on props
+edge paused -> running on "close a" "close b" "focus false" "hover false"
+edge running -> empty on props
+edge running -> expired on tick
+edge running -> paused on "focus true" "hover true"
+edge running -> running on props tick
+stay empty on "focus false" "focus true" "hover false" "hover true"
+stay expired on "close a" "close b" "focus false" "focus true" "hover false" "hover true"
+stay paused on "close a" "close b" "focus false" "focus true" "hover false" "hover true" props
+stay running on "close a" "close b" "focus false" "hover false"

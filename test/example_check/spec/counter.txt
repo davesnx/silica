@@ -1,0 +1,4 @@
+machine counter
+initial counter
+state counter
+stay counter on decr incr reset

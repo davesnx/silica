@@ -1,0 +1,28 @@
+stateDiagram-v2
+  direction LR
+  state "/" as s0
+  state "/*" as s1
+  state "/about" as s2
+  state "/edit" as s3
+  state "/item/:int" as s4
+  [*] --> s0
+  s0 --> s1 : url changed
+  s0 --> s2 : url changed
+  s0 --> s3 : url changed
+  s0 --> s4 : url changed
+  s1 --> s0 : url changed
+  s1 --> s2 : url changed
+  s1 --> s3 : url changed
+  s1 --> s4 : url changed
+  s2 --> s0 : url changed
+  s2 --> s1 : url changed
+  s2 --> s3 : url changed
+  s2 --> s4 : url changed
+  s3 --> s0 : url changed
+  s3 --> s1 : url changed
+  s3 --> s2 : url changed
+  s3 --> s4 : url changed
+  s4 --> s0 : url changed
+  s4 --> s1 : url changed
+  s4 --> s2 : url changed
+  s4 --> s3 : url changed

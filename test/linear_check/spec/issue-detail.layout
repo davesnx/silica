@@ -1,0 +1,12 @@
+machine issue-detail 525 253
+node loading 40,98 143 62 initial
+node failed 401,35 72 36
+node not_found 390,111 94 36
+node ready 366,173 143 64
+edge failed -> loading back 401,48 366,48 318,34 231,34 183,110 label 274,30 props, retry
+edge loading -> failed 183,117 231,72 318,72 366,58 401,58 label 274,68 loaded error
+edge loading -> loading 97,98 81,68 141,68 125,98 label 111,66 props
+edge loading -> not_found 183,125 231,110 318,110 366,124 390,124 label 274,106 loaded ok
+edge loading -> ready 183,141 231,186 318,186 366,196 label 274,182 loaded ok
+edge not_found -> loading back 390,134 366,134 318,148 231,148 183,133 label 274,144 props
+edge ready -> loading back 366,214 318,224 231,224 183,148 label 274,220 props

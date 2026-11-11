@@ -1,0 +1,5 @@
+machine switch 419 92
+node unchecked 40,35 94 36 initial
+node checked 324,35 79 36
+edge checked -> unchecked back 324,48 276,34 182,34 134,48 label 229,30 props, toggle
+edge unchecked -> checked 134,58 182,72 276,72 324,58 label 229,68 props, toggle

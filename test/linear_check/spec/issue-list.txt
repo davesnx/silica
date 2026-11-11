@@ -1,0 +1,12 @@
+machine issue-list
+initial loading
+state loading
+  invoke /api/issues
+state failed
+state ready
+  invoke live:issues
+  hold keys
+edge failed -> loading on retry
+edge loading -> failed on "loaded error"
+edge loading -> ready on "loaded ok"
+stay ready on command conflict "create key" "cursor next" "cursor previous" "filter changed" "filter open false" "filter open true" "grouping picked" "menu open false" "menu open true" "ordering picked" reconnect reconnected "row focused" "save failed" saved "toast closed" "toggle group" updated

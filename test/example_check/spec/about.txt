@@ -1,0 +1,4 @@
+machine about
+initial about
+state about
+stay about on "go back"

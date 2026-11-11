@@ -1,0 +1,9 @@
+machine unsaved
+initial held
+state held
+  hold block
+state asking
+  hold block
+edge asking -> held on discard keep
+edge held -> asking on "attempt push" "attempt traverse"
+stay asking on "attempt push" "attempt traverse"
