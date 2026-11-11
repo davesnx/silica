@@ -11,7 +11,7 @@
   silica_linear_server
   silica.server
   silica.memory
-  silica_example_adapter
+  silica.adapter
   silica-ui
   alcotest
   threads.posix))

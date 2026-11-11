@@ -1,4 +1,4 @@
-module Server = Silica_example_adapter.Server
+module Server = Silica_adapter.Server
 
 let doc slug =
   match

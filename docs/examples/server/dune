@@ -4,4 +4,4 @@
   silica_docs_examples_native
   silica.server
   silica.server-kit
-  silica_example_adapter))
+  silica.adapter))

@@ -1,7 +1,7 @@
 (** The mini Linear server: handlers, the [issues] topic and the page, over the
     mocked {!Linear_store}. The code that listens on a port is in [main.ml]. *)
 
-module Server = Silica_example_adapter.Server
+module Server = Silica_adapter.Server
 
 val create :
   ?count:int ->

@@ -6,5 +6,5 @@
   silica.server
   silica_site_server
   silica_linear_server
-  silica_example_adapter
+  silica.adapter
   unix))

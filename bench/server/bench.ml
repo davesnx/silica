@@ -1,4 +1,4 @@
-module Adapter = Silica_example_adapter
+module Adapter = Silica_adapter
 module Server = Adapter.Server
 
 let metafile =

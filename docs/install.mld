@@ -11,6 +11,7 @@ This page sets up a project and makes a first component. The
   [mlx-pp] and [ocamlmerlin-mlx]) and [ocamlformat-mlx].
 - [jsonkit] and [jsonkit-melange], when the app derives its codecs (see
   {!page-recipes.json}).
+- [tiny_httpd], for the server adapter [silica.adapter].
 - Node.js, for esbuild and Tailwind in the client build.
 
 Silica is not on opam yet. Pin a checkout of the repository with

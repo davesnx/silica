@@ -2,7 +2,7 @@
     endpoints of the live samples. The code that listens on a port is in
     [main.ml]. *)
 
-module Server = Silica_example_adapter.Server
+module Server = Silica_adapter.Server
 
 val doc : string -> Site_doc.answer
 (** The documentation page with this name, from the [.mld] files of [docs/]. *)

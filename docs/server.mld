@@ -10,9 +10,9 @@ headers. It does not open a port and does not depend on an HTTP library.
 [Silica_server.Make (Io)] takes the concurrency of the HTTP library: a task
 type with [return], [bind], [sleep], [async], a clock and a promise. An
 adapter connects the result to one HTTP library. It only translates: requests,
-whole WebSocket messages and files in, responses out. The repository has one
-adapter, over [tiny_httpd], in [example/server_adapter/]. {!page-recipes.hosting}
-shows a complete server with it.
+whole WebSocket messages and files in, responses out. The library
+[silica.adapter] ({!Silica_adapter}) is an adapter over [tiny_httpd] with
+threads. {!page-recipes.hosting} shows a complete server with it.
 
 [Server.create config ~read ~handlers ~islands ~topics ~page ()] makes the
 server:

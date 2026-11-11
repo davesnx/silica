@@ -205,11 +205,11 @@ calls and Live sockets, sessions, CSRF tokens, origin checks, hashed assets and
 security headers. It does not open a port. An adapter connects it to an HTTP
 library. [Silica_server.Make (Io)] takes the concurrency of that library.
 
-The repository has one adapter, over [tiny_httpd], in [example/server_adapter/].
-This server serves the greeting component of the {{!page-tutorial}tutorial}:
+The library [silica.adapter] ({!Silica_adapter}) is an adapter over
+[tiny_httpd] with threads. This server serves the greeting component of the {{!page-tutorial}tutorial}:
 
 {@ocaml file=examples/server/tutorial_server.ml[
-module Adapter = Silica_example_adapter
+module Adapter = Silica_adapter
 module Server = Adapter.Server
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
@@ -275,7 +275,7 @@ The dune stanza links the shared code, the server package and the adapter:
   silica_docs_examples_native
   silica.server
   silica.server-kit
-  silica_example_adapter))
+  silica.adapter))
 ]}
 
 Sessions live in memory: a server restart ends them. The browser then reloads

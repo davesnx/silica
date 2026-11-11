@@ -30,7 +30,7 @@ The browser, the server and the model checker are three hosts of the same machin
 - **[A model checker](docs/checker.mld)**: every event in every reachable state, built-in properties, your invariants, shortest traces, exports to Quint and Graphviz
 - **[silica-ui](docs/ui.mld)**: headless components after [Base UI](https://base-ui.com) that follow the WAI-ARIA patterns: Dialog, Popover, Tooltip, Menu, Select, Combobox, Command menu, Checkbox, Switch, Tabs and Toast. Each one is checked by the checker in the tests
 - **[Theming](docs/theming.mld)**: themes are record values (a theme without a token doesn't compile), four ship with the library, and the first paint has the right colours with no script
-- **[A server](docs/server.mld)** with sessions, CSRF, hashed assets and Live sockets. It is independent of the HTTP library; the repository has one adapter, over `tiny_httpd`
+- **[A server](docs/server.mld)** with sessions, CSRF, hashed assets and Live sockets. It is independent of the HTTP library; the library `silica.adapter` is an adapter over `tiny_httpd`
 - **[Deploy](docs/deploy.mld)** as a container (Docker, Fly.io) or as a static export (Cloudflare Pages, Vercel)
 - **[Testing](docs/testing.mld)** on native OCaml with no browser: step a machine, check every state, or run the whole runtime on an in-memory platform with a manual clock
 

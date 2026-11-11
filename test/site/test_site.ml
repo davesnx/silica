@@ -1,4 +1,4 @@
-module Server = Silica_example_adapter.Server
+module Server = Silica_adapter.Server
 
 let metafile =
   {|{"outputs":{"dist/client_main-AAAAAAAA.js":{"entryPoint":"out/client_main.mjs"},"dist/app-BBBBBBBB.css":{"entryPoint":"app.css"}}}|}

@@ -1,5 +1,6 @@
 (library
- (name silica_example_adapter)
+ (name silica_adapter)
+ (public_name silica.adapter)
  (libraries
   silica
   silica.server

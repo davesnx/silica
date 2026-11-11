@@ -85,6 +85,8 @@ Package [silica]:
   that the test answers.
 - {!Silica_server}: the server logic, with an adapter for each HTTP library
   ([silica.server], native only).
+- {!Silica_adapter}: the adapter over [tiny_httpd] with threads
+  ([silica.adapter], native only).
 - {!Check}: the model checker ([silica.check]).
 - {!Silica_jsonkit}: codecs from [jsonkit] ([silica.jsonkit], native only).
   The package [silica-jsonkit-melange] has the same module for Melange.

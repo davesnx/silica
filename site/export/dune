@@ -11,4 +11,4 @@
   silica_site_server
   silica.server
   silica.server-kit
-  silica_example_adapter))
+  silica.adapter))

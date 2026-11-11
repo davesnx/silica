@@ -2,7 +2,7 @@
 
 This page puts the Silica site ([site/]) in production: as a container
 (Docker, Fly.io), or as static files (Cloudflare Pages, Vercel). Another app
-built on the [tiny_httpd] adapter does the same; the commands name the site.
+built on [silica.adapter] does the same; the commands name the site.
 
 {1:build The production build}
 
@@ -91,7 +91,8 @@ docker run --rm -p 8080:8080 silica-site
 
 [docker stop] sends [SIGTERM]. The adapter then stops accepting connections,
 closes each Live socket with code 1001 (going away), waits for the requests in
-progress, at most 10 seconds, and exits with code 0. The browser connects a
+progress, at most 10 seconds, calls the [on_stop] function of
+{!Silica_adapter.run}, and exits with code 0. The browser connects a
 Live socket again after a delay (see {!page-server}).
 
 {1:fly Fly.io}

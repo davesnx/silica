@@ -11,7 +11,7 @@
   silica
   silica-ui
   silica.server
-  silica_example_adapter
+  silica.adapter
   silica_site_app_native
   silica_site_server
   silica_static_export

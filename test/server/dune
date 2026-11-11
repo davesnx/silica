@@ -1,11 +1,11 @@
 (tests
- (names test_server test_policy test_adapter test_settle)
+ (names test_server test_policy test_adapter test_adapter_stop test_settle)
  (libraries
   silica
   silica_test_support
   silica.server
   silica.server-kit
-  silica_example_adapter
+  silica.adapter
   alcotest
   unix
   threads.posix)

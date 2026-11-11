@@ -1,6 +1,6 @@
 open Silica
 open Fixture
-module Adapter = Silica_example_adapter
+module Adapter = Silica_adapter
 module Server = Adapter.Server
 module Kit = Silica_server_kit
 

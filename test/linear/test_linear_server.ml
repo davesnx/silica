@@ -1,6 +1,6 @@
 open Silica
 open Linear_model
-module Server = Silica_example_adapter.Server
+module Server = Silica_adapter.Server
 
 let origin = "http://app.test"
 

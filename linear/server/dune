@@ -5,7 +5,7 @@
  (libraries
   silica_linear_app_native
   silica.server
-  silica_example_adapter
+  silica.adapter
   unix
   threads.posix))
 
@@ -16,4 +16,4 @@
   silica_linear_server
   silica.server
   silica.server-kit
-  silica_example_adapter))
+  silica.adapter))

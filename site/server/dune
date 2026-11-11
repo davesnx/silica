@@ -2,7 +2,7 @@
  (name silica_site_server)
  (wrapped false)
  (modules site_docs_pages site_server)
- (libraries silica_site_app_native silica.server silica_example_adapter unix))
+ (libraries silica_site_app_native silica.server silica.adapter unix))
 
 (executable
  (name main)
@@ -11,7 +11,7 @@
   silica_site_server
   silica.server
   silica.server-kit
-  silica_example_adapter))
+  silica.adapter))
 
 (rule
  (target site_docs_pages.ml)

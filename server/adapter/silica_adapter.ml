@@ -316,7 +316,8 @@ let stop t =
   Tiny_httpd.stop t.server
 
 let run ?(port = 8080) ?(addr = "127.0.0.1") ?(max_body = 1_048_576)
-    ?(max_connections = default_max_connections) ?(grace = 10.) server =
+    ?(max_connections = default_max_connections) ?(grace = 10.)
+    ?(on_stop = fun () -> ()) server =
   ignore (Thread.sigmask Unix.SIG_BLOCK [ Sys.sigterm ]);
   let t = create ~port ~addr ~max_body ~max_connections server in
   ignore
@@ -336,7 +337,12 @@ let run ?(port = 8080) ?(addr = "127.0.0.1") ?(max_body = 1_048_576)
          do
            Thread.delay 0.05
          done;
-         exit 0
+         match on_stop () with
+         | () ->
+             exit 0
+         | exception exn ->
+             prerr_endline ("on_stop: " ^ Printexc.to_string exn);
+             exit 1
        )
        ()
     );

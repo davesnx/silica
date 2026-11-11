@@ -19,6 +19,7 @@
   (melange (>= 7.0))
   jsonkit
   jsonkit-melange
+  tiny_httpd
   (alcotest :with-test)
   (odoc :with-doc)
   (mdx :with-test)))
