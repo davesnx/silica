@@ -3,36 +3,29 @@ open Silica_ui
 
 type event = Changed of string * bool * Popup.reason
 
-module States = struct
-  type _ t = Page : string list t
-end
-
-module Tooltip_events_machine = Machine.Make (States)
-
 let machine =
-  Tooltip_events_machine.make ~id:"tooltip-events"
-    ~init:(Tooltip_events_machine.at Page [])
-    [
-      Tooltip_events_machine.state Page "page" (fun events -> function
-        | Changed (id, opened, reason) ->
-            Tooltip_events_machine.goto Page
-              (events
-              @ [
-                  Printf.sprintf "%s %s %s" id
-                    ( if opened then
-                        "open"
-                      else
-                        "close"
-                    )
-                    (Popup.reason_name reason);
-                ]
-              )
-        );
-    ]
+  Machine.make ~id:"tooltip-events" ~init:[]
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun events event ->
+      match event with
+      | Changed (id, opened, reason) ->
+          Go
+            (events
+            @ [
+                Printf.sprintf "%s %s %s" id
+                  ( if opened then
+                      "open"
+                    else
+                      "close"
+                  )
+                  (Popup.reason_name reason);
+              ]
+            )
+    )
 
 let changed id opened reason = Changed (id, opened, reason)
 
-let view (Tooltip_events_machine.At (Page, events)) =
+let view events =
   <section class_="flex flex-col gap-4">
     <div class_="flex gap-2 pt-12">
       (Tooltip.make ~on_open_change:(changed "save")

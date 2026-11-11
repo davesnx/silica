@@ -1,4 +1,3 @@
-open Silica
 include Test_apps
 
 let mount_basic root = Silica_browser.mount ~root component
@@ -17,15 +16,12 @@ let mount_live_gone root =
 let mount_live_fast root =
   Silica_browser.mount_live ~live_config:fast ~root live
 
-let mount_topic root =
-  Silica_browser.mount ~root
-    { Component.machine = watch_machine; view = watch_view }
+let mount_topic root = Silica_browser.mount ~root watch_component
 
 let mount_topic_gone root =
   Silica_browser.mount
     ~on_session_gone:(fun () -> incr gone)
-    ~root
-    { Component.machine = watch_machine; view = watch_view }
+    ~root watch_component
 
 let mount_island root =
   Silica_browser.mount ~lives:[ Silica_browser.Live live ] ~root host_component

@@ -27,7 +27,6 @@ type props = {
 }
 
 type event =
-  | Props of props
   | Hover
   | Focus
   | Cancel
@@ -36,104 +35,62 @@ type event =
   | Close of Popup.reason
   | Elapsed of delay
 
-module State = struct
-  type _ t =
-    | Idle : unit t
-    | Closed : props t
-    | Opening : props t
-    | Open : props t
-    | Closing : props t
-end
+type state = Closed | Opening | Open | Closing [@@deriving state_shape]
 
-module Tooltip_machine = Machine.Make (State)
+let timer delay = Source.after (delay_ms delay) (Elapsed delay)
 
-type snapshot = Tooltip_machine.snapshot =
-  | At : 'data State.t * 'data -> snapshot
-
-let timers =
-  List.map
-    (fun delay -> (delay_ms delay, Elapsed delay))
-    [ Instant; Short; Medium; Long ]
-
-let sources =
-  List.map
-    (Popup.scoped (fun (props : props) -> props.id))
-    [
-      Popup.dismiss ~escape:(Close Popup.Escape_key) Popup.template;
-      Source.anchor
-        ~place:(fun (props : props) -> props.place)
-        ~anchor:Popup.template.trigger Popup.template.popup;
-    ]
+let layer (props : props) =
+  Popup.layer ~escape:(Close Popup.Escape_key) ~place:props.place
+    (Popup.parts props.id)
 
 let machine =
-  Tooltip_machine.make ~id:"tooltip"
-    ~init:(Tooltip_machine.at Idle ())
-    [
-      Tooltip_machine.state Idle "idle" ~to_:[ Closed ] (fun () -> function
-        | Props props ->
-            Tooltip_machine.goto Closed props
-        | _ ->
-            Tooltip_machine.unhandled
-        );
-      Tooltip_machine.state Closed "closed" ~to_:[ Opening; Open ]
-        (fun previous -> function
-        | Props props ->
-            Tooltip_machine.goto Closed props
-        | Hover when previous.delay = Instant ->
-            Tooltip_machine.goto Open previous
-        | Hover ->
-            Tooltip_machine.goto Opening previous
-        | Focus ->
-            Tooltip_machine.goto Open previous
-        | _ ->
-            Tooltip_machine.unhandled
-        );
-      Tooltip_machine.state Opening "opening" ~to_:[ Open; Closed ]
-        ~after:timers (fun previous -> function
-        | Props props when props.delay <> previous.delay ->
-            Tooltip_machine.reenter Opening props
-        | Props props ->
-            Tooltip_machine.goto Opening props
-        | Elapsed delay when delay = previous.delay ->
-            Tooltip_machine.goto Open previous
-        | Cancel ->
-            Tooltip_machine.goto Closed previous
-        | _ ->
-            Tooltip_machine.unhandled
-        );
-      Tooltip_machine.state Open "open" ~to_:[ Closing; Closed ] ~invoke:sources
-        (fun previous -> function
-        | Props props when props.place <> previous.place ->
-            Tooltip_machine.reenter Open props
-        | Props props ->
-            Tooltip_machine.goto Open props
-        | Leave when previous.close_delay = Instant ->
-            Tooltip_machine.goto Closed previous
-        | Leave ->
-            Tooltip_machine.goto Closing previous
-        | Close _ ->
-            Tooltip_machine.goto Closed previous
-        | _ ->
-            Tooltip_machine.unhandled
-        );
-      Tooltip_machine.state Closing "closing" ~to_:[ Open; Closed ]
-        ~after:timers ~invoke:sources (fun previous -> function
-        | Props props
-          when props.close_delay <> previous.close_delay
-               || props.place <> previous.place ->
-            Tooltip_machine.reenter Closing props
-        | Props props ->
-            Tooltip_machine.goto Closing props
-        | Elapsed delay when delay = previous.close_delay ->
-            Tooltip_machine.goto Closed previous
-        | Resume ->
-            Tooltip_machine.goto Open previous
-        | Close _ ->
-            Tooltip_machine.goto Closed previous
-        | _ ->
-            Tooltip_machine.unhandled
-        );
-    ]
+  Machine.make_with_props ~id:"tooltip" ~init:Closed ~shape:state_shape
+    ~owns:(fun (props : props) -> function
+      | Closed ->
+          []
+      | Opening ->
+          [ timer props.delay ]
+      | Open ->
+          layer props
+      | Closing ->
+          timer props.close_delay :: layer props
+      )
+    ~on_props:(fun previous props state ->
+      match (previous, state) with
+      | Some (previous : props), ((Open | Closing) as shown)
+        when previous.place <> props.place ->
+          Reenter shown
+      | (Some _ | None), (Closed | Opening | Open | Closing) ->
+          Ignore
+    )
+    (fun (props : props) state event ->
+      match (state, event) with
+      | Closed, Hover when props.delay = Instant ->
+          Go Open
+      | Closed, Hover ->
+          Go Opening
+      | Closed, Focus ->
+          Go Open
+      | Opening, Elapsed delay when delay = props.delay ->
+          Go Open
+      | Opening, Cancel ->
+          Go Closed
+      | Open, Leave when props.close_delay = Instant ->
+          Go Closed
+      | Open, Leave ->
+          Go Closing
+      | (Open | Closing), Close _ ->
+          Go Closed
+      | Closing, Elapsed delay when delay = props.close_delay ->
+          Go Closed
+      | Closing, Resume ->
+          Go Open
+      | Closed, (Cancel | Leave | Resume | Close _ | Elapsed _)
+      | Opening, (Hover | Focus | Leave | Resume | Close _ | Elapsed _)
+      | Open, (Hover | Focus | Cancel | Resume | Elapsed _)
+      | Closing, (Hover | Focus | Cancel | Leave | Elapsed _) ->
+          Ignore
+    )
 
 let el = Node.element
 let on_enter event = Attr.on_pointer_enter (fun _ -> Some event)
@@ -178,14 +135,12 @@ let popup (props : props) handlers =
         [ Node.text props.tip ];
     ]
 
-let view : snapshot -> event Node.t = function
-  | At (Idle, ()) ->
-      Node.list []
-  | At (Closed, props) ->
+let view props = function
+  | Closed ->
       trigger props ~shown:false [ on_enter Hover; Attr.on_focus Focus ]
-  | At (Opening, props) ->
+  | Opening ->
       trigger props ~shown:false [ on_leave Cancel; Attr.on_press Cancel ]
-  | At (Open, props) ->
+  | Open ->
       Node.list
         [
           trigger props ~shown:true
@@ -196,7 +151,7 @@ let view : snapshot -> event Node.t = function
             ];
           popup props [ on_leave Leave ];
         ]
-  | At (Closing, props) ->
+  | Closing ->
       Node.list
         [
           trigger props ~shown:true
@@ -209,7 +164,7 @@ let view : snapshot -> event Node.t = function
           popup props [ on_enter Resume ];
         ]
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let props ~id ~label ~tip ?(delay = Medium) ?(close_delay = Instant)
     ?(place = { Place.default with side = Place.Top; align = Place.Center })
@@ -217,20 +172,21 @@ let props ~id ~label ~tip ?(delay = Medium) ?(close_delay = Instant)
   { id; label; tip; delay; close_delay; place; classes }
 
 let make ?key ?on_open_change props =
-  let report value reason =
-    Option.to_list (Option.map (fun f -> f value reason) on_open_change)
-  in
-  let output event (snapshot : snapshot) =
-    match (event, snapshot) with
-    | Focus, At (Open, _) ->
+  let report = Popup.report on_open_change in
+  let output event state =
+    match (event, state) with
+    | Focus, Open ->
         report true Popup.Trigger_focus
-    | (Hover | Elapsed _), At (Open, _) ->
+    | (Hover | Elapsed _), Open ->
         report true Popup.Trigger_hover
-    | (Leave | Elapsed _), At (Closed, _) ->
+    | (Leave | Elapsed _), Closed ->
         report false Popup.Trigger_hover
-    | Close reason, At (Closed, _) ->
+    | Close reason, Closed ->
         report false reason
-    | _ ->
+    | (Focus | Cancel | Resume | Close _), (Closed | Opening | Open | Closing)
+    | (Hover | Leave | Elapsed _), (Opening | Closing)
+    | Hover, Closed
+    | Leave, Open ->
         []
   in
-  Component.node ?key ~props:(Props props) ~output component
+  Component.node_with_props ?key ~props ~output component

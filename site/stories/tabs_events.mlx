@@ -4,22 +4,15 @@ open Silica_ui
 type page = { selected : string; events : string list }
 type event = Changed of string
 
-module States = struct
-  type _ t = Page : page t
-end
-
-module Tabs_events_machine = Machine.Make (States)
-
 let machine =
-  Tabs_events_machine.make ~id:"tabs-events"
-    ~init:(Tabs_events_machine.at Page { selected = "account"; events = [] })
-    [
-      Tabs_events_machine.state Page "page" (fun page -> function
-        | Changed selected ->
-            Tabs_events_machine.goto Page
-              { selected; events = page.events @ [ "value " ^ selected ] }
-        );
-    ]
+  Machine.make ~id:"tabs-events"
+    ~init:{ selected = "account"; events = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed selected ->
+          Go { selected; events = page.events @ [ "value " ^ selected ] }
+    )
 
 let tabs =
   [
@@ -29,7 +22,7 @@ let tabs =
     Tabs.tab ~value:"danger" "Danger";
   ]
 
-let view (Tabs_events_machine.At (Page, page)) =
+let view page =
   let panel value text =
     Tabs.panel ~class_:Style.tab_panel ~id:"settings" ~value
       ~selected:page.selected

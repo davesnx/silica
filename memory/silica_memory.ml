@@ -895,9 +895,9 @@ let make ~csrf ~url ~media =
     limiters = Hashtbl.create 8;
   }
 
-let start (type s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
+let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
     ?(url = "/") ?(media = []) ~(on_route : (Router.event -> e) option)
-    ~(create : t -> dev:bool -> on_error:_ -> (s, e) Instance.t) () =
+    ~(create : t -> dev:bool -> on_error:_ -> (p, s, e) Instance.t) () =
   let t = make ~csrf ~url ~media in
   Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
     ~platform:(platform t) ~create:(create t) ();

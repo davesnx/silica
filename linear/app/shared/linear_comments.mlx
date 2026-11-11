@@ -1,79 +1,58 @@
 open Silica
 open Linear_model
 
-type ready = { number : int; viewer : User.t; comments : Comment.t list }
+type ready = { viewer : User.t; comments : Comment.t list }
 
 type event =
-  | Props of int
-  | Loaded of (Thread.t, Remote.error) result
+  | Loaded of (Thread.t, string) Remote.answer
   | Updated of Comments.t Topic.update
   | Retry
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Loading : int t
-    | Ready : ready t
-    | Failed : (int * Remote.error) t
-end
-
-module Comments_machine = Machine.Make (States)
+type state = Loading | Ready of ready | Failed [@@deriving state_shape]
 
 let machine =
-  Comments_machine.make ~id:"comments"
-    ~init:(Comments_machine.at Idle ())
-    [
-      Comments_machine.always ~to_:[ Loading ] (function
-        | Props number ->
-            Comments_machine.reenter Loading number
-        | _ ->
-            Comments_machine.unhandled
-        );
-      Comments_machine.state Idle "idle" Comments_machine.ignore;
-      Comments_machine.state Loading "loading" ~to_:[ Ready; Failed ]
-        ~invoke:[ Source.call comments_endpoint Fun.id (fun r -> Loaded r) ]
-        (fun number -> function
-          | Loaded (Ok thread) ->
-              Comments_machine.goto Ready
-                { number; viewer = thread.viewer; comments = thread.comments }
-          | Loaded (Error error) ->
-              Comments_machine.goto Failed (number, error)
-          | _ ->
-              Comments_machine.unhandled
-          );
-      Comments_machine.state Ready "ready"
-        ~invoke:
+  Machine.make_with_props ~id:"comments" ~init:Loading ~shape:state_shape
+    ~owns:(fun number -> function
+      | Loading ->
+          [ Remote.call comments_endpoint number (fun answer -> Loaded answer) ]
+      | Ready _ ->
           [
-            Source.live comments_topic
-              (fun r -> string_of_int r.number)
-              (fun update -> Updated update);
+            Source.live comments_topic (string_of_int number) (fun update ->
+                Updated update
+            );
           ]
-        (fun r -> function
-          | Updated { seq; status = Status.Ready { data; _ } } when seq > 0 ->
-              Comments_machine.goto Ready { r with comments = data }
-          | Updated _ ->
-              Comments_machine.goto Ready r
-          | _ ->
-              Comments_machine.unhandled
-          );
-      Comments_machine.state Failed "failed" ~to_:[ Loading ]
-        (fun (number, _) -> function
-        | Retry ->
-            Comments_machine.goto Loading number
-        | _ ->
-            Comments_machine.unhandled
-        );
-    ]
+      | Failed ->
+          []
+      )
+    ~on_props:(fun previous _ _ ->
+      match previous with Some _ -> Reenter Loading | None -> Ignore
+    )
+    (fun _ state event ->
+      match (state, event) with
+      | Loading, Loaded (Ok thread) ->
+          Go (Ready { viewer = thread.viewer; comments = thread.comments })
+      | Loading, Loaded (Rejected _ | Failed _) ->
+          Go Failed
+      | Ready r, Updated { seq; status = Status.Ready { data; _ } } when seq > 0
+        ->
+          Go (Ready { r with comments = data })
+      | Ready _, Updated _ ->
+          Stay []
+      | Failed, Retry ->
+          Go Loading
+      | _ ->
+          Ignore
+    )
 
 let text = Node.text
 
-let view (snapshot : Comments_machine.snapshot) : event Node.t =
+let view number state : event Node.t =
   <section id="comments" class_="mt-8">
     <h2 class_="mb-2 font-semibold">"Comments"</h2>
-    ( match snapshot with
-    | Comments_machine.At (Idle, ()) | Comments_machine.At (Loading, _) ->
+    ( match state with
+    | Loading ->
         <p class_="text-ui-muted">"Loading comments..."</p>
-    | Comments_machine.At (Failed, _) ->
+    | Failed ->
         <div>
           <p role=`alert class_="text-ui-danger">
             "Could not load the comments."
@@ -82,7 +61,7 @@ let view (snapshot : Comments_machine.snapshot) : event Node.t =
             "Try again"
           </button>
         </div>
-    | Comments_machine.At (Ready, r) ->
+    | Ready r ->
         <div>
           ( match r.comments with
           | [] ->
@@ -104,10 +83,11 @@ let view (snapshot : Comments_machine.snapshot) : event Node.t =
                 )
               </ul>
           )
-          <Linear_composer number=r.number />
+          <Linear_composer number />
         </div>
     )
   </section>
 
-let component = Component.make machine view
-let make ?key ~number () = Component.node ?key ~props:(Props number) component
+let component = Component.make_with_props machine view
+let make ?key ~number () =
+  Component.node_with_props ?key ~props:number component

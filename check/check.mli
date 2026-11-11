@@ -15,11 +15,16 @@ type sample
     delivers. *)
 
 val answers :
-  ?decode:bool -> ('i, 'o) Silica.Remote.endpoint -> 'o list -> sample
+  ?decode:bool ->
+  ?rejected:'x list ->
+  ('i, 'o, 'x) Silica.Remote.endpoint ->
+  'o list ->
+  sample
 (** [answers endpoint values]: a call to [endpoint] can end with [Ok v] for each
-    [v] in [values], with [Error (Http 500)] and with [Error (Network "down")].
-    With [decode] it can also end with [Error (Decode "sample")]. A call to an
-    endpoint with no [answers] can end with the two errors only. *)
+    [v] in [values], with [Rejected x] for each [x] in [rejected], with
+    [Failed (Http 500)] and with [Failed (Network "down")]. With [decode] it can
+    also end with [Failed (Decode "sample")]. A call to an endpoint with no
+    [answers] can end with the two failures only. *)
 
 val states : 's Silica.Topic.t -> 's list -> sample
 (** [states topic values]: the states that the server can publish on [topic]. A
@@ -35,10 +40,9 @@ val states : 's Silica.Topic.t -> 's list -> sample
 type children
 (** The props that the views of a check gave to child components. *)
 
-val props : children -> ('s, 'e) Silica.Component.t -> 'e list
-(** [props children c]: the props events, without duplicates, of the component
-    nodes of [c] that the check rendered. Give them to the check of [c] with
-    [~props]. *)
+val props : children -> ('p, 's, 'e) Silica.Component.t -> 'p list
+(** [props children c]: the props, without duplicates, of the component nodes of
+    [c] that the check rendered. Give them to the check of [c] with [~props]. *)
 
 type ('s, 'ev) report =
   | Ok of {
@@ -47,6 +51,8 @@ type ('s, 'ev) report =
       not_explored : string list;
       edges : Silica.Spec.label list;
       children : children;
+      spec : Silica.Spec.t;
+      paths : (string * 'ev list) list;
     }
       (** [transitions] counts every explored (state, event) pair.
           [not_explored] lists, sorted and without duplicates, what the checker
@@ -59,52 +65,71 @@ type ('s, 'ev) report =
           each listed machine alone with {!component}, with the props from
           [children]. [edges] are the steps that the run took, sorted, with the
           event names from [label]: a state entered from another state or
-          entered again, and the steps that kept the state ([kept]). *)
+          entered again, and the steps that kept the state ([kept]). [spec] is
+          the spec that the run found: the states it reached, initial state
+          first then by name, each with the timers and sources of the first
+          snapshot reached in it, and the edges it took; export it with
+          {!Silica.Spec.to_quint} and {!Silica.Spec.to_dot}. [paths] gives, for
+          each state name in the order the search reached them, a shortest list
+          of steps from the start to it. *)
   | Violation of { invariant : string; trace : 'ev list; state : 's }
-  | Unreached of { edges : (string * string) list }
-      (** The search ended with no violation, but these declared edges between
-          two different states were never taken and are not in
-          [allow_unreached]. Self edges are not reported. *)
+  | Unreached of { states : string list }
+      (** The search ended with no violation, but these names of the [states] of
+          the machine (see {!Silica.Machine.make}) were never reached and are
+          not in [allow_unreached]. *)
   | Limit of { states : int }
   | Error of string
+
+(** A step of a component check. *)
+type ('p, 'e) input =
+  | Event of 'e  (** An event of the machine. *)
+  | Props of 'p  (** The parent gives other props. *)
+
+val pp_input :
+  (Format.formatter -> 'e -> unit) -> Format.formatter -> ('p, 'e) input -> unit
+(** Print an input with the given event printer; props print as ["new props"].
+*)
 
 val component :
   ?max_states:int ->
   ?within:('s -> bool) ->
   ?inputs:('s -> 'e list) ->
-  ?props:'e list ->
+  ?props:'p list ->
   ?samples:sample list ->
   ?arrivals:int ->
-  ?allow_unreached:(string * string) list ->
+  ?allow_unreached:string list ->
   ?label:('e -> string) ->
   ?keys:Silica.Key.t list ->
   ?invariants:('s, 'e) invariant list ->
-  ('s, 'e) Silica.Component.t ->
-  ('s, 'e) report
-(** Events in a state are the handlers of the rendered view (press, double
-    press, submit, focus, blur, pointer enter and leave), the key handlers of
-    the view called with each key of [keys] (default: Escape, Enter, Tab, Arrow
-    up, Arrow down), the events of the held sources of the state, [inputs s]
-    (use it for [On_input], which needs sample strings), every event of [props],
-    the events of running timers, the answers of running calls and the updates
-    of running subscriptions (see {!answers} and {!states}; [arrivals] defaults
-    to 2). A [Global_keys] source gives the event of each key in its table,
-    which is the press of that key; [Outside_press] gives its event; [Resize]
-    gives [on_resize] with {!Silica.Rect.zero}; [Intersection] gives [on_change]
-    with [true] and with [false]. [Scroll] gives [on_scroll] with
-    {!Silica.Scroll.zero}; [Visibility], [Online] and [Media] give their event
-    with [true] and with [false]. A [Block] gives [on_attempt] with a push and
-    with a back, both to ["/"]. A [Dismiss] layer gives its Escape event, its
-    outside event and its focus-out event. A [Focus_trap], [Scroll_lock] and
-    [Anchor] give no event. An action with a result event answers once, at any
-    later step and in any state: [Measure] with [Some Silica.Rect.zero], [Copy]
-    and [Load_script] with [true]. The checker treats {!Silica.Rate} limits as
-    pass-through: every value arrives, and none is held back. Elements inside a
-    {!Silica.Node.Portal} and the body of a {!Silica.Node.Boundary} are part of
-    the view. Time is abstract: a running timer can fire at any step, in any
-    order. A timer, call or subscription starts with its start action and stops
-    with [Stop]; a call ends with its answer and a timer when it fires. So
-    nothing of a state that was left arrives.
+  ('p, 's, 'e) Silica.Component.t ->
+  ('s, ('p, 'e) input) report
+(** The check starts once with each of [props] (default: [()] for a machine made
+    by {!Silica.Machine.make}; a machine with props needs them), and in every
+    state the parent can give any other of [props]. Events in a state are the
+    handlers of the rendered view (press, double press, submit, focus, blur,
+    pointer enter and leave), the key handlers of the view called with each key
+    of [keys] (default: Escape, Enter, Tab, Arrow up, Arrow down), the events of
+    the held sources of the state, [inputs s] (use it for [On_input], which
+    needs sample strings), the events of running timers, the answers of running
+    calls and the updates of running subscriptions (see {!answers} and
+    {!states}; [arrivals] defaults to 2). A [Global_keys] source gives the event
+    of each key in its table, which is the press of that key; [Outside_press]
+    gives its event; [Resize] gives [on_resize] with {!Silica.Rect.zero};
+    [Intersection] gives [on_change] with [true] and with [false]. [Scroll]
+    gives [on_scroll] with {!Silica.Scroll.zero}; [Visibility], [Online] and
+    [Media] give their event with [true] and with [false]. A [Block] gives
+    [on_attempt] with a push and with a back, both to ["/"]. A [Dismiss] layer
+    gives its Escape event, its outside event and its focus-out event. A
+    [Focus_trap], [Scroll_lock] and [Anchor] give no event. An action with a
+    result event answers once, at any later step and in any state: [Measure]
+    with [Some Silica.Rect.zero], [Copy] and [Load_script] with [true]. The
+    checker treats {!Silica.Rate} limits as pass-through: every value arrives,
+    and none is held back. Elements inside a {!Silica.Node.Portal} and the body
+    of a {!Silica.Node.Boundary} are part of the view. Time is abstract: a
+    running timer can fire at any step, in any order. A timer, call or
+    subscription starts with its start action and stops with [Stop]; a call ends
+    with its answer and a timer when it fires. So nothing of a state that was
+    left arrives.
 
     Built-in invariants: pressable nodes have an accessible name; refs are
     unique in a view; [Focus], [Blur], [Scroll_into_view] and a [Scroll_to] with
@@ -114,13 +139,16 @@ val component :
     holds a child component or an island (the checker does not run those, and
     they can raise events); [timer-owner]: every running timer belongs to the
     current state; [call-owner]: every running call and subscription belongs to
-    the current state. A handler that raises [Machine.Undeclared_target] is a
-    [Violation] named ["undeclared-target"] and a [Machine.Missing_case] is one
-    named ["missing-case"], with the trace that led to it ([state] is the state
-    before the event). When the search ends with no violation, each declared
-    edge between two states that the search never took and that is not in
-    [allow_unreached] is reported in [Unreached]. [label] names the events of
-    the taken [edges] (default: [""]).
+    the current state; [ignored-event]: the machine handles every event of a
+    handler of the view, of a timer, of a call answer and of a subscription
+    ({!Silica.Machine.can}); it may ignore the events of held sources, of
+    [inputs], new props and action results (a result can arrive after the state
+    that asked for it was left). The trace of [ignored-event] ends with the
+    ignored event and [state] is the state before it, so an update that ends
+    with [| _ -> Ignore] cannot hide a button that does nothing. When the search
+    ends with no violation, each name of the [states] of the machine that the
+    search never reached and that is not in [allow_unreached] is reported in
+    [Unreached]. [label] names the events of the taken [edges] (default: [""]).
 
     Handlers on elements with [disabled] set are not enabled. [max_states]
     defaults to 100000. [within] bounds an unbounded state space: states outside
@@ -133,15 +161,14 @@ val live :
   ?max_states:int ->
   ?within:('s -> bool) ->
   ?inputs:('s -> 'e list) ->
-  ?props:'e list ->
   ?samples:sample list ->
   ?arrivals:int ->
-  ?allow_unreached:(string * string) list ->
+  ?allow_unreached:string list ->
   ?label:('e -> string) ->
   ?keys:Silica.Key.t list ->
   ?invariants:('s, 'e) invariant list ->
   ('s, 'e) Silica.Live.t ->
-  ('s, 'e) report
+  ('s, (unit, 'e) input) report
 (** Like {!component} for a Live component, whose machine runs on the server. A
     reachable state that owns a client-only source ({!Silica.Source.focus_trap},
     [scroll_lock], [outside_press], [keys], [resize], [intersection], [dismiss]
@@ -172,7 +199,7 @@ val app :
   ?inputs:('s app_state -> 'e list) ->
   ?samples:sample list ->
   ?arrivals:int ->
-  ?allow_unreached:(string * string) list ->
+  ?allow_unreached:string list ->
   ?label:('e -> string) ->
   ?keys:Silica.Key.t list ->
   ?invariants:('s app_state, 'e) invariant list ->
@@ -181,7 +208,7 @@ val app :
   print:('s -> Silica.Url.t) ->
   ?is_not_found:('s -> bool) ->
   url_event:(Silica.Url.t -> 'e) ->
-  (Silica.Url.t -> ('s, 'e) Silica.Component.t) ->
+  (Silica.Url.t -> (unit, 's, 'e) Silica.Component.t) ->
   ('s app_state, 'e app_event) report
 (** Explores the root component of a routed app, for example the result of
     [Router.make], started at [print] of the first route, with a simulated
@@ -195,7 +222,9 @@ val app :
 
     Besides the component built-ins, two invariants hold:
     - [route-round-trip]: [parse (print route) = route] for every route in
-      [routes]. Routes with a query: list one value with the default and one
+      [routes] and for the route of every reached state, so a
+      {!Silica.Router.val-route} whose constructor and data function disagree is
+      found. Routes with a query: list one value with the default and one
       without.
     - [link-parses]: for the [href] of every [data-silica-link] anchor in a
       rendered view, [print (parse href)] is the same URL string (the link is

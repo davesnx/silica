@@ -30,45 +30,40 @@ let has_attr name value view =
 let print_report pp_event report =
   Format.asprintf "%a" (fun f r -> Check.pp_report ~pp_event f r) report
 
-let dialog_props ?open_ ?dismissible ?alert () =
-  Note_dialog.Props
-    (Note_dialog.props ~id:"note" ~title:"Edit note" ~trigger:"Edit"
-       ~close:"Close" ?open_ ?dismissible ?alert { Note.text = "hello" }
-    )
+let pp_input label f input =
+  Check.pp_input (fun f event -> Format.pp_print_string f (label event)) f input
 
-let dialog_label : Note_dialog.event -> string = function
-  | Note_dialog.Props { open_ = None; _ } ->
-      "props"
-  | Note_dialog.Props { open_ = Some true; _ } ->
-      "props open"
-  | Note_dialog.Props { open_ = Some false; _ } ->
-      "props closed"
-  | Note_dialog.Open_request reason ->
+let dialog_props ?open_ ?dismissible ?alert () =
+  Dialog.props ~id:"note" ~title:"Edit note" ~trigger:"Edit" ~close:"Close"
+    ?open_ ?dismissible ?alert { text = "hello" }
+
+let dialog_label : note_event Dialog.event -> string = function
+  | Dialog.Open_request reason ->
       "open " ^ Popup.reason_name reason
-  | Note_dialog.Close_request reason ->
+  | Dialog.Close_request reason ->
       "close " ^ Popup.reason_name reason
-  | Note_dialog.Content (Note.Edit _) ->
+  | Dialog.Content (Edit _) ->
       "edit"
-  | Note_dialog.Content Note.Save ->
+  | Dialog.Content Save ->
       "save"
 
-let pp_dialog_event f event = Format.pp_print_string f (dialog_label event)
+let pp_dialog_event f input = pp_input dialog_label f input
 
 let dialog_open_has_popup :
-    (Note_dialog.snapshot, Note_dialog.event) Check.invariant =
+    (Dialog.state, note_event Dialog.event) Check.invariant =
   {
     name = "open-has-popup";
     holds =
-      (fun (Note_dialog.At (state, _)) view ->
+      (fun state view ->
         let shown =
           has_attr "role" "dialog" view || has_attr "role" "alertdialog" view
         in
         match state with
-        | Note_dialog.State.Open ->
+        | Dialog.Open ->
             shown
             && has_attr "aria-modal" "true" view
             && has_attr "aria-expanded" "true" view
-        | Note_dialog.State.Closed | Note_dialog.State.Idle ->
+        | Dialog.Closed ->
             not shown
       );
   }
@@ -84,56 +79,45 @@ let dialog () =
         dialog_props ~open_:true ~alert:true ();
       ]
     ~inputs:(function
-      | Note_dialog.At (Note_dialog.State.Open, _) ->
-          [ Note_dialog.Content (Note.Edit "changed") ]
-      | _ ->
-          []
+      | Dialog.Open -> [ Dialog.Content (Edit "changed") ] | Dialog.Closed -> []
       )
-    ~invariants:[ dialog_open_has_popup ] Note_dialog.component
+    ~invariants:[ dialog_open_has_popup ] note_dialog.component
 
-module Filter_popover = Popover_samples.Filter_popover
+let filter_popover = Popover_samples.filter_popover
 
 let popover_props ?open_ ?place () =
-  Filter_popover.Props
-    (Filter_popover.props ~id:"filter" ~trigger:"Filter" ~title:"Filter issues"
-       ~close:"Close" ?open_ ?place
-       { Popover_samples.Filter.query = "bug" }
-    )
+  Popover.props ~id:"filter" ~trigger:"Filter" ~title:"Filter issues"
+    ~close:"Close" ?open_ ?place
+    { Popover_samples.query = "bug" }
 
-let popover_label : Filter_popover.event -> string = function
-  | Filter_popover.Props { open_ = None; _ } ->
-      "props"
-  | Filter_popover.Props { open_ = Some true; _ } ->
-      "props open"
-  | Filter_popover.Props { open_ = Some false; _ } ->
-      "props closed"
-  | Filter_popover.Open_request reason ->
+let popover_label : Popover_samples.filter_event Popover.event -> string =
+  function
+  | Popover.Open_request reason ->
       "open " ^ Popup.reason_name reason
-  | Filter_popover.Close_request reason ->
+  | Popover.Close_request reason ->
       "close " ^ Popup.reason_name reason
-  | Filter_popover.Content (Popover_samples.Filter.Query _) ->
+  | Popover.Content (Popover_samples.Query _) ->
       "query"
-  | Filter_popover.Content Popover_samples.Filter.Apply ->
+  | Popover.Content Popover_samples.Apply ->
       "apply"
 
-let pp_popover_event f event = Format.pp_print_string f (popover_label event)
+let pp_popover_event f input = pp_input popover_label f input
 
 let popover_open_has_popup :
-    (Filter_popover.snapshot, Filter_popover.event) Check.invariant =
+    (Popover.state, Popover_samples.filter_event Popover.event) Check.invariant
+    =
   {
     name = "open-has-popup";
     holds =
-      (fun (Filter_popover.At (state, _)) view ->
+      (fun state view ->
         let shown = has_attr "role" "dialog" view in
         match state with
-        | Filter_popover.State.Open ->
+        | Popover.Open ->
             shown
             && has_attr "aria-expanded" "true" view
             && not (has_attr "aria-modal" "true" view)
-        | Filter_popover.State.Closed ->
+        | Popover.Closed ->
             (not shown) && has_attr "aria-expanded" "false" view
-        | Filter_popover.State.Idle ->
-            not shown
       );
   }
 
@@ -147,17 +131,14 @@ let popover () =
         popover_props ~place:{ Place.default with side = Place.Top } ();
       ]
     ~inputs:(function
-      | Filter_popover.At (Filter_popover.State.Open, _) ->
-          [ Filter_popover.Content (Popover_samples.Filter.Query "crash") ]
-      | _ ->
+      | Popover.Open ->
+          [ Popover.Content (Popover_samples.Query "crash") ]
+      | Popover.Closed ->
           []
       )
-    ~invariants:[ popover_open_has_popup ] Filter_popover.component
+    ~invariants:[ popover_open_has_popup ] filter_popover.component
 
 let tooltip_label : Tooltip.event -> string = function
-  | Tooltip.Props { delay; close_delay; _ } ->
-      Printf.sprintf "props %d %d" (Tooltip.delay_ms delay)
-        (Tooltip.delay_ms close_delay)
   | Hover ->
       "hover"
   | Focus ->
@@ -173,14 +154,13 @@ let tooltip_label : Tooltip.event -> string = function
   | Elapsed delay ->
       Printf.sprintf "elapsed %d" (Tooltip.delay_ms delay)
 
-let pp_tooltip_event f event = Format.pp_print_string f (tooltip_label event)
+let pp_tooltip_event f input = pp_input tooltip_label f input
 
-let tooltip_shown_describes : (Tooltip.snapshot, Tooltip.event) Check.invariant
-    =
+let tooltip_shown_describes : (Tooltip.state, Tooltip.event) Check.invariant =
   {
     name = "shown-describes-trigger";
     holds =
-      (fun (Tooltip.At (state, _)) view ->
+      (fun state view ->
         let shown =
           has_attr "role" "tooltip" view
           && has_attr "aria-describedby" "save-popup" view
@@ -189,9 +169,9 @@ let tooltip_shown_describes : (Tooltip.snapshot, Tooltip.event) Check.invariant
           && not (has_attr "aria-describedby" "save-popup" view)
         in
         match state with
-        | Tooltip.State.Open | Tooltip.State.Closing ->
+        | Tooltip.Open | Tooltip.Closing ->
             shown
-        | Tooltip.State.Idle | Tooltip.State.Closed | Tooltip.State.Opening ->
+        | Tooltip.Closed | Tooltip.Opening ->
             hidden
       );
   }
@@ -200,11 +180,9 @@ let tooltip () =
   Check.component ~label:tooltip_label
     ~props:
       [
-        Tooltip.Props (Tooltip_samples.props ());
-        Tooltip.Props
-          (Tooltip_samples.props ~delay:Tooltip.Instant
-             ~close_delay:Tooltip.Short ()
-          );
+        Tooltip_samples.props ();
+        Tooltip_samples.props ~delay:Tooltip.Instant ~close_delay:Tooltip.Short
+          ();
       ]
     ~invariants:[ tooltip_shown_describes ]
     Tooltip.component
@@ -274,12 +252,6 @@ let nav_label : Menu.nav -> string = function
       "letter"
 
 let menu_label : Menu.event -> string = function
-  | Menu.Props { open_ = None; _ } ->
-      "props"
-  | Menu.Props { open_ = Some true; _ } ->
-      "props open"
-  | Menu.Props { open_ = Some false; _ } ->
-      "props closed"
   | Menu.Trigger_press ->
       "trigger press"
   | Menu.Open_key (reason, Menu.Start) ->
@@ -295,20 +267,20 @@ let menu_label : Menu.event -> string = function
   | Menu.Close reason ->
       reason_label "close" reason
 
-let pp_menu_event f event = Format.pp_print_string f (menu_label event)
+let pp_menu_event f input = pp_input menu_label f input
 
-let menu_open_has_popup : (Menu.snapshot, Menu.event) Check.invariant =
+let menu_open_has_popup : (Menu.state, Menu.event) Check.invariant =
   {
     name = "open-has-menu";
     holds =
-      (fun (Menu.At (state, data)) view ->
+      (fun state view ->
         let shown = has_attr "role" "menu" view in
         match state with
-        | Menu.State.Open ->
+        | Menu.Open highlighted ->
             shown
             && has_attr "aria-expanded" "true" view
             && attr_count "data-highlighted" view
-               = List.length (Option.to_list data.highlighted)
+               = List.length (Option.to_list highlighted)
             && count
                  (function
                    | Node.Element (_, attrs, _) ->
@@ -317,13 +289,13 @@ let menu_open_has_popup : (Menu.snapshot, Menu.event) Check.invariant =
                        false
                    )
                  view
-               = List.length (Option.to_list data.highlighted)
-        | Menu.State.Closed | Menu.State.Idle ->
+               = List.length (Option.to_list highlighted)
+        | Menu.Closed ->
             not shown
       );
   }
 
-let menu_props ?open_ () = Menu.Props (Menu_samples.props ?open_ "actions")
+let menu_props ?open_ () = Menu_samples.props ?open_ "actions"
 
 let menu () =
   Check.component ~label:menu_label
@@ -344,10 +316,6 @@ let select_nav_label : Select.nav -> string = function
       "letter"
 
 let select_label : Select.event -> string = function
-  | Select.Props { value = None; _ } ->
-      "props"
-  | Select.Props { value = Some _; _ } ->
-      "props value"
   | Select.Trigger_press ->
       "trigger press"
   | Select.Open_key reason ->
@@ -361,42 +329,39 @@ let select_label : Select.event -> string = function
   | Select.Close reason ->
       reason_label "close" reason
 
-let pp_select_event f event = Format.pp_print_string f (select_label event)
+let pp_select_event f input = pp_input select_label f input
 
-let select_open_has_listbox : (Select.snapshot, Select.event) Check.invariant =
+let select_open_has_listbox : (Select.state, Select.event) Check.invariant =
   {
     name = "open-has-listbox";
     holds =
-      (fun (Select.At (state, data)) view ->
+      (fun state view ->
         let shown = has_attr "role" "listbox" view in
-        let input_holds (sel : Select.selection) =
-          has_attr "value" (Option.value sel.value ~default:"") view
+        let input_holds value =
+          has_attr "value" (Option.value value ~default:"") view
         in
-        match (state, data) with
-        | Select.State.Open, (sel, highlighted) -> (
+        match state with
+        | Select.Open (value, highlighted) -> (
             shown
             && has_attr "aria-expanded" "true" view
-            && input_holds sel
+            && input_holds value
             &&
             match highlighted with
             | Some i ->
                 has_attr "aria-activedescendant"
-                  (Select.option_id sel.props.id i)
+                  (Select.option_id "status" i)
                   view
             | None ->
                 attr_count "aria-activedescendant" view = 0
           )
-        | Select.State.Closed, sel ->
+        | Select.Closed value ->
             (not shown)
             && attr_count "aria-activedescendant" view = 0
-            && input_holds sel
-        | Select.State.Idle, () ->
-            not shown
+            && input_holds value
       );
   }
 
-let select_props ?value () =
-  Select.Props (Select_samples.props ?value ~name:"status" "status")
+let select_props ?value () = Select_samples.props ?value ~name:"status" "status"
 
 let select () =
   Check.component ~label:select_label
@@ -411,15 +376,11 @@ let select () =
     Select.component
 
 let combobox_props ?(inline = false) items =
-  Combobox.Props (Combobox.props ~id:"fruit" ~label:"Fruit" ~inline items)
+  Combobox.props ~id:"fruit" ~label:"Fruit" ~inline items
 
 let short_fruits = List.filteri (fun i _ -> i < 2) Combobox_samples.fruits
 
 let combobox_label : Combobox.event -> string = function
-  | Combobox.Props { inline = true; _ } ->
-      "props inline"
-  | Combobox.Props _ ->
-      "props"
   | Combobox.Typed _ ->
       "type"
   | Combobox.Move `Next ->
@@ -445,7 +406,7 @@ let combobox_label : Combobox.event -> string = function
   | Combobox.Focus_out ->
       "focus-out"
 
-let pp_combobox_event f event = Format.pp_print_string f (combobox_label event)
+let pp_combobox_event f input = pp_input combobox_label f input
 
 let rec collect f n =
   f (Node.view n)
@@ -472,24 +433,22 @@ let attr_values name =
         []
     )
 
-let combobox_list_shown : (Combobox.snapshot, Combobox.event) Check.invariant =
+let combobox_list_shown : (Combobox.state, Combobox.event) Check.invariant =
   {
     name = "list-shown";
     holds =
-      (fun (Combobox.At (state, _)) view ->
+      (fun state view ->
         let shown = has_attr "role" "listbox" view in
         match state with
-        | Combobox.State.Open | Combobox.State.Inline ->
+        | Combobox.Open _ | Combobox.Inline _ ->
             shown && attr_values "aria-expanded" view = [ "true" ]
-        | Combobox.State.Closed ->
+        | Combobox.Closed _ ->
             (not shown) && attr_values "aria-expanded" view = [ "false" ]
-        | Combobox.State.Idle ->
-            not shown
       );
   }
 
 let combobox_active_descendant :
-    (Combobox.snapshot, Combobox.event) Check.invariant =
+    (Combobox.state, Combobox.event) Check.invariant =
   {
     name = "active-descendant";
     holds =
@@ -511,23 +470,31 @@ let combobox_active_descendant :
       );
   }
 
-let combobox_auto_highlight :
-    (Combobox.snapshot, Combobox.event) Check.invariant =
+let combobox_auto_highlight : (Combobox.state, Combobox.event) Check.invariant =
   {
     name = "inline-auto-highlight";
     holds =
-      (fun snapshot view ->
-        match snapshot with
-        | Combobox.At (Combobox.State.Inline, data) ->
+      (fun state view ->
+        match state with
+        | Combobox.Inline _ ->
             let enabled =
-              List.exists
-                (fun (item : Combobox.item) ->
-                  (not item.disabled) && Combobox.matches data.query item
-                )
-                data.props.items
+              count
+                (function
+                  | Node.Element (_, attrs, _) ->
+                      List.mem (Node.String ("role", "option")) attrs
+                      && not
+                           (List.mem
+                              (Node.String ("aria-disabled", "true"))
+                              attrs
+                           )
+                  | _ ->
+                      false
+                  )
+                view
+              > 0
             in
             enabled = (attr_values "aria-activedescendant" view <> [])
-        | _ ->
+        | Combobox.Closed _ | Combobox.Open _ ->
             true
       );
   }
@@ -540,12 +507,9 @@ let combobox () =
         combobox_props ~inline:true Combobox_samples.fruits;
         combobox_props short_fruits;
       ]
-    ~inputs:(function
-      | Combobox.At (Combobox.State.Idle, ()) ->
-          []
-      | _ ->
-          [ Combobox.Typed ""; Combobox.Typed "a"; Combobox.Typed "zz" ]
-      )
+    ~inputs:(fun _ ->
+      [ Combobox.Typed ""; Combobox.Typed "a"; Combobox.Typed "zz" ]
+    )
     ~keys:
       Key.
         [
@@ -565,44 +529,35 @@ let combobox () =
     Combobox.component
 
 let command_menu_props ?open_ () =
-  Command_menu.Menu.Props
-    (Command_menu.menu_props
-       (Command_menu.props ~id:"menu" ~title:"Command menu" ?open_
-          Combobox_samples.commands
-       )
+  Command_menu.menu_props
+    (Command_menu.props ~id:"menu" ~title:"Command menu" ?open_
+       Combobox_samples.commands
     )
 
-let command_menu_label : Command_menu.Menu.event -> string = function
-  | Command_menu.Menu.Props { open_ = None; _ } ->
-      "props"
-  | Command_menu.Menu.Props { open_ = Some true; _ } ->
-      "props open"
-  | Command_menu.Menu.Props { open_ = Some false; _ } ->
-      "props closed"
-  | Command_menu.Menu.Open_request reason ->
+let command_menu_label : string Dialog.event -> string = function
+  | Dialog.Open_request reason ->
       "open " ^ Popup.reason_name reason
-  | Command_menu.Menu.Close_request reason ->
+  | Dialog.Close_request reason ->
       "close " ^ Popup.reason_name reason
-  | Command_menu.Menu.Content _ ->
+  | Dialog.Content _ ->
       "run"
 
-let pp_command_menu_event f event =
-  Format.pp_print_string f (command_menu_label event)
+let pp_command_menu_event f input = pp_input command_menu_label f input
 
 let command_menu_open_has_search :
-    (Command_menu.Menu.snapshot, Command_menu.Menu.event) Check.invariant =
+    (Dialog.state, string Dialog.event) Check.invariant =
   {
     name = "open-has-search";
     holds =
-      (fun (Command_menu.Menu.At (state, _)) view ->
+      (fun state view ->
         let dialog = has_attr "role" "dialog" view
         and search =
           exists (function Node.Component _ -> true | _ -> false) view
         in
         match state with
-        | Command_menu.Menu.State.Open ->
+        | Dialog.Open ->
             dialog && search
-        | Command_menu.Menu.State.Closed | Command_menu.Menu.State.Idle ->
+        | Dialog.Closed ->
             (not dialog) && not search
       );
   }
@@ -616,74 +571,45 @@ let command_menu () =
         command_menu_props ~open_:false ();
       ]
     ~inputs:(function
-      | Command_menu.Menu.At (Command_menu.Menu.State.Open, _) ->
-          [ Command_menu.Menu.Content "settings" ]
-      | _ ->
-          []
+      | Dialog.Open -> [ Dialog.Content "settings" ] | Dialog.Closed -> []
       )
     ~invariants:[ command_menu_open_has_search ]
-    Command_menu.Menu.component
+    Command_menu.dialog.component
 
 let command_menu_search children =
   Check.component ~label:combobox_label
     ~props:(Check.props children Combobox.component)
-    ~inputs:(function
-      | Combobox.At (Combobox.State.Idle, ()) ->
-          []
-      | _ ->
-          [ Combobox.Typed ""; Combobox.Typed "sign" ]
-      )
-    ~allow_unreached:
-      [
-        ("idle", "closed");
-        ("closed", "open");
-        ("closed", "inline");
-        ("open", "closed");
-        ("open", "inline");
-        ("inline", "closed");
-      ]
+    ~inputs:(fun _ -> [ Combobox.Typed ""; Combobox.Typed "sign" ])
+    ~allow_unreached:[ "closed"; "open" ]
     ~invariants:[ combobox_active_descendant; combobox_auto_highlight ]
     Combobox.component
 
 let checkbox_props ?checked ?indeterminate ?disabled () =
-  Checkbox.Props
-    (Checkbox.props ~id:"terms" ~label:"Accept" ?checked ?indeterminate
-       ?disabled ~name:"terms" ()
-    )
+  Checkbox.props ~id:"terms" ~label:"Accept" ?checked ?indeterminate ?disabled
+    ~name:"terms" ()
 
 let checkbox_label : Checkbox.event -> string = function
-  | Checkbox.Props { indeterminate = true; _ } ->
-      "props mixed"
-  | Checkbox.Props { checked; disabled; _ } ->
-      Printf.sprintf "props %b%s" checked
-        ( if disabled then
-            " disabled"
-          else
-            ""
-        )
   | Checkbox.Toggle ->
       "toggle"
   | Checkbox.Enter_key ->
       "enter"
 
-let pp_checkbox_event f event = Format.pp_print_string f (checkbox_label event)
+let pp_checkbox_event f input = pp_input checkbox_label f input
 
-let checkbox_aria : (Checkbox.snapshot, Checkbox.event) Check.invariant =
+let checkbox_aria : (Checkbox.state, Checkbox.event) Check.invariant =
   {
     name = "aria-checked-matches-state";
     holds =
-      (fun (Checkbox.At (state, _)) view ->
+      (fun state view ->
         let shows value =
           has_attr "role" "checkbox" view && has_attr "aria-checked" value view
         in
         match state with
-        | Checkbox.State.Idle ->
-            not (has_attr "role" "checkbox" view)
-        | Checkbox.State.Unchecked ->
+        | Checkbox.Unchecked ->
             shows "false" && not (has_attr "type" "hidden" view)
-        | Checkbox.State.Checked ->
+        | Checkbox.Checked ->
             shows "true" && has_attr "value" "on" view
-        | Checkbox.State.Indeterminate ->
+        | Checkbox.Indeterminate ->
             shows "mixed" && not (has_attr "type" "hidden" view)
       );
   }
@@ -700,36 +626,23 @@ let checkbox () =
     ~invariants:[ checkbox_aria ] Checkbox.component
 
 let switch_props ?checked ?disabled () =
-  Switch.Props
-    (Switch.props ~id:"wifi" ~label:"Wi-Fi" ?checked ?disabled ~name:"wifi" ())
+  Switch.props ~id:"wifi" ~label:"Wi-Fi" ?checked ?disabled ~name:"wifi" ()
 
-let switch_label : Switch.event -> string = function
-  | Switch.Props { checked; disabled; _ } ->
-      Printf.sprintf "props %b%s" checked
-        ( if disabled then
-            " disabled"
-          else
-            ""
-        )
-  | Switch.Toggle ->
-      "toggle"
+let switch_label : Switch.event -> string = function Switch.Toggle -> "toggle"
+let pp_switch_event f input = pp_input switch_label f input
 
-let pp_switch_event f event = Format.pp_print_string f (switch_label event)
-
-let switch_aria : (Switch.snapshot, Switch.event) Check.invariant =
+let switch_aria : (Switch.state, Switch.event) Check.invariant =
   {
     name = "aria-checked-matches-state";
     holds =
-      (fun (Switch.At (state, _)) view ->
+      (fun state view ->
         let shows value =
           has_attr "role" "switch" view && has_attr "aria-checked" value view
         in
         match state with
-        | Switch.State.Idle ->
-            not (has_attr "role" "switch" view)
-        | Switch.State.Unchecked ->
+        | Switch.Unchecked ->
             shows "false" && not (has_attr "type" "hidden" view)
-        | Switch.State.Checked ->
+        | Switch.Checked ->
             shows "true" && has_attr "value" "on" view
       );
   }
@@ -744,21 +657,17 @@ let switch () =
       ]
     ~invariants:[ switch_aria ] Switch.component
 
+let tabs_list =
+  [
+    Tabs.tab ~value:"a" "Account";
+    Tabs.tab ~value:"b" ~disabled:true "Billing";
+    Tabs.tab ~value:"c" "Closed";
+  ]
+
 let tabs_props ?orientation value =
-  Tabs.Props
-    (Tabs.props ~id:"set" ?orientation ~value
-       [
-         Tabs.tab ~value:"a" "Account";
-         Tabs.tab ~value:"b" ~disabled:true "Billing";
-         Tabs.tab ~value:"c" "Closed";
-       ]
-    )
+  Tabs.props ~id:"set" ?orientation ~value tabs_list
 
 let tabs_label : Tabs.event -> string = function
-  | Tabs.Props { value; orientation = Tabs.Horizontal; _ } ->
-      "props " ^ value
-  | Tabs.Props { value; orientation = Tabs.Vertical; _ } ->
-      "props vertical " ^ value
   | Tabs.Select value ->
       "select " ^ value
   | Tabs.Move Tabs.Next ->
@@ -770,7 +679,7 @@ let tabs_label : Tabs.event -> string = function
   | Tabs.Move Tabs.Last ->
       "last"
 
-let pp_tabs_event f event = Format.pp_print_string f (tabs_label event)
+let pp_tabs_event f input = pp_input tabs_label f input
 
 let element_has id pairs view =
   exists
@@ -785,30 +694,23 @@ let element_has id pairs view =
       )
     view
 
-let tabs_roving : (Tabs.snapshot, Tabs.event) Check.invariant =
+let tabs_roving : (Tabs.state, Tabs.event) Check.invariant =
   {
     name = "one-tab-stop-on-the-focused-tab";
     holds =
-      (fun (Tabs.At (state, model)) view ->
-        match state with
-        | Tabs.State.Idle ->
-            not (has_attr "role" "tablist" view)
-        | Tabs.State.Ready ->
-            let stops =
-              List.filter
-                (fun (tab : Tabs.tab) ->
-                  element_has ("set-tab-" ^ tab.value)
-                    [ ("tabindex", "0") ]
-                    view
-                )
-                model.props.tabs
-            in
-            List.map (fun (tab : Tabs.tab) -> tab.value) stops
-            = [ model.focused ]
-            && element_has
-                 ("set-tab-" ^ model.selected)
-                 [ ("aria-selected", "true") ]
-                 view
+      (fun (Tabs.Ready model) view ->
+        let stops =
+          List.filter
+            (fun (tab : Tabs.tab) ->
+              element_has ("set-tab-" ^ tab.value) [ ("tabindex", "0") ] view
+            )
+            tabs_list
+        in
+        List.map (fun (tab : Tabs.tab) -> tab.value) stops = [ model.focused ]
+        && element_has
+             ("set-tab-" ^ model.selected)
+             [ ("aria-selected", "true") ]
+             view
       );
   }
 
@@ -826,16 +728,12 @@ let tabs () =
       )
     ~invariants:[ tabs_roving ] Tabs.component
 
-let toast_props toasts =
-  Toast.Props (Toast.props ~id:"note" ~timeout_ms:200 toasts)
+let toast_props toasts = Toast.props ~id:"note" ~timeout_ms:200 toasts
 
 let first = Toast.toast ~key:"a" ~description:"Saved." "Saved"
 let urgent = Toast.toast ~key:"b" ~priority:Toast.High "Failed"
 
 let toast_label : Toast.event -> string = function
-  | Toast.Props { toasts; _ } ->
-      "props "
-      ^ String.concat "," (List.map (fun (t : Toast.toast) -> t.key) toasts)
   | Toast.Close key ->
       "close " ^ key
   | Toast.Tick ->
@@ -845,14 +743,21 @@ let toast_label : Toast.event -> string = function
   | Toast.Focus focused ->
       Printf.sprintf "focus %b" focused
 
-let pp_toast_event f event = Format.pp_print_string f (toast_label event)
+let pp_toast_event f input = pp_input toast_label f input
 
-let toast_shows_list : (Toast.snapshot, Toast.event) Check.invariant =
+let toast_shows_list : (Toast.state, Toast.event) Check.invariant =
   {
     name = "region-shows-each-toast";
     holds =
-      (fun snapshot view ->
-        let shows (model : Toast.model) ~paused =
+      (fun state view ->
+        let shown =
+          List.filter
+            (fun (toast : Toast.toast) ->
+              element_has ("note-toast-" ^ toast.key) [] view
+            )
+            [ first; urgent ]
+        in
+        let shows ~paused =
           element_has "note"
             [ ("role", "region"); ("aria-live", "polite") ]
             view
@@ -873,19 +778,18 @@ let toast_shows_list : (Toast.snapshot, Toast.event) Check.invariant =
                    ]
                    view
                )
-               model.props.toasts
+               shown
+          && List.length shown = attr_count "aria-modal" view
         in
-        match snapshot with
-        | Toast.At (Toast.State.Idle, ()) ->
-            not (has_attr "role" "region" view)
-        | Toast.At (Toast.State.Running, (model, _)) ->
-            model.props.toasts <> [] && shows model ~paused:false
-        | Toast.At (Toast.State.Paused, model) ->
-            model.props.toasts <> [] && shows model ~paused:true
-        | Toast.At (Toast.State.Empty, model) ->
-            model.props.toasts = [] && shows model ~paused:false
-        | Toast.At (Toast.State.Expired, model) ->
-            shows model ~paused:false
+        match state with
+        | Toast.Running _ ->
+            shown <> [] && shows ~paused:false
+        | Toast.Paused _ ->
+            shown <> [] && shows ~paused:true
+        | Toast.Empty _ ->
+            shown = [] && shows ~paused:false
+        | Toast.Expired _ ->
+            shows ~paused:false
       );
   }
 
@@ -898,29 +802,25 @@ let toast () =
 let theme_set = Theme.set ~light:Theme.light ~dark:Theme.dark Theme.shipped
 
 let theme_label : Theme.event -> string = function
-  | Theme.Props { choice; _ } ->
-      "props " ^ Theme.choice_name choice
   | Theme.Choose name ->
       "choose " ^ name
   | Theme.System_dark dark ->
       Printf.sprintf "system dark %b" dark
 
-let pp_theme_event f event = Format.pp_print_string f (theme_label event)
+let pp_theme_event f input = pp_input theme_label f input
+let theme_props choice = Theme.props ~id:"theme" theme_set choice
 
-let theme_current : (Theme.snapshot, Theme.event) Check.invariant =
+let theme_current : (Theme.state, Theme.event) Check.invariant =
   {
     name = "current-theme-in-set-and-scheme";
     holds =
-      (fun snapshot _ ->
-        match (snapshot, Theme.current snapshot) with
-        | Theme.At (Theme.State.Idle, ()), None ->
-            true
-        | Theme.At (Theme.State.Fixed, { theme; _ }), Some current ->
+      (fun state _ ->
+        match (state, Theme.current (theme_props Theme.System) state) with
+        | Theme.Fixed_theme theme, Some current ->
             current.theme == theme && List.memq theme (Theme.themes theme_set)
-        | Theme.At (Theme.State.System, { dark = None; _ }), None ->
+        | Theme.System_scheme None, None ->
             true
-        | Theme.At (Theme.State.System, { dark = Some dark; _ }), Some current
-          ->
+        | Theme.System_scheme (Some dark), Some current ->
             (Theme.scheme current.theme
             =
             if dark then
@@ -936,11 +836,7 @@ let theme_current : (Theme.snapshot, Theme.event) Check.invariant =
 
 let theme () =
   Check.component ~label:theme_label
-    ~props:
-      [
-        Theme.Props (Theme.props ~id:"theme" theme_set Theme.System);
-        Theme.Props (Theme.props ~id:"theme" theme_set (Theme.Fixed Theme.ocean));
-      ]
+    ~props:[ theme_props Theme.System; theme_props (Theme.Fixed Theme.ocean) ]
     ~inputs:(fun _ ->
       List.map
         (fun name -> Theme.Choose name)

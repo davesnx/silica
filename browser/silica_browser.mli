@@ -33,7 +33,7 @@ val mount :
   ?hydrate:bool ->
   ?lives:live list ->
   root:string ->
-  ('s, 'e) Component.t ->
+  (unit, 's, 'e) Component.t ->
   unit
 (** [on_session_gone] runs when a Live socket closes with
     {!Silica.Protocol.close_session}: the server no longer knows the session,
@@ -95,17 +95,17 @@ val mount_app :
   ?hydrate:bool ->
   ?lives:live list ->
   root:string ->
-  (Url.t -> ('s, Router.event) Component.t) ->
+  (Url.t -> (unit, 's, Router.event) Component.t) ->
   unit
-(** Mount the app component, made for the current URL (see [Router.Make.make]),
-    and paint it into the element with the given id; hydration, answers and
-    errors work as in {!mount}. A press on [a[data-silica-link]] pushes a
-    history entry and sends [Url_changed]; when the anchor has
-    [data-silica-replace], the press replaces the entry instead. A press with a
-    modifier key, another button, or on an anchor with [target] or [download] is
-    left to the browser. [popstate] and the actions [Navigate] and [Replace]
-    send [Url_changed] too. A page sets [document.title] with the action
-    [Set_title]; [Set_status] is ignored.
+(** Mount the app component, made for the current URL (see [Router.make]), and
+    paint it into the element with the given id; hydration, answers and errors
+    work as in {!mount}. A press on [a[data-silica-link]] pushes a history entry
+    and sends [Url_changed]; when the anchor has [data-silica-replace], the
+    press replaces the entry instead. A press with a modifier key, another
+    button, or on an anchor with [target] or [download] is left to the browser.
+    [popstate] and the actions [Navigate] and [Replace] send [Url_changed] too.
+    A page sets [document.title] with the action [Set_title]; [Set_status] is
+    ignored.
 
     Blocks. While a {!Silica.Action.Block} source runs, a link press,
     [Navigate], [Replace], back and forward change nothing and raise
@@ -165,7 +165,7 @@ val mount_with_renderer :
   ?on_error:(exn -> Node.error -> unit) ->
   ?answers:Answers.t ->
   renderer:Instance.message Renderer.make ->
-  ('s, 'e) Component.t ->
+  (unit, 's, 'e) Component.t ->
   unit
 (** Run the component with any {!Silica.Renderer} in place of the DOM renderer,
     and the browser clock and network. The runtime is {!Silica.Runtime}, the one

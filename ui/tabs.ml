@@ -15,16 +15,9 @@ type props = {
 }
 
 type move = Next | Previous | First | Last
-type event = Props of props | Select of string | Move of move
-type model = { props : props; selected : string; focused : string }
-
-module State = struct
-  type _ t = Idle : unit t | Ready : model t
-end
-
-module Tabs_machine = Machine.Make (State)
-
-type snapshot = Tabs_machine.snapshot = At : 'data State.t * 'data -> snapshot
+type event = Select of string | Move of move
+type model = { selected : string; focused : string }
+type state = Ready of model [@@deriving state_shape]
 
 let tab_id id value = id ^ "-tab-" ^ value
 let panel_id id value = id ^ "-panel-" ^ value
@@ -49,7 +42,7 @@ let take (props : props) =
     | _ ->
         props.value
   in
-  { props; selected = props.value; focused }
+  { selected = props.value; focused }
 
 let index_of value values =
   let rec go i = function
@@ -63,8 +56,8 @@ let index_of value values =
   in
   go 0 values
 
-let target model move =
-  match enabled model.props with
+let target props model move =
+  match enabled props with
   | [] ->
       None
   | values ->
@@ -84,37 +77,33 @@ let target model move =
       Some (List.nth values i)
 
 let machine =
-  Tabs_machine.make ~id:"tabs" ~init:(Tabs_machine.at Idle ())
-    [
-      Tabs_machine.state Idle "idle" ~to_:[ Ready ] (fun () -> function
-        | Props props ->
-            Tabs_machine.goto Ready (take props)
-        | _ ->
-            Tabs_machine.unhandled
-        );
-      Tabs_machine.state Ready "ready" (fun model -> function
-        | Props props when props.value <> model.props.value ->
-            Tabs_machine.goto Ready (take props)
-        | Props props ->
-            Tabs_machine.goto Ready { model with props }
-        | Select value
-          when value <> model.selected && selectable model.props value ->
-            Tabs_machine.goto Ready
-              { model with selected = value; focused = value }
-        | Select _ ->
-            Tabs_machine.unhandled
-        | Move move -> (
-            match target model move with
-            | Some value ->
-                Tabs_machine.goto Ready
-                  { model with focused = value }
-                  ~actions:
-                    [ Action.Focus (Ref.make (tab_id model.props.id value)) ]
-            | None ->
-                Tabs_machine.unhandled
-          )
-        );
-    ]
+  Machine.make_with_props ~id:"tabs"
+    ~init:(Ready { selected = ""; focused = "" })
+    ~shape:state_shape
+    ~on_props:(fun previous (props : props) _ ->
+      match previous with
+      | Some (previous : props) when previous.value = props.value ->
+          Ignore
+      | Some _ | None ->
+          Go (Ready (take props))
+    )
+    (fun (props : props) (Ready model) event ->
+      match event with
+      | Select value when value <> model.selected && selectable props value ->
+          Go (Ready { selected = value; focused = value })
+      | Select _ ->
+          Ignore
+      | Move move -> (
+          match target props model move with
+          | Some value ->
+              Go_with
+                ( Ready { model with focused = value },
+                  [ Action.Focus (Ref.make (tab_id props.id value)) ]
+                )
+          | None ->
+              Ignore
+        )
+    )
 
 let el = Node.element
 let text = Node.text
@@ -128,11 +117,11 @@ let key_move orientation (key : Key.t) =
         Some (Move Next)
     | Horizontal, "ArrowLeft" | Vertical, "ArrowUp" ->
         Some (Move Previous)
-    | _, "Home" ->
+    | (Horizontal | Vertical), "Home" ->
         Some (Move First)
-    | _, "End" ->
+    | (Horizontal | Vertical), "End" ->
         Some (Move Last)
-    | _ ->
+    | (Horizontal | Vertical), _ ->
         None
 
 let flag name on =
@@ -141,8 +130,8 @@ let flag name on =
   else
     []
 
-let tab_button model (tab : tab) =
-  let id = model.props.id in
+let tab_button (props : props) model (tab : tab) =
+  let id = props.id in
   let selected = tab.value = model.selected in
   el "button"
     ([
@@ -159,52 +148,53 @@ let tab_button model (tab : tab) =
              "-1"
          );
        Attr.bool "disabled" tab.disabled;
-       Attr.on_press (Select tab.value);
      ]
+    @ ( if selected then
+          []
+        else
+          [ Attr.on_press (Select tab.value) ]
+      )
     @ flag "data-active" selected
     @ flag "data-disabled" tab.disabled
-    @ Popup.class_attr model.props.classes.tab
+    @ Popup.class_attr props.classes.tab
     )
     [ text tab.label ]
 
-let view : snapshot -> event Node.t = function
-  | At (Idle, ()) ->
-      Node.list []
-  | At (Ready, model) ->
-      let orientation =
-        match model.props.orientation with
-        | Horizontal ->
-            "horizontal"
-        | Vertical ->
-            "vertical"
-      in
-      el "div"
-        ([
-           Attr.string "id" model.props.id;
-           Attr.string "role" "tablist";
-           Attr.string "aria-orientation" orientation;
-           Attr.string "data-orientation" orientation;
-           Attr.on_key_down ~prevent:true (key_move model.props.orientation);
-         ]
-        @ Popup.class_attr model.props.classes.list
-        )
-        (List.map (tab_button model) model.props.tabs)
+let view (props : props) (Ready model) =
+  let orientation =
+    match props.orientation with
+    | Horizontal ->
+        "horizontal"
+    | Vertical ->
+        "vertical"
+  in
+  el "div"
+    ([
+       Attr.string "id" props.id;
+       Attr.string "role" "tablist";
+       Attr.string "aria-orientation" orientation;
+       Attr.string "data-orientation" orientation;
+       Attr.on_key_down ~prevent:true (key_move props.orientation);
+     ]
+    @ Popup.class_attr props.classes.list
+    )
+    (List.map (tab_button props model) props.tabs)
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 let tab ?(disabled = false) ~value label = { value; label; disabled }
 
 let props ~id ?(orientation = Horizontal) ?(classes = no_classes) ~value tabs =
   { id; tabs; value; orientation; classes }
 
 let make ?key ?on_value_change props =
-  let output event (snapshot : snapshot) =
-    match (on_value_change, event, snapshot) with
-    | Some f, Select _, At (Ready, model) ->
+  let output event (Ready model) =
+    match (on_value_change, event) with
+    | Some f, Select _ ->
         [ f model.selected ]
-    | _ ->
+    | Some _, Move _ | None, (Select _ | Move _) ->
         []
   in
-  Component.node ?key ~props:(Props props) ~output component
+  Component.node_with_props ?key ~props ~output component
 
 let panel ?(class_ = "") ~id ~value ~selected children =
   el "div"

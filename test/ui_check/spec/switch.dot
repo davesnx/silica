@@ -1,12 +1,9 @@
 digraph "switch" {
 rankdir=LR;
 "switch.__init" [shape=point];
-"switch.__init" -> "switch.idle";
-"switch.idle" [label="idle" shape=box];
+"switch.__init" -> "switch.unchecked";
 "switch.unchecked" [label="unchecked" shape=box];
 "switch.checked" [label="checked" shape=box];
-"switch.checked" -> "switch.unchecked" [label="props false, props false disabled, toggle"];
-"switch.idle" -> "switch.checked" [label="props true"];
-"switch.idle" -> "switch.unchecked" [label="props false, props false disabled"];
-"switch.unchecked" -> "switch.checked" [label="props true, toggle"];
+"switch.checked" -> "switch.unchecked" [label="props, toggle"];
+"switch.unchecked" -> "switch.checked" [label="props, toggle"];
 }

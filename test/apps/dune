@@ -1,4 +1,6 @@
 (library
  (name test_apps)
  (modes native melange)
- (libraries silica))
+ (libraries silica)
+ (preprocess
+  (pps silica.ppx)))

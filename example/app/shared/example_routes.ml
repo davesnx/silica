@@ -1,44 +1,18 @@
 open Silica
 
-module State = struct
-  type _ t =
-    | Home : unit t
-    | Item : int t
-    | About : unit t
-    | Edit : unit t
-    | Locked : unit t
-    | Not_found : string t
-
-  let path : type data. data t -> data Route.t = function
-    | Home ->
-        Route.root
-    | Item ->
-        Route.(s "item" / int)
-    | About ->
-        Route.(s "about")
-    | Edit ->
-        Route.(s "edit")
-    | Locked ->
-        Route.(s "locked")
-    | Not_found ->
-        Route.rest
-end
-
-module Router = Router.Make (State)
+type route =
+  | Home [@route Route.root]
+  | Item of int [@route Route.(s "item" / int)]
+  | About [@route Route.(s "about")]
+  | Edit [@route Route.(s "edit")]
+  | Locked [@route Route.(s "locked")]
+  | Not_found of string [@route Route.rest]
+[@@deriving routes]
 
 let routes =
-  Router.routes ~not_found:State.Not_found
+  Router.routes
+    ~not_found:(function Not_found _ -> true | _ -> false)
     ~preload:(function
-      | Router.At (State.Item, id) ->
-          [ Remote.request Example_model.item_endpoint id ]
-      | _ ->
-          []
+      | Item id -> [ Remote.request Example_model.item_endpoint id ] | _ -> []
       )
-    [
-      State.Home;
-      State.Item;
-      State.About;
-      State.Edit;
-      State.Locked;
-      State.Not_found;
-    ]
+    route_routes

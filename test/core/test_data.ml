@@ -173,41 +173,35 @@ let topic_tests =
 
 module Watch = struct
   type event = Watch of string | Stop | Update of int Topic.update
-
-  module States = struct
-    type _ t = Idle : unit t | Watching : (string * int Status.t) t
-  end
-
-  module Watch_machine = Machine.Make (States)
+  type state = Idle | Watching of string * int Status.t
+  [@@deriving state_shape]
 
   let topic = Topic.declare ~name:"counts" ~state:Codec.int
 
   let machine =
-    Watch_machine.make ~id:"watch" ~init:(Watch_machine.at Idle ())
-      [
-        Watch_machine.always ~to_:[ Watching; Idle ] (function
-          | Watch key ->
-              Watch_machine.reenter Watching (key, Status.Idle)
-          | Stop ->
-              Watch_machine.goto Idle ()
-          | Update _ ->
-              Watch_machine.unhandled
-          );
-        Watch_machine.state Idle "idle" Watch_machine.ignore;
-        Watch_machine.state Watching "watching"
-          ~invoke:[ Source.live topic fst (fun update -> Update update) ]
-          (fun (key, _) -> function
-            | Update { status; _ } ->
-                Watch_machine.goto Watching (key, status)
-            | _ ->
-                Watch_machine.unhandled
-            );
-      ]
+    Machine.make ~id:"watch" ~init:Idle ~shape:state_shape
+      ~owns:(function
+        | Idle ->
+            []
+        | Watching (key, _) ->
+            [ Source.live topic key (fun update -> Update update) ]
+        )
+      (fun state event ->
+        match (state, event) with
+        | _, Watch key ->
+            Machine.Go (Watching (key, Status.Idle))
+        | _, Stop ->
+            Machine.Go Idle
+        | Watching (key, _), Update { status; _ } ->
+            Machine.Go (Watching (key, status))
+        | Idle, Update _ ->
+            Machine.Ignore
+      )
 
   let view = function
-    | Watch_machine.At (Idle, ()) ->
+    | Idle ->
         Node.text "idle"
-    | Watch_machine.At (Watching, (key, status)) ->
+    | Watching (key, status) ->
         Node.text
           (key ^ ":"
           ^
@@ -225,8 +219,7 @@ module Watch = struct
               "other"
           )
 
-  let component =
-    Component.make (Machine.map_snapshot machine ~get:Fun.id ~set:Fun.id) view
+  let component = Component.make machine view
 end
 
 let pairs = Alcotest.(list (pair string string))
@@ -282,7 +275,8 @@ let source_tests =
              )
           )
     );
-    Alcotest.test_case "the key changes with a reenter" `Quick (fun () ->
+    Alcotest.test_case "a new key in the same state resubscribes" `Quick
+      (fun () ->
         let module Sim = Silica_test_support.Sim in
         let sim = Sim.mount Watch.component in
         Sim.send sim (Watch.Watch "a");
@@ -291,20 +285,32 @@ let source_tests =
           [ ("counts", "b") ]
           (Sim.subscriptions sim)
     );
-    Alcotest.test_case "the spec and the active resources name the topic" `Quick
-      (fun () ->
-        let spec = Machine.spec Watch.machine in
-        let watching =
-          List.find (fun s -> s.Spec.name = "watching") spec.Spec.states
-        in
+    Alcotest.test_case "an update keeps the subscription" `Quick (fun () ->
+        let module Sim = Silica_test_support.Sim in
+        let sim = Sim.mount Watch.component in
+        Sim.send sim (Watch.Watch "a");
+        Sim.clear_log sim;
+        Sim.publish sim Watch.topic ~key:"a" { Topic.seq = 1; status = ready 3 };
+        Alcotest.(check string) "html" "a:3" (Sim.html sim);
+        Alcotest.(check (list string)) "no stop and no start" [] (Sim.log sim);
+        Sim.send sim (Watch.Watch "a");
         Alcotest.(check (list string))
-          "sources" [ "live:counts" ] watching.Spec.sources;
+          "the same key keeps running" [] (Sim.log sim)
+    );
+    Alcotest.test_case "the source and the active resources name the topic"
+      `Quick (fun () ->
+        let source =
+          Source.live Watch.topic "k" (fun update -> Watch.Update update)
+        in
+        Alcotest.(check string) "name" "live:counts" (Source.name source);
+        Alcotest.(check string) "key" "live:counts k" (Source.key source);
+        Alcotest.(check (option string))
+          "topic" (Some "counts") (Source.topic source);
         match
-          Machine.active Watch.machine
-            (Watch.Watch_machine.at Watching ("k", Status.Idle))
+          Machine.active Watch.machine () (Watch.Watching ("k", Status.Idle))
         with
-        | [ Machine.Subscription { topic = "counts"; _ } ] ->
-            ()
+        | [ Machine.Subscription { topic = "counts"; id } ] ->
+            Alcotest.(check string) "id" "watch/watching/live:counts k" id
         | _ ->
             Alcotest.fail "expected one Subscription resource"
     );

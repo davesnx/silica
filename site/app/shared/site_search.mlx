@@ -3,12 +3,7 @@ open Silica_ui
 
 type event = Open_search | Changed of bool | Ran of string
 
-module States = struct
-  type _ t = Closed : unit t | Open : unit t
-end
-
-open States
-module Search_machine = Machine.Make (States)
+type state = Closed | Open [@@deriving state_shape]
 
 let doc_value ?anchor slug =
   "doc:" ^ slug ^ match anchor with Some a -> "#" ^ a | None -> ""
@@ -59,11 +54,11 @@ let target value =
       in
       match kind with
       | "doc" when slug = index_slug ->
-          Some (Router.navigate ?hash routes State.Docs ())
+          Some (Router.navigate ?hash routes Docs)
       | "doc" ->
-          Some (Router.navigate ?hash routes State.Doc slug)
+          Some (Router.navigate ?hash routes (Doc slug))
       | "component" ->
-          Some (Router.navigate routes State.Component slug)
+          Some (Router.navigate routes (Component slug))
       | _ ->
           None
     )
@@ -79,26 +74,21 @@ let shortcut =
     ]
 
 let machine =
-  Search_machine.make ~id:"search"
-    ~init:(Search_machine.at Closed ())
-    [
-      Search_machine.state Closed "closed" ~to_:[ Open ] ~invoke:[ shortcut ]
-        (fun () -> function
-        | Open_search | Changed true ->
-            Search_machine.goto Open ()
-        | Changed false | Ran _ ->
-            Search_machine.unhandled
-        );
-      Search_machine.state Open "open" ~to_:[ Closed ] (fun () -> function
-        | Changed false ->
-            Search_machine.goto Closed ()
-        | Ran value ->
-            Search_machine.goto Closed ()
-              ~actions:(Option.to_list (target value))
-        | Open_search | Changed true ->
-            Search_machine.unhandled
-        );
-    ]
+  Machine.make ~id:"search" ~init:Closed ~shape:state_shape
+    ~owns:(function Closed -> [ shortcut ] | Open -> [])
+    (fun state event ->
+      match (state, event) with
+      | Closed, (Open_search | Changed true) ->
+          Go Open
+      | Open, Changed false ->
+          Go Closed
+      | Open, Ran value ->
+          Go_with (Closed, Option.to_list (target value))
+      | Open, Open_search ->
+          Stay []
+      | _ ->
+          Ignore
+    )
 
 let classes : Command_menu.classes =
   {
@@ -113,14 +103,8 @@ let classes : Command_menu.classes =
       };
   }
 
-let view (snapshot : Search_machine.snapshot) : event Node.t =
-  let open_ =
-    match snapshot with
-    | Search_machine.At (Open, ()) ->
-        true
-    | Search_machine.At (Closed, ()) ->
-        false
-  in
+let view state : event Node.t =
+  let open_ = match state with Open -> true | Closed -> false in
   <div>
     <button
       type_=`button

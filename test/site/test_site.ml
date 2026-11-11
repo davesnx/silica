@@ -274,7 +274,9 @@ let test_every_component_has_a_page () =
   let dir = "../../ui" in
   let components =
     Sys.readdir dir |> Array.to_list
-    |> List.filter (fun f -> Filename.check_suffix f ".mli")
+    |> List.filter (fun f ->
+        Filename.check_suffix f ".mli" && not (Filename.check_suffix f ".pp.mli")
+    )
     |> List.filter (fun f -> not (List.mem f helpers))
     |> List.map (fun f ->
         "Silica_ui." ^ String.capitalize_ascii (Filename.chop_suffix f ".mli")
@@ -360,12 +362,9 @@ let test_facts () =
     List.map (fun (s : Site_facts.state) -> s.name) f.states
   in
   Alcotest.(check (list string))
-    "select states"
-    [ "idle"; "closed"; "open" ]
-    (names Site_facts.select);
+    "select states" [ "closed"; "open" ] (names Site_facts.select);
   Alcotest.(check (list string))
-    "tooltip timers of opening"
-    [ "after 0ms"; "after 300ms"; "after 600ms"; "after 1000ms" ]
+    "tooltip timers of opening" [ "after 600ms" ]
     (List.find
        (fun (s : Site_facts.state) -> s.name = "opening")
        Site_facts.tooltip.states
@@ -375,7 +374,7 @@ let test_facts () =
     (fun (e : Site_catalog.entry) ->
       Option.iter
         (fun (f : Site_facts.t) ->
-          if f.states = [] || f.edges = [] then
+          if f.states = [] || (List.length f.states > 1 && f.edges = []) then
             Alcotest.failf "%s: no facts" e.info.slug;
           List.iter
             (fun (edge : Site_facts.edge) ->
@@ -393,6 +392,34 @@ let test_facts () =
         e.facts
     )
     Site_catalog.entries
+
+let test_landing_chart () =
+  let spec = Site_landing_chart.spec in
+  let names = List.map (fun (s : Silica.Spec.state) -> s.name) spec.states in
+  Alcotest.(check (list string))
+    "every state of the save machine"
+    (List.sort compare (Silica.Machine.shape_names Landing_save.state_shape))
+    (List.sort compare names);
+  Alcotest.(check string)
+    "the initial state"
+    ((Silica.Machine.shape_name Landing_save.state_shape)
+       (Silica.Machine.init Landing_save.machine)
+    )
+    spec.init;
+  Alcotest.(check bool) "edges were found" true (spec.edges <> []);
+  List.iter
+    (fun (from, target) ->
+      if not (List.mem from names && List.mem target names) then
+        Alcotest.failf "edge %s -> %s outside the states" from target
+    )
+    spec.edges;
+  let html = (get "/").body in
+  List.iter
+    (fun name ->
+      if not (contains html ("data-state=\"" ^ name ^ "\"")) then
+        Alcotest.failf "the landing chart has no state %s" name
+    )
+    names
 
 let test_nav_covers_the_docs () =
   Alcotest.(check (list string))
@@ -479,7 +506,8 @@ let test_text_outside_ascii () =
       (fun dir ->
         Sys.readdir dir |> Array.to_list
         |> List.filter (fun f ->
-            Filename.check_suffix f ".ml" || Filename.check_suffix f ".mlx"
+            (Filename.check_suffix f ".ml" || Filename.check_suffix f ".mlx")
+            && not (Filename.check_suffix f ".pp.ml")
         )
         |> List.concat_map (fun f ->
             let path = Filename.concat dir f in
@@ -582,6 +610,8 @@ let () =
             test_search_targets;
           Alcotest.test_case "story values" `Quick test_story;
           Alcotest.test_case "statechart facts" `Quick test_facts;
+          Alcotest.test_case "landing chart from a checker run" `Quick
+            test_landing_chart;
           Alcotest.test_case "site tokens have contrast 4.5" `Quick
             test_site_token_contrast;
           Alcotest.test_case "text that is not ASCII is a {js|...|js} literal"

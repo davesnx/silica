@@ -1,16 +1,12 @@
 open Silica
 open Silica_ui
 
-module Shipping = struct
-  type props = unit
-  type event = |
+type nothing = |
 
-  let id = "shipping-popover"
-  let view () = <p class_="mt-1 text-sm">"Orders ship in two work days."</p>
-  let closes : event -> bool = function _ -> .
-end
-
-module Shipping_popover = Popover.Make (Shipping)
+let shipping_popover =
+  Popover.component ~id:"shipping-popover"
+    ~closes:(function (_ : nothing) -> .)
+    (fun () -> <p class_="mt-1 text-sm">"Orders ship in two work days."</p>)
 
 let side = function
   | "top" ->
@@ -23,9 +19,9 @@ let side = function
       Place.Bottom
 
 let render ~id values =
-  Shipping_popover.make
-    (Shipping_popover.props ~id ~trigger:"Shipping" ~title:"Shipping"
-       ~close:"Close" ~open_:(Story.bool values "open")
+  Popover.make shipping_popover
+    (Popover.props ~id ~trigger:"Shipping" ~title:"Shipping" ~close:"Close"
+       ~open_:(Story.bool values "open")
        ~place:{ Place.default with side = side (Story.string values "side") }
        ~classes:Style.popover ()
     )

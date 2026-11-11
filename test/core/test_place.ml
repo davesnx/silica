@@ -76,27 +76,39 @@ let sides_left_and_right () =
   Alcotest.check side "left fits" Place.Left r.side;
   check_xy "left of the anchor" (500. -. 4. -. 200., 100.) r
 
-let anchor_place source data =
-  match Source.held data source with
+let anchor_place source =
+  match Source.held source with
   | Some (Action.Anchor { place; _ }) ->
       place
   | _ ->
       Alcotest.fail "not an anchor source"
 
-let anchor_takes_place_from_data () =
-  let source =
-    Source.anchor
-      ~place:(fun side -> place ~side ())
-      ~anchor:(Ref.make "trigger") (Ref.make "popup")
+type popup = Shown of Place.side [@@deriving state_shape]
+
+let anchor_takes_place_from_the_state () =
+  let machine =
+    Machine.make ~id:"popup" ~init:(Shown Place.Top) ~shape:popup_shape
+      ~owns:(fun (Shown side) ->
+        [
+          Source.anchor ~place:(place ~side ()) ~anchor:(Ref.make "trigger")
+            (Ref.make "popup");
+        ]
+      )
+      (fun _ side -> Machine.Go (Shown side))
   in
-  Alcotest.check side "top from the data" Place.Top
-    (anchor_place source Place.Top).side;
-  Alcotest.check side "left from the data" Place.Left
-    (anchor_place source Place.Left).side;
+  let held state =
+    match Machine.held machine () state with
+    | [ Action.Anchor { place; _ } ] ->
+        place
+    | _ ->
+        Alcotest.fail "expected one anchor"
+  in
+  Alcotest.check side "top from the state" Place.Top
+    (held (Shown Place.Top)).side;
+  Alcotest.check side "left from the state" Place.Left
+    (held (Shown Place.Left)).side;
   let fixed = Source.anchor ~anchor:(Ref.make "trigger") (Ref.make "popup") in
-  Alcotest.(check bool)
-    "default place" true
-    (anchor_place fixed () = Place.default)
+  Alcotest.(check bool) "default place" true (anchor_place fixed = Place.default)
 
 let () =
   let t name f = Alcotest.test_case name `Quick f in
@@ -112,8 +124,8 @@ let () =
           t "aligns start, center, end" aligns;
           t "shifts into the viewport" shifts_into_viewport;
           t "left and right" sides_left_and_right;
-          t "an anchor source takes its place from the state's data"
-            anchor_takes_place_from_data;
+          t "an anchor source takes its place from the state"
+            anchor_takes_place_from_the_state;
         ]
       );
     ]

@@ -4,34 +4,35 @@ type ('s, 'e) invariant = { name : string; holds : 's -> 'e Node.t -> bool }
 
 type sample =
   | Answers : {
-      endpoint : ('i, 'o) Remote.endpoint;
+      endpoint : ('i, 'o, 'x) Remote.endpoint;
       values : 'o list;
+      rejected : 'x list;
       decode : bool;
     }
       -> sample
   | States : { topic : 's Topic.t; values : 's list } -> sample
 
-let answers ?(decode = false) endpoint values =
-  Answers { endpoint; values; decode }
+let answers ?(decode = false) ?(rejected = []) endpoint values =
+  Answers { endpoint; values; rejected; decode }
 
 let states topic values = States { topic; values }
 
-type seen = Seen : ('s, 'e) Component.t * 'e -> seen
+type seen = Seen : ('p, 's, 'e) Component.t * 'p -> seen
 type children = seen list
 
-let props (type s e) children (c : (s, e) Component.t) : e list =
+let props (type p s e) children (c : (p, s, e) Component.t) : p list =
   List.fold_left
-    (fun (acc : e list) (Seen (child, event)) ->
+    (fun (acc : p list) (Seen (child, props)) ->
       match
         Type.Id.provably_equal
           (Machine.type_id child.Component.machine)
           (Machine.type_id c.machine)
       with
       | Some Type.Equal ->
-          if List.mem event acc then
+          if List.mem props acc then
             acc
           else
-            event :: acc
+            props :: acc
       | None ->
           acc
     )
@@ -45,28 +46,43 @@ type ('s, 'ev) report =
       not_explored : string list;
       edges : Spec.label list;
       children : children;
+      spec : Spec.t;
+      paths : (string * 'ev list) list;
     }
   | Violation of { invariant : string; trace : 'ev list; state : 's }
-  | Unreached of { edges : (string * string) list }
+  | Unreached of { states : string list }
   | Limit of { states : int }
   | Error of string
+
+type ('p, 'e) input = Event of 'e | Props of 'p
 
 type phase = Connecting | Up | Down | Ended
 
 type sub = { phase : phase; arrivals : int; last : int option; dropped : bool }
 
-type ('s, 'e) world = {
+type 'e feed = {
+  loading : 'e;
+  ready : 'e array array;
+  stale : 'e array;
+  failed_empty : 'e;
+  failed_last : 'e array;
+}
+
+type ('p, 's, 'e) world = {
+  props : 'p;
   s : 's;
   timers : (string * 'e) list;
-  calls : string list;
+  calls : (string * 'e list) list;
   subs : (string * sub) list;
+  feeds : (string * 'e feed) list;
   results : 'e list;
   hist : Url.t list;
   idx : int;
 }
 
 type via =
-  | User
+  | View
+  | Input
   | Fire of string
   | Answer of string
   | Feed of string * sub
@@ -84,9 +100,10 @@ type 'e app_event =
 type ('n, 'ev, 'e) model = {
   view : 'n -> 'e Node.t;
   enabled : 'n -> 'ev move list;
-  step : 'n -> 'ev move -> 'n * 'e Action.host list;
+  step : 'n -> 'ev move -> 'n * 'e Action.host list * Machine.how;
   final : 'n -> bool;
-  start : 'n * 'e Action.host list;
+  start : ('n * 'e Action.host list) list;
+  name : 'n -> string;
 }
 
 let rec iter f n =
@@ -347,12 +364,18 @@ let functional msg =
 let children_of_view n =
   collect
     (function
-      | Node.Component { component; props = Some props; _ } ->
+      | Node.Component { component; props; _ } ->
           [ Seen (component, props) ]
       | _ ->
           []
       )
     n
+
+let ignorable = function
+  | Input | Result _ ->
+      true
+  | View | Fire _ | Answer _ | Feed _ ->
+      false
 
 let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
   let parents = Dynarray.create () in
@@ -362,6 +385,8 @@ let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
   let transitions = ref 0 in
   let not_explored = ref [] in
   let children = ref [] in
+  let paths = Hashtbl.create 16 in
+  let path_order = ref [] in
   let trace i =
     let rec go i acc =
       match Dynarray.get parents i with
@@ -395,6 +420,11 @@ let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
       ) else
         let i = Dynarray.length parents in
         Dynarray.add_last parents parent;
+        let name = model.name n in
+        if not (Hashtbl.mem paths name) then (
+          Hashtbl.replace paths name i;
+          path_order := name :: !path_order
+        );
         let view = model.view n in
         not_explored :=
           List.rev_append (not_explored_of_view view) !not_explored;
@@ -416,13 +446,16 @@ let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
       )
       action_checks
   in
-  let n0, actions0 = model.start in
-  ( match failed_action n0 actions0 with
-  | None ->
-      add None n0
-  | Some name ->
-      fail name [] n0
-  );
+  List.iter
+    (fun (n0, actions0) ->
+      if Option.is_none !result then
+        match failed_action n0 actions0 with
+        | None ->
+            add None n0
+        | Some name ->
+            fail name [] n0
+    )
+    model.start;
   while Option.is_none !result && not (Queue.is_empty queue) do
     let i, n = Queue.pop queue in
     List.iter
@@ -430,17 +463,15 @@ let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
         incr transitions;
         if Option.is_none !result then
           match model.step n mv with
-          | n', actions -> (
+          | _, _, Machine.Unhandled when not (ignorable mv.via) ->
+              fail "ignored-event" (trace i @ [ mv ]) n
+          | n', actions, _ -> (
               match failed_action n' actions with
               | None ->
                   add (Some (i, mv)) n'
               | Some name ->
                   fail name (trace i @ [ mv ]) n'
             )
-          | exception Machine.Undeclared_target _ ->
-              fail "undeclared-target" (trace i @ [ mv ]) n
-          | exception Machine.Missing_case _ ->
-              fail "missing-case" (trace i @ [ mv ]) n
       )
       (model.enabled n)
   done;
@@ -455,6 +486,15 @@ let search ~max_states ~within ~model ~checks ~action_checks ~to_state =
           not_explored = List.sort_uniq String.compare !not_explored;
           edges = [];
           children = List.rev !children;
+          spec = { Spec.id = ""; init = ""; states = []; edges = [] };
+          paths =
+            List.rev_map
+              (fun name ->
+                ( name,
+                  List.map (fun mv -> mv.event) (trace (Hashtbl.find paths name))
+                )
+              )
+              !path_order;
         }
 
 let run ?(extra_actions = []) ~max_states ~within ~model ~invariants ~extra
@@ -468,13 +508,15 @@ let run ?(extra_actions = []) ~max_states ~within ~model ~invariants ~extra
         fun n ->
           model.final n
           || not_explored_of_view (model.view n) <> []
-          || match model.enabled n with [] -> false | _ -> true
+          || match model.enabled n with [] -> false | _ :: _ -> true
       );
     ]
   in
   let user =
     List.map
-      (fun inv -> (inv.name, fun n -> inv.holds (to_state n) (model.view n)))
+      (fun (inv : (_, _) invariant) ->
+        (inv.name, fun n -> inv.holds (to_state n) (model.view n))
+      )
       invariants
   in
   try
@@ -495,34 +537,21 @@ let run ?(extra_actions = []) ~max_states ~within ~model ~invariants ~extra
   | Failure m ->
       Error m
 
-type 'e feed = {
-  count : int;
-  loading : 'e;
-  ready : int -> int -> 'e;
-  stale : int -> 'e;
-  failed : int option -> 'e;
-}
+type host = { samples : sample list; arrivals : int }
 
-type 'e host = {
-  samples : sample list;
-  arrivals : int;
-  answers_of : (string, 'e list) Hashtbl.t;
-  feeds : (string, 'e feed) Hashtbl.t;
-}
-
-let answers_for (type o e) samples (endpoint : (_, o) Remote.endpoint)
-    (on_result : (o, Remote.error) result -> e) =
+let answers_for (type o x e) samples (endpoint : (_, o, x) Remote.endpoint)
+    (on_result : (o, x) Remote.answer -> e) =
   let given =
     List.filter_map
       (function
         | Answers a -> (
             match
               Type.Id.provably_equal
-                (Remote.output_id a.endpoint)
-                (Remote.output_id endpoint)
+                (Remote.answer_id a.endpoint)
+                (Remote.answer_id endpoint)
             with
             | Some Type.Equal ->
-                Some ((a.values : o list), a.decode)
+                Some ((a.values : o list), (a.rejected : x list), a.decode)
             | None ->
                 None
           )
@@ -532,19 +561,22 @@ let answers_for (type o e) samples (endpoint : (_, o) Remote.endpoint)
       samples
   in
   List.concat_map
-    (fun (values, _) -> List.map (fun v -> on_result (Ok v)) values)
+    (fun (values, rejected, _) ->
+      List.map (fun v -> on_result (Remote.Ok v)) values
+      @ List.map (fun x -> on_result (Remote.Rejected x)) rejected
+    )
     given
   @ [
-      on_result (Error (Remote.Http 500));
-      on_result (Error (Remote.Network "down"));
+      on_result (Remote.Failed (Remote.Http 500));
+      on_result (Remote.Failed (Remote.Network "down"));
     ]
   @
-  if List.exists snd given then
-    [ on_result (Error (Remote.Decode "sample")) ]
+  if List.exists (fun (_, _, decode) -> decode) given then
+    [ on_result (Remote.Failed (Remote.Decode "sample")) ]
   else
     []
 
-let feed_for (type s e) samples (topic : s Topic.t)
+let feed_for (type s e) ~arrivals samples (topic : s Topic.t)
     (on_update : s Topic.update -> e) =
   let values =
     Array.of_list
@@ -566,32 +598,35 @@ let feed_for (type s e) samples (topic : s Topic.t)
          samples
       )
   in
+  let failed last =
+    on_update
+      {
+        seq = 0;
+        status = Status.Failed { error = Remote.Network "down"; last };
+      }
+  in
   {
-    count = Array.length values;
     loading = on_update { Topic.seq = 0; status = Status.Loading None };
     ready =
-      (fun i seq ->
-        on_update
-          { seq; status = Status.Ready { data = values.(i); stale = false } }
-      );
-    stale =
-      (fun i ->
-        on_update
-          { seq = 0; status = Status.Ready { data = values.(i); stale = true } }
-      );
-    failed =
-      (fun last ->
-        on_update
-          {
-            seq = 0;
-            status =
-              Status.Failed
+      Array.map
+        (fun data ->
+          Array.init (arrivals + 1) (fun index ->
+              on_update
                 {
-                  error = Remote.Network "down";
-                  last = Option.map (Array.get values) last;
-                };
-          }
-      );
+                  seq = index + 1;
+                  status = Status.Ready { data; stale = false };
+                }
+          )
+        )
+        values;
+    stale =
+      Array.map
+        (fun data ->
+          on_update { seq = 0; status = Status.Ready { data; stale = true } }
+        )
+        values;
+    failed_empty = failed None;
+    failed_last = Array.map (fun data -> failed (Some data)) values;
   }
 
 let fresh = { phase = Connecting; arrivals = 0; last = None; dropped = false }
@@ -610,20 +645,26 @@ let host_action host w = function
   | Action.Start_timer { id; event; _ } ->
       { w with timers = put id event w.timers }
   | Action.Start_call { id; endpoint; on_result; _ } ->
-      if not (Hashtbl.mem host.answers_of id) then
-        Hashtbl.replace host.answers_of id
-          (answers_for host.samples endpoint on_result);
-      { w with calls = List.sort_uniq compare (id :: w.calls) }
+      {
+        w with
+        calls = put id (answers_for host.samples endpoint on_result) w.calls;
+      }
   | Action.Start_live { id; topic; on_update; _ } ->
-      if not (Hashtbl.mem host.feeds id) then
-        Hashtbl.replace host.feeds id (feed_for host.samples topic on_update);
-      { w with subs = put id fresh w.subs }
+      {
+        w with
+        subs = put id fresh w.subs;
+        feeds =
+          put id
+            (feed_for ~arrivals:host.arrivals host.samples topic on_update)
+            w.feeds;
+      }
   | Action.Stop id ->
       {
         w with
         timers = List.remove_assoc id w.timers;
-        calls = List.filter (fun c -> c <> id) w.calls;
+        calls = List.remove_assoc id w.calls;
         subs = List.remove_assoc id w.subs;
+        feeds = List.remove_assoc id w.feeds;
       }
   | Action.Run action ->
       let results =
@@ -663,8 +704,8 @@ let host_action host w = function
   | Action.Start_source _ ->
       w
 
-let live_moves host id sub =
-  let feed = Hashtbl.find host.feeds id in
+let live_moves host w id sub =
+  let feed = List.assoc id w.feeds in
   let move event sub = { event; via = Feed (id, sub) } in
   match sub.phase with
   | Connecting ->
@@ -674,9 +715,9 @@ let live_moves host id sub =
   | Up | Down ->
       let arrivals =
         if sub.arrivals < host.arrivals || sub.phase = Down then
-          List.init feed.count (fun i ->
+          List.init (Array.length feed.stale) (fun i ->
               move
-                (feed.ready i (sub.arrivals + 1))
+                feed.ready.(i).(sub.arrivals)
                 {
                   sub with
                   phase = Up;
@@ -690,32 +731,39 @@ let live_moves host id sub =
       let loss =
         match (sub.phase, sub.last) with
         | Up, Some i when not sub.dropped ->
-            [ move (feed.stale i) { sub with phase = Down; dropped = true } ]
+            [ move feed.stale.(i) { sub with phase = Down; dropped = true } ]
         | _ ->
             []
       in
       arrivals @ loss
-      @ [ move (feed.failed sub.last) { sub with phase = Ended } ]
+      @ [
+          move
+            ( match sub.last with
+            | Some i ->
+                feed.failed_last.(i)
+            | None ->
+                feed.failed_empty
+            )
+            { sub with phase = Ended };
+        ]
 
 let resource_moves host w =
   List.map (fun (id, event) -> { event; via = Fire id }) w.timers
   @ List.concat_map
-      (fun id ->
-        List.map
-          (fun event -> { event; via = Answer id })
-          (Hashtbl.find host.answers_of id)
+      (fun (id, answers) ->
+        List.map (fun event -> { event; via = Answer id }) answers
       )
       w.calls
-  @ List.concat_map (fun (id, sub) -> live_moves host id sub) w.subs
+  @ List.concat_map (fun (id, sub) -> live_moves host w id sub) w.subs
   @ List.mapi (fun i event -> { event; via = Result i }) w.results
 
 let consume w = function
-  | User ->
+  | View | Input ->
       w
   | Fire id ->
       { w with timers = List.remove_assoc id w.timers }
   | Answer id ->
-      { w with calls = List.filter (fun c -> c <> id) w.calls }
+      { w with calls = List.remove_assoc id w.calls }
   | Feed (id, sub) ->
       { w with subs = put id sub w.subs }
   | Result i ->
@@ -732,7 +780,7 @@ let owner_checks m =
         | Machine.Held _ ->
             None
         )
-      (Machine.active m w.s)
+      (Machine.active m w.props w.s)
   in
   [
     ( "timer-owner",
@@ -745,31 +793,124 @@ let owner_checks m =
         let owned = ids w in
         List.for_all
           (fun id -> List.mem (`Call, id) owned)
-          (w.calls @ List.map fst w.subs)
+          (List.map fst w.calls @ List.map fst w.subs)
     );
   ]
 
 type 'e recorder = {
   taken : (Spec.label, unit) Hashtbl.t;
   label : 'e -> string;
+  seen : (string, Spec.state) Hashtbl.t;
+  passed : (string, unit) Hashtbl.t;
+  mutable first : string option;
 }
 
-let send recorder m w e =
-  let s, actions, how = Machine.step m w.s e in
-  ( match how with
-  | `Entered | `Kept ->
+let recorder label =
+  {
+    taken = Hashtbl.create 64;
+    label;
+    seen = Hashtbl.create 16;
+    passed = Hashtbl.create 4;
+    first = None;
+  }
+
+let started recorder m s =
+  let name = Machine.name m s and init = Machine.name m (Machine.init m) in
+  if recorder.first = None then recorder.first <- Some name;
+  if name <> init then Hashtbl.replace recorder.passed init ()
+
+let see recorder m props s =
+  let name = Machine.name m s in
+  if not (Hashtbl.mem recorder.seen name) then
+    let active = Machine.active m props s in
+    let pick f = List.filter_map f active in
+    Hashtbl.replace recorder.seen name
+      {
+        Spec.name;
+        final = Machine.is_final m s;
+        timers =
+          pick (function
+            | Machine.Timer { ms; _ } ->
+                Some ms
+            | Machine.Call _ | Machine.Subscription _ | Machine.Held _ ->
+                None
+            );
+        sources =
+          pick (function
+            | Machine.Call { path; _ } ->
+                Some path
+            | Machine.Subscription { topic; _ } ->
+                Some ("live:" ^ topic)
+            | Machine.Timer _ | Machine.Held _ ->
+                None
+            );
+        held =
+          pick (function
+            | Machine.Held { name; _ } ->
+                Some name
+            | Machine.Timer _ | Machine.Call _ | Machine.Subscription _ ->
+                None
+            );
+      }
+
+let record recorder m ~from ~props s label (how : Machine.how) =
+  see recorder m props s;
+  match how with
+  | Entered | Kept ->
       Hashtbl.replace recorder.taken
         {
-          Spec.from = Machine.key m w.s;
-          target = Machine.key m s;
-          event = recorder.label e;
-          kept = how = `Kept;
+          Spec.from = Machine.name m from;
+          target = Machine.name m s;
+          event = label;
+          kept = how = Kept;
         }
         ()
-  | `Unhandled ->
+  | Unhandled ->
       ()
-  );
-  (s, actions)
+
+let finished = function
+  | Fire id | Answer id ->
+      Some id
+  | View | Input | Feed _ | Result _ ->
+      None
+
+let send ?finished recorder m w e =
+  let s, actions, how = Machine.step ?finished m w.props w.s e in
+  record recorder m ~from:w.s ~props:w.props s (recorder.label e) how;
+  (s, actions, how)
+
+let set_props recorder m w props =
+  let s, actions, how = Machine.set_props m ~previous:w.props props w.s in
+  record recorder m ~from:w.s ~props s "props" how;
+  (s, actions, how)
+
+let explored recorder m taken =
+  let init =
+    match recorder.first with
+    | Some name ->
+        name
+    | None ->
+        Machine.name m (Machine.init m)
+  in
+  {
+    Spec.id = Machine.id m;
+    init;
+    states =
+      Hashtbl.fold (fun _ state acc -> state :: acc) recorder.seen []
+      |> List.sort (fun (a : Spec.state) (b : Spec.state) ->
+          compare (a.name <> init, a.name) (b.name <> init, b.name)
+      );
+    edges =
+      List.filter_map
+        (fun (l : Spec.label) ->
+          if l.kept then
+            None
+          else
+            Some (l.from, l.target)
+        )
+        taken
+      |> List.sort_uniq compare;
+  }
 
 let finish ~recorder ~allow_unreached m = function
   | Ok ok ->
@@ -779,24 +920,17 @@ let finish ~recorder ~allow_unreached m = function
       in
       let unreached =
         List.filter
-          (fun (a, b) ->
-            a <> b
-            && (not
-                  (List.exists
-                     (fun (l : Spec.label) ->
-                       l.from = a && l.target = b && not l.kept
-                     )
-                     taken
-                  )
-               )
-            && not (List.mem (a, b) allow_unreached)
+          (fun name ->
+            (not (Hashtbl.mem recorder.seen name))
+            && (not (Hashtbl.mem recorder.passed name))
+            && not (List.mem name allow_unreached)
           )
-          (Machine.spec m).Spec.edges
+          (Option.value ~default:[] (Machine.states m))
       in
       if unreached <> [] then
-        Unreached { edges = unreached }
+        Unreached { states = unreached }
       else
-        Ok { ok with edges = taken }
+        Ok { ok with edges = taken; spec = explored recorder m taken }
   | (Violation _ | Unreached _ | Limit _ | Error _) as r ->
       r
 
@@ -820,67 +954,124 @@ let server_actions actions =
       )
     actions
 
+let start_props m = function
+  | [] -> (
+      match Machine.default_props m with
+      | Some props ->
+          Stdlib.Ok [ props ]
+      | None ->
+          Stdlib.Error
+            ("the component " ^ Machine.id m
+           ^ " has props: give them with ~props"
+            )
+    )
+  | props ->
+      Stdlib.Ok props
+
 let component_with ~client_only_sources ~max_states ~within ~inputs ~props
     ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants
-    (c : (_, _) Component.t) =
+    (c : (_, _, _) Component.t) =
   let m = c.machine in
-  let host =
-    {
-      samples;
-      arrivals;
-      answers_of = Hashtbl.create 16;
-      feeds = Hashtbl.create 16;
-    }
-  in
-  let recorder = { taken = Hashtbl.create 64; label } in
-  let exec w actions = List.fold_left (host_action host) w actions in
-  let w0 s =
-    { s; timers = []; calls = []; subs = []; results = []; hist = []; idx = 0 }
-  in
-  let s0, actions0 = Machine.start m in
-  let model =
-    {
-      view = (fun w -> c.view w.s);
-      enabled =
-        (fun w ->
-          dedup
-            (List.map
-               (fun event -> { event; via = User })
-               (handlers ~keys (c.view w.s)
-               @ source_events (Machine.held m w.s)
-               @ inputs w.s @ props
-               )
-            @ resource_moves host w
-            )
-        );
-      step =
-        (fun w mv ->
-          let w = consume w mv.via in
-          let s, actions = send recorder m w mv.event in
-          (exec { w with s } actions, actions)
-        );
-      final = (fun w -> Machine.is_final m w.s);
-      start = (exec (w0 s0) actions0, actions0);
-    }
-  in
-  let extra =
-    owner_checks m
-    @
-    if client_only_sources then
-      [ ("live-uses-client-source", fun w -> Machine.held m w.s = []) ]
-    else
-      []
-  in
-  let extra_actions =
-    if client_only_sources then
-      [ ("live-uses-client-action", fun _ actions -> server_actions actions) ]
-    else
-      []
-  in
-  run ~extra_actions ~max_states ~within ~model ~invariants ~extra
-    ~to_state:(fun w -> w.s)
-    ()
-  |> finish ~recorder ~allow_unreached m
+  match start_props m props with
+  | Stdlib.Error message ->
+      Error message
+  | Stdlib.Ok all_props ->
+      let host = { samples; arrivals } in
+      let recorder = recorder label in
+      let exec w actions = List.fold_left (host_action host) w actions in
+      let start props =
+        let s, actions = Machine.start m props in
+        started recorder m s;
+        see recorder m props s;
+        ( exec
+            {
+              props;
+              s;
+              timers = [];
+              calls = [];
+              subs = [];
+              feeds = [];
+              results = [];
+              hist = [];
+              idx = 0;
+            }
+            actions,
+          actions
+        )
+      in
+      let view w = c.view w.props w.s in
+      let model =
+        {
+          view;
+          enabled =
+            (fun w ->
+              dedup
+                (List.map
+                   (fun event ->
+                     { event = (Event event : (_, _) input); via = View }
+                   )
+                   (handlers ~keys (view w))
+                @ List.map
+                    (fun event ->
+                      { event = (Event event : (_, _) input); via = Input }
+                    )
+                    (source_events (Machine.held m w.props w.s) @ inputs w.s)
+                @ List.filter_map
+                    (fun props ->
+                      if props = w.props then
+                        None
+                      else
+                        Some
+                          { event = (Props props : (_, _) input); via = Input }
+                    )
+                    all_props
+                @ List.map
+                    (fun mv ->
+                      { mv with event = (Event mv.event : (_, _) input) }
+                    )
+                    (resource_moves host w)
+                )
+            );
+          step =
+            (fun w mv ->
+              let w = consume w mv.via in
+              match (mv.event : (_, _) input) with
+              | Event event ->
+                  let s, actions, how =
+                    send ?finished:(finished mv.via) recorder m w event
+                  in
+                  (exec { w with s } actions, actions, how)
+              | Props props ->
+                  let s, actions, how = set_props recorder m w props in
+                  (exec { w with s; props } actions, actions, how)
+            );
+          final = (fun w -> Machine.is_final m w.s);
+          start = List.map start all_props;
+          name = (fun w -> Machine.name m w.s);
+        }
+      in
+      let extra =
+        owner_checks m
+        @
+        if client_only_sources then
+          [
+            ("live-uses-client-source", fun w -> Machine.held m w.props w.s = []);
+          ]
+        else
+          []
+      in
+      let extra_actions =
+        if client_only_sources then
+          [
+            ("live-uses-client-action", fun _ actions -> server_actions actions);
+          ]
+        else
+          []
+      in
+      run ~extra_actions ~max_states ~within ~model ~invariants ~extra
+        ~to_state:(fun w -> w.s)
+        ()
+      |> finish ~recorder ~allow_unreached m
 
 let component ?(max_states = 100_000) ?(within = fun _ -> true)
     ?(inputs = fun _ -> []) ?(props = []) ?(samples = []) ?(arrivals = 2)
@@ -890,10 +1081,10 @@ let component ?(max_states = 100_000) ?(within = fun _ -> true)
     ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants c
 
 let live ?(max_states = 100_000) ?(within = fun _ -> true)
-    ?(inputs = fun _ -> []) ?(props = []) ?(samples = []) ?(arrivals = 2)
+    ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
     ?(allow_unreached = []) ?(label = fun _ -> "") ?(keys = default_keys)
     ?(invariants = []) (live : (_, _) Live.t) =
-  component_with ~client_only_sources:true ~max_states ~within ~inputs ~props
+  component_with ~client_only_sources:true ~max_states ~within ~inputs ~props:[]
     ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants live.component
 
 let rec nth l i =
@@ -930,17 +1121,10 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
       Error "no routes given"
   | first :: _ -> (
       let url0 = print first in
-      let component : (_, _) Component.t = root url0 in
+      let component : (_, _, _) Component.t = root url0 in
       let m = component.machine in
-      let host =
-        {
-          samples;
-          arrivals;
-          answers_of = Hashtbl.create 16;
-          feeds = Hashtbl.create 16;
-        }
-      in
-      let recorder = { taken = Hashtbl.create 64; label } in
+      let host = { samples; arrivals } in
+      let recorder = recorder label in
       let rec apply depth (w, acc) actions =
         List.fold_left
           (fun (w, acc) c ->
@@ -948,7 +1132,7 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
               if depth > 50 then
                 failwith "navigation loop: actions keep navigating";
               let w = { w with hist; idx } in
-              let s, cs = send recorder m w (url_event u) in
+              let s, cs, _ = send recorder m w (url_event u) in
               apply (depth + 1) ({ w with s }, acc @ cs) cs
             in
             match c with
@@ -975,22 +1159,24 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
           )
           (w, acc) actions
       in
-      let view w = component.view w.s in
-      let s0, actions0 = Machine.start m in
+      let view w = component.view w.props w.s in
+      let s0, actions0 = Machine.start m () in
+      started recorder m s0;
+      see recorder m () s0;
       let to_state w = { router = w.s; history = w.hist; index = w.idx } in
-      let user event = { event; via = User } in
+      let user event = { event; via = View } in
       let model =
         {
           view;
           enabled =
             (fun w ->
               dedup
-                (List.map
-                   (fun e -> user (Event e))
-                   (handlers ~keys (view w)
-                   @ source_events (Machine.held m w.s)
-                   @ inputs (to_state w)
-                   )
+                (List.map (fun e -> user (Event e)) (handlers ~keys (view w))
+                @ List.map
+                    (fun e -> { event = Event e; via = Input })
+                    (source_events (Machine.held m w.props w.s)
+                    @ inputs (to_state w)
+                    )
                 @ List.map
                     (fun mv -> { mv with event = Event mv.event })
                     (resource_moves host w)
@@ -1011,33 +1197,45 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
             );
           step =
             (fun w mv ->
+              let navigate actions =
+                let w, actions = apply 0 (w, []) actions in
+                (w, actions, Machine.Kept)
+              in
               match mv.event with
               | Event e ->
                   let w = consume w mv.via in
-                  let s, actions = send recorder m w e in
-                  apply 0 ({ w with s }, actions) actions
+                  let s, actions, how =
+                    send ?finished:(finished mv.via) recorder m w e
+                  in
+                  let w, actions = apply 0 ({ w with s }, actions) actions in
+                  (w, actions, how)
               | Link u ->
-                  apply 0 (w, []) [ Action.Run (Action.Navigate u) ]
+                  navigate [ Action.Run (Action.Navigate u) ]
               | Browser_back ->
-                  apply 0 (w, []) [ Action.Run Action.Back ]
+                  navigate [ Action.Run Action.Back ]
               | Browser_forward ->
-                  apply 0 (w, []) [ Action.Run Action.Forward ]
+                  navigate [ Action.Run Action.Forward ]
             );
           final = (fun w -> Machine.is_final m w.s);
+          name = (fun w -> Machine.name m w.s);
           start =
-            apply 0
-              ( {
-                  s = s0;
-                  timers = [];
-                  calls = [];
-                  subs = [];
-                  results = [];
-                  hist = [ url0 ];
-                  idx = 0;
-                },
-                actions0
-              )
-              actions0;
+            [
+              apply 0
+                ( {
+                    props = ();
+                    s = s0;
+                    timers = [];
+                    calls = [];
+                    subs = [];
+                    feeds = [];
+                    results = [];
+                    hist = [ url0 ];
+                    idx = 0;
+                  },
+                  actions0
+                )
+                actions0;
+            ];
         }
       in
       match
@@ -1056,12 +1254,20 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
             {
               invariant = "route-round-trip";
               trace = [];
-              state = to_state (fst model.start);
+              state = to_state (fst (List.hd model.start));
             }
       | None ->
           let extra =
             owner_checks m
             @ [
+                ( "route-round-trip",
+                  fun w ->
+                    match parse (print w.s) with
+                    | parsed ->
+                        parsed = w.s
+                    | exception Failure _ ->
+                        false
+                );
                 ( "link-parses",
                   fun w ->
                     List.for_all
@@ -1084,15 +1290,20 @@ let pp_app_event pp ppf = function
   | Browser_forward ->
       Format.pp_print_string ppf "forward"
 
+let pp_input pp ppf : (_, _) input -> unit = function
+  | Event e ->
+      pp ppf e
+  | Props _ ->
+      Format.pp_print_string ppf "new props"
+
 let pp_report ~pp_event ?pp_state ppf = function
   | Ok { states; transitions; not_explored; _ } ->
       Format.fprintf ppf "ok: %d states, %d transitions" states transitions;
       List.iter
         (fun entry -> Format.fprintf ppf "@\nnot explored in page: %s" entry)
         not_explored
-  | Unreached { edges } ->
-      Format.fprintf ppf "declared edges never taken: %s"
-        (String.concat ", " (List.map (fun (a, b) -> a ^ " -> " ^ b) edges))
+  | Unreached { states } ->
+      Format.fprintf ppf "states never reached: %s" (String.concat ", " states)
   | Limit { states } ->
       Format.fprintf ppf "limit reached after %d states" states
   | Error m ->

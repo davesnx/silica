@@ -1,182 +1,213 @@
-(** Statecharts with typed states.
+(** Statecharts over a plain variant.
 
-    A machine has one [State] module: a GADT whose constructors are the states
-    and whose index is the data the state carries. States must be constant
-    constructors. A snapshot is [At (state, data)]. The machine is a table with
-    one case for each state, built by {!Make}.
+    The states are the constructors of a plain OCaml variant, with their data
+    inside, and one function decides every step:
 
-    Timers ([after]) and sources ([invoke]) belong to the state. They start on
-    entry and stop on exit. [reenter] to the current state stops and starts them
-    again. Hosts carry this out through the actions {!Action.host}:
-    [Start_timer], [Start_call] and [Stop]; a host drops a timer or answer whose
-    id was stopped. *)
+    {[
+      type state = Idle | Saving | Saved of string | Failed of Remote.error
+      [@@deriving state_shape]
 
-exception
-  Undeclared_target of { machine : string; from : string; target : string }
-(** A handler went to a state that is not in the [~to_] list of the case that
-    handled the event. Going to the current state needs no entry. [target] is
-    ["#n"] when the state has no case; [n] is its index as in {!Missing_case}.
+      let machine =
+        Machine.make ~id:"save" ~init:Idle ~shape:state_shape
+          ~owns:(function
+            | Saving ->
+                [ Remote.call save "draft" (fun answer -> Answer answer) ]
+            | Saved _ ->
+                [ Source.after 2000 Reset ]
+            | Idle | Failed _ ->
+                []
+            )
+          (fun state event ->
+            match (state, event) with
+            | (Idle | Failed _), Save ->
+                Go Saving
+            | Saving, Answer (Ok time) ->
+                Go (Saved time)
+            | _ ->
+                Ignore
+          )
+    ]}
+
+    The machine enters a state when its [name] changes. A step to a state with
+    the same name keeps its timers and sources running, except those whose
+    {!Source.key} changed; {!Reenter} stops and starts them all again. Hosts
+    carry this out through the actions {!Action.host}: [Start_timer],
+    [Start_call], [Start_live], [Start_source] and [Stop]; a host drops a timer
+    or answer whose id was stopped.
+
+    A component with props uses {!make_with_props}: the update, [owns], [entry]
+    and [exit] get the props, and the props are not an event. *)
+
+type ('s, 'e) next =
+  | Ignore  (** The event is not handled: the snapshot does not change. *)
+  | Stay of 'e Action.t list
+      (** Handled: keep the snapshot and run the actions. *)
+  | Go of 's
+      (** Go to the snapshot. When its name is the name of the current one, only
+          the data changes: no exit, no entry, and the timers and sources whose
+          key did not change keep running. *)
+  | Go_with of 's * 'e Action.t list
+      (** Like [Go], and run the actions between the exit and the entry. *)
+  | Reenter of 's
+      (** Like [Go], but exit and enter also when the name does not change: all
+          timers and sources start again. A debounce is [Reenter] on a state
+          that owns a timer. *)
+
+val map_next : ('a -> 'b) -> ('a, 'e) next -> ('b, 'e) next
+(** Change the snapshot of a [Go], [Go_with] or [Reenter]. A helper that decides
+    the step of a part of the state, such as a record field, gives a [next] of
+    that part; [map_next] puts the part back into the whole state. *)
+
+type ('p, 's, 'e) t
+(** A machine with props ['p], snapshots ['s] and events ['e]. *)
+
+type 's shape
+(** What a machine knows about its state type: the name of the state of each
+    snapshot, and the list of every name. Make it with {!val-shape}, or with the
+    deriver [[@@deriving state_shape]] of [silica.ppx]:
+
+    {[
+      type state = Idle | Saving | Saved of string [@@deriving state_shape]
+      (* state_shape : state Machine.shape *)
+    ]}
+
+    The deriver names each constructor in lower case ([Saved] is ["saved"]);
+    [[@state_name "x"]] on a constructor gives another name, and two
+    constructors with one name are a compile error. *)
+
+val shape : name:('s -> string) -> ?names:string list -> unit -> 's shape
+(** [shape ~name ?names ()]: [name] names the state of a snapshot in the spec,
+    the checker and the ids of timers and sources. [names] lists every name, for
+    the checker to report the states that a run never reached. *)
+
+val shape_name : 's shape -> 's -> string
+(** The name of the state of a snapshot. *)
+
+val shape_names : 's shape -> string list
+(** Every name, or [[]] when the shape has no [names]. *)
+
+val make :
+  id:string ->
+  init:'s ->
+  shape:'s shape ->
+  ?owns:('s -> 'e Source.t list) ->
+  ?entry:('s -> 'e Action.t list) ->
+  ?exit:('s -> 'e Action.t list) ->
+  ?final:('s -> bool) ->
+  ?start:'e Action.t list ->
+  ('s -> 'e -> ('s, 'e) next) ->
+  (unit, 's, 'e) t
+(** [make ~id ~init ~shape update] is a machine with no props, for example
+    [Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~owns update].
+
+    [id] names the machine in the spec, in the checker and in the ids of timers
+    and sources. [shape] names its states (see {!type-shape}). [owns] lists the
+    timers ({!Source.after}), calls ({!Remote.call}) and sources of a snapshot
+    (see {!Source.key}). [entry] and [exit] give the actions of entering and
+    leaving a state. A [final] snapshot handles no event. [start] are actions
+    that run once, before the entry of [init].
+
+    The update ends with [| _ -> Ignore] in most machines; the checker reports
+    an event that the view offers and the machine ignores (see [Check]). *)
+
+val make_with_props :
+  id:string ->
+  init:'s ->
+  shape:'s shape ->
+  ?owns:('p -> 's -> 'e Source.t list) ->
+  ?entry:('p -> 's -> 'e Action.t list) ->
+  ?exit:('p -> 's -> 'e Action.t list) ->
+  ?final:('s -> bool) ->
+  ?start:'e Action.t list ->
+  ?on_props:('p option -> 'p -> 's -> ('s, 'e) next) ->
+  ('p -> 's -> 'e -> ('s, 'e) next) ->
+  ('p, 's, 'e) t
+(** Like {!make}, for a component with props: the parent gives them with
+    {!Component.node}, and the update, [owns], [entry] and [exit] get the props
+    of the moment. [on_props previous props state] runs when the component
+    starts ([previous = None]) and when the parent gives other props; it
+    defaults to [Ignore]. After it, the sources are compared by key, as after a
+    step, so a source that depends on the props starts again when they change.
 *)
 
-exception Missing_case of { machine : string; index : int }
-(** A state has no case. [index] is the position of the state constructor in the
-    [State] type, counted from 0. Raised by [make] for the initial state and for
-    every state in a [to_] list, so a handler cannot reach a state with no case:
-    going to one that is not in [to_] raises {!Undeclared_target}. *)
+val id : ('p, 's, 'e) t -> string
+(** The id of the machine, as given to {!make}. *)
 
-type ('s, 'e) t
-(** A machine over snapshots ['s] and events ['e]. *)
+val init : ('p, 's, 'e) t -> 's
+(** The snapshot that the machine starts in. *)
 
-type ('s, 'e) outcome
-(** What a handler decided. Built with [goto], [reenter], [stay] and [unhandled]
-    from {!Make}. *)
+val name : ('p, 's, 'e) t -> 's -> string
+(** The name of the state of the snapshot. *)
+
+val states : ('p, 's, 'e) t -> string list option
+(** The [names] of the shape of the machine. *)
+
+val is_final : ('p, 's, 'e) t -> 's -> bool
+(** A final state ignores every event. *)
+
+val default_props : ('p, 's, 'e) t -> 'p option
+(** [Some ()] for a machine made by {!make}, [None] for one made by
+    {!make_with_props}. *)
+
+val type_id : ('p, 's, 'e) t -> ('p * 's * 'e) Type.Id.t
+(** A type id made by {!make}, one for each machine. Hosts use it to know that
+    two machines with the same id have the same types. *)
 
 type resource =
   | Timer of { id : string; ms : int }
   | Call of { id : string; path : string }
   | Subscription of { id : string; topic : string }
   | Held of { id : string; name : string }
-      (** A timer, call, subscription or held source that the state of a
-          snapshot owns. [id] is the id used by the actions [Start_timer],
-          [Start_call], [Start_source], [Start_live] and [Stop] of
-          {!Action.host}. *)
+      (** A timer, call, subscription or held source that a snapshot owns. [id]
+          is the id used by the actions [Start_timer], [Start_call],
+          [Start_source], [Start_live] and [Stop] of {!Action.host}. *)
 
-val id : ('s, 'e) t -> string
-(** The id of the machine, as given to {!Make.make}. *)
+val active : ('p, 's, 'e) t -> 'p -> 's -> resource list
+(** The timers and sources that the snapshot owns. After [start], [step] or
+    [set_props], the actions and this list agree: a resource is running if and
+    only if its id was started and not stopped. *)
 
-val init : ('s, 'e) t -> 's
-(** The snapshot that the machine starts in. *)
+val held : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
+(** The held sources (see {!Source.focus_trap}) that the snapshot owns. The
+    checker reads them to know which presses can happen. *)
 
-val key : ('s, 'e) t -> 's -> string
-(** The name of the state of the snapshot. *)
+val can : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
+(** The machine handles the event in this snapshot: it is not final and the
+    update does not give [Ignore]. A view can disable a button with it. *)
 
-val is_final : ('s, 'e) t -> 's -> bool
-(** A final state ignores every event, including [always] handlers. *)
+type how = Unhandled | Kept | Entered
 
-val spec : ('s, 'e) t -> Spec.t
-(** The states, events and transitions of the machine, for the checker and for
-    export. *)
-
-val type_id : ('s, 'e) t -> ('s * 'e) Type.Id.t
-(** A type id made by [Make.make] and by {!map_snapshot}, one for each machine.
-    The checker uses it to find the props that a parent gives to this machine.
-*)
-
-val active : ('s, 'e) t -> 's -> resource list
-(** The timers and sources that the state of the snapshot owns. After [start] or
-    [send], the actions and this list agree: a resource is running if and only
-    if its id was started and not stopped. *)
-
-val held : ('s, 'e) t -> 's -> 'e Action.source list
-(** The held sources (see {!Source.focus_trap}) that the state of the snapshot
-    owns. The checker reads them to know which presses can happen. *)
-
-val start : ('s, 'e) t -> 's * 'e Action.host list
-(** The initial snapshot, the [start] actions of the machine and the actions of
-    entering it. *)
-
-val exit : ('s, 'e) t -> 's -> 'e Action.host list
-(** The actions of leaving the snapshot: [exit], then timer and source stops. *)
+val start : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
+(** The initial snapshot after the [start] actions of the machine, the actions
+    of entering it, and [on_props None props]. *)
 
 val step :
-  ('s, 'e) t ->
+  ?finished:string ->
+  ('p, 's, 'e) t ->
+  'p ->
   's ->
   'e ->
-  's * 'e Action.host list * [ `Unhandled | `Kept | `Entered ]
-(** Like {!send}, and tells whether the step entered a state: [`Entered] when
-    the state changed or the handler used [reenter], [`Kept] when the state
-    stayed (a [goto] to the current state, or [stay]). Hosts use it to give each
-    entry of a state its own instance (see {!Instance}). *)
+  's * 'e Action.host list * how
+(** Run the update. A final state handles nothing; [Ignore] leaves the snapshot
+    unchanged ([Unhandled]). On a change of state the actions are: [exit] and
+    stops of the old state, the actions of the step, [entry] and starts of the
+    new state ([Entered]). A step that keeps the name stops the sources whose
+    key went away, runs the actions and starts the new sources ([Kept]).
+    [Reenter] is [Entered] even when the name stays. Hosts use [Entered] to give
+    each entry of a state its own instance (see {!Instance}).
 
-val send :
-  ('s, 'e) t -> 's -> 'e -> 's * 'e Action.host list * [ `Handled | `Unhandled ]
-(** Run the handler of the current state, then the [always] handlers in order. A
-    final state handles nothing. An unhandled event leaves the snapshot
-    unchanged. On a change of state the actions are: [exit] and stops of the old
-    state, the actions of the handler, [entry] and starts of the new state.
-    [goto] to the current state keeps the state's timers and sources; [reenter]
-    restarts them.
+    [finished] is the id of the timer or call that raised the event: it ended
+    when it delivered. A handled step that keeps the name and still owns a
+    source with that id starts it again, so a state that owns
+    [Source.after 1000 Tick] and handles [Tick] with [Go] ticks every second.
+    Hosts give it for timers and calls; subscriptions and held sources do not
+    end when they deliver. *)
 
-    @raise Undeclared_target when the target is not declared. *)
+val set_props :
+  ('p, 's, 'e) t -> previous:'p -> 'p -> 's -> 's * 'e Action.host list * how
+(** The parent gave new props: run [on_props (Some previous) props], then
+    compare the sources by key. [Unhandled] when nothing changed. *)
 
-val map_snapshot : ('s, 'e) t -> get:('s -> 'a) -> set:('a -> 's) -> ('a, 'e) t
-(** The same machine over another view of the snapshot. [get (set a)] must equal
-    [a]. Used by {!Remote_machine} and by machines that show a plain record or
-    variant while they run on a GADT snapshot. *)
-
-module Make (State : sig
-  type 'p t
-end) : sig
-  type snapshot = At : 'p State.t * 'p -> snapshot
-
-  type targets =
-    | []
-    | ( :: ) : 'p State.t * targets -> targets
-        (** A list of states with different data, as in [~to_:[ A; B ]]. *)
-
-  type 'e case
-  (** One row of the table: a state, or [always]. *)
-
-  val at : 'p State.t -> 'p -> snapshot
-  (** [at state data] is the snapshot in [state] with [data]. *)
-
-  val same : 'a State.t -> 'b State.t -> bool
-  (** Two states are the same when they are the same constructor. *)
-
-  val goto :
-    ?actions:'e Action.t list -> 'p State.t -> 'p -> (snapshot, 'e) outcome
-  (** Go to a state. Going to the current state only changes its data: no exit,
-      no entry, timers and sources keep running. *)
-
-  val reenter :
-    ?actions:'e Action.t list -> 'p State.t -> 'p -> (snapshot, 'e) outcome
-  (** Like [goto], but exit and enter the state even when it is the current one.
-      A debounce is [reenter] on a state with an [after] timer. *)
-
-  val stay : 'e Action.t list -> (snapshot, 'e) outcome
-  (** Handle the event, keep the snapshot, run the actions. *)
-
-  val unhandled : (snapshot, 'e) outcome
-  (** The event has no handler in this state. The [always] handlers get it next;
-      if none takes it, the snapshot does not change. *)
-
-  val ignore : 'p -> 'e -> (snapshot, 'e) outcome
-  (** The handler of a state with no events. Same as [fun _ _ -> unhandled]. *)
-
-  val state :
-    'p State.t ->
-    string ->
-    ?to_:targets ->
-    ?entry:('p -> 'e Action.t list) ->
-    ?exit:('p -> 'e Action.t list) ->
-    ?after:(int * 'e) list ->
-    ?invoke:('p, 'e) Source.t list ->
-    ?final:bool ->
-    ('p -> 'e -> (snapshot, 'e) outcome) ->
-    'e case
-  (** [state st name ... handler] is the case of [st]. [to_] declares the states
-      the handler may go to. [after] timers, in milliseconds, and [invoke]
-      sources start on entry and stop on exit. [name] is the name in the spec,
-      the checker and the ids of timers and sources. *)
-
-  val always : ?to_:targets -> ('e -> (snapshot, 'e) outcome) -> 'e case
-  (** A handler tried in every state that is not final, after the handler of the
-      state returns [unhandled]. [to_] declares its targets. *)
-
-  val make :
-    id:string ->
-    init:snapshot ->
-    ?start:'e Action.t list ->
-    'e case list ->
-    (snapshot, 'e) t
-  (** [start] are actions that run once when the machine starts, before the
-      entry of [init].
-
-      @raise Missing_case
-        when the initial state, or a state in a [to_] list, has no case. *)
-
-  val cases_cover : (snapshot, 'e) t -> targets -> unit
-  (** For tests. Checks that every listed state has a case.
-
-      @raise Missing_case for the first listed state with no case. *)
-end
+val exit : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+(** The actions of leaving the snapshot: [exit], then the stops of its timers
+    and sources. *)

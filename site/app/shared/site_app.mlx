@@ -49,7 +49,7 @@ let components_nav current =
     <p class_="mb-2 px-3 text-xs font-semibold tracking-wide">"silica-ui"</p>
     <ul class_="flex flex-col gap-0.5">
       <li>
-        (Router.link ~current routes State.Components ()
+        (Router.link ~current routes Components
            [ Attr.string "class" side_link ]
            [ Node.text "Overview" ]
         )
@@ -153,28 +153,28 @@ let not_found () =
 let component_loading =
   <p class_="py-10 text-ui-muted" aria_busy=true>"Loading the component"</p>
 
-let page (snapshot : Router.snapshot) : Silica.Router.event Node.t =
-  match snapshot with
-  | Router.At (State.Home, ()) ->
+let page route : Router.event Node.t =
+  match route with
+  | Home ->
       <main id="main" class_="mx-auto max-w-7xl px-4 sm:px-6">
         (Site_landing.make ())
       </main>
-  | Router.At (State.Docs, ()) ->
-      with_sidebar ~label:"Documentation" (docs_nav snapshot)
+  | Docs ->
+      with_sidebar ~label:"Documentation" (docs_nav route)
         (Site_doc_page.make ~slug:index_slug ())
-  | Router.At (State.Doc, slug) ->
-      with_sidebar ~label:"Documentation" (docs_nav snapshot)
+  | Doc slug ->
+      with_sidebar ~label:"Documentation" (docs_nav route)
         (Site_doc_page.make ~slug ())
-  | Router.At (State.Components, ()) ->
-      with_sidebar ~label:"Components" (components_nav snapshot)
+  | Components ->
+      with_sidebar ~label:"Components" (components_nav route)
         (components_index ())
-  | Router.At (State.Component, slug) ->
-      with_sidebar ~label:"Components" (components_nav snapshot)
+  | Component slug ->
+      with_sidebar ~label:"Components" (components_nav route)
         (Node.chunk Site_lazy.component_page ~loading:component_loading
            (fun page -> page slug
          )
         )
-  | Router.At (State.Not_found, _) ->
+  | Not_found _ ->
       not_found ()
 
 let top_link =
@@ -182,13 +182,13 @@ let top_link =
    data-active:text-ui-text data-active:font-medium \
    aria-[current=page]:text-ui-text aria-[current=page]:font-medium"
 
-let render theme (snapshot : Router.snapshot) : Silica.Router.event Node.t =
+let render theme route : Router.event Node.t =
   <div class_="flex min-h-screen flex-col">
     <header class_="sticky top-0 z-30 border-b border-ui-border bg-ui-surface">
       <div
         class_="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 \
                 px-4 py-3 sm:px-6">
-        (Router.link routes State.Home ()
+        (Router.link routes Home
            [
              Attr.string "id" "home-link";
              Attr.string "class"
@@ -213,11 +213,11 @@ let render theme (snapshot : Router.snapshot) : Silica.Router.event Node.t =
            ]
         )
         <nav aria_label="Main" class_="flex items-center gap-1">
-          (Router.link ~current:snapshot routes State.Docs ()
+          (Router.link ~current:route routes Docs
              [ Attr.string "id" "nav-docs"; Attr.string "class" top_link ]
              [ Node.text "Docs" ]
           )
-          (Router.link ~current:snapshot routes State.Components ()
+          (Router.link ~current:route routes Components
              [ Attr.string "id" "nav-components"; Attr.string "class" top_link ]
              [ Node.text "Components" ]
           )
@@ -231,7 +231,7 @@ let render theme (snapshot : Router.snapshot) : Silica.Router.event Node.t =
         )
       </div>
     </header>
-    <div class_="grow">(page snapshot)</div>
+    <div class_="grow">(page route)</div>
     <footer class_="border-t border-ui-border">
       <div
         class_="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-4 \
@@ -245,53 +245,41 @@ let render theme (snapshot : Router.snapshot) : Silica.Router.event Node.t =
     </footer>
   </div>
 
-let title (snapshot : Router.snapshot) =
+let title route =
   let named text = text ^ {js| · Silica|js} in
-  match snapshot with
-  | Router.At (State.Home, ()) ->
+  match route with
+  | Home ->
       "Silica: views that are statecharts"
-  | Router.At (State.Docs, ()) ->
+  | Docs ->
       named "Documentation"
-  | Router.At (State.Doc, slug) ->
+  | Doc slug ->
       named (Option.value (Site_nav.title slug) ~default:"Page not found")
-  | Router.At (State.Components, ()) ->
+  | Components ->
       named "Components"
-  | Router.At (State.Component, slug) -> (
+  | Component slug -> (
       match Site_components.find slug with
       | Some entry ->
           named entry.name
       | None ->
           named "No such component"
     )
-  | Router.At (State.Not_found, _) ->
+  | Not_found _ ->
       named "Not found"
 
-let status (snapshot : Router.snapshot) =
-  match snapshot with
-  | Router.At (State.Doc, slug) when Site_nav.find slug = None ->
+let status = function
+  | Doc slug when Site_nav.find slug = None ->
       404
-  | Router.At (State.Component, slug) when Site_components.find slug = None ->
+  | Component slug when Site_components.find slug = None ->
       404
-  | Router.At (State.Not_found, _) ->
+  | Not_found _ ->
       404
-  | Router.At (State.Home, ())
-  | Router.At (State.Docs, ())
-  | Router.At (State.Doc, _)
-  | Router.At (State.Components, ())
-  | Router.At (State.Component, _) ->
+  | Home | Docs | Doc _ | Components | Component _ ->
       200
 
-let chunks : Router.snapshot -> Chunk.any list = function
-  | Router.At (State.Component, _) ->
+let chunks = function
+  | Component _ ->
       [ Chunk.Any Site_lazy.component_page ]
-  | Router.At
-      ( ( State.Home
-        | State.Docs
-        | State.Doc
-        | State.Components
-        | State.Not_found ),
-        _
-      ) ->
+  | Home | Docs | Doc _ | Components | Not_found _ ->
       []
 
 let make theme = Router.make routes ~title ~chunks ~render:(render theme)

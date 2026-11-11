@@ -1,64 +1,46 @@
 open Silica
 open Silica_ui
 
-type page = { slug : string; values : (string * Story.values) list }
-type event = Props of string | Set of string * Story.values
-
-module States = struct
-  type _ t = Idle : unit t | Shown : page t
-end
-
-open States
-module Component_page_machine = Machine.Make (States)
+type values = (string * Story.values) list
+type event = Set of string * Story.values
+type state = Idle | Shown of values [@@deriving state_shape]
 
 let fresh slug =
-  {
-    slug;
-    values =
-      ( match Site_catalog.find slug with
-      | Some entry ->
-          List.map
-            (fun (_, s) -> (Story.slug s, Story.defaults s))
-            entry.stories
-      | None ->
-          []
-      );
-  }
+  match Site_catalog.find slug with
+  | Some entry ->
+      List.map (fun (_, s) -> (Story.slug s, Story.defaults s)) entry.stories
+  | None ->
+      []
 
 let machine =
-  Component_page_machine.make ~id:"component-page"
-    ~init:(Component_page_machine.at Idle ())
-    [
-      Component_page_machine.state Idle "idle" ~to_:[ Shown ]
-        (fun () -> function
-        | Props slug ->
-            Component_page_machine.goto Shown (fresh slug)
-        | Set _ ->
-            Component_page_machine.unhandled
-        );
-      Component_page_machine.state Shown "shown" (fun page -> function
-        | Props slug when slug <> page.slug ->
-            Component_page_machine.goto Shown (fresh slug)
-        | Props _ ->
-            Component_page_machine.stay []
-        | Set (story, values) when List.mem_assoc story page.values ->
-            Component_page_machine.goto Shown
-              {
-                page with
-                values =
-                  List.map
-                    (fun (s, v) ->
-                      if s = story then
-                        (s, values)
-                      else
-                        (s, v)
-                    )
-                    page.values;
-              }
-        | Set _ ->
-            Component_page_machine.stay []
-        );
-    ]
+  Machine.make_with_props ~id:"component-page" ~init:Idle ~shape:state_shape
+    ~on_props:(fun previous slug _ ->
+      if previous = Some slug then
+        Ignore
+      else
+        Go (Shown (fresh slug))
+    )
+    (fun _ state event ->
+      match (state, event) with
+      | Shown values, Set (story, story_values) when List.mem_assoc story values
+        ->
+          Go
+            (Shown
+               (List.map
+                  (fun (s, v) ->
+                    if s = story then
+                      (s, story_values)
+                    else
+                      (s, v)
+                  )
+                  values
+               )
+            )
+      | Shown _, Set _ ->
+          Stay []
+      | Idle, Set _ ->
+          Ignore
+    )
 
 let section_heading ~slug ~anchor text =
   <h2
@@ -144,13 +126,11 @@ let facts_view (facts : Site_facts.t) =
     </div>
   </div>
 
-let story_view ~(entry : Site_catalog.entry) page (file, (story : Story.t)) =
+let story_view ~(entry : Site_catalog.entry) values (file, (story : Story.t)) =
   let anchor = Story.slug story in
   let id = entry.info.slug ^ "-" ^ anchor in
   let values =
-    Option.value
-      (List.assoc_opt anchor page.values)
-      ~default:(Story.defaults story)
+    Option.value (List.assoc_opt anchor values) ~default:(Story.defaults story)
   in
   Node.element "section"
     [ Attr.string "class" "mt-14"; Attr.string "data-story" anchor ]
@@ -252,12 +232,12 @@ let themes_view (entry : Site_catalog.entry) =
         </div>
       </section>
 
-let view (snapshot : Component_page_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Component_page_machine.At (Idle, ()) ->
+let view slug state : event Node.t =
+  match state with
+  | Idle ->
       <div />
-  | Component_page_machine.At (Shown, page) -> (
-      match Site_catalog.find page.slug with
+  | Shown values -> (
+      match Site_catalog.find slug with
       | None ->
           <div>
             (Node.element "h1"
@@ -304,11 +284,11 @@ let view (snapshot : Component_page_machine.snapshot) : event Node.t =
             | None ->
                 Node.list []
             )
-            (Node.list (List.map (story_view ~entry page) entry.stories))
+            (Node.list (List.map (story_view ~entry values) entry.stories))
             (themes_view entry)
           </div>
     )
 
-let component = Component.make machine view
-let make ?key ~slug () = Component.node ?key ~props:(Props slug) component
+let component = Component.make_with_props machine view
+let make ?key ~slug () = Component.node_with_props ?key ~props:slug component
 let page slug : Silica.Router.event Node.t = make ~slug ()

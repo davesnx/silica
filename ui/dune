@@ -2,4 +2,8 @@
  (name silica_ui)
  (public_name silica-ui)
  (modes byte native melange)
- (libraries silica))
+ (flags
+  (:standard -w @4))
+ (libraries silica)
+ (preprocess
+  (pps silica.ppx)))

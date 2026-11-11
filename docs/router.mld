@@ -8,73 +8,76 @@ reach the router as the event [Url_changed]. See {!Silica.Router} and
 
 {1:routes Routes}
 
-The routes are the constructors of a GADT, as the states of any machine. The
-type index of a route is its data: its path parameters and its typed query.
-[path] gives the {!Silica.Route.t} of each route: one value that reads and
-writes the URL.
+The routes are a plain variant, as the states of any machine. A constructor
+carries the data of its route: its path parameters and its typed query. Each
+{!Silica.Router.val-route} gives three things for one constructor: the
+{!Silica.Route.t} that reads and writes the URL, a function that makes the
+route from the data, and a function that gives the data back, or [None] for
+another route.
+
+The deriver [[@@deriving routes]] of [silica.ppx] writes these routes for you.
+Put the path of each constructor in a [[@route ...]] attribute. For a type
+[route] it makes [route_routes] (for a type [t], [routes]), in the order of
+the constructors. A constant constructor has the data [()]; a constructor with
+two or more arguments has a tuple, so its path uses [/+]. A constructor with no
+[[@route]] is a compile error. The two functions come from one constructor, so
+they always agree. When you write {!Silica.Router.val-route} by hand, the
+checker finds a pair that does not agree: [Check.app] checks
+[parse (print route) = route] for every route it reaches
+([route-round-trip]).
 
 {@mlx file=examples/shared/doc_books.mlx[
 open Silica
 
 type search = { text : string; page : int }
 
-module State = struct
-  type _ t =
-    | Home : unit t
-    | Book : int t
-    | Search : search t
-    | Not_found : string t
-
-  let path : type data. data t -> data Route.t = function
-    | Home ->
-        Route.root
-    | Book ->
-        Route.(s "books" / int)
-    | Search ->
+type route =
+  | Home [@route Route.root]
+  | Book of int [@route Route.(s "books" / int)]
+  | Search of search
+      [@route
         Route.(
           s "search"
           +? map_query
                (fun (text, page) -> { text; page })
                (fun { text; page } -> (text, page))
                (string_query "q" ~default:"" &? int_query "page" ~default:1)
-        )
-    | Not_found ->
-        Route.rest
-end
-
-module Router = Router.Make (State)
+        )]
+  | Not_found of string [@route Route.rest]
+[@@deriving routes]
 
 let routes =
-  Router.routes ~not_found:State.Not_found
-    [ State.Home; State.Book; State.Search; State.Not_found ]
+  Router.routes
+    ~not_found:(function Not_found _ -> true | _ -> false)
+    route_routes
 
-let title : Router.snapshot -> string = function
-  | Router.At (State.Home, ()) ->
+let title = function
+  | Home ->
       "Books"
-  | Router.At (State.Book, id) ->
+  | Book id ->
       "Book " ^ string_of_int id
-  | Router.At (State.Search, { text; _ }) ->
+  | Search { text; _ } ->
       "Search for " ^ text
-  | Router.At (State.Not_found, _) ->
+  | Not_found _ ->
       "Not found"
 
-let page : Router.snapshot -> Silica.Router.event Node.t = function
-  | Router.At (State.Home, ()) ->
+let page : route -> Router.event Node.t = function
+  | Home ->
       <p>"Pick a book."</p>
-  | Router.At (State.Book, id) ->
+  | Book id ->
       <p>(Node.text ("This is book " ^ string_of_int id ^ "."))</p>
-  | Router.At (State.Search, { text; page }) ->
+  | Search { text; page } ->
       <p>(Node.text (Printf.sprintf "Results for %s, page %d." text page))</p>
-  | Router.At (State.Not_found, path) ->
+  | Not_found path ->
       <p>(Node.text ("Nothing at " ^ path ^ "."))</p>
 
 let render current =
   <div>
     <nav>
-      (Router.link ~current routes State.Home () [] [ Node.text "Home" ])
-      (Router.link ~current routes State.Book 7 [] [ Node.text "Book 7" ])
-      (Router.link ~current routes State.Search
-         { text = "ocaml"; page = 1 }
+      (Router.link ~current routes Home [] [ Node.text "Home" ])
+      (Router.link ~current routes (Book 7) [] [ Node.text "Book 7" ])
+      (Router.link ~current routes
+         (Search { text = "ocaml"; page = 1 })
          []
          [ Node.text "Search" ]
       )
@@ -112,12 +115,12 @@ printed, so one route has one URL:
 val url : Silica.Url.t =
   {Silica.Url.path = ["search"]; query = [("page", "x"); ("q", "ocaml")];
    hash = None}
-# let route = Doc_books.Router.parse Doc_books.routes url;;
-val route : Doc_books.Router.snapshot =
-  Doc_books.Router.At (Doc_books.State.Search, <poly>)
-# Silica.Url.to_string (Doc_books.Router.print Doc_books.routes route);;
+# let route = Silica.Router.parse Doc_books.routes url;;
+val route : Doc_books.route =
+  Doc_books.Search {Doc_books.text = "ocaml"; page = 1}
+# Silica.Url.to_string (Silica.Router.print Doc_books.routes route);;
 - : string = "/search?q=ocaml"
-# Silica.Route.describe (Doc_books.State.path Doc_books.State.Book);;
+# Silica.Router.name Doc_books.routes (Doc_books.Book 7);;
 - : string = "/books/:int"
 ]}
 
@@ -130,11 +133,11 @@ match every path, so a bad path goes to it.
 
 - [base]: the path that every URL of the app starts with, such as ["/app"].
   [parse] needs it and takes it off; [print] puts it first.
-- [not_found]: the route that {!Silica.Router.Make.is_not_found} names. The
+- [not_found]: the routes that {!Silica.Router.is_not_found} names. The
   server uses it for the status 404.
 - [reenter]: the routes whose page starts again when only the data of the
-  route changes. Any other route keeps its page, which gets the new data as a
-  props event.
+  route changes. Any other route keeps its page, which gets the new data as
+  new props.
 - [preload]: the Remote calls of each route (see {{!section-preload}Preload}).
 
 [Router.make routes ~render url] is the component for the root of the app.
@@ -170,7 +173,7 @@ val page : Silica_memory.t = <abstr>
 
 {1:links Links and navigation}
 
-{!Silica.Router.Make.link} makes an [a] element with [href] and
+{!Silica.Router.link} makes an [a] element with [href] and
 [data-silica-link]. The browser turns a press into a history entry with no
 page load. A press with a modifier key or another button, and a press on a
 link with [target] or [download], are left to the browser. The options of a
@@ -183,18 +186,18 @@ link:
   that id after the paint. The router ignores the hash.
 - [preload]: when the host fetches the calls of the route of the link.
 
-{!Silica.Router.Make.link_replace} replaces the history entry instead. Use it
+{!Silica.Router.link_replace} replaces the history entry instead. Use it
 for a link that changes only the query, such as a filter.
 
-A machine navigates with actions: [Router.navigate routes route data] pushes
+A machine navigates with actions: [Router.navigate routes (Book 7)] pushes
 an entry and [Router.replace] replaces it. Both take [hash]. A navigation to
 the same printed URL does nothing.
 
 {1:layouts Layouts and nested pages}
 
 There is no tree of routes. A layout is a component at a fixed place in
-[render], such as a header. The instance tree keeps it by its position and its
-machine, so it keeps its state when the page changes. A child page that needs
+[render], such as a header. The instance tree keeps it by its position and the
+id of its machine, so it keeps its state when the page changes. A child page that needs
 the data of its parent carries it in its own route data. [data-active] marks
 the link of the parent page.
 
@@ -216,13 +219,13 @@ page".
 {1:block Unsaved changes}
 
 A page that holds a draft owns the block: {!Silica.Source.block} in the
-[invoke] list of the state that holds the draft. While the state is active,
+[owns] list of the snapshot that holds the draft. While the snapshot owns it,
 every navigation (a link press, a navigation action, back and forward) stops
 before the URL changes, and reaches the page as a {!Silica.Nav.t}. The page
 asks the user, then sends [Action.Resume nav] to let it happen. While a block is
 held, closing or reloading the tab asks the user through the browser.
 
-The block starts and stops with the state that owns the draft, so it cannot
+The block starts and stops with the snapshot that owns it, so it cannot
 stay after the draft is saved. Mini Linear holds one while a title or a
 description differs from the saved text (see {!page-linear}).
 
@@ -281,14 +284,14 @@ to routes and so depends on them:
 
 From [site/app/shared/site_app.mlx]:
 {@ocaml skip[
-let chunks : Router.snapshot -> Chunk.any list = function
-  | Router.At (State.Component, _) ->
+let chunks = function
+  | Component _ ->
       [ Chunk.Any Site_lazy.component_page ]
 ]}
 
 From [site/app/shared/site_routes.ml]:
 {@ocaml skip[
-  Router.routes ~not_found:State.Not_found ~preload ~chunked:[ State.Component ]
+    ~chunked:(function Component _ -> true | _ -> false)
 ]}
 
 What happens:
@@ -309,7 +312,7 @@ What happens:
 
 {1:server Status and redirects on the server}
 
-The server render gives the status from the root snapshot, for example 404
+The server render gives the status from the current route, for example 404
 when [is_not_found] is [true]. A page can set its own status with
 {!Silica.Action.Set_status}; the last one wins. A [Navigate] or [Replace] during
 a server render, such as a guard [Redirect] at the first URL, makes the answer

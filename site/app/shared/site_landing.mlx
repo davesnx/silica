@@ -1,26 +1,14 @@
 open Silica
 
 type event = Moved of string
+type state = Watching of string [@@deriving state_shape]
 
-module States = struct
-  type _ t = Watching : string t
-end
-
-open States
-module Landing_machine = Machine.Make (States)
-
-let demo = Landing_save.machine
-let spec = Machine.spec demo
+let spec = Site_landing_chart.spec
 
 let machine =
-  Landing_machine.make ~id:"landing"
-    ~init:(Landing_machine.at Watching spec.init)
-    [
-      Landing_machine.state Watching "watching" (fun _ -> function
-        | Moved state ->
-            Landing_machine.goto Watching state
-        );
-    ]
+  Machine.make ~id:"landing" ~init:(Watching spec.init) ~shape:state_shape
+    (fun (Watching _) (Moved name) -> Go (Watching name)
+  )
 
 let place = function
   | "idle" ->
@@ -161,8 +149,9 @@ let ideas =
   [
     ( "Statecharts",
       "machines",
-      "Each component is a machine and a view. States are a GADT, transitions \
-       are declared, and timers and calls belong to the state that owns them."
+      "Each component is a machine and a view. States are a plain variant, one \
+       function decides every step, and timers and calls belong to the state \
+       that owns them."
     );
     ( "Local, Remote, Live",
       "data",
@@ -196,7 +185,7 @@ let ideas =
     );
   ]
 
-let view (Landing_machine.At (Watching, current)) : event Node.t =
+let view (Watching current) : event Node.t =
   <div>
     <section
       class_="grid items-center gap-12 pt-10 pb-20 \
@@ -226,8 +215,7 @@ let view (Landing_machine.At (Watching, current)) : event Node.t =
                ]
              [ Node.text "Start the tutorial" ]
           )
-          (Site_routes.Router.link Site_routes.routes
-             Site_routes.State.Components ()
+          (Router.link Site_routes.routes Site_routes.Components
              [
                Attr.string "class"
                  "rounded-ui border border-ui-border px-4 py-2 font-medium \
@@ -257,8 +245,8 @@ let view (Landing_machine.At (Watching, current)) : event Node.t =
                   [&_button]:bg-ui-accent [&_button]:px-4 [&_button]:py-2 \
                   [&_button]:font-medium [&_button]:text-ui-accent-text \
                   [&_button:disabled]:opacity-60">
-          (Component.node Landing_save.component ~output:(fun _ snapshot ->
-               [ Moved (Machine.key demo snapshot) ]
+          (Component.node Landing_save.component ~output:(fun _ state ->
+               [ Moved (Machine.shape_name Landing_save.state_shape state) ]
            )
           )
         </div>
@@ -275,9 +263,9 @@ let view (Landing_machine.At (Watching, current)) : event Node.t =
             "The code is the chart"
           </h2>
           <p class_="mt-4 max-w-[52ch] leading-7 text-ui-muted">
-            "This is the whole component above. The diagram is drawn from its \
-             spec, which the machine builds without running a handler. The \
-             checker reads the same spec."
+            "This is the whole component above. The diagram is drawn from the \
+             spec that a checker run of the machine finds when the site is \
+             built."
           </p>
           <div class_="mt-6">
             (Site_links.doc "machines"

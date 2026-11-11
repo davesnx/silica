@@ -1,19 +1,15 @@
 open Silica_ui
 
-module Note = struct
-  type props = unit
-  type event = |
+type nothing = |
 
-  let id = "delete-dialog"
-  let view () = <p class_="mt-2 text-sm">"You cannot undo this."</p>
-  let closes : event -> bool = function _ -> .
-end
-
-module Delete_dialog = Dialog.Make (Note)
+let delete_dialog =
+  Dialog.component ~id:"delete-dialog"
+    ~closes:(function (_ : nothing) -> .)
+    (fun () -> <p class_="mt-2 text-sm">"You cannot undo this."</p>)
 
 let render ~id values =
-  Delete_dialog.make
-    (Delete_dialog.props ~id ~title:"Delete the draft?"
+  Dialog.make delete_dialog
+    (Dialog.props ~id ~title:"Delete the draft?"
        ~description:"The draft and its notes go away." ~trigger:"Delete draft"
        ~close:"Cancel"
        ~dismissible:(Story.bool values "dismissible")

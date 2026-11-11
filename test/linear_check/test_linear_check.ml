@@ -3,6 +3,9 @@ open Linear_checks
 let print_report pp_event report =
   Format.asprintf "%a" (fun f r -> Check.pp_report ~pp_event f r) report
 
+let print_component_report pp_event report =
+  print_report (Check.pp_input pp_event) report
+
 let report name = function
   | Check.Ok { states; transitions; not_explored; _ } ->
       Printf.printf "%s: %d states, %d transitions, not explored: [%s]\n" name
@@ -43,21 +46,15 @@ let test_router () =
 
 let test_props_from_the_router () =
   let children = children () in
-  Alcotest.(check (list string))
-    "the detail gets the numbers of the visited routes"
-    [ "props 1"; "props 2"; "props 9" ]
-    (List.sort compare
-       (List.map
-          (Format.asprintf "%a" pp_detail_event)
-          (Check.props children Linear_detail.component)
-       )
-    );
+  Alcotest.(check (list int))
+    "the detail gets the numbers of the visited routes" [ 1; 2; 9 ]
+    (List.sort compare (Check.props children Linear_detail.component));
   Alcotest.(check (list string))
     "the create modal gets open and closed"
     [ "props false"; "props false filtered"; "props true" ]
     (List.sort compare
        (List.map
-          (Format.asprintf "%a" pp_create_event)
+          (Format.asprintf "%a" pp_create_props)
           (Check.props children Linear_create.component)
        )
     )
@@ -67,7 +64,7 @@ let test_list () =
   | Check.Ok _ as r ->
       report "list" r
   | r ->
-      Alcotest.fail (print_report pp_list_event r)
+      Alcotest.fail (print_component_report pp_list_event r)
 
 let test_detail () =
   match
@@ -76,7 +73,7 @@ let test_detail () =
   | Check.Ok _ as r ->
       report "detail" r
   | r ->
-      Alcotest.fail (print_report pp_detail_event r)
+      Alcotest.fail (print_component_report pp_detail_event r)
 
 let test_create () =
   match
@@ -85,7 +82,7 @@ let test_create () =
   | Check.Ok _ as r ->
       report "create" r
   | r ->
-      Alcotest.fail (print_report pp_create_event r)
+      Alcotest.fail (print_component_report pp_create_event r)
 
 let test_create_dialog () =
   let create_children =
@@ -95,32 +92,32 @@ let test_create_dialog () =
     | Check.Ok { children; _ } ->
         children
     | r ->
-        Alcotest.fail (print_report pp_create_event r)
+        Alcotest.fail (print_component_report pp_create_event r)
   in
   let props =
-    Check.props create_children Linear_create.Create_dialog.component
+    Check.props create_children Linear_create.dialog_component.component
   in
   Alcotest.(check (list string))
     "the create machine asks the dialog to open, to close and to stay while \
      sending"
     [ "props busy"; "props closed"; "props open" ]
-    (List.sort_uniq compare (List.map dialog_label props));
+    (List.sort_uniq compare (List.map dialog_props_label props));
   match create_dialog ~props () with
   | Check.Ok _ as r ->
       report "create dialog" r
   | r ->
-      Alcotest.fail (print_report pp_dialog_event r)
+      Alcotest.fail (print_component_report pp_dialog_event r)
 
 let test_create_reaches_submitting () =
   let never =
     {
       Check.name = "never submitting";
       holds =
-        (fun (Linear_create.Create_machine.At (state, _)) _ ->
+        (fun (state : Linear_create.state) _ ->
           match state with
-          | Linear_create.States.Submitting ->
+          | Submitting _ ->
               false
-          | _ ->
+          | Closed | Editing _ | Failed _ ->
               true
         );
     }
@@ -132,12 +129,17 @@ let test_create_reaches_submitting () =
   with
   | Check.Violation { trace; _ } ->
       Alcotest.(check string)
-        "shortest way to a send" "props true; title \"x\"; submit"
+        "shortest way to a send: the check starts with each props, so the open \
+         dialog needs no props step"
+        "title \"x\"; submit"
         (String.concat "; "
-           (List.map (Format.asprintf "%a" pp_create_event) trace)
+           (List.map
+              (Format.asprintf "%a" (Check.pp_input pp_create_event))
+              trace
+           )
         )
   | r ->
-      Alcotest.fail (print_report pp_create_event r)
+      Alcotest.fail (print_component_report pp_create_event r)
 
 let test_me () =
   match me () with
@@ -145,30 +147,64 @@ let test_me () =
       report "me" r;
       Alcotest.(check int) "loading, ready, failed" 3 states
   | r ->
-      Alcotest.fail (print_report pp_me_event r)
+      Alcotest.fail (print_component_report pp_me_event r)
 
 let alone name pp check () =
   match check () with
   | Check.Ok _ as r ->
       report name r
   | r ->
-      Alcotest.fail (print_report pp r)
+      Alcotest.fail (print_component_report pp r)
+
+let spec name = function
+  | Check.Ok { spec; _ } ->
+      spec
+  | _ ->
+      Alcotest.failf "the check of %s did not pass" name
+
+let test_comment_of_another_author () =
+  match comment ~props:[ (mine, false) ] () with
+  | Check.Unreached { states } ->
+      Alcotest.(check (list string))
+        "a comment of another author is never edited"
+        [ "editing"; "saving"; "edited" ]
+        states
+  | r ->
+      Alcotest.fail (print_component_report pp_comment_event r)
 
 let test_lint () =
   let open Silica in
+  let create_report =
+    create ~props:(Check.props (children ()) Linear_create.component) ()
+  in
+  let create_children =
+    match create_report with
+    | Check.Ok { children; _ } ->
+        children
+    | _ ->
+        Alcotest.fail "the check of create-issue did not pass"
+  in
   let issues =
     List.concat_map Spec.lint
       [
-        Machine.spec (Linear_app.app (Url.of_string "/")).machine;
-        Machine.spec Linear_list.machine;
-        Machine.spec Linear_detail.machine;
-        Machine.spec Linear_create.machine;
-        Machine.spec Linear_create.Create_dialog.machine;
-        Machine.spec Linear_me.machine;
-        Machine.spec Linear_comments.machine;
-        Machine.spec Linear_composer.machine;
-        Machine.spec Linear_comment.machine;
-        Machine.spec Linear_unsaved.machine;
+        spec "router" (Lazy.force router_report);
+        spec "list" (list ());
+        spec "detail"
+          (detail ~props:(Check.props (children ()) Linear_detail.component) ());
+        spec "create" create_report;
+        spec "create dialog"
+          (create_dialog
+             ~props:
+               (Check.props create_children
+                  Linear_create.dialog_component.component
+               )
+             ()
+          );
+        spec "me" (me ());
+        spec "comments" (comments ());
+        spec "composer" (composer ());
+        spec "comment" (comment ());
+        spec "unsaved" (unsaved ());
       ]
   in
   Alcotest.(check (list string))
@@ -199,7 +235,9 @@ let () =
           Alcotest.test_case "composer alone" `Quick
             (alone "composer" pp_composer_event composer);
           Alcotest.test_case "comment alone" `Quick
-            (alone "comment" pp_comment_event comment);
+            (alone "comment" pp_comment_event (fun () -> comment ()));
+          Alcotest.test_case "a comment of another author" `Quick
+            test_comment_of_another_author;
           Alcotest.test_case "every machine passes lint" `Quick test_lint;
         ]
       );

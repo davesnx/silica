@@ -176,35 +176,29 @@ type current = {
 }
 
 type event =
-  | Props of props
   | Choose of string  (** The name of a choice, from the switcher. *)
   | System_dark of bool  (** The system setting is dark. *)
 
-module State : sig
-  type fixed = { props : props; theme : t }
-  type system = {
-    props : props;
-    dark : bool option;  (** [None] until the media source answers. *)
-  }
+type state =
+  | Fixed_theme of t  (** A fixed theme. Its state name is ["fixed"]. *)
+  | System_scheme of bool option
+      (** The system setting decides: [Some dark] once the media source answers,
+          [None] before. Its state name is ["system"]. *)
 
-  type _ t = Idle : unit t | Fixed : fixed t | System : system t
-end
+val machine : (props, state, event) Silica.Machine.t
+(** In [System_scheme] it holds [Source.media "(prefers-color-scheme: dark)"].
+    Each change of choice sets [data-theme]; a change made in the page (a
+    [Choose], or props with another choice) also sets the cookie for one year.
+*)
 
-type snapshot = At : 'data State.t * 'data -> snapshot
+val current : props -> state -> current option
+(** [None] under [System_scheme] until the system setting is known (always in a
+    server render). *)
 
-val machine : (snapshot, event) Silica.Machine.t
-(** In [System] it holds [Source.media "(prefers-color-scheme: dark)"]. Each
-    change of choice sets [data-theme]; a change made in the page (a [Choose],
-    or props with another choice) also sets the cookie for one year. *)
-
-val current : snapshot -> current option
-(** [None] before the first props, and under [System] until the system setting
-    is known (always in a server render). *)
-
-val switcher_component : (snapshot, event) Silica.Component.t
+val switcher_component : (props, state, event) Silica.Component.t
 (** The machine with a {!Select} of ["System"] and the label of each theme. *)
 
-val provider_component : (snapshot, event) Silica.Component.t
+val provider_component : (props, state, event) Silica.Component.t
 (** The machine with an empty view. *)
 
 val switcher :

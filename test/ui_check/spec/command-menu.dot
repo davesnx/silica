@@ -1,13 +1,9 @@
 digraph "command-menu" {
 rankdir=LR;
 "command-menu.__init" [shape=point];
-"command-menu.__init" -> "command-menu.idle";
-"command-menu.idle" [label="idle" shape=box];
+"command-menu.__init" -> "command-menu.closed";
 "command-menu.closed" [label="closed" shape=box];
 "command-menu.open" [label="open\nhold focus_trap\nhold scroll_lock\nhold dismiss" shape=box];
-"command-menu.closed" -> "command-menu.open" [label="props open"];
-"command-menu.idle" -> "command-menu.closed" [label="props, props closed"];
-"command-menu.idle" -> "command-menu.open" [label="props open"];
-"command-menu.open" -> "command-menu.closed" [label="close escape-key, close outside-press, props closed, run"];
-"command-menu.open" -> "command-menu.open";
+"command-menu.closed" -> "command-menu.open" [label="props"];
+"command-menu.open" -> "command-menu.closed" [label="close escape-key, close outside-press, props, run"];
 }

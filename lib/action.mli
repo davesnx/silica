@@ -1,7 +1,7 @@
 (** Requests that a machine asks its host to carry out. App code builds {!t}
-    values only. Timers and calls are not actions: a state owns them through
-    [after] and [invoke] (see {!Machine}), and hosts see them as {!host} values
-    that only the library builds. *)
+    values only. Timers and calls are not actions: a state owns them through the
+    [owns] list of {!Machine.make}, and hosts see them as {!host} values that
+    only the library builds. *)
 
 type 'e t =
   | Focus of Ref.t
@@ -44,7 +44,7 @@ type 'e t =
           after a push, the old URL after a replace, the other way after a back
           or forward. The renderer does not report the undo. The router raises
           it when its guard answers [Cancel]. *)
-  | Preload of Remote.request
+  | Preload of Endpoint.request
       (** Fetch the call now and keep the answer for a later call with the same
           endpoint path and input (see {!Runtime}). The runtime handles it: a
           renderer never receives it. *)
@@ -180,22 +180,22 @@ type 'e host =
   | Run of 'e t
   | Start_source of { id : string; source : 'e source }
       (** Start the held resource. A [Stop] with the same id ends it. Raised
-          when a state with that source is entered. *)
+          when a state starts to own that source. *)
   | Start_timer of { id : string; ms : int; event : 'e }
       (** Raise [event] after [ms] milliseconds, unless stopped first. Raised
-          when a state with an [after] timer is entered. *)
+          when a state starts to own a {!Source.after} timer. *)
   | Start_call : {
       id : string;
-      endpoint : ('i, 'o) Remote.endpoint;
+      endpoint : ('i, 'o, 'x) Endpoint.t;
       input : 'i;
       timeout_ms : int option;
-      on_result : ('o, Remote.error) result -> 'e;
+      on_result : ('o, 'x) Endpoint.answer -> 'e;
     }
       -> 'e host
       (** Call the endpoint and raise [on_result] with the answer, unless
-          stopped first. Raised when a state with an [invoke] source is entered.
+          stopped first. Raised when a state starts to own a {!Remote.call}.
           When [timeout_ms] passes before the answer, the host raises
-          [on_result (Error (Network "timeout"))] and drops the answer. *)
+          [on_result (Failed (Network "timeout"))] and drops the answer. *)
   | Start_live : {
       id : string;
       topic : 's Topic.t;

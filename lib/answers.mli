@@ -28,8 +28,8 @@ val remove : t -> path:string -> input:string -> t
 val to_script : ?nonce:string -> t -> string
 (** An HTML element [<script type="application/json" id="silica-answers">] with
     the table as JSON. The character [<] is written as [<], so the text cannot
-    end the script element or start a comment. [nonce] becomes the [nonce]
-    attribute. *)
+    end the script element or start a comment. A [nonce] that is not empty
+    becomes the [nonce] attribute; an empty one writes no attribute. *)
 
 val script_id : string
 (** ["silica-answers"]. *)

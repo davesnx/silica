@@ -2,7 +2,7 @@ type 'a t =
   | Idle
   | Loading of 'a option
   | Ready of { data : 'a; stale : bool }
-  | Failed of { error : Remote.error; last : 'a option }
+  | Failed of { error : Endpoint.error; last : 'a option }
 
 let data = function
   | Idle ->
@@ -14,8 +14,16 @@ let data = function
   | Failed { last; _ } ->
       last
 
-let is_loading = function Loading _ -> true | _ -> false
-let is_stale = function Ready { stale; _ } -> stale | _ -> false
+let is_loading = function
+  | Loading _ ->
+      true
+  | Idle | Ready _ | Failed _ ->
+      false
+let is_stale = function
+  | Ready { stale; _ } ->
+      stale
+  | Idle | Loading _ | Failed _ ->
+      false
 
 let map f = function
   | Idle ->

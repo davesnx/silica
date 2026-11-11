@@ -8,4 +8,6 @@
   silica_example_adapter
   alcotest
   unix
-  threads.posix))
+  threads.posix)
+ (preprocess
+  (pps silica.ppx)))

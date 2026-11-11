@@ -158,7 +158,7 @@ How it works:
   of the bytes of the encoded input, in 8 hex digits.
 - In a page with the [silica-static] element, the browser host sends no
   [POST] for a Remote call: it reads that file with a [GET]. A call that no
-  page answered gets status 404, and its machine gets [Error (Http 404)].
+  page answered gets status 404, and its machine gets [Failed (Http 404)].
 
 So the first page reads its answers from its HTML, and a link to another docs
 page reads the answer file of that page, on hover as on a server.
@@ -230,7 +230,7 @@ After a restart the sessions are gone, because the store is in memory, with or
 without [SILICA_SECRET]:
 
 - A call from a page that was open before the restart gets status 403 (the
-  cookie names no session). Its machine gets [Error (Http 403)].
+  cookie names no session). Its machine gets [Failed (Http 403)].
 - A Live socket is closed with [close_session], and the page reloads once. The
   reload gets a new session and a new token (see {!page-server}).
 

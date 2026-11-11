@@ -28,27 +28,20 @@ let raises_invalid what f =
 module Host = struct
   type event = Changed of Theme.current | Set_choice of Theme.choice
 
-  module State = struct
-    type _ t = Show : (Theme.choice * string list) t
-  end
-
-  module Mach = Machine.Make (State)
-
   let renders = ref 0
 
   let machine choice =
-    Mach.make ~id:"theme-host"
-      ~init:(Mach.at State.Show (choice, []))
-      [
-        Mach.state State.Show "show" (fun (choice, seen) -> function
-          | Changed current ->
-              Mach.goto State.Show (choice, seen @ [ Theme.name current.theme ])
-          | Set_choice choice ->
-              Mach.goto State.Show (choice, seen)
-          );
-      ]
+    Machine.make ~id:"theme-host" ~init:(choice, [])
+      ~shape:(Machine.shape ~name:(fun _ -> "show") ())
+      (fun (choice, seen) event ->
+        match event with
+        | Changed current ->
+            Go (choice, seen @ [ Theme.name current.theme ])
+        | Set_choice choice ->
+            Go (choice, seen)
+      )
 
-  let view ~listen (At (State.Show, (choice, seen)) : Mach.snapshot) =
+  let view ~listen (choice, seen) =
     incr renders;
     let on_change =
       if listen then

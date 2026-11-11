@@ -58,11 +58,9 @@ let item_props () =
   Check.props (children (Lazy.force router_report)) Example_item.component
 
 let test_item_props () =
-  Alcotest.(check (list string))
-    "the router gives the visited numbers" [ "props 1"; "props 2" ]
-    (List.sort compare
-       (List.map (Format.asprintf "%a" pp_item_event) (item_props ()))
-    )
+  Alcotest.(check (list int))
+    "the router gives the visited numbers" [ 1; 2 ]
+    (List.sort compare (item_props ()))
 
 let test_item_alone () =
   match item ~props:(item_props ()) () with
@@ -70,7 +68,7 @@ let test_item_alone () =
       Alcotest.(check (list string)) "no children" [] not_explored;
       print "item" r
   | r ->
-      Alcotest.fail (print_report pp_item_event r)
+      Alcotest.fail (print_report pp_item_input r)
 
 let test_item_reachable () =
   let never_loaded =
@@ -82,12 +80,12 @@ let test_item_reachable () =
   match item ~invariants:[ never_loaded ] ~props:(item_props ()) () with
   | Check.Violation { trace; _ } ->
       Alcotest.(check string)
-        "shortest trace" "props 1; settled ok"
+        "shortest trace" "settled ok"
         (String.concat "; "
-           (List.map (Format.asprintf "%a" pp_item_event) trace)
+           (List.map (Format.asprintf "%a" pp_item_input) trace)
         )
   | r ->
-      Alcotest.fail (print_report pp_item_event r)
+      Alcotest.fail (print_report pp_item_input r)
 
 let test_about () =
   match about () with
@@ -122,8 +120,8 @@ let test_not_found () =
       (children (Lazy.force router_report))
       Example_not_found.component
   in
-  Alcotest.(check int) "one url from the router" 1 (List.length props);
-  match not_found ~props () with
+  Alcotest.(check int) "one not-found page from the router" 1 (List.length props);
+  match not_found () with
   | Check.Ok _ as r ->
       print "not_found" r
   | r ->
@@ -134,7 +132,7 @@ let test_votes () =
   | Check.Ok _ as r ->
       print "votes" r
   | r ->
-      Alcotest.fail (print_report pp_votes_event r)
+      Alcotest.fail (print_report (Check.pp_input pp_votes_event) r)
 
 let test_vote () =
   match vote () with

@@ -298,7 +298,7 @@ module Make (Io : IO) = struct
         if l.Live.channel = channel then
           Some
             (Render.to_string
-               (l.component.view (Machine.init l.component.machine))
+               (l.component.view () (Machine.init l.component.machine))
             )
         else
           None
@@ -357,7 +357,8 @@ module Make (Io : IO) = struct
           ~status:(Option.value outcome.status ~default:status)
           ~title:outcome.title ~scripts ~head body
 
-  let rendered ?dev ?on_error ?(islands = []) (c : (_, _) Component.t) ~title =
+  let rendered ?dev ?on_error ?(islands = []) (c : (_, _, _) Component.t) ~title
+      =
     let tree = Instance.mount ?dev ?on_error c in
     let node, actions = update tree None in
     let outcome = apply (outcome ~title) actions in
@@ -384,14 +385,14 @@ module Make (Io : IO) = struct
           body
     )
 
-  let render_component (c : (_, _) Component.t) ~title ~scripts ?preload
+  let render_component (c : (_, _, _) Component.t) ~title ~scripts ?preload
       ?(head = "") ?dev ?on_error ?error_page ?csrf ?islands () =
     guard ?dev ?on_error ?error_page (fun () ->
         let _, outcome, body = rendered ?dev ?on_error ?islands c ~title in
         respond ?csrf ?preload ~status:200 ~scripts ~head outcome body
     )
 
-  type failure = Bad_input of string | Failed of string
+  type failure = Bad_input of string | Rejected of Json.t | Failed of string
 
   type handler = {
     path : string;
@@ -411,8 +412,9 @@ module Make (Io : IO) = struct
               Io.bind pending (function
                 | Ok o ->
                     Io.return (Ok ((Remote.output endpoint).encode o))
-                | Error e ->
-                    Io.return (Error (Failed e))
+                | Error x ->
+                    Io.return
+                      (Error (Rejected ((Remote.rejected endpoint).encode x)))
                 )
         )
     in
@@ -450,7 +452,7 @@ module Make (Io : IO) = struct
                     match (Remote.output endpoint).decode json with
                     | Ok value ->
                         Some
-                          ( on_result (Ok value),
+                          ( on_result (Remote.Ok value),
                             fun table ->
                               Answers.add table ~path ~input:encoded
                                 ~output:(Json.to_string json)
@@ -528,9 +530,10 @@ module Make (Io : IO) = struct
         !answers
       )
 
-  let render_page_settled app ~status ~scripts ?preload ?(head = "") ?dev
-      ?on_error ?error_page ?csrf ?islands ?nonce
-      ?(settle_timeout_ms = default_settle_timeout_ms) ~handlers ~context url =
+  let settle_page ~handlers ~islands ~csrf ~nonce ~context app ~status ~scripts
+      ?preload ?(head = "") ?dev ?on_error ?error_page
+      ?(settle_timeout_ms = default_settle_timeout_ms) url =
+    let islands = Some islands and csrf = Some csrf and nonce = Some nonce in
     let page =
       Option.value error_page
         ~default:(default_error_page ~dev:(Option.value dev ~default:false))
@@ -571,16 +574,16 @@ module Make (Io : IO) = struct
     close : unit -> unit;
   }
 
-  let call_endpoint : type i o.
+  let call_endpoint : type i o x.
       handler list ->
       context ->
-      (i, o) Remote.endpoint ->
+      (i, o, x) Remote.endpoint ->
       i ->
-      (o, Remote.error) result Io.t =
+      (o, x) Remote.answer Io.t =
    fun handlers context endpoint input ->
     match List.find_opt (fun h -> h.path = Remote.path endpoint) handlers with
     | None ->
-        Io.return (Error (Remote.Http 404))
+        Io.return (Remote.Failed (Remote.Http 404))
     | Some h ->
         let* r =
           h.call context (Codec.to_string (Remote.input endpoint) input)
@@ -590,14 +593,21 @@ module Make (Io : IO) = struct
           | Ok json -> (
               match (Remote.output endpoint).decode json with
               | Ok o ->
-                  Ok o
+                  Remote.Ok o
               | Error e ->
-                  Error (Remote.Decode e)
+                  Remote.Failed (Remote.Decode e)
+            )
+          | Error (Rejected json) -> (
+              match (Remote.rejected endpoint).decode json with
+              | Ok x ->
+                  Remote.Rejected x
+              | Error e ->
+                  Remote.Failed (Remote.Decode e)
             )
           | Error (Bad_input _) ->
-              Error (Remote.Http 400)
+              Remote.Failed (Remote.Http 400)
           | Error (Failed _) ->
-              Error (Remote.Http 500)
+              Remote.Failed (Remote.Http 500)
           )
 
   let start_runner ~log ?(on_close = ignore) (live : (_, _) Live.t) ~handlers
@@ -671,8 +681,8 @@ module Make (Io : IO) = struct
       let* () = send_state actions in
       List.iter run actions;
       Io.return ()
-    and step event () =
-      let s, actions, _ = Machine.send machine !state event in
+    and step ?finished event () =
+      let s, actions, _ = Machine.step ?finished machine () !state event in
       state := s;
       publish actions
     and run = function
@@ -680,13 +690,13 @@ module Make (Io : IO) = struct
           let token = start id in
           Io.async (fun () ->
               let* () = Io.sleep (float_of_int ms /. 1000.) in
-              enqueue (deliver id token (step event))
+              enqueue (deliver id token (step ~finished:id event))
           )
       | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
           let token = start id in
           Io.async (fun () ->
               let* result = call_endpoint handlers context endpoint input in
-              enqueue (deliver id token (step (on_result result)))
+              enqueue (deliver id token (step ~finished:id (on_result result)))
           );
           Option.iter
             (fun ms ->
@@ -694,7 +704,9 @@ module Make (Io : IO) = struct
                   let* () = Io.sleep (float_of_int ms /. 1000.) in
                   enqueue
                     (deliver id token
-                       (step (on_result (Error (Remote.Network "timeout"))))
+                       (step ~finished:id
+                          (on_result (Remote.Failed (Remote.Network "timeout")))
+                       )
                     )
               )
             )
@@ -716,7 +728,7 @@ module Make (Io : IO) = struct
     in
     let* () =
       enqueue (fun () ->
-          let s, actions = Machine.start machine in
+          let s, actions = Machine.start machine () in
           state := s;
           publish actions
       )
@@ -780,7 +792,15 @@ module Make (Io : IO) = struct
     nonce : string;
     asset : string -> string;
     imports : string -> string list;
+    handlers : handler list;
+    islands : island list;
   }
+
+  let render_page_settled app ~status ~scripts ?preload ?head ?dev ?on_error
+      ?error_page ?settle_timeout_ms (page : page) =
+    settle_page ~handlers:page.handlers ~islands:page.islands ~csrf:page.csrf
+      ~nonce:page.nonce ~context:page.context app ~status ~scripts ?preload
+      ?head ?dev ?on_error ?error_page ?settle_timeout_ms page.url
 
   type socket = { send : string -> unit Io.t; close : int -> unit }
   type connection = { receive : string -> unit Io.t; closed : unit -> unit }
@@ -851,13 +871,10 @@ module Make (Io : IO) = struct
     | None ->
         None
     | Some id ->
-        t.config.sessions.get ~now:(t.config.now ()) id
-
-  let touch t (session : Session.session) =
-    let now = t.config.now () in
-    let session = { session with last_seen = now } in
-    t.config.sessions.set session;
-    session
+        let now = t.config.now () in
+        t.config.sessions.update ~now id (fun current ->
+            { current with last_seen = now }
+        )
 
   let new_session t =
     let now = t.config.now () in
@@ -1023,7 +1040,7 @@ module Make (Io : IO) = struct
     let session, fresh =
       match find_session t req.headers with
       | Some session ->
-          (touch t session, false)
+          (session, false)
       | None ->
           (new_session t, true)
     in
@@ -1038,6 +1055,8 @@ module Make (Io : IO) = struct
           csrf;
           nonce;
           asset = asset_url t;
+          handlers = t.handlers;
+          islands = t.islands;
           imports =
             (fun public ->
               match t.assets with
@@ -1077,6 +1096,12 @@ module Make (Io : IO) = struct
           log t ~source:"silica.remote"
             (Printf.sprintf "%s: bad input: %s" h.path e);
           text 400 "bad request"
+      | Error (Rejected json) ->
+          {
+            status = 422;
+            headers = [ ("content-type", "application/json") ];
+            body = Json.to_string json;
+          }
       | Error (Failed e) ->
           log t ~source:"silica.remote" (Printf.sprintf "%s: %s" h.path e);
           text 500 "internal error"
@@ -1111,7 +1136,6 @@ module Make (Io : IO) = struct
                   | Some token
                     when Kit.Csrf.valid ~secret:t.config.secret
                            ~session:session.id token -> (
-                      let session = touch t session in
                       match
                         List.find_opt (fun h -> h.path = req.path) t.handlers
                       with
@@ -1220,7 +1244,6 @@ module Make (Io : IO) = struct
                    )
                 )
           | Some session ->
-              let session = touch t session in
               let connect socket =
                 let context = { request = req; session } in
                 let id =

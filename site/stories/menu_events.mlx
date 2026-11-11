@@ -3,34 +3,27 @@ open Silica_ui
 
 type event = Changed of bool * Popup.reason | Selected of string
 
-module States = struct
-  type _ t = Page : string list t
-end
-
-module Menu_events_machine = Machine.Make (States)
-
 let machine =
-  Menu_events_machine.make ~id:"menu-events"
-    ~init:(Menu_events_machine.at Page [])
-    [
-      Menu_events_machine.state Page "page" (fun events -> function
-        | Changed (opened, reason) ->
-            Menu_events_machine.goto Page
-              (events
-              @ [
-                  Printf.sprintf "%s %s"
-                    ( if opened then
-                        "open"
-                      else
-                        "close"
-                    )
-                    (Popup.reason_name reason);
-                ]
-              )
-        | Selected value ->
-            Menu_events_machine.goto Page (events @ [ "select " ^ value ])
-        );
-    ]
+  Machine.make ~id:"menu-events" ~init:[]
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun events event ->
+      match event with
+      | Changed (opened, reason) ->
+          Go
+            (events
+            @ [
+                Printf.sprintf "%s %s"
+                  ( if opened then
+                      "open"
+                    else
+                      "close"
+                  )
+                  (Popup.reason_name reason);
+              ]
+            )
+      | Selected value ->
+          Go (events @ [ "select " ^ value ])
+    )
 
 let item ?(disabled = false) value label = { Menu.value; label; disabled }
 
@@ -42,7 +35,7 @@ let actions =
     item "delete" "Delete";
   ]
 
-let view (Menu_events_machine.At (Page, events)) =
+let view events =
   <section class_="flex flex-col gap-4">
     <div class_="flex gap-2">
       <button

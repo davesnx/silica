@@ -1,3 +1,9 @@
 (executables
  (names docs_gen embed_gen facts_gen)
+ (modules docs_gen embed_gen facts_gen)
  (libraries odoc-parser str))
+
+(executable
+ (name landing_gen)
+ (modules landing_gen)
+ (libraries silica silica.check silica_docs_examples_native))

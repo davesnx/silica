@@ -69,18 +69,31 @@ let trigger_attrs parts ~haspopup ~open_ =
   else
     []
 
-let template =
-  {
-    trigger = Ref.make "trigger";
-    popup = Ref.make "popup";
-    trigger_id = "trigger";
-    popup_id = "popup";
-  }
+let dismiss ?escape ?outside ?focus_out parts =
+  Source.dismiss ?escape ?outside ?focus_out [ parts.trigger; parts.popup ]
 
-let scoped id source =
-  Source.map_refs (fun data r -> Ref.make (id data ^ "-" ^ Ref.name r)) source
+let layer ?escape ?outside ?focus_out ?place parts =
+  [
+    dismiss ?escape ?outside ?focus_out parts;
+    Source.anchor ?place ~anchor:parts.trigger parts.popup;
+  ]
 
-let dismiss ?escape ?outside parts =
-  Source.dismiss ?escape ?outside [ parts.trigger; parts.popup ]
+let close ?(focus = true) parts closed : (_, _) Machine.next =
+  if focus then
+    Go_with (closed, [ Action.Focus parts.trigger ])
+  else
+    Go closed
 
 let class_attr = function "" -> [] | value -> [ Attr.string "class" value ]
+
+let open_change open_ previous props =
+  match (Option.map open_ previous, open_ props) with
+  | Some before, Some value when before = Some value ->
+      None
+  | (Some _ | None), Some value ->
+      Some value
+  | (Some _ | None), None ->
+      None
+
+let report on_open_change value reason =
+  match on_open_change with Some f -> [ f value reason ] | None -> []

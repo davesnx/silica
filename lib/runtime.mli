@@ -27,7 +27,7 @@ val start :
   create:
     (dev:bool ->
     on_error:(exn -> Node.error -> unit) option ->
-    ('s, 'e) Instance.t
+    ('p, 's, 'e) Instance.t
     ) ->
   unit ->
   unit

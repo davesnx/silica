@@ -1,74 +1,63 @@
 open Silica
 open Example_model
 
-type event = Props of int | Settled of (Item.t, Remote.error) result
+type event = Settled of (Item.t, string) Remote.answer
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Loading : int t
-    | Loaded : Item.t t
-    | Failed : Remote.error t
-end
-
-module Item_machine = Machine.Make (States)
-
-let title text = [ Action.Set_title text ]
+type state =
+  | Loading
+  | Loaded of Item.t
+  | Missing of string
+  | Failed of Remote.error
+[@@deriving state_shape]
 
 let machine =
-  Item_machine.make ~id:"item" ~init:(Item_machine.at Idle ())
-    [
-      Item_machine.always ~to_:[ Loading ] (function
-        | Props id ->
-            Item_machine.reenter Loading id
-        | Settled _ ->
-            Item_machine.unhandled
-        );
-      Item_machine.state Idle "idle"
-        ~entry:(fun () -> title "Item")
-        Item_machine.ignore;
-      Item_machine.state Loading "loading" ~to_:[ Loaded; Failed ]
-        ~entry:(fun _ -> title "Item")
-        ~invoke:[ Source.call item_endpoint Fun.id (fun r -> Settled r) ]
-        (fun _ -> function
-          | Settled (Ok item) ->
-              Item_machine.goto Loaded item
-          | Settled (Error error) ->
-              Item_machine.goto Failed error
-          | Props _ ->
-              Item_machine.unhandled
-          );
-      Item_machine.state Loaded "loaded"
-        ~entry:(fun (item : Item.t) -> title item.title)
-        Item_machine.ignore;
-      Item_machine.state Failed "failed"
-        ~entry:(fun _ -> title "Item")
-        Item_machine.ignore;
-    ]
+  Machine.make_with_props ~id:"item" ~init:Loading ~shape:state_shape
+    ~entry:(fun _ -> function
+      | Loaded item ->
+          [ Action.Set_title item.title ]
+      | Loading | Missing _ | Failed _ ->
+          [ Action.Set_title "Item" ]
+      )
+    ~owns:(fun id -> function
+      | Loading ->
+          [ Remote.call item_endpoint id (fun answer -> Settled answer) ]
+      | Loaded _ | Missing _ | Failed _ ->
+          []
+      )
+    ~on_props:(fun previous id _ ->
+      match previous with
+      | Some previous when previous <> id ->
+          Go Loading
+      | Some _ | None ->
+          Ignore
+    )
+    (fun _ state event ->
+      match (state, event) with
+      | Loading, Settled (Ok item) ->
+          Go (Loaded item)
+      | Loading, Settled (Rejected reason) ->
+          Go (Missing reason)
+      | Loading, Settled (Failed error) ->
+          Go (Failed error)
+      | _ ->
+          Ignore
+    )
 
 let text = Node.text
 let price cents = Printf.sprintf "$%d.%02d" (cents / 100) (cents mod 100)
 
-let error_text : Remote.error -> string = function
-  | Http code ->
-      "Server answered " ^ string_of_int code
-  | Decode msg ->
-      "Bad answer: " ^ msg
-  | Network msg ->
-      "Network error: " ^ msg
-
-let view (snapshot : Item_machine.snapshot) : event Node.t =
+let view id state : event Node.t =
   <div>
     <h1>"Item"</h1>
     (Example_nav.make ())
-    ( match snapshot with
-    | Item_machine.At (Idle, ()) ->
-        <p>"Nothing loaded."</p>
-    | Item_machine.At (Loading, id) ->
+    ( match state with
+    | Loading ->
         <p>(text (Printf.sprintf "Loading item %d..." id))</p>
-    | Item_machine.At (Failed, error) ->
-        <p>(text (error_text error))</p>
-    | Item_machine.At (Loaded, item) ->
+    | Missing reason ->
+        <p>(text reason)</p>
+    | Failed error ->
+        <p>(text (Remote.error_to_string error))</p>
+    | Loaded item ->
         <article>
           <h2>(text item.title)</h2>
           <p>(text (price item.price_cents))</p>
@@ -79,5 +68,5 @@ let view (snapshot : Item_machine.snapshot) : event Node.t =
     )
   </div>
 
-let component = Component.make machine view
-let make ?key ~id () = Component.node ?key ~props:(Props id) component
+let component = Component.make_with_props machine view
+let make ?key ~id () = Component.node_with_props ?key ~props:id component

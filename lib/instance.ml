@@ -7,6 +7,7 @@ type context = {
   dev : bool;
   on_error : (exn -> Node.error -> unit) option;
   mutable waiting : int;
+  machines : (string, int) Hashtbl.t;
 }
 
 let error_counter = ref 0
@@ -25,19 +26,19 @@ type segment = Index of int | Key of string
 
 type boundary_cell = { mutable failure : Node.error option }
 
-type ('s, 'e) cell = {
+type ('p, 's, 'e) cell = {
   id : int;
   context : context;
-  component : ('s, 'e) Node.component;
+  component : ('p, 's, 'e) Node.component;
   mutable snapshot : 's;
   mutable entry : int;
   mutable alive : bool;
   mutable remount : bool;
-  mutable props : 'e option;
+  mutable props : 'p;
   mutable notify : 'e -> 's -> unit;
   mutable notify_final : 's -> unit;
   mutable final_sent : bool;
-  mutable children : ((segment list * Obj.t) * packed) list;
+  mutable children : ((segment list * string) * packed) list;
   mutable boundaries : (segment list * boundary_cell) list;
   mutable catch : (string * string -> exn -> unit) option;
   owned : (string, string) Hashtbl.t;
@@ -47,9 +48,9 @@ type ('s, 'e) cell = {
   mutable last : ('s * message Node.t) option;
 }
 
-and packed = Packed : ('s, 'e) cell -> packed
+and packed = Packed : ('p, 's, 'e) cell -> packed
 
-type ('s, 'e) t = { context : context; root : ('s, 'e) cell }
+type ('p, 's, 'e) t = { context : context; root : ('p, 's, 'e) cell }
 
 let add_action context (action : message Action.host) =
   context.actions <- action :: context.actions
@@ -57,10 +58,10 @@ let add_action context (action : message Action.host) =
 let qualify cell local =
   string_of_int cell.id ^ "." ^ string_of_int cell.entry ^ "/" ^ local
 
-let where : type s e. (s, e) cell -> string * string =
+let where : type p s e. (p, s, e) cell -> string * string =
  fun cell ->
   ( Machine.id cell.component.machine,
-    Machine.key cell.component.machine cell.snapshot
+    Machine.name cell.component.machine cell.snapshot
   )
 
 let make_error context (machine, state) exn =
@@ -96,7 +97,7 @@ let make_error context (machine, state) exn =
   );
   error
 
-let rec invalidate : type s e. force:bool -> (s, e) cell -> unit =
+let rec invalidate : type p s e. force:bool -> (p, s, e) cell -> unit =
  fun ~force cell ->
   if force || not (cell.stale || cell.rendering) then (
     cell.stale <- true;
@@ -107,31 +108,49 @@ let rec invalidate : type s e. force:bool -> (s, e) cell -> unit =
         ()
   )
 
-let rec step : type s e. (s, e) cell -> e -> unit =
- fun cell event ->
+let rec step : type p s e. ?finished:string -> (p, s, e) cell -> e -> unit =
+ fun ?finished cell event ->
   if cell.alive then
-    try
-      match Machine.step cell.component.machine cell.snapshot event with
-      | _, _, `Unhandled ->
-          ()
-      | snapshot, actions, kind ->
-          cell.snapshot <- snapshot;
-          Option.iter
-            (fun (Packed parent) -> invalidate ~force:false parent)
-            cell.parent;
-          if kind = `Entered then cell.entry <- cell.entry + 1;
-          emit cell actions;
-          cell.notify event snapshot;
-          check_final cell
-    with exn -> (
-      match cell.catch with
-      | Some catch ->
-          catch (where cell) exn
-      | None ->
-          raise exn
+    guard cell (fun () ->
+        match
+          Machine.step ?finished cell.component.machine cell.props cell.snapshot
+            event
+        with
+        | _, _, Machine.Unhandled ->
+            ()
+        | snapshot, actions, ((Machine.Kept | Machine.Entered) as how) ->
+            apply cell snapshot actions how;
+            cell.notify event snapshot;
+            check_final cell
     )
 
-and check_final : type s e. (s, e) cell -> unit =
+and guard : type p s e. (p, s, e) cell -> (unit -> unit) -> unit =
+ fun cell run ->
+  try run ()
+  with exn -> (
+    match cell.catch with
+    | Some catch ->
+        catch (where cell) exn
+    | None ->
+        raise exn
+  )
+
+and apply : type p s e.
+    (p, s, e) cell -> s -> e Action.host list -> Machine.how -> unit =
+ fun cell snapshot actions how ->
+  cell.snapshot <- snapshot;
+  Option.iter
+    (fun (Packed parent) -> invalidate ~force:false parent)
+    cell.parent;
+  ( match how with
+  | Machine.Entered ->
+      cell.entry <- cell.entry + 1
+  | Machine.Kept | Machine.Unhandled ->
+      ()
+  );
+  emit cell actions
+
+and check_final : type p s e. (p, s, e) cell -> unit =
  fun cell ->
   if
     (not cell.final_sent)
@@ -141,21 +160,23 @@ and check_final : type s e. (s, e) cell -> unit =
     cell.notify_final cell.snapshot
   )
 
-and timed : type s e. (s, e) cell -> e -> message =
- fun cell event ->
+and timed : type p s e. ?finished:string -> (p, s, e) cell -> e -> message =
+ fun ?finished cell event ->
   let entry = cell.entry in
-  { run = (fun () -> if cell.entry = entry then step cell event) }
+  { run = (fun () -> if cell.entry = entry then step ?finished cell event) }
 
-and emit : type s e. (s, e) cell -> e Action.host list -> unit =
+and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
  fun cell actions ->
   let add = add_action cell.context in
   List.iter
-    (function
+    (function[@warning "-4"]
       | Action.Start_timer { id; ms; event } ->
           let qualified = qualify cell id in
           Hashtbl.replace cell.owned id qualified;
           add
-            (Action.Start_timer { id = qualified; ms; event = timed cell event })
+            (Action.Start_timer
+               { id = qualified; ms; event = timed ~finished:id cell event }
+            )
       | Action.Start_source { id; source } ->
           let qualified = qualify cell id in
           Hashtbl.replace cell.owned id qualified;
@@ -176,7 +197,8 @@ and emit : type s e. (s, e) cell -> e Action.host list -> unit =
                  endpoint;
                  input;
                  timeout_ms;
-                 on_result = (fun result -> timed cell (on_result result));
+                 on_result =
+                   (fun result -> timed ~finished:id cell (on_result result));
                }
             )
       | Action.Start_live { id; topic; key; on_update } ->
@@ -214,9 +236,22 @@ and emit : type s e. (s, e) cell -> e Action.host list -> unit =
 
 let to_message cell event = { run = (fun () -> step cell event) }
 
-let create : type s e. context -> (s, e) Node.component -> (s, e) cell =
- fun context component ->
-  let snapshot, actions = Machine.start component.machine in
+let create : type p s e.
+    context -> (p, s, e) Node.component -> p -> (p, s, e) cell =
+ fun context component props ->
+  let machine = component.machine in
+  let id = Machine.id machine and uid = Type.Id.uid (Machine.type_id machine) in
+  ( match Hashtbl.find_opt context.machines id with
+  | Some known when known <> uid ->
+      invalid_arg
+        ("Silica.Instance: two machines with the id \"" ^ id
+       ^ "\" in one tree. Make each machine once, at the top level, and give \
+          two machines two ids."
+        )
+  | Some _ | None ->
+      Hashtbl.replace context.machines id uid
+  );
+  let snapshot, actions = Machine.start component.machine props in
   context.next_id <- context.next_id + 1;
   let cell =
     {
@@ -227,7 +262,7 @@ let create : type s e. context -> (s, e) Node.component -> (s, e) cell =
       entry = 0;
       alive = true;
       remount = false;
-      props = None;
+      props;
       notify = (fun _ _ -> ());
       notify_final = (fun _ -> ());
       final_sent = false;
@@ -244,12 +279,12 @@ let create : type s e. context -> (s, e) Node.component -> (s, e) cell =
   emit cell actions;
   cell
 
-let rec unmount_cell : type s e. (s, e) cell -> unit =
+let rec unmount_cell : type p s e. (p, s, e) cell -> unit =
  fun cell ->
   if cell.alive then (
     List.iter (fun (_, Packed child) -> unmount_cell child) cell.children;
     cell.children <- [];
-    emit cell (Machine.exit cell.component.machine cell.snapshot);
+    emit cell (Machine.exit cell.component.machine cell.props cell.snapshot);
     cell.alive <- false;
     Hashtbl.iter
       (fun _ qualified -> add_action cell.context (Action.Stop qualified))
@@ -258,15 +293,28 @@ let rec unmount_cell : type s e. (s, e) cell -> unit =
   )
 
 let props_changed old_props new_props =
-  match old_props with
-  | None ->
-      true
-  | Some old_props -> (
-      try old_props <> new_props with Invalid_argument _ -> true
+  try old_props <> new_props with Invalid_argument _ -> true
+
+let set_cell_props : type p s e. (p, s, e) cell -> p -> unit =
+ fun cell props ->
+  if props_changed cell.props props then (
+    let previous = cell.props in
+    cell.props <- props;
+    cell.stale <- true;
+    guard cell (fun () ->
+        match
+          Machine.set_props cell.component.machine ~previous props cell.snapshot
+        with
+        | _, _, Machine.Unhandled ->
+            ()
+        | snapshot, actions, ((Machine.Kept | Machine.Entered) as how) ->
+            apply cell snapshot actions how;
+            check_final cell
     )
+  )
 
 let same_slot (path, machine) (other_path, other_machine) =
-  path = other_path && machine == other_machine
+  path = other_path && String.equal machine other_machine
 
 let rec until_physically stop = function
   | actions when actions == stop ->
@@ -276,7 +324,30 @@ let rec until_physically stop = function
   | [] ->
       []
 
-let rec render : type s e. (s, e) cell -> message Node.t =
+let same_cell : type p s e.
+    (p, s, e) Machine.t -> packed -> (p, s, e) cell option =
+ fun machine (Packed existing) ->
+  match
+    Type.Id.provably_equal
+      (Machine.type_id existing.component.machine)
+      (Machine.type_id machine)
+  with
+  | Some Type.Equal ->
+      Some existing
+  | None ->
+      None
+
+let find_child slot machine children =
+  List.find_map
+    (fun (taken, packed) ->
+      if same_slot taken slot then
+        same_cell machine packed
+      else
+        None
+    )
+    children
+
+let rec render : type p s e. (p, s, e) cell -> message Node.t =
  fun cell ->
   match cell.last with
   | Some (snapshot, node)
@@ -294,7 +365,7 @@ let rec render : type s e. (s, e) cell -> message Node.t =
       cell.last <- Some (snapshot, node);
       node
 
-and render_view : type s e. (s, e) cell -> message Node.t =
+and render_view : type p s e. (p, s, e) cell -> message Node.t =
  fun cell ->
   if cell.remount then (
     cell.remount <- false;
@@ -305,7 +376,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
   let pending = ref false in
   let before = cell.context.actions in
   let resolve_attr reset (attr : e Node.attr) : message Node.attr option =
-    match attr with
+    match[@warning "-4"] attr with
     | Node.On_reset | Node.Rated (_, Node.On_reset) ->
         Option.map (fun message -> Node.On_press message) reset
     | attr ->
@@ -409,9 +480,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
                   if
                     not
                       (List.exists
-                         (fun (_, Packed old) ->
-                           Obj.repr old == Obj.repr instance
-                         )
+                         (fun (_, Packed old) -> old.id = instance.id)
                          cell.children
                       )
                   then
@@ -433,22 +502,19 @@ and render_view : type s e. (s, e) cell -> message Node.t =
             | None, _ ->
                 path
             ),
-            Obj.repr child.component.machine
+            Machine.id child.component.machine
           )
         in
         if List.exists (fun (taken, _) -> same_slot taken slot) !claimed then
           invalid_arg
             "Silica.Instance: two components have the same position and key";
         let instance =
-          match
-            List.find_opt (fun (taken, _) -> same_slot taken slot) cell.children
-          with
-          | Some (_, Packed existing) ->
-              (* The machines are physically equal, so both cells have the same
-                 type. *)
-              (Obj.magic existing : (_, _) cell)
+          match find_child slot child.component.machine cell.children with
+          | Some existing ->
+              set_cell_props existing child.props;
+              existing
           | None ->
-              create cell.context child.component
+              create cell.context child.component child.props
         in
         instance.catch <- catch;
         instance.notify <-
@@ -469,13 +535,6 @@ and render_view : type s e. (s, e) cell -> message Node.t =
           );
         instance.parent <- Some (Packed cell);
         claimed := (slot, Packed instance) :: !claimed;
-        ( match child.props with
-        | Some props when props_changed instance.props props ->
-            instance.props <- Some props;
-            step instance props
-        | _ ->
-            ()
-        );
         check_final instance;
         let resolved = render instance in
         match child.key with
@@ -491,7 +550,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
         (fun (_, Packed old) ->
           not
             (List.exists
-               (fun (_, Packed current) -> Obj.repr current == Obj.repr old)
+               (fun (_, Packed current) -> current.id = old.id)
                !claimed
             )
         )
@@ -500,7 +559,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
     cell.children <- List.rev !claimed @ known
   in
   let resolved =
-    try walk (cell.component.view cell.snapshot) [] cell.catch None
+    try walk (cell.component.view cell.props cell.snapshot) [] cell.catch None
     with exn ->
       keep_all_on_failure ();
       raise exn
@@ -513,7 +572,7 @@ and render_view : type s e. (s, e) cell -> message Node.t =
       if
         not
           (List.exists
-             (fun (_, Packed current) -> Obj.repr current == Obj.repr old)
+             (fun (_, Packed current) -> current.id = old.id)
              still_rendered
           )
       then
@@ -535,7 +594,8 @@ let take_actions context =
   context.actions <- [];
   actions
 
-let mount ?(dev = false) ?on_error ?props (component : (_, _) Node.component) =
+let mount_with_props ?(dev = false) ?on_error ~props
+    (component : (_, _, _) Node.component) =
   let context =
     {
       queue = Queue.create ();
@@ -544,16 +604,16 @@ let mount ?(dev = false) ?on_error ?props (component : (_, _) Node.component) =
       dev;
       on_error;
       waiting = 0;
+      machines = Hashtbl.create 16;
     }
   in
-  let root = create context component in
-  Option.iter
-    (fun props ->
-      root.props <- Some props;
-      step root props
-    )
-    props;
+  let root = create context component props in
   { context; root }
+
+let mount ?dev ?on_error component =
+  mount_with_props ?dev ?on_error ~props:() component
+
+let set_props tree props = set_cell_props tree.root props
 
 let max_rounds = 100
 
@@ -594,6 +654,7 @@ let failure ?(dev = false) ?on_error exn =
       dev;
       on_error;
       waiting = 0;
+      machines = Hashtbl.create 16;
     }
     ("(none)", "") exn
 
@@ -603,7 +664,7 @@ let unmount tree =
 
 let snapshot tree = tree.root.snapshot
 
-let rec count_cell : type s e. (s, e) cell -> int =
+let rec count_cell : type p s e. (p, s, e) cell -> int =
  fun cell ->
   List.fold_left
     (fun total (_, Packed child) -> total + count_cell child)

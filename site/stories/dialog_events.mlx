@@ -1,57 +1,48 @@
 open Silica
 open Silica_ui
 
-module Help = struct
-  type props = unit
-  type event = |
+type nothing = |
 
-  let id = "help-dialog"
-  let view () = <p class_="mt-2 text-sm">"A name has at most 40 letters."</p>
-  let closes : event -> bool = function _ -> .
-end
+let help_dialog =
+  Dialog.component ~id:"help-dialog"
+    ~closes:(function (_ : nothing) -> .)
+    (fun () -> <p class_="mt-2 text-sm">"A name has at most 40 letters."</p>)
 
-module Help_dialog = Dialog.Make (Help)
+type rename = { name : string }
+type rename_event = Name of string | Save
 
-module Rename = struct
-  type props = { name : string }
-  type event = Name of string | Save
-
-  let id = "rename-dialog"
-
-  let view { name } =
-    <form on_submit=Save class_="mt-3 flex flex-col gap-2">
-      <input
-        id="rename-name"
-        aria_label="Name"
-        class_="rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
-        value=name
-        on_input=(fun value -> Name value)
-      />
-      (Select.make
-         (Select.props ~id:"case" ~label:"Letter case" ~value:"typed"
-            ~name:"case" ~classes:Style.select
-            [
-              { Select.value = "typed"; label = "As typed"; disabled = false };
-              { Select.value = "upper"; label = "Upper case"; disabled = false };
-            ]
+let rename_view { name } =
+  <form on_submit=Save class_="mt-3 flex flex-col gap-2">
+    <input
+      id="rename-name"
+      aria_label="Name"
+      class_="rounded-ui border border-ui-border bg-ui-surface px-2 py-1"
+      value=name
+      on_input=(fun value -> Name value)
+    />
+    (Select.make
+       (Select.props ~id:"case" ~label:"Letter case" ~value:"typed" ~name:"case"
+          ~classes:Style.select
+          [
+            { Select.value = "typed"; label = "As typed"; disabled = false };
+            { Select.value = "upper"; label = "Upper case"; disabled = false };
+          ]
+       )
+    )
+    <div class_="flex gap-2">
+      <button type_=`submit id="rename-save" class_=Style.button>"Save"</button>
+      (Dialog.make help_dialog
+         (Dialog.props ~id:"help" ~title:"Help" ~trigger:"Help" ~close:"Got it"
+            ~classes:Style.dialog ()
          )
       )
-      <div class_="flex gap-2">
-        <button type_=`submit id="rename-save" class_=Style.button>
-          "Save"
-        </button>
-        (Help_dialog.make
-           (Help_dialog.props ~id:"help" ~title:"Help" ~trigger:"Help"
-              ~close:"Got it" ~classes:Style.dialog ()
-           )
-        )
-      </div>
-    </form>
+    </div>
+  </form>
 
-  let closes = function Save -> true | Name _ -> false
-end
-
-module Rename_dialog = Dialog.Make (Rename)
+let rename_dialog =
+  Dialog.component ~id:"rename-dialog"
+    ~closes:(function Save -> true | Name _ -> false)
+    rename_view
 
 type page = {
   name : string;
@@ -62,61 +53,51 @@ type page = {
 
 type event =
   | Changed of bool * Popup.reason
-  | Edited of Rename.event
+  | Edited of rename_event
   | Open_from_outside
-
-module States = struct
-  type _ t = Page : page t
-end
-
-module Dialog_events_machine = Machine.Make (States)
 
 let note page line = { page with events = page.events @ [ line ] }
 
 let machine =
-  Dialog_events_machine.make ~id:"dialog-events"
-    ~init:
-      (Dialog_events_machine.at Page
-         { name = "Ada"; saved = "Ada"; events = []; open_ = None }
-      )
-    [
-      Dialog_events_machine.state Page "page" (fun page -> function
-        | Changed (opened, reason) ->
-            Dialog_events_machine.goto Page
-              (note
-                 { page with open_ = Some opened }
-                 (Printf.sprintf "%s %s"
-                    ( if opened then
-                        "open"
-                      else
-                        "close"
-                    )
-                    (Popup.reason_name reason)
-                 )
-              )
-        | Edited (Rename.Name name) ->
-            Dialog_events_machine.goto Page { page with name }
-        | Edited Rename.Save ->
-            Dialog_events_machine.goto Page
-              (note { page with saved = page.name } "save")
-        | Open_from_outside ->
-            Dialog_events_machine.goto Page
-              (note { page with open_ = Some true } "open from outside")
-        );
-    ]
+  Machine.make ~id:"dialog-events"
+    ~init:{ name = "Ada"; saved = "Ada"; events = []; open_ = None }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed (opened, reason) ->
+          Go
+            (note
+               { page with open_ = Some opened }
+               (Printf.sprintf "%s %s"
+                  ( if opened then
+                      "open"
+                    else
+                      "close"
+                  )
+                  (Popup.reason_name reason)
+               )
+            )
+      | Edited (Name name) ->
+          Go { page with name }
+      | Edited Save ->
+          Go (note { page with saved = page.name } "save")
+      | Open_from_outside ->
+          Go (note { page with open_ = Some true } "open from outside")
+    )
 
-let view (Dialog_events_machine.At (Page, page)) =
+let view page =
   <section class_="flex flex-col gap-4">
     <p id="saved">(Node.text ("Name: " ^ page.saved))</p>
     <div class_="flex gap-2">
-      (Rename_dialog.make
+      (Dialog.make
          ~on_open_change:(fun opened reason -> Changed (opened, reason))
          ~on_content:(fun event -> Edited event)
-         (Rename_dialog.props ~id:"rename" ~title:"Rename"
+         rename_dialog
+         (Dialog.props ~id:"rename" ~title:"Rename"
             ~description:"Choose the name that the page shows."
             ~trigger:"Rename" ~close:"Cancel" ?open_:page.open_
             ~classes:Style.dialog
-            { Rename.name = page.name }
+            ({ name = page.name } : rename)
          )
       )
       <button

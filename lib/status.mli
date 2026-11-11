@@ -8,7 +8,7 @@ type 'a t =
   | Ready of { data : 'a; stale : bool }
       (** [stale] is always [false] for Remote data. For Live data it is [true]
           while the socket is down and the old data is kept. *)
-  | Failed of { error : Remote.error; last : 'a option }
+  | Failed of { error : Endpoint.error; last : 'a option }
       (** The last attempt failed. [last] is the data from before. *)
 
 val data : 'a t -> 'a option

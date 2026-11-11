@@ -99,17 +99,51 @@ let pp_status f : Issues.t Status.t -> unit = function
   | Status.Failed _ ->
       Format.fprintf f "failed"
 
-let pp_result f = function
+let pp_result f : (_, string) Remote.answer -> unit = function
   | Ok _ ->
       Format.fprintf f "ok"
-  | Error (Remote.Http code) ->
+  | Rejected message ->
+      Format.fprintf f "rejected %S" message
+  | Failed (Remote.Http code) ->
       Format.fprintf f "http %d" code
-  | Error (Remote.Network _) ->
+  | Failed (Remote.Network _) ->
       Format.fprintf f "network"
-  | Error (Remote.Decode _) ->
+  | Failed (Remote.Decode _) ->
       Format.fprintf f "decode"
 
 let label pp event = Format.asprintf "%a" pp event
+
+let rec children : type p s e. (p, s, e) Component.t -> _ Node.t -> p list =
+ fun component n ->
+  match Node.view n with
+  | Node.Component child -> (
+      match
+        Type.Id.provably_equal
+          (Machine.type_id child.component.machine)
+          (Machine.type_id component.machine)
+      with
+      | Some Type.Equal ->
+          [ child.props ]
+      | None ->
+          []
+    )
+  | Node.Element (_, _, nodes) | Node.List nodes | Node.Portal (_, nodes) ->
+      List.concat_map (children component) nodes
+  | Node.Keyed (_, child) ->
+      children component child
+  | Node.Boundary { body; _ } ->
+      children component body
+  | Node.Chunk chunk ->
+      children component (Node.chunk_view chunk)
+  | Node.Text _ ->
+      []
+
+let saves =
+  Check.answers ~rejected:[ "Status is locked" ] update_endpoint
+    [
+      Change.Saved { (issue 1) with version = 2; title = "saved" };
+      Change.Conflict { (issue 1) with version = 2; title = "theirs" };
+    ]
 
 let pp_router_event f = function
   | Silica.Router.Url_changed u ->
@@ -141,11 +175,11 @@ let router () =
     )
     ~routes:
       [
-        Router.At (State.Issues, list);
-        Router.At (State.Issues, { list with create = true });
-        Router.At (State.Issue, 1);
-        Router.At (State.Issue, 2);
-        Router.At (State.Not_found, "/nowhere");
+        Issues list;
+        Issues { list with create = true };
+        Issue 1;
+        Issue 2;
+        Not_found "/nowhere";
       ]
     ~parse:(Router.parse routes) ~print:(Router.print routes)
     ~is_not_found:(Router.is_not_found routes)
@@ -153,14 +187,9 @@ let router () =
     Linear_app.app
 
 let list_label = function
-  | Linear_list.Props view ->
-      if view = Linear_view.default then
-        "props default"
-      else
-        "props filtered"
   | Linear_list.Loaded (Ok _) ->
       "loaded ok"
-  | Linear_list.Loaded (Error _) ->
+  | Linear_list.Loaded (Rejected _ | Failed _) ->
       "loaded error"
   | Linear_list.Updated _ ->
       "updated"
@@ -168,6 +197,8 @@ let list_label = function
       "retry"
   | Linear_list.Reconnect ->
       "reconnect"
+  | Linear_list.Reconnected ->
+      "reconnected"
   | Linear_list.Filter_open b ->
       "filter open " ^ string_of_bool b
   | Linear_list.Filter_changed _ ->
@@ -194,7 +225,7 @@ let list_label = function
       "saved"
   | Linear_list.Saved (_, Ok (Change.Conflict _)) ->
       "conflict"
-  | Linear_list.Saved (_, Error _) ->
+  | Linear_list.Saved (_, (Rejected _ | Failed _)) ->
       "save failed"
   | Linear_list.Toast_closed _ ->
       "toast closed"
@@ -211,6 +242,37 @@ let pp_list_event f = function
   | event ->
       Format.pp_print_string f (list_label event)
 
+let shown_view view =
+  let value id =
+    List.find_map
+      (fun (props : Silica_ui.Select.props) ->
+        if props.id = id then
+          props.value
+        else
+          None
+      )
+      (children Silica_ui.Select.component view)
+  in
+  let filter =
+    match children Linear_filter.popover.component view with
+    | [ props ] ->
+        props.content
+    | _ ->
+        failwith "the list view has not exactly one filter"
+  in
+  let pick names id =
+    Option.bind (value id) (fun name -> List.assoc_opt name names)
+  in
+  match
+    ( pick Linear_view.grouping_names "issue-grouping",
+      pick Linear_view.ordering_names "issue-ordering"
+    )
+  with
+  | Some grouping, Some ordering ->
+      { Linear_view.filter; grouping; ordering }
+  | _ ->
+      failwith "the list view does not show its grouping and ordering"
+
 let list () =
   let open Linear_list in
   let invariants =
@@ -225,35 +287,47 @@ let list () =
       {
         Check.name = "a ready list shows one row for each issue";
         holds =
-          (fun (List_machine.At (state, data) : List_machine.snapshot) view ->
+          (fun state view ->
             match state with
-            | States.Ready ->
+            | Ready r ->
                 count_rows view
                 = List.length
                     (List.concat_map
                        (fun (group, members) ->
-                         if List.mem group data.collapsed then
+                         if List.mem group r.collapsed then
                            []
                          else
                            members
                        )
-                       (Linear_view.groups data.view
-                          (Linear_data.issues data.data)
+                       (Linear_view.groups (shown_view view)
+                          (Linear_data.issues r.data)
                        )
                     )
-            | States.Loading | States.Failed ->
+            | Loading | Failed _ ->
                 true
           );
       };
       {
         Check.name = "the offline note shows exactly when the data is stale";
         holds =
-          (fun (List_machine.At (state, data) : List_machine.snapshot) view ->
+          (fun state view ->
             match state with
-            | States.Ready ->
-                shows view "Offline" = data.data.stale
-            | States.Loading | States.Failed ->
+            | Ready r ->
+                shows view "Offline" = r.data.stale
+            | Loading | Failed _ ->
                 not (shows view "Offline")
+          );
+      };
+      {
+        Check.name = "every pending change has a call in flight";
+        holds =
+          (fun state _ ->
+            match state with
+            | Ready r ->
+                Linear_data.pending r.data
+                <= List.length (Linear_data.requests r.data)
+            | Loading | Failed _ ->
+                true
           );
       };
     ]
@@ -264,18 +338,16 @@ let list () =
       filter = { Linear_view.Filter.none with statuses = [ Issue_status.Done ] };
     }
   in
-  Check.component ~max_states:50_000 ~samples:[ issues; topic ]
-    ~props:[ Props Linear_view.default; Props filtered ]
-    ~within:(fun (List_machine.At (state, data)) ->
-      match state with
-      | States.Ready ->
-          data.data.next_id <= 2 && List.length data.toasts <= 1
-      | States.Loading | States.Failed ->
+  Check.component ~max_states:50_000 ~samples:[ issues; topic; saves ]
+    ~props:[ Linear_view.default; filtered ]
+    ~within:(function
+      | Ready r ->
+          r.data.next_id <= 2 && List.length r.toasts <= 1
+      | Loading | Failed _ ->
           true
-    )
-    ~inputs:(fun (List_machine.At (state, data)) ->
-      match state with
-      | States.Ready ->
+      )
+    ~inputs:(function
+      | Ready r ->
           [
             Filter_open false;
             Filter_changed filtered.filter;
@@ -286,34 +358,18 @@ let list () =
             Command "open-1";
             Command "status-done";
           ]
-          @ List.concat_map
-              (fun (id, (r : Linear_data.request)) ->
-                [
-                  Saved (id, Error (Remote.Network "down"));
-                  Saved
-                    ( id,
-                      Ok
-                        (Change.Conflict
-                           { (issue r.number) with version = r.base + 1 }
-                        )
-                    );
-                ]
-              )
-              (Linear_data.requests data.data)
           @ List.map
               (fun (t : Silica_ui.Toast.toast) -> Toast_closed t.key)
-              data.toasts
-      | States.Loading | States.Failed ->
+              r.toasts
+      | Loading | Failed _ ->
           []
-    )
+      )
     ~label:list_label ~invariants Linear_list.component
 
 let detail_label = function
-  | Linear_detail.Props _ ->
-      "props"
   | Linear_detail.Loaded (Ok _) ->
       "loaded ok"
-  | Linear_detail.Loaded (Error _) ->
+  | Linear_detail.Loaded (Rejected _ | Failed _) ->
       "loaded error"
   | Linear_detail.Updated _ ->
       "updated"
@@ -321,6 +377,8 @@ let detail_label = function
       "retry"
   | Linear_detail.Reconnect ->
       "reconnect"
+  | Linear_detail.Reconnected ->
+      "reconnected"
   | Linear_detail.Edit _ ->
       "edit"
   | Linear_detail.Draft_changed _ ->
@@ -339,7 +397,7 @@ let detail_label = function
       "saved"
   | Linear_detail.Saved (_, Ok (Change.Conflict _)) ->
       "conflict"
-  | Linear_detail.Saved (_, Error _) ->
+  | Linear_detail.Saved (_, (Rejected _ | Failed _)) ->
       "save failed"
   | Linear_detail.Toast_closed _ ->
       "toast closed"
@@ -353,8 +411,6 @@ let detail_label = function
       "keep editing"
 
 let pp_detail_event f = function
-  | Linear_detail.Props n ->
-      Format.fprintf f "props %d" n
   | Linear_detail.Loaded r ->
       Format.fprintf f "loaded %a" pp_result r
   | Linear_detail.Updated { seq; status } ->
@@ -366,14 +422,10 @@ let pp_detail_event f = function
   | event ->
       Format.pp_print_string f (detail_label event)
 
-let detail_inputs
-    (Linear_detail.Detail_machine.At (state, data) :
-      Linear_detail.Detail_machine.snapshot
-      ) =
+let detail_inputs (state : Linear_detail.state) : Linear_detail.event list =
   let open Linear_detail in
   match state with
-  | States.Ready ->
-      let current number = Option.get (Linear_data.find number data.data) in
+  | Ready state ->
       [
         Draft_changed "x";
         Draft_changed "";
@@ -384,42 +436,16 @@ let detail_inputs
         Command "priority-urgent";
         Keep_editing;
       ]
-      @ List.concat_map
-          (fun (id, (r : Linear_data.request)) ->
-            let issue = current r.number in
-            [
-              Saved
-                ( id,
-                  Ok
-                    (Change.Saved
-                       { issue with version = r.base + 1; title = "saved" }
-                    )
-                );
-              Saved
-                ( id,
-                  Ok
-                    (Change.Conflict
-                       { issue with version = r.base + 1; title = "theirs" }
-                    )
-                );
-              Saved (id, Error (Remote.Network "down"));
-            ]
-          )
-          (Linear_data.requests data.data)
       @ List.map
           (fun (t : Silica_ui.Toast.toast) -> Toast_closed t.key)
-          data.toasts
-  | States.Idle | States.Loading | States.Not_found | States.Failed ->
+          state.toasts
+  | Loading | Not_found | Failed _ ->
       []
 
-let detail_within
-    (Linear_detail.Detail_machine.At (state, data) :
-      Linear_detail.Detail_machine.snapshot
-      ) =
-  match state with
-  | Linear_detail.States.Ready ->
-      data.data.next_id <= 2 && List.length data.toasts <= 1
-  | _ ->
+let detail_within : Linear_detail.state -> bool = function
+  | Ready state ->
+      state.data.next_id <= 2 && List.length state.toasts <= 1
+  | Loading | Not_found | Failed _ ->
       true
 
 let detail ~props () =
@@ -429,11 +455,9 @@ let detail ~props () =
       {
         Check.name = "ready shows the title of the issue";
         holds =
-          (fun (Detail_machine.At (state, data) : Detail_machine.snapshot)
-            view
-          ->
+          (fun state view ->
             match state with
-            | States.Ready -> (
+            | Ready data -> (
                 match Linear_data.find data.number data.data with
                 | Some _ when Option.is_some data.editor ->
                     true
@@ -442,7 +466,7 @@ let detail ~props () =
                 | None ->
                     shows view "There is no issue"
               )
-            | _ ->
+            | Loading | Not_found | Failed _ ->
                 true
           );
       };
@@ -456,19 +480,19 @@ let detail ~props () =
       {
         Check.name = "every pending change has a call in flight";
         holds =
-          (fun (Detail_machine.At (state, data) : Detail_machine.snapshot) _ ->
+          (fun state _ ->
             match state with
-            | States.Ready ->
+            | Ready data ->
                 Linear_data.pending data.data
                 <= List.length (Linear_data.requests data.data)
-            | _ ->
+            | Loading | Not_found | Failed _ ->
                 true
           );
       };
     ]
   in
   Check.component ~max_states:400_000 ~props ~within:detail_within
-    ~inputs:detail_inputs ~samples:[ issues; topic ] ~label:detail_label
+    ~inputs:detail_inputs ~samples:[ issues; topic; saves ] ~label:detail_label
     ~invariants Linear_detail.component
 
 let unsaved_label = function
@@ -492,29 +516,28 @@ let unsaved () =
       {
         Check.name = "the confirm shows only while a navigation waits";
         holds =
-          (fun (Unsaved_machine.At (state, _) : Unsaved_machine.snapshot)
-            view
-          ->
-            Unsaved_machine.same state States.Asking
+          (fun state view ->
+            (match state with Asking _ -> true | Held -> false)
             = shows view "unsaved changes"
           );
       };
       {
         Check.name = "the block is held in every state";
-        holds = (fun snapshot _ -> Machine.held machine snapshot <> []);
+        holds = (fun state _ -> Machine.held machine () state <> []);
       };
     ]
   in
   Check.component ~label:unsaved_label ~invariants Linear_unsaved.component
 
+let pp_create_props f ({ create; view } : Linear_routes.issues) =
+  Format.fprintf f "props %b%s" create
+    ( if view = Linear_view.default then
+        ""
+      else
+        " filtered"
+    )
+
 let pp_create_event f = function
-  | Linear_create.Props { create; view } ->
-      Format.fprintf f "props %b%s" create
-        ( if view = Linear_view.default then
-            ""
-          else
-            " filtered"
-        )
   | Linear_create.Title s ->
       Format.fprintf f "title %S" s
   | Linear_create.Description s ->
@@ -531,8 +554,6 @@ let pp_create_event f = function
       Format.fprintf f "created %a" pp_result r
 
 let create_label = function
-  | Linear_create.Props _ ->
-      "props"
   | Linear_create.Title _ ->
       "title"
   | Linear_create.Description _ ->
@@ -547,52 +568,20 @@ let create_label = function
       "cancel"
   | Linear_create.Created (Ok _) ->
       "created ok"
-  | Linear_create.Created (Error _) ->
+  | Linear_create.Created (Rejected _ | Failed _) ->
       "created error"
 
-let rec requests : type s e. (s, e) Component.t -> _ Node.t -> e list =
- fun component n ->
-  match Node.view n with
-  | Node.Component child -> (
-      match
-        Type.Id.provably_equal
-          (Machine.type_id child.component.machine)
-          (Machine.type_id component.machine)
-      with
-      | Some Type.Equal ->
-          Option.to_list child.props
-      | None ->
-          []
-    )
-  | Node.Element (_, _, children)
-  | Node.List children
-  | Node.Portal (_, children) ->
-      List.concat_map (requests component) children
-  | Node.Keyed (_, child) ->
-      requests component child
-  | Node.Boundary { body; _ } ->
-      requests component body
-  | Node.Chunk chunk ->
-      requests component (Node.chunk_view chunk)
-  | Node.Text _ ->
-      []
-
 let dialog_request view =
-  match requests Linear_create.Create_dialog.component view with
-  | [ Linear_create.Create_dialog.Props props ] ->
+  match children Linear_create.dialog_component.component view with
+  | [ props ] ->
       props
   | _ ->
-      failwith "the create view has not exactly one dialog with props"
+      failwith "the create view has not exactly one dialog"
 
-let create_inputs
-    (Linear_create.Create_machine.At (state, _) :
-      Linear_create.Create_machine.snapshot
-      ) =
-  let open Linear_create in
-  match state with
-  | States.Closed | States.Submitting ->
+let create_inputs : Linear_create.state -> Linear_create.event list = function
+  | Closed | Submitting _ ->
       []
-  | States.Editing | States.Failed ->
+  | Editing _ | Failed _ ->
       [
         Title "";
         Title "x";
@@ -610,13 +599,13 @@ let create_invariants =
       Check.name =
         "the dialog is asked open exactly when the machine is not closed";
       holds =
-        (fun (Create_machine.At (state, _) : Create_machine.snapshot) view ->
+        (fun state view ->
           (dialog_request view).open_
           = Some
               ( match state with
-              | States.Closed ->
+              | Closed ->
                   false
-              | States.Editing | States.Submitting | States.Failed ->
+              | Editing _ | Submitting _ | Failed _ ->
                   true
               )
         );
@@ -624,50 +613,49 @@ let create_invariants =
     {
       Check.name = "the dialog cannot be dismissed while sending";
       holds =
-        (fun (Create_machine.At (state, _) : Create_machine.snapshot) view ->
+        (fun state view ->
           let request = dialog_request view in
           match state with
-          | States.Submitting ->
+          | Submitting _ ->
               (not request.dismissible) && request.content.busy
-          | _ ->
+          | Closed | Editing _ | Failed _ ->
               request.dismissible && not request.content.busy
         );
     };
     {
       Check.name = "only a draft with a title is ever sent";
       holds =
-        (fun (Create_machine.At (state, data) : Create_machine.snapshot) _ ->
+        (fun state _ ->
           match state with
-          | States.Submitting ->
-              let _, (draft : Draft.t) = data in
+          | Submitting draft ->
               String.trim draft.title <> ""
-          | _ ->
+          | Closed | Editing _ | Failed _ ->
               true
         );
     };
     {
       Check.name = "the message of a failed send is shown";
       holds =
-        (fun (Create_machine.At (state, _) : Create_machine.snapshot) view ->
+        (fun state view ->
           let message = (dialog_request view).content.message in
           match state with
-          | States.Failed ->
+          | Failed _ ->
               Option.fold ~none:false
                 ~some:(fun m -> contains m "Could not create the issue")
                 message
-          | _ ->
+          | Closed | Editing _ | Submitting _ ->
               true
         );
     };
     {
       Check.name = "the title error shows only in editing";
       holds =
-        (fun (Create_machine.At (state, form) : Create_machine.snapshot) view ->
+        (fun state view ->
           let message = (dialog_request view).content.message in
           match state with
-          | States.Editing ->
+          | Editing form ->
               message = form.error
-          | _ ->
+          | Closed | Submitting _ | Failed _ ->
               message <> Some "Title is required"
         );
     };
@@ -675,18 +663,27 @@ let create_invariants =
 
 let create ?(invariants = []) ~props () =
   Check.component ~max_states:100_000 ~props
-    ~samples:[ Check.answers create_endpoint [ issue 3 ] ]
+    ~samples:
+      [
+        Check.answers ~rejected:[ "Title is too long" ] create_endpoint
+          [ issue 3 ];
+      ]
     ~inputs:create_inputs ~label:create_label
     ~invariants:(create_invariants @ invariants)
     Linear_create.component
 
-let dialog_label : Linear_create.Create_dialog.event -> string = function
-  | Props { open_ = Some true; dismissible = true; _ } ->
+let dialog_props_label :
+    (Linear_create.content, Linear_create.event) Silica_ui.Dialog.props ->
+    string = function
+  | { open_ = Some true; dismissible = true; _ } ->
       "props open"
-  | Props { open_ = Some true; dismissible = false; _ } ->
+  | { open_ = Some true; dismissible = false; _ } ->
       "props busy"
-  | Props _ ->
+  | _ ->
       "props closed"
+
+let dialog_label : Linear_create.event Silica_ui.Dialog.event -> string =
+  function
   | Open_request _ ->
       "open"
   | Close_request reason ->
@@ -698,7 +695,7 @@ let pp_dialog_event f event = Format.pp_print_string f (dialog_label event)
 
 let create_dialog ~props () =
   Check.component ~props ~label:dialog_label
-    Linear_create.Create_dialog.component
+    Linear_create.dialog_component.component
 
 let pp_me_event f = function
   | Linear_me.Loaded r ->
@@ -707,7 +704,7 @@ let pp_me_event f = function
 let me_label = function
   | Linear_me.Loaded (Ok _) ->
       "loaded ok"
-  | Linear_me.Loaded (Error _) ->
+  | Linear_me.Loaded (Rejected _ | Failed _) ->
       "loaded error"
 
 let me () =
@@ -719,11 +716,9 @@ let a_comment ?(author = User.Ada) id body : Comment.t =
   { id; number = 1; author; body; created_at = 0; edited = false }
 
 let comments_label = function
-  | Linear_comments.Props _ ->
-      "props"
   | Linear_comments.Loaded (Ok _) ->
       "loaded ok"
-  | Linear_comments.Loaded (Error _) ->
+  | Linear_comments.Loaded (Rejected _ | Failed _) ->
       "loaded error"
   | Linear_comments.Updated _ ->
       "updated"
@@ -744,13 +739,9 @@ let comments () =
       {
         Check.name = "ready shows every comment and one composer";
         holds =
-          (fun (Linear_comments.Comments_machine.At (state, data) :
-                 Linear_comments.Comments_machine.snapshot
-                 )
-            view
-          ->
+          (fun (state : Linear_comments.state) view ->
             match state with
-            | Linear_comments.States.Ready ->
+            | Ready data ->
                 let rec count n =
                   match Node.view n with
                   | Node.Component _ ->
@@ -763,14 +754,13 @@ let comments () =
                       0
                 in
                 count view = List.length data.comments + 1
-            | _ ->
+            | Loading | Failed ->
                 true
           );
       };
     ]
   in
-  Check.component
-    ~props:[ Linear_comments.Props 1; Linear_comments.Props 2 ]
+  Check.component ~props:[ 1; 2 ]
     ~samples:
       [
         Check.answers comments_endpoint [ thread ];
@@ -780,8 +770,6 @@ let comments () =
     ~label:comments_label ~invariants Linear_comments.component
 
 let composer_label = function
-  | Linear_composer.Props _ ->
-      "props"
   | Linear_composer.Typed "" ->
       "typed empty"
   | Linear_composer.Typed _ ->
@@ -792,7 +780,7 @@ let composer_label = function
       "clear"
   | Linear_composer.Sent (Ok _) ->
       "sent ok"
-  | Linear_composer.Sent (Error _) ->
+  | Linear_composer.Sent (Rejected _ | Failed _) ->
       "sent error"
 
 let pp_composer_event f event = Format.pp_print_string f (composer_label event)
@@ -803,31 +791,28 @@ let composer () =
       {
         Check.name = "only a comment with text is ever sent";
         holds =
-          (fun (Linear_composer.Composer_machine.At (state, data) :
-                 Linear_composer.Composer_machine.snapshot
-                 )
-            _
-          ->
+          (fun (state : Linear_composer.state) _ ->
             match state with
-            | Linear_composer.States.Sending ->
-                String.trim (snd data) <> ""
-            | _ ->
+            | Sending body ->
+                String.trim body <> ""
+            | Empty | Drafting _ | Failed _ ->
                 true
           );
       };
     ]
   in
-  Check.component
-    ~props:[ Linear_composer.Props 1; Linear_composer.Props 2 ]
+  Check.component ~props:[ 1; 2 ]
     ~inputs:(fun _ -> [ Linear_composer.Typed "x"; Linear_composer.Typed " " ])
-    ~samples:[ Check.answers add_comment_endpoint [ a_comment 3 "x" ] ]
+    ~samples:
+      [
+        Check.answers
+          ~rejected:[ "The comment is too long" ]
+          add_comment_endpoint
+          [ a_comment 3 "x" ];
+      ]
     ~label:composer_label ~invariants Linear_composer.component
 
 let comment_label = function
-  | Linear_comment.Props { own = true; _ } ->
-      "props own"
-  | Linear_comment.Props { own = false; _ } ->
-      "props other"
   | Linear_comment.Edit ->
       "edit"
   | Linear_comment.Typed _ ->
@@ -838,43 +823,25 @@ let comment_label = function
       "cancel"
   | Linear_comment.Saved (Ok _) ->
       "saved ok"
-  | Linear_comment.Saved (Error _) ->
+  | Linear_comment.Saved (Rejected _ | Failed _) ->
       "saved error"
 
 let pp_comment_event f event = Format.pp_print_string f (comment_label event)
 
-let comment () =
-  let mine = a_comment 1 "Mine" in
-  let invariants =
-    [
-      {
-        Check.name = "only the author can edit";
-        holds =
-          (fun (Linear_comment.Comment_machine.At (state, data) :
-                 Linear_comment.Comment_machine.snapshot
-                 )
-            _
-          ->
-            match state with
-            | Linear_comment.States.Editing ->
-                data.props.own
-            | Linear_comment.States.Saving ->
-                (fst data).own
-            | _ ->
-                true
-          );
-      };
-    ]
-  in
+let mine = a_comment 1 "Mine"
+
+let comment ?(props = [ (mine, true); (mine, false) ]) () =
   Check.component
     ~props:
-      [
-        Linear_comment.Props { comment = mine; own = true };
-        Linear_comment.Props { comment = mine; own = false };
-      ]
+      (List.map (fun (comment, own) -> { Linear_comment.comment; own }) props)
     ~inputs:(fun _ ->
       [ Linear_comment.Edit; Linear_comment.Typed "x"; Linear_comment.Typed "" ]
     )
     ~samples:
-      [ Check.answers edit_comment_endpoint [ { mine with body = "x" } ] ]
-    ~label:comment_label ~invariants Linear_comment.component
+      [
+        Check.answers
+          ~rejected:[ "Only the author can edit" ]
+          edit_comment_endpoint
+          [ { mine with body = "x"; edited = true } ];
+      ]
+    ~label:comment_label Linear_comment.component

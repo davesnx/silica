@@ -44,34 +44,28 @@ type props = {
 }
 
 type event =
-  | Props of props
   | Hover  (** The pointer entered the closed trigger. *)
   | Focus  (** The trigger got focus. *)
   | Cancel  (** The pointer left, or pressed, the trigger before the delay. *)
   | Leave  (** The pointer left the open trigger or popup. *)
   | Resume  (** The pointer or focus came back while the tooltip closes. *)
   | Close of Popup.reason
-  | Elapsed of delay  (** A timer of {!delay_ms} ms fired. *)
+  | Elapsed of delay  (** The timer of {!delay_ms} ms fired. *)
 
-module State : sig
-  type _ t =
-    | Idle : unit t
-    | Closed : props t
-    | Opening : props t  (** Hidden; waits for [delay]. *)
-    | Open : props t
-    | Closing : props t  (** Shown; waits for [close_delay]. *)
-end
+type state =
+  | Closed
+  | Opening  (** Hidden; waits for [delay]. *)
+  | Open
+  | Closing  (** Shown; waits for [close_delay]. *)
 
-type snapshot = At : 'data State.t * 'data -> snapshot
-
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val props :
   id:string ->

@@ -3,6 +3,12 @@ open Silica
 type ev = Inc | Dec | Go
 
 let show = function Inc -> "Inc" | Dec -> "Dec" | Go -> "Go"
+
+let show_input show_event : (_, _) Check.input -> string = function
+  | Check.Event event ->
+      show_event event
+  | Check.Props _ ->
+      "new props"
 let btn label e = Node.element "button" [ Attr.on_press e ] [ Node.text label ]
 
 let simple = Silica_test_support.Simple.machine
@@ -19,7 +25,7 @@ let component ?(inc = fun n -> Some (n + 1, []))
           None
       )
   in
-  { Component.machine; view }
+  Component.make machine view
 
 let counter_view n =
   Node.list
@@ -38,7 +44,9 @@ let counter_view n =
 let violation name trace = function
   | Check.Violation v ->
       Alcotest.(check string) "invariant" name v.invariant;
-      Alcotest.(check (list string)) "trace" trace (List.map show v.trace)
+      Alcotest.(check (list string))
+        "trace" trace
+        (List.map (show_input show) v.trace)
   | Check.Ok _ ->
       Alcotest.fail "expected violation, got ok"
   | Check.Limit _ ->
@@ -86,7 +94,7 @@ let test_aria_label_is_a_name () =
           [ Attr.on_press Inc; Attr.string "aria-label" "plus" ]
           []
       )
-      ~inc:(fun _ -> None)
+      ~inc:(fun n -> Some (n, []))
   in
   match Check.component c with
   | Check.Ok _ ->
@@ -115,7 +123,7 @@ let test_present_focus_ref () =
           btn "go" Inc
         else
           Node.element "input"
-            [ Attr.ref_ (Ref.make "x"); Attr.on_press Go ]
+            [ Attr.ref_ (Ref.make "x"); Attr.on_press Inc ]
             [ Node.text "x" ]
       )
       ~inc:(fun _ -> Some (1, [ Action.Focus (Ref.make "x") ]))
@@ -140,7 +148,8 @@ let test_dead_end () =
   let machine =
     simple ~id:"c" ~init:0 (fun _ -> function Go -> Some (1, []) | _ -> None)
   in
-  violation "dead-end" [ "Go" ] (Check.component { c with machine })
+  violation "dead-end" [ "Go" ]
+    (Check.component (Component.make machine (c.Component.view ())))
 
 let test_dead_end_final_ok () =
   let machine =
@@ -154,7 +163,7 @@ let test_dead_end_final_ok () =
     else
       Node.text "done"
   in
-  match Check.component { Component.machine; view } with
+  match Check.component (Component.make machine view) with
   | Check.Ok { states; _ } ->
       Alcotest.(check int) "states" 2 states
   | _ ->
@@ -172,7 +181,7 @@ let test_duplicate_refs () =
             btn "go" Inc;
           ]
       )
-      ~inc:(fun _ -> None)
+      ~inc:(fun n -> Some (n, []))
   in
   violation "unique-refs" [] (Check.component c)
 
@@ -194,45 +203,28 @@ let test_functional_value () =
           None
       )
   in
-  match
-    Check.component { Component.machine; view = (fun _ -> btn "+" Inc) }
-  with
+  match Check.component (Component.make machine (fun _ -> btn "+" Inc)) with
   | Check.Error m ->
       Alcotest.(check bool) "message" true (String.length m > 0)
   | _ ->
       Alcotest.fail "expected error"
 
-module Wait = struct
-  type _ t = Waiting : unit t | Over : unit t
-end
-
-module Waiter = Machine.Make (Wait)
+type wait = Waiting | Over [@@deriving state_shape]
 
 let test_after_is_enabled () =
-  let table =
-    Waiter.make ~id:"c"
-      ~init:(Waiter.at Wait.Waiting ())
-      [
-        Waiter.state Wait.Waiting "waiting"
-          ~after:[ (100, Go) ]
-          ~to_:[ Wait.Over ]
-          (fun () -> function
-            | Go -> Waiter.goto Wait.Over () | _ -> Waiter.unhandled
-            );
-        Waiter.state Wait.Over "over" Waiter.ignore;
-      ]
-  in
   let machine =
-    Machine.map_snapshot table
-      ~get:(fun (Waiter.At (state, _) : Waiter.snapshot) : int ->
-        match state with Wait.Waiting -> 0 | Wait.Over -> 1
+    Machine.make ~id:"c" ~init:Waiting ~shape:wait_shape
+      ~owns:(function Waiting -> [ Source.after 100 Go ] | Over -> [])
+      (fun state event ->
+        match (state, event) with
+        | Waiting, Go ->
+            Machine.Go Over
+        | _ ->
+            Machine.Ignore
       )
-      ~set:(function
-        | 0 -> Waiter.at Wait.Waiting () | _ -> Waiter.at Wait.Over ()
-        )
   in
-  let view n = Node.text (string_of_int n) in
-  violation "dead-end" [ "Go" ] (Check.component { Component.machine; view })
+  let view state = Node.text (Machine.shape_name wait_shape state) in
+  violation "dead-end" [ "Go" ] (Check.component (Component.make machine view))
 
 let test_inputs () =
   let c =
@@ -267,7 +259,8 @@ let test_pp () =
   let out =
     Format.asprintf "%a"
       (Check.pp_report
-         ~pp_event:(fun f e -> Format.pp_print_string f (show e))
+         ~pp_event:
+           (Check.pp_input (fun f e -> Format.pp_print_string f (show e)))
          ~pp_state:Format.pp_print_int
       )
       r
@@ -307,6 +300,16 @@ let unnamed_child_component =
   let view _ = Node.element "button" [ Attr.on_press Dec ] [] in
   Component.make machine view
 
+type props_child = Showing [@@deriving state_shape]
+
+let props_child_component =
+  Component.make_with_props
+    (Machine.make_with_props ~id:"props-child" ~init:Showing
+       ~shape:props_child_shape (fun _ Showing () -> Machine.Ignore
+     )
+    )
+    (fun number Showing -> Node.text (string_of_int number))
+
 let child_non_negative =
   { Check.name = "child-non-negative"; holds = (fun n _ -> n >= 0) }
 
@@ -323,19 +326,33 @@ let test_component_node_not_explored () =
     Node.list
       [
         btn "+" Inc;
-        Node.component ~props:(Set 1) child_component;
+        Node.component child_component;
         Node.component unnamed_child_component;
+        Node.component_with_props ~props:3 props_child_component;
+        Node.component_with_props ~props:5 props_child_component;
+        Node.component_with_props ~props:3 props_child_component;
         Node.element "div" [ Attr.string "data-silica-live" "chat" ] [];
         Node.element "div" [ Attr.string "data-silica-live" "chat" ] [];
       ]
   in
-  match Check.component { Component.machine; view } with
-  | Check.Ok { states; not_explored; _ } ->
+  match Check.component (Component.make machine view) with
+  | Check.Ok { states; not_explored; children; _ } ->
       Alcotest.(check int) "states of the root only" 2 states;
       Alcotest.(check (list string))
         "not explored"
-        [ "component child"; "component unnamed-child"; "island chat" ]
-        not_explored
+        [
+          "component child";
+          "component props-child";
+          "component unnamed-child";
+          "island chat";
+        ]
+        not_explored;
+      Alcotest.(check (list int))
+        "the props given to a child, without duplicates" [ 3; 5 ]
+        (Check.props children props_child_component);
+      Alcotest.(check (list unit))
+        "a child with no props" [ () ]
+        (Check.props children child_component)
   | _ ->
       Alcotest.fail "expected ok"
 
@@ -346,35 +363,34 @@ let test_no_children_nothing_listed () =
   | _ ->
       Alcotest.fail "expected ok"
 
-module State = struct
-  type _ t =
-    | Items : string t
-    | Item : int t
-    | About : unit t
-    | Not_found : string t
-
-  let path : type data. data t -> data Route.t = function
-    | Items ->
-        Route.(s "items" +? string_query "sort" ~default:"name")
-    | Item ->
-        Route.(s "items" / int)
-    | About ->
-        Route.(s "about")
-    | Not_found ->
-        Route.rest
-end
-
-module Routes = Router.Make (State)
+type route = Items of string | Item of int | About | Not_found of string
 
 let routes =
-  Routes.routes ~not_found:State.Not_found
-    Routes.[ State.Items; State.Item; State.About; State.Not_found ]
+  Router.routes
+    ~not_found:(function Not_found _ -> true | _ -> false)
+    [
+      Router.route
+        Route.(s "items" +? string_query "sort" ~default:"name")
+        (fun sort -> Items sort)
+        (function Items sort -> Some sort | _ -> None);
+      Router.route
+        Route.(s "items" / int)
+        (fun id -> Item id)
+        (function Item id -> Some id | _ -> None);
+      Router.route
+        Route.(s "about")
+        (fun () -> About)
+        (function About -> Some () | _ -> None);
+      Router.route Route.rest
+        (fun path -> Not_found path)
+        (function Not_found path -> Some path | _ -> None);
+    ]
 
-let items_default = Routes.At (State.Items, "name")
-let items_by_price = Routes.At (State.Items, "price")
-let item_seven = Routes.At (State.Item, 7)
-let about = Routes.At (State.About, ())
-let missing = Routes.At (State.Not_found, "/missing")
+let items_default = Items "name"
+let items_by_price = Items "price"
+let item_seven = Item 7
+let about = About
+let missing = Not_found "/missing"
 let all_routes = [ items_default; items_by_price; item_seven; about; missing ]
 
 let show_router_event f = function
@@ -387,10 +403,10 @@ let show_app = Check.pp_app_event show_router_event
 
 let good_links =
   [
-    Routes.link routes State.Items "name" [] [ Node.text "items" ];
-    Routes.link routes State.Items "price" [] [ Node.text "by price" ];
-    Routes.link routes State.Item 7 [] [ Node.text "item" ];
-    Routes.link routes State.About () [] [ Node.text "about" ];
+    Router.link routes (Items "name") [] [ Node.text "items" ];
+    Router.link routes (Items "price") [] [ Node.text "by price" ];
+    Router.link routes (Item 7) [] [ Node.text "item" ];
+    Router.link routes About [] [ Node.text "about" ];
   ]
 
 let raw_link href =
@@ -398,22 +414,16 @@ let raw_link href =
     [ Attr.string "href" href; Attr.bool "data-silica-link" true ]
     [ Node.text "raw" ]
 
-let app_root ?(extra = []) ?(props = Set 1) () url =
+let app_root ?(extra = []) () url =
   let render _ =
-    Node.list (good_links @ extra @ [ Node.component ~props child_component ])
+    Node.list (good_links @ extra @ [ Node.component child_component ])
   in
-  Routes.make routes ~render url
+  Router.make routes ~render url
 
-let not_found_edges =
-  List.concat_map
-    (fun route -> [ ("/*", route); (route, "/*") ])
-    [ "/about"; "/items/:int"; "/items?sort" ]
-
-let app ?(extra = []) ?invariants ?(parse = Routes.parse routes)
-    ?(print = Routes.print routes) ?(routes_to_check = all_routes) ?is_not_found
+let app ?(extra = []) ?invariants ?(parse = Router.parse routes)
+    ?(print = Router.print routes) ?(routes_to_check = all_routes) ?is_not_found
     () =
-  Check.app ?invariants ~allow_unreached:not_found_edges ~routes:routes_to_check
-    ~parse ~print ?is_not_found
+  Check.app ?invariants ~routes:routes_to_check ~parse ~print ?is_not_found
     ~url_event:(fun url -> Router.Url_changed url)
     (app_root ~extra ())
 
@@ -442,15 +452,15 @@ let test_app_ok () =
       holds =
         (fun (state : _ Check.app_state) _ ->
           let url = List.nth state.history state.index in
-          state.router = Routes.parse routes url
-          && Url.to_string (Routes.print routes state.router)
+          state.router = Router.parse routes url
+          && Url.to_string (Router.print routes state.router)
              = Url.to_string url
         );
     }
   in
   match
     app ~invariants:[ history_matches ]
-      ~is_not_found:(Routes.is_not_found routes)
+      ~is_not_found:(Router.is_not_found routes)
       ()
   with
   | Check.Ok { states; not_explored; _ } ->
@@ -494,24 +504,23 @@ let test_child_alone_finds_bug () =
       Alcotest.(check string) "invariant" "child-non-negative" v.invariant;
       Alcotest.(check (list string))
         "trace" [ "Set -1" ]
-        (List.map show_child v.trace)
+        (List.map (show_input show_child) v.trace)
   | _ ->
       Alcotest.fail "expected violation"
 
 let test_round_trip_query_printed_wrong () =
   let print = function
-    | Routes.At (State.Items, sort) ->
-        Routes.print routes
-          (Routes.At (State.Items, String.uppercase_ascii sort))
+    | Items sort ->
+        Router.print routes (Items (String.uppercase_ascii sort))
     | route ->
-        Routes.print routes route
+        Router.print routes route
   in
   app_violation "route-round-trip" [] (app ~print ())
 
 let test_round_trip_parse_ignores_query () =
   let parse url =
-    match Routes.parse routes url with
-    | Routes.At (State.Items, _) ->
+    match Router.parse routes url with
+    | Items _ ->
         items_default
     | route ->
         route
@@ -520,13 +529,38 @@ let test_round_trip_parse_ignores_query () =
 
 let test_round_trip_item_parsed_wrong () =
   let parse url =
-    match Routes.parse routes url with
-    | Routes.At (State.Item, _) ->
-        Routes.At (State.Item, 0)
-    | route ->
-        route
+    match Router.parse routes url with Item _ -> Item 0 | route -> route
   in
   app_violation "route-round-trip" [] (app ~parse ())
+
+type paged = Front | Page of int
+
+let test_round_trip_route_pair_disagrees () =
+  let paged =
+    Router.routes
+      [
+        Router.route Route.root
+          (fun () -> Front)
+          (function Front -> Some () | Page _ -> None);
+        Router.route
+          Route.(s "page" / int)
+          (fun number -> Page number)
+          (function Page number -> Some (number + 1) | Front -> None);
+      ]
+  in
+  match
+    Check.app ~routes:[ Front ] ~parse:(Router.parse paged)
+      ~print:(Router.print paged)
+      ~inputs:(fun _ -> [ Router.Url_changed (Url.of_string "/page/1") ])
+      ~url_event:(fun url -> Router.Url_changed url)
+      (Router.make paged ~render:(fun _ -> Node.text "page"))
+  with
+  | Check.Violation v ->
+      Alcotest.(check string) "invariant" "route-round-trip" v.invariant;
+      Alcotest.(check bool)
+        "reached the bad route" true (v.state.router = Page 1)
+  | report ->
+      app_failure report
 
 let test_link_not_canonical () =
   app_violation "link-parses" [] (app ~extra:[ raw_link "/items?sort=name" ] ())
@@ -535,7 +569,7 @@ let test_link_to_not_found () =
   app_violation "link-parses" []
     (app
        ~extra:[ raw_link "/items/007" ]
-       ~is_not_found:(Routes.is_not_found routes)
+       ~is_not_found:(Router.is_not_found routes)
        ()
     )
 
@@ -547,67 +581,26 @@ let test_link_to_not_found_allowed_without_predicate () =
       app_failure report
 
 type stale_event = Leave | Back | Tick
-type stale_state = Waiting | Left | Fired | Late
-
-module Stale = struct
-  type _ t = Waiting : unit t | Left : unit t | Fired : unit t | Late : unit t
-end
-
-module Timer = Machine.Make (Stale)
-
-let timer_cases =
-  [
-    Timer.state Stale.Waiting "waiting"
-      ~after:[ (10, Tick) ]
-      ~to_:[ Stale.Left; Stale.Fired ]
-      (fun () -> function
-        | Leave ->
-            Timer.goto Stale.Left ()
-        | Tick ->
-            Timer.goto Stale.Fired ()
-        | Back ->
-            Timer.unhandled
-        );
-    Timer.state Stale.Left "left" ~to_:[ Stale.Waiting; Stale.Late ]
-      (fun () -> function
-      | Back ->
-          Timer.goto Stale.Waiting ()
-      | Tick ->
-          Timer.goto Stale.Late ()
-      | Leave ->
-          Timer.unhandled
-      );
-    Timer.state Stale.Fired "fired" ~final:true Timer.ignore;
-    Timer.state Stale.Late "late" ~final:true Timer.ignore;
-  ]
+type stale_state = Waiting | Left | Fired | Late [@@deriving state_shape]
 
 let stale_component =
-  let table =
-    Timer.make ~id:"timer" ~init:(Timer.at Stale.Waiting ()) timer_cases
-  in
   let machine =
-    Machine.map_snapshot table
-      ~get:(fun (Timer.At (state, _) : Timer.snapshot) : stale_state ->
-        match state with
-        | Stale.Waiting ->
-            Waiting
-        | Stale.Left ->
-            Left
-        | Stale.Fired ->
-            Fired
-        | Stale.Late ->
-            Late
+    Machine.make ~id:"timer" ~init:Waiting ~shape:stale_state_shape
+      ~final:(function Fired | Late -> true | Waiting | Left -> false)
+      ~owns:(function Waiting -> [ Source.after 10 Tick ] | _ -> [])
+      (fun state event ->
+        match (state, event) with
+        | Waiting, Leave ->
+            Machine.Go Left
+        | Waiting, Tick ->
+            Machine.Go Fired
+        | Left, Back ->
+            Machine.Go Waiting
+        | Left, Tick ->
+            Machine.Go Late
+        | _ ->
+            Machine.Ignore
       )
-      ~set:(function
-        | Waiting ->
-            Timer.at Stale.Waiting ()
-        | Left ->
-            Timer.at Stale.Left ()
-        | Fired ->
-            Timer.at Stale.Fired ()
-        | Late ->
-            Timer.at Stale.Late ()
-        )
   in
   let view = function
     | Waiting ->
@@ -617,24 +610,21 @@ let stale_component =
     | Fired | Late ->
         Node.text "done"
   in
-  { Component.machine; view }
+  Component.make machine view
 
 let test_timer_stops_on_exit () =
   let never_late =
     { Check.name = "never-late"; holds = (fun s _ -> s <> Late) }
   in
   ( match Check.component ~invariants:[ never_late ] stale_component with
-  | Check.Unreached { edges } ->
-      Alcotest.(check (list (pair string string)))
-        "the timer of waiting never fires in left"
-        [ ("left", "late") ]
-        edges
+  | Check.Unreached { states } ->
+      Alcotest.(check (list string))
+        "the timer of waiting never fires in left" [ "late" ] states
   | _ ->
-      Alcotest.fail "expected the edge to late to be unreached"
+      Alcotest.fail "expected the state late to be unreached"
   );
   match
-    Check.component ~invariants:[ never_late ]
-      ~allow_unreached:[ ("left", "late") ]
+    Check.component ~invariants:[ never_late ] ~allow_unreached:[ "late" ]
       stale_component
   with
   | Check.Ok { states; transitions; _ } ->
@@ -648,52 +638,118 @@ let test_timer_stops_on_exit () =
   | _ ->
       Alcotest.fail "expected ok"
 
-module Bad = struct
-  type _ t = A : unit t | B : unit t | C : unit t
-end
+type broken = A | B [@@deriving state_shape]
 
-module Broken = Machine.Make (Bad)
-
-let broken_component ~target =
-  let table =
-    Broken.make ~id:"broken" ~init:(Broken.at Bad.A ())
-      [
-        Broken.state Bad.A "a" ~to_:[ Bad.B ] (fun () -> function
-          | Inc ->
-              Broken.goto Bad.B ()
-          | Go ->
-              target ()
-          | Dec ->
-              Broken.unhandled
-          );
-        Broken.state Bad.B "b" ~final:true Broken.ignore;
-      ]
-  in
+let broken_component ~go =
   let machine =
-    Machine.map_snapshot table
-      ~get:(fun (Broken.At (state, _) : Broken.snapshot) : int ->
-        match state with Bad.A -> 0 | Bad.B -> 1 | Bad.C -> 2
-      )
-      ~set:(function
-        | 0 ->
-            Broken.at Bad.A ()
-        | 1 ->
-            Broken.at Bad.B ()
+    Machine.make ~id:"broken" ~init:A ~shape:broken_shape
+      ~final:(function B -> true | A -> false)
+      ~owns:(function A -> [ Source.after 5 (Dec : ev) ] | B -> [])
+      (fun state (event : ev) ->
+        match (state, event) with
+        | A, Inc ->
+            Machine.Go B
+        | A, Go ->
+            go
+        | A, Dec ->
+            Machine.Stay []
         | _ ->
-            Broken.at Bad.C ()
-        )
+            Machine.Ignore
+      )
   in
-  let view = function
-    | 0 ->
-        Node.list [ btn "inc" Inc; btn "go" Go ]
-    | _ ->
+  let view ?(disabled = false) = function
+    | A ->
+        Node.list
+          [
+            btn "inc" Inc;
+            Node.element "button"
+              [ Attr.on_press Go; Attr.bool "disabled" disabled ]
+              [ Node.text "go" ];
+          ]
+    | B ->
         Node.text "done"
   in
-  { Component.machine; view }
+  (machine, view)
 
-let test_undeclared_target () =
-  violation "undeclared-target" [ "Go" ]
-    (Check.component (broken_component ~target:(fun () -> Broken.goto Bad.C ())))
+let test_ignored_event () =
+  let machine, view = broken_component ~go:Machine.Ignore in
+  ( match Check.component (Component.make machine (fun state -> view state)) with
+  | Check.Violation { invariant = "ignored-event"; trace; state } ->
+      Alcotest.(check (list string))
+        "the trace ends with the ignored event" [ "Go" ]
+        (List.map (show_input show) trace);
+      Alcotest.(check string)
+        "the state before it" "a"
+        (Machine.shape_name broken_shape state)
+  | _ ->
+      Alcotest.fail "expected ignored-event"
+  );
+  ( match
+      Check.component
+        (Component.make machine (fun state -> view ~disabled:true state))
+    with
+  | Check.Ok { states; _ } ->
+      Alcotest.(check int)
+        "a disabled button offers nothing: a (its timer runs again after it \
+         fires), b"
+        2 states
+  | _ ->
+      Alcotest.fail "expected ok with the button disabled"
+  );
+  let machine, view = broken_component ~go:(Machine.Stay []) in
+  match Check.component (Component.make machine (fun state -> view state)) with
+  | Check.Ok { states; transitions; _ } ->
+      Alcotest.(check int) "states" 2 states;
+      Alcotest.(check int) "inc, go and the timer" 3 transitions
+  | _ ->
+      Alcotest.fail "expected ok when the machine handles the event"
+
+let test_ignored_timer_event () =
+  let machine =
+    Machine.make ~id:"timer" ~init:0
+      ~shape:(Machine.shape ~name:(fun _ -> "counting") ())
+      ~owns:(fun _ -> [ Source.after 5 (Dec : ev) ])
+      (fun n (event : ev) ->
+        match event with
+        | Inc ->
+            Machine.Go (min 1 (n + 1))
+        | _ ->
+            Machine.Ignore
+      )
+  in
+  violation "ignored-event" [ "Dec" ]
+    (Check.component (Component.make machine (fun _ -> btn "+" Inc)))
+
+let test_ignored_held_event_is_allowed () =
+  let panel = Ref.make "panel" in
+  let machine =
+    Machine.make ~id:"held" ~init:0
+      ~shape:(Machine.shape ~name:(fun _ -> "open") ())
+      ~owns:(fun _ ->
+        [ Source.focus_trap panel; Source.resize panel (fun _ -> (Dec : ev)) ]
+      )
+      (fun n (event : ev) ->
+        match event with
+        | Inc ->
+            Machine.Go (min 1 (n + 1))
+        | _ ->
+            Machine.Ignore
+      )
+  in
+  match
+    Check.component
+      (Component.make machine (fun _ ->
+           Node.element "div" [ Attr.ref_ panel ] [ btn "+" Inc ]
+       )
+      )
+  with
+  | Check.Ok { states; _ } ->
+      Alcotest.(check int) "states" 2 states
+  | Check.Violation v ->
+      Alcotest.failf "violation %s: the events of held sources may be ignored"
+        v.invariant
+  | _ ->
+      Alcotest.fail "expected ok"
 
 module Dialog = struct
   type event = Open | Close | Resized | Seen of bool
@@ -708,11 +764,7 @@ module Dialog = struct
     | Seen visible ->
         "Seen " ^ string_of_bool visible
 
-  module States = struct
-    type _ t = Closed : unit t | Opened : unit t
-  end
-
-  module Dialog_machine = Machine.Make (States)
+  type state = Closed | Opened [@@deriving state_shape]
 
   let panel = Ref.make "panel"
 
@@ -738,42 +790,38 @@ module Dialog = struct
       else
         []
     in
-    Dialog_machine.make ~id:"dialog"
-      ~init:(Dialog_machine.at States.Closed ())
-      [
-        Dialog_machine.state States.Closed "closed"
-          ~to_:Dialog_machine.[ States.Opened ]
-          (fun () -> function
-            | Open ->
-                Dialog_machine.goto States.Opened ()
-            | _ ->
-                Dialog_machine.unhandled
-            );
-        Dialog_machine.state States.Opened "opened"
-          ~to_:Dialog_machine.[ States.Closed ]
-          ~invoke:sources
-          (fun () -> function
-            | Close ->
-                Dialog_machine.goto States.Closed ()
-            | Resized | Seen _ ->
-                Dialog_machine.stay []
-            | Open ->
-                Dialog_machine.unhandled
-            );
-      ]
+    Machine.make ~id:"dialog" ~init:Closed ~shape:state_shape
+      ~owns:(function Closed -> [] | Opened -> sources)
+      (fun state event ->
+        match (state, event) with
+        | Closed, Open ->
+            Machine.Go Opened
+        | Opened, Close ->
+            Machine.Go Closed
+        | Opened, (Resized | Seen _) ->
+            Machine.Stay []
+        | _ ->
+            Machine.Ignore
+      )
 
-  let view (Dialog_machine.At (state, _) : Dialog_machine.snapshot) :
-      event Node.t =
-    match state with
-    | States.Closed ->
+  let view : state -> event Node.t = function
+    | Closed ->
         Node.element "button" [ Attr.on_press Open ] [ Node.text "open" ]
-    | States.Opened ->
+    | Opened ->
         Node.element "div"
           [ Attr.ref_ panel ]
           [ Node.element "p" [] [ Node.text "dialog" ] ]
 
   let component ~escape ~outside ~observers =
-    { Component.machine = machine ~escape ~outside ~observers; view }
+    Component.make (machine ~escape ~outside ~observers) view
+
+  let codec =
+    Codec.make
+      ~encode:(fun state ->
+        Silica_json.Json.declassify
+          (`Int (match state with Closed -> 0 | Opened -> 1))
+      )
+      ~decode:(fun _ -> Ok Closed)
 end
 
 let test_sources_give_events () =
@@ -821,7 +869,7 @@ let test_modal_without_a_way_out_is_a_dead_end () =
   | Check.Violation { invariant = "dead-end"; trace; _ } ->
       Alcotest.(check (list string))
         "opened and stuck" [ "Open" ]
-        (List.map Dialog.show trace)
+        (List.map (show_input Dialog.show) trace)
   | _ ->
       Alcotest.fail "expected a dead end"
 
@@ -894,42 +942,20 @@ let test_boundary_needs_a_reset () =
 
 let test_live_rejects_client_only_source () =
   let int_codec = Codec.int in
-  let machine =
-    Machine.map_snapshot
-      (Dialog.machine ~escape:true ~outside:true ~observers:true)
-      ~get:(fun (Dialog.Dialog_machine.At (state, _)) ->
-        match state with Dialog.States.Closed -> 0 | Dialog.States.Opened -> 1
-      )
-      ~set:(fun n ->
-        if n = 0 then
-          Dialog.Dialog_machine.at Dialog.States.Closed ()
-        else
-          Dialog.Dialog_machine.at Dialog.States.Opened ()
-      )
-  in
   let live =
-    Live.declare ~channel:"dialog" ~state:int_codec
+    Live.declare ~channel:"dialog" ~state:Dialog.codec
       ~event:
         (Codec.make
            ~encode:(fun _ -> Silica_json.Json.declassify (`Int 0))
            ~decode:(fun _ -> Ok Dialog.Open)
         )
-      {
-        Component.machine;
-        view =
-          (fun n ->
-            Dialog.view
-              ( if n = 0 then
-                  Dialog.Dialog_machine.at Dialog.States.Closed ()
-                else
-                  Dialog.Dialog_machine.at Dialog.States.Opened ()
-              )
-          );
-      }
+      (Dialog.component ~escape:true ~outside:true ~observers:true)
   in
   ( match Check.live live with
   | Check.Violation { invariant = "live-uses-client-source"; trace; state } ->
-      Alcotest.(check int) "reached in the opened state" 1 state;
+      Alcotest.(check string)
+        "reached in the opened state" "opened"
+        (Machine.shape_name Dialog.state_shape state);
       Alcotest.(check int) "after one event" 1 (List.length trace)
   | Check.Violation v ->
       Alcotest.failf "wrong violation %s" v.invariant
@@ -989,7 +1015,7 @@ module Gadget = struct
       | Ask when not asked ->
           Some ((true, got), ask)
       | Ask ->
-          None
+          Some ((asked, got), [])
       | Got line ->
           Some ((asked, List.sort_uniq compare (line :: got)), [])
       )
@@ -999,7 +1025,7 @@ module Gadget = struct
       [ Attr.ref_ (Ref.make "box") ]
       [ Node.element "button" [ Attr.on_press Ask ] [ Node.text "ask" ] ]
 
-  let component = { Component.machine; view }
+  let component = Component.make machine view
 end
 
 let test_action_results_arrive () =
@@ -1007,8 +1033,19 @@ let test_action_results_arrive () =
   | Check.Ok { states; _ } ->
       Alcotest.(check int)
         "the start, then each subset of the three results after Ask" 9 states
-  | _ ->
-      Alcotest.fail "expected ok"
+  | report ->
+      Alcotest.fail
+        (Format.asprintf "%a"
+           (Check.pp_report
+              ~pp_event:
+                (Check.pp_input (fun f e ->
+                     Format.pp_print_string f (Gadget.show e)
+                 )
+                )
+              ?pp_state:None
+           )
+           report
+        )
   );
   let all_three =
     {
@@ -1021,56 +1058,42 @@ let test_action_results_arrive () =
       Alcotest.(check (list string))
         "a fixed rect, copy and load succeed"
         [ "Ask"; "Got copy:true"; "Got load:true"; "Got rect:0" ]
-        (List.sort compare (List.map Gadget.show v.trace))
+        (List.sort compare (List.map (show_input Gadget.show) v.trace))
   | _ ->
       Alcotest.fail "expected the three results to arrive"
 
 module Watcher = struct
   type event = Got of string
-
-  module States = struct
-    type _ t = Watching : string list t
-  end
-
-  module Watcher_machine = Machine.Make (States)
+  type state = Watching of string list [@@deriving state_shape]
 
   let machine =
-    Watcher_machine.make ~id:"watcher"
-      ~init:(Watcher_machine.at States.Watching [])
-      [
-        Watcher_machine.state States.Watching "watching"
-          ~invoke:
-            [
-              Source.scroll (fun (s : Scroll.t) ->
-                  Got (Printf.sprintf "scroll:%.0f" s.top)
-              );
-              Source.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
-              Source.online (fun v -> Got (Printf.sprintf "online:%b" v));
-            ]
-          (fun got (Got line) ->
-            Watcher_machine.goto States.Watching
-              (List.sort_uniq compare (line :: got))
+    Machine.make ~id:"watcher" ~init:(Watching []) ~shape:state_shape
+      ~owns:(fun _ ->
+        [
+          Source.scroll (fun (s : Scroll.t) ->
+              Got (Printf.sprintf "scroll:%.0f" s.top)
           );
-      ]
+          Source.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
+          Source.online (fun v -> Got (Printf.sprintf "online:%b" v));
+        ]
+      )
+      (fun (Watching got) (Got line) ->
+        Machine.Go (Watching (List.sort_uniq compare (line :: got)))
+      )
 
   let view _ = Node.text "watching"
-  let component = { Component.machine; view }
+  let component = Component.make machine view
 end
 
 let test_new_sources_give_events () =
   let all =
     {
       Check.name = "not-all";
-      holds =
-        (fun (Watcher.Watcher_machine.At (Watcher.States.Watching, got)) _ ->
-          List.length got < 5
-        );
+      holds = (fun (Watcher.Watching got) _ -> List.length got < 5);
     }
   in
   match Check.component ~invariants:[ all ] Watcher.component with
-  | Check.Violation
-      { state = Watcher.Watcher_machine.At (Watcher.States.Watching, got); _ }
-    ->
+  | Check.Violation { state = Watcher.Watching got; _ } ->
       Alcotest.(check (list string))
         "scroll gives a zero position; visibility and online give both values"
         [
@@ -1100,7 +1123,7 @@ let test_scroll_to_missing_ref () =
       )
   in
   violation "focus-target" [ "Go" ]
-    (Check.component { Component.machine; view = (fun () -> btn "go" Go) })
+    (Check.component (Component.make machine (fun () -> btn "go" Go)))
 
 let test_live_rejects_result_action () =
   let machine =
@@ -1124,7 +1147,7 @@ let test_live_rejects_result_action () =
            ~encode:(fun _ -> Silica_json.Json.declassify (`Int 0))
            ~decode:(fun _ -> Ok Go)
         )
-      { Component.machine; view = (fun _ -> btn "go" Go) }
+      (Component.make machine (fun _ -> btn "go" Go))
   in
   violation "live-uses-client-action" [ "Go" ] (Check.live live)
 
@@ -1146,7 +1169,7 @@ let test_live_rejects_page_actions () =
                ~encode:(fun _ -> Silica_json.Json.declassify (`Int 0))
                ~decode:(fun _ -> Ok Go)
             )
-          { Component.machine; view = (fun _ -> btn "go" Go) }
+          (Component.make machine (fun _ -> btn "go" Go))
       in
       violation "live-uses-client-action" [ "Go" ] (Check.live live)
     )
@@ -1156,10 +1179,318 @@ let test_live_rejects_page_actions () =
       Action.Resume (Nav.Push (Url.of_string "/"));
       Action.Preload
         (Remote.request
-           (Remote.declare ~path:"/p" ~input:Codec.int ~output:Codec.int)
+           (Remote.declare ~path:"/p" ~input:Codec.int ~output:Codec.int
+              ~rejected:Codec.string
+           )
            1
         );
     ]
+
+module Search = struct
+  type event =
+    | Input of string
+    | Clear
+    | Fire
+    | Got of (string list, string) Remote.answer
+    | Retry
+
+  let show = function
+    | Input text ->
+        "Input " ^ text
+    | Clear ->
+        "Clear"
+    | Fire ->
+        "Fire"
+    | Got (Remote.Ok _) ->
+        "Got ok"
+    | Got (Remote.Rejected _) ->
+        "Got rejected"
+    | Got (Remote.Failed _) ->
+        "Got failed"
+    | Retry ->
+        "Retry"
+
+  type state =
+    | Idle
+    | Typing of string
+    | Searching of string
+    | Shown of string * string list
+    | Failed of string
+  [@@deriving state_shape]
+
+  let endpoint =
+    Remote.declare ~path:"/api/search" ~input:Codec.string
+      ~output:(Codec.list Codec.string) ~rejected:Codec.string
+
+  let machine =
+    Machine.make ~id:"search" ~init:Idle ~shape:state_shape
+      ~owns:(function
+        | Typing _ ->
+            [ Source.after 300 Fire ]
+        | Searching query ->
+            [ Remote.call endpoint query (fun answer -> Got answer) ]
+        | Idle | Shown _ | Failed _ ->
+            []
+        )
+      (fun state event ->
+        match (state, event) with
+        | _, Input query ->
+            Machine.Reenter (Typing query)
+        | (Typing _ | Shown _ | Failed _), Clear ->
+            Machine.Go Idle
+        | Typing query, Fire ->
+            Machine.Go (Searching query)
+        | Searching query, Got (Remote.Ok hits) ->
+            Machine.Go (Shown (query, hits))
+        | Searching query, Got (Remote.Rejected _ | Remote.Failed _) ->
+            Machine.Go (Failed query)
+        | Failed query, Retry ->
+            Machine.Go (Searching query)
+        | _ ->
+            Machine.Ignore
+      )
+
+  let btn_of label event =
+    Node.element "button" [ Attr.on_press event ] [ Node.text label ]
+
+  let view state =
+    Node.list
+      [
+        Node.element "input"
+          [
+            Attr.string "aria-label" "query";
+            Attr.on_input (fun text -> Input text);
+          ]
+          [];
+        ( match state with
+        | Idle | Typing _ | Searching _ ->
+            Node.text "..."
+        | Shown _ ->
+            btn_of "clear" Clear
+        | Failed _ ->
+            Node.list [ btn_of "retry" Retry; btn_of "clear" Clear ]
+        );
+      ]
+
+  let component = Component.make machine view
+
+  let check () =
+    Check.component
+      ~inputs:(fun _ -> [ Input "a" ])
+      ~samples:[ Check.answers endpoint [ [ "hit" ] ] ]
+      ~label:(fun event ->
+        match event with
+        | Input _ ->
+            "input"
+        | Clear ->
+            "clear"
+        | Fire ->
+            "fire"
+        | Got _ ->
+            "got"
+        | Retry ->
+            "retry"
+      )
+      component
+end
+
+let ok_of = function
+  | Check.Ok { spec; edges; paths; _ } ->
+      (spec, edges, paths)
+  | report ->
+      Alcotest.fail
+        (Format.asprintf "%a"
+           (Check.pp_report
+              ~pp_event:
+                (Check.pp_input (fun f e ->
+                     Format.pp_print_string f (Search.show e)
+                 )
+                )
+              ?pp_state:None
+           )
+           report
+        )
+
+let test_spec () =
+  let spec, edges, _ = ok_of (Search.check ()) in
+  Alcotest.(check string) "id" "search" spec.id;
+  Alcotest.(check string) "init" "idle" spec.init;
+  Alcotest.(check (list string))
+    "states: the initial one, then by name"
+    [ "idle"; "failed"; "searching"; "shown"; "typing" ]
+    (List.map (fun (state : Spec.state) -> state.name) spec.states);
+  let state name =
+    List.find (fun (state : Spec.state) -> state.name = name) spec.states
+  in
+  Alcotest.(check (list int)) "timers" [ 300 ] (state "typing").timers;
+  Alcotest.(check (list string))
+    "sources" [ "/api/search" ] (state "searching").sources;
+  Alcotest.(check (list (pair string string)))
+    "the edges the run took"
+    [
+      ("failed", "idle");
+      ("failed", "searching");
+      ("failed", "typing");
+      ("idle", "typing");
+      ("searching", "failed");
+      ("searching", "shown");
+      ("searching", "typing");
+      ("shown", "idle");
+      ("shown", "typing");
+      ("typing", "searching");
+      ("typing", "typing");
+    ]
+    spec.edges;
+  Alcotest.(check (list string))
+    "lint" []
+    (List.map Spec.issue_to_string (Spec.lint spec));
+  Alcotest.(check bool)
+    "a reenter is a self edge with its label" true
+    (List.exists
+       (fun (label : Spec.label) ->
+         label.from = "typing" && label.target = "typing"
+         && label.event = "input" && not label.kept
+       )
+       edges
+    )
+
+let test_paths () =
+  let _, _, paths = ok_of (Search.check ()) in
+  Alcotest.(check (list (pair string (list string))))
+    "a shortest path to each state, in the order the search reached them"
+    [
+      ("idle", []);
+      ("typing", [ "Input a" ]);
+      ("searching", [ "Input a"; "Fire" ]);
+      ("shown", [ "Input a"; "Fire"; "Got ok" ]);
+      ("failed", [ "Input a"; "Fire"; "Got failed" ]);
+    ]
+    (List.map
+       (fun (name, path) -> (name, List.map (show_input Search.show) path))
+       paths
+    )
+
+type kept = Counting of int [@@deriving state_shape]
+
+let test_kept_steps_are_labels_not_edges () =
+  let machine =
+    Machine.make ~id:"kept" ~init:(Counting 0) ~shape:kept_shape
+      ~owns:(fun _ -> [ Source.after 5 (Dec : ev) ])
+      (fun (Counting n) (event : ev) ->
+        match event with
+        | Inc ->
+            Machine.Go (Counting (min 1 (n + 1)))
+        | Dec ->
+            Machine.Reenter (Counting 0)
+        | Go ->
+            Machine.Stay []
+      )
+  in
+  let view _ = Node.list [ btn "+" Inc; btn "go" Go ] in
+  let spec, edges =
+    match Check.component ~label:show (Component.make machine view) with
+    | Check.Ok { spec; edges; _ } ->
+        (spec, edges)
+    | _ ->
+        Alcotest.fail "expected ok"
+  in
+  Alcotest.(check (list (pair string string)))
+    "only the reenter is an edge"
+    [ ("counting", "counting") ]
+    spec.edges;
+  Alcotest.(check (list (pair string bool)))
+    "labels"
+    [ ("Dec", false); ("Go", true); ("Inc", true) ]
+    (List.sort_uniq compare
+       (List.map (fun (label : Spec.label) -> (label.event, label.kept)) edges)
+    )
+
+type item = Shown_item | Loading_item of int [@@deriving state_shape]
+
+let item_endpoint =
+  Remote.declare ~path:"/api/item" ~input:Codec.int ~output:Codec.string
+    ~rejected:Codec.string
+
+let item_component =
+  let machine =
+    Machine.make_with_props ~id:"item" ~init:Shown_item ~shape:item_shape
+      ~owns:(fun number -> function
+        | Shown_item ->
+            []
+        | Loading_item _ ->
+            [ Remote.call item_endpoint number (fun _ -> `Loaded) ]
+        )
+      ~on_props:(fun previous number state ->
+        match (previous, state) with
+        | None, _ ->
+            Machine.Go (Loading_item number)
+        | Some _, Loading_item _ ->
+            Machine.Go (Loading_item number)
+        | Some _, Shown_item ->
+            Machine.Ignore
+      )
+      (fun _ state `Loaded ->
+        match state with
+        | Loading_item _ ->
+            Machine.Go Shown_item
+        | Shown_item ->
+            Machine.Ignore
+      )
+  in
+  Component.make_with_props machine (fun number state ->
+      Node.text
+        (Printf.sprintf "%d %s" number (Machine.shape_name item_shape state))
+  )
+
+let test_props_input () =
+  let calls_follow_props =
+    {
+      Check.name = "the call has the input of the state";
+      holds =
+        (fun state _ ->
+          match state with Loading_item n -> n >= 0 | Shown_item -> true
+        );
+    }
+  in
+  ( match
+      Check.component ~props:[ 1; 2 ] ~invariants:[ calls_follow_props ]
+        item_component
+    with
+  | Check.Ok { states; paths; _ } ->
+      Alcotest.(check bool) "explores both props" true (states >= 4);
+      Alcotest.(check (list string))
+        "both states reached"
+        [ "loading_item"; "shown_item" ]
+        (List.sort compare (List.map fst paths))
+  | Check.Violation v ->
+      Alcotest.failf "violation %s" v.invariant
+  | _ ->
+      Alcotest.fail "expected ok"
+  );
+  let never_two =
+    {
+      Check.name = "never-two";
+      holds = (fun state _ -> state <> Loading_item 2);
+    }
+  in
+  match
+    Check.component ~props:[ 1; 2 ] ~invariants:[ never_two ] item_component
+  with
+  | Check.Violation { invariant = "never-two"; trace; _ } ->
+      Alcotest.(check (list string))
+        "a start with the second props" []
+        (List.map
+           (fun (input : (int, _) Check.input) ->
+             match input with
+             | Check.Event _ ->
+                 "event"
+             | Check.Props n ->
+                 "props " ^ string_of_int n
+           )
+           trace
+        )
+  | _ ->
+      Alcotest.fail "expected never-two to fail"
 
 let () =
   Alcotest.run "check"
@@ -1184,9 +1515,18 @@ let () =
           Alcotest.test_case "after events" `Quick test_after_is_enabled;
           Alcotest.test_case "timer stops on exit" `Quick
             test_timer_stops_on_exit;
-          Alcotest.test_case "undeclared target" `Quick test_undeclared_target;
+          Alcotest.test_case "ignored event" `Quick test_ignored_event;
+          Alcotest.test_case "ignored timer event" `Quick
+            test_ignored_timer_event;
+          Alcotest.test_case "an ignored held source event is allowed" `Quick
+            test_ignored_held_event_is_allowed;
           Alcotest.test_case "inputs" `Quick test_inputs;
           Alcotest.test_case "pp_report" `Quick test_pp;
+          Alcotest.test_case "Ok.spec" `Quick test_spec;
+          Alcotest.test_case "Ok.paths" `Quick test_paths;
+          Alcotest.test_case "kept steps are labels, not edges" `Quick
+            test_kept_steps_are_labels_not_edges;
+          Alcotest.test_case "props are an input" `Quick test_props_input;
         ]
       );
       ( "components",
@@ -1241,6 +1581,8 @@ let () =
             test_round_trip_parse_ignores_query;
           Alcotest.test_case "round trip: path data parsed wrong" `Quick
             test_round_trip_item_parsed_wrong;
+          Alcotest.test_case "round trip: a route pair disagrees" `Quick
+            test_round_trip_route_pair_disagrees;
           Alcotest.test_case "link is not canonical" `Quick
             test_link_not_canonical;
           Alcotest.test_case "link to the not-found route" `Quick

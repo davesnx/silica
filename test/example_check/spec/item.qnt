@@ -1,21 +1,21 @@
 // Generated from the spec of the machine "item". Do not edit.
 module item {
-  type State = | Idle | Loading | Loaded | Failed
-  type Event = OnStart | OnAny | OnProps | OnSettledError | OnSettledOk
+  type State = | Loading | Failed | Loaded | Missing
+  type Event = OnStart | OnAny | OnProps | OnSettledError | OnSettledOk | OnSettledRejected
 
   var state: State
   var running: Set[str]
   var last: Event
 
   pure def owned(s: State): Set[str] = match s {
-    | Idle => Set()
     | Loading => Set("loading/invoke /api/item")
-    | Loaded => Set()
     | Failed => Set()
+    | Loaded => Set()
+    | Missing => Set()
   }
 
   pure val finals: Set[State] = Set()
-  pure val movable: Set[State] = Set(Idle, Loading, Loaded, Failed)
+  pure val movable: Set[State] = Set(Loading, Failed, Loaded, Missing)
 
   action enter(s: State, e: Event): bool = all {
     state' = s,
@@ -24,31 +24,27 @@ module item {
   }
 
   action init = all {
-    state' = Idle,
-    running' = owned(Idle),
+    state' = Loading,
+    running' = owned(Loading),
     last' = OnStart,
   }
 
-  action failed_to_failed_on_any = all { state == Failed, enter(Failed, OnAny) }
   action failed_to_loading_on_props = all { state == Failed, enter(Loading, OnProps) }
-  action idle_to_idle_on_any = all { state == Idle, enter(Idle, OnAny) }
-  action idle_to_loading_on_props = all { state == Idle, enter(Loading, OnProps) }
-  action loaded_to_loaded_on_any = all { state == Loaded, enter(Loaded, OnAny) }
   action loaded_to_loading_on_props = all { state == Loaded, enter(Loading, OnProps) }
   action loading_to_failed_on_settled_error = all { state == Loading, enter(Failed, OnSettledError) }
   action loading_to_loaded_on_settled_ok = all { state == Loading, enter(Loaded, OnSettledOk) }
-  action loading_to_loading_on_props = all { state == Loading, enter(Loading, OnProps) }
+  action loading_to_missing_on_settled_rejected = all { state == Loading, enter(Missing, OnSettledRejected) }
+  action missing_to_loading_on_props = all { state == Missing, enter(Loading, OnProps) }
+  action loading_stays_on_props = all { state == Loading, state' = state, running' = running, last' = OnProps }
 
   action step = any {
-    failed_to_failed_on_any,
     failed_to_loading_on_props,
-    idle_to_idle_on_any,
-    idle_to_loading_on_props,
-    loaded_to_loaded_on_any,
     loaded_to_loading_on_props,
     loading_to_failed_on_settled_error,
     loading_to_loaded_on_settled_ok,
-    loading_to_loading_on_props,
+    loading_to_missing_on_settled_rejected,
+    missing_to_loading_on_props,
+    loading_stays_on_props,
   }
 
   val resources_owned = running.subseteq(owned(state))

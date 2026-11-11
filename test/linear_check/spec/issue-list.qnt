@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "issue-list". Do not edit.
 module issue_list {
-  type State = | Loading | Ready | Failed
-  type Event = OnStart | OnAny | OnCommand | OnConflict | OnCreateKey | OnCursorNext | OnCursorPrevious | OnFilterChanged | OnFilterOpenFalse | OnFilterOpenTrue | OnGroupingPicked | OnLoadedError | OnLoadedOk | OnMenuOpenFalse | OnMenuOpenTrue | OnOrderingPicked | OnPropsDefault | OnPropsFiltered | OnReconnect | OnRetry | OnRowFocused | OnSaveFailed | OnToastClosed | OnToggleGroup | OnUpdated
+  type State = | Loading | Failed | Ready
+  type Event = OnStart | OnAny | OnCommand | OnConflict | OnCreateKey | OnCursorNext | OnCursorPrevious | OnFilterChanged | OnFilterOpenFalse | OnFilterOpenTrue | OnGroupingPicked | OnLoadedError | OnLoadedOk | OnMenuOpenFalse | OnMenuOpenTrue | OnOrderingPicked | OnReconnect | OnReconnected | OnRetry | OnRowFocused | OnSaveFailed | OnSaved | OnToastClosed | OnToggleGroup | OnUpdated
 
   var state: State
   var running: Set[str]
@@ -9,12 +9,12 @@ module issue_list {
 
   pure def owned(s: State): Set[str] = match s {
     | Loading => Set("loading/invoke /api/issues")
-    | Ready => Set("ready/invoke live:issues", "ready/hold keys")
     | Failed => Set()
+    | Ready => Set("ready/invoke live:issues", "ready/hold keys")
   }
 
   pure val finals: Set[State] = Set()
-  pure val movable: Set[State] = Set(Loading, Ready, Failed)
+  pure val movable: Set[State] = Set(Loading, Failed, Ready)
 
   action enter(s: State, e: Event): bool = all {
     state' = s,
@@ -30,13 +30,7 @@ module issue_list {
 
   action failed_to_loading_on_retry = all { state == Failed, enter(Loading, OnRetry) }
   action loading_to_failed_on_loaded_error = all { state == Loading, enter(Failed, OnLoadedError) }
-  action loading_to_loading_on_any = all { state == Loading, enter(Loading, OnAny) }
   action loading_to_ready_on_loaded_ok = all { state == Loading, enter(Ready, OnLoadedOk) }
-  action ready_to_ready_on_reconnect = all { state == Ready, enter(Ready, OnReconnect) }
-  action failed_stays_on_props_default = all { state == Failed, state' = state, running' = running, last' = OnPropsDefault }
-  action failed_stays_on_props_filtered = all { state == Failed, state' = state, running' = running, last' = OnPropsFiltered }
-  action loading_stays_on_props_default = all { state == Loading, state' = state, running' = running, last' = OnPropsDefault }
-  action loading_stays_on_props_filtered = all { state == Loading, state' = state, running' = running, last' = OnPropsFiltered }
   action ready_stays_on_command = all { state == Ready, state' = state, running' = running, last' = OnCommand }
   action ready_stays_on_conflict = all { state == Ready, state' = state, running' = running, last' = OnConflict }
   action ready_stays_on_create_key = all { state == Ready, state' = state, running' = running, last' = OnCreateKey }
@@ -49,10 +43,11 @@ module issue_list {
   action ready_stays_on_menu_open_false = all { state == Ready, state' = state, running' = running, last' = OnMenuOpenFalse }
   action ready_stays_on_menu_open_true = all { state == Ready, state' = state, running' = running, last' = OnMenuOpenTrue }
   action ready_stays_on_ordering_picked = all { state == Ready, state' = state, running' = running, last' = OnOrderingPicked }
-  action ready_stays_on_props_default = all { state == Ready, state' = state, running' = running, last' = OnPropsDefault }
-  action ready_stays_on_props_filtered = all { state == Ready, state' = state, running' = running, last' = OnPropsFiltered }
+  action ready_stays_on_reconnect = all { state == Ready, state' = state, running' = running, last' = OnReconnect }
+  action ready_stays_on_reconnected = all { state == Ready, state' = state, running' = running, last' = OnReconnected }
   action ready_stays_on_row_focused = all { state == Ready, state' = state, running' = running, last' = OnRowFocused }
   action ready_stays_on_save_failed = all { state == Ready, state' = state, running' = running, last' = OnSaveFailed }
+  action ready_stays_on_saved = all { state == Ready, state' = state, running' = running, last' = OnSaved }
   action ready_stays_on_toast_closed = all { state == Ready, state' = state, running' = running, last' = OnToastClosed }
   action ready_stays_on_toggle_group = all { state == Ready, state' = state, running' = running, last' = OnToggleGroup }
   action ready_stays_on_updated = all { state == Ready, state' = state, running' = running, last' = OnUpdated }
@@ -60,13 +55,7 @@ module issue_list {
   action step = any {
     failed_to_loading_on_retry,
     loading_to_failed_on_loaded_error,
-    loading_to_loading_on_any,
     loading_to_ready_on_loaded_ok,
-    ready_to_ready_on_reconnect,
-    failed_stays_on_props_default,
-    failed_stays_on_props_filtered,
-    loading_stays_on_props_default,
-    loading_stays_on_props_filtered,
     ready_stays_on_command,
     ready_stays_on_conflict,
     ready_stays_on_create_key,
@@ -79,10 +68,11 @@ module issue_list {
     ready_stays_on_menu_open_false,
     ready_stays_on_menu_open_true,
     ready_stays_on_ordering_picked,
-    ready_stays_on_props_default,
-    ready_stays_on_props_filtered,
+    ready_stays_on_reconnect,
+    ready_stays_on_reconnected,
     ready_stays_on_row_focused,
     ready_stays_on_save_failed,
+    ready_stays_on_saved,
     ready_stays_on_toast_closed,
     ready_stays_on_toggle_group,
     ready_stays_on_updated,

@@ -1,29 +1,21 @@
 open Silica
 
 type event = Increment | Decrement
-
-module States = struct
-  type _ t = Count : int t
-end
-
-module Counter_machine = Machine.Make (States)
+type state = Count of int [@@deriving state_shape]
 
 let machine =
-  Counter_machine.make ~id:"counter"
-    ~init:(Counter_machine.at Count 0)
-    [
-      Counter_machine.state Count "count" (fun n -> function
-        | Increment ->
-            Counter_machine.goto Count (n + 1)
-        | Decrement when n = 0 ->
-            Counter_machine.stay []
-        | Decrement ->
-            Counter_machine.goto Count (n - 1)
-        );
-    ]
+  Machine.make ~id:"counter" ~init:(Count 0) ~shape:state_shape
+    (fun (Count n) event ->
+      match event with
+      | Increment ->
+          Go (Count (n + 1))
+      | Decrement when n = 0 ->
+          Stay []
+      | Decrement ->
+          Go (Count (n - 1))
+  )
 
-let view (Counter_machine.At (Count, n) : Counter_machine.snapshot) :
-    event Node.t =
+let view (Count n) : event Node.t =
   <div>
     <button on_press=Decrement disabled=(n = 0)>"Decrement"</button>
     <span>(Node.text (string_of_int n))</span>

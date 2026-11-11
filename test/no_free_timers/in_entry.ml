@@ -1,10 +1,9 @@
-module States = struct
-  type _ t = A : unit t
-end
-module Timer_machine = Silica.Machine.Make (States)
+type state = A
+
 let _ =
-  Timer_machine.state States.A "a"
-    ~entry:(fun () ->
+  Silica.Machine.make ~id:"timer" ~init:A
+    ~shape:(Silica.Machine.shape ~name:(fun A -> "a") ())
+    ~entry:(fun A ->
       [ Silica.Action.Start_timer { id = "t"; ms = 5; event = () } ]
     )
-    Timer_machine.ignore
+    (fun A () -> Silica.Machine.Ignore)

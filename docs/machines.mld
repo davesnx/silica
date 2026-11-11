@@ -5,15 +5,25 @@ states, the events that each state accepts, and the actions that each step
 gives to the host. A machine is a plain value. It does not run by itself: a
 host (the browser, the server or the checker) runs it. See {!Silica.Machine}.
 
-{1:states States and snapshots}
+{1:states States}
 
-The states of a machine are the constructors of a GADT. The type index of a
-constructor is the type of the data that the state carries. The constructors
-must be constant: the data is not in the constructor, it goes next to it.
+The states of a machine are the constructors of a plain OCaml variant. A
+constructor carries the data of its state. A value of this type is a
+{e snapshot}: one state and its data.
 
-[Machine.Make] takes the module of the states and gives the functions that
-build the machine. A snapshot is the value of the machine at one moment: one
-state and its data, written [At (state, data)].
+Each state has a name. The machine uses the name to know when it enters a new
+state, and the checker, the spec and the ids of timers use it too. The
+{e shape} of the state type holds the name of each state and the list of all
+names: a value of type {!Silica.Machine.type-shape}, given to [Machine.make] as
+[~shape]. The deriver [[@@deriving state_shape]] of [silica.ppx] makes it from
+the variant: [state_shape] for a type [state], [<type>_shape] for another type,
+and [shape] for a type [t]. The name is the constructor in lower case;
+[[@state_name "x"]] on a constructor gives another name. Two constructors with
+the same name, a GADT, a type with a parameter and an empty variant are compile
+errors. [Machine.shape_name state_shape] gives the name of a snapshot and
+[Machine.shape_names state_shape] the list of all names. Without the deriver,
+write [Machine.shape ~name:(function ...) ~names:[ ... ] ()]. The dune file
+needs [(preprocess (pps silica.ppx))].
 
 The example below is a field with a debounce. It has three states: [Empty],
 [Typing], which carries the text, and [Settled], which carries the text that
@@ -24,61 +34,40 @@ open Silica
 
 type event = Typed of string | Settle | Clear
 
-module States = struct
-  type _ t = Empty : unit t | Typing : string t | Settled : string t
-end
+type state = Empty | Typing of string | Settled of string
+[@@deriving state_shape]
 
-module Debounce_machine = Machine.Make (States)
-
-let typed = function
+let typed : string -> (state, event) Machine.next = function
   | "" ->
-      Debounce_machine.goto Empty ()
+      Go Empty
   | text ->
-      Debounce_machine.reenter Typing text
+      Reenter (Typing text)
 
 let machine =
-  Debounce_machine.make ~id:"debounce"
-    ~init:(Debounce_machine.at Empty ())
-    [
-      Debounce_machine.state Empty "empty" ~to_:[ Typing ] (fun () -> function
-        | Typed text ->
-            typed text
-        | Settle | Clear ->
-            Debounce_machine.unhandled
-        );
-      Debounce_machine.state Typing "typing" ~to_:[ Empty; Settled ]
-        ~after:[ (500, Settle) ]
-        (fun text -> function
-          | Typed text ->
-              typed text
-          | Settle ->
-              Debounce_machine.goto Settled text
-          | Clear ->
-              Debounce_machine.unhandled
-          );
-      Debounce_machine.state Settled "settled" ~to_:[ Empty; Typing ]
-        (fun _ -> function
-        | Typed text ->
-            typed text
-        | Settle | Clear ->
-            Debounce_machine.unhandled
-        );
-      Debounce_machine.always ~to_:[ Empty ] (function
-        | Clear ->
-            Debounce_machine.goto Empty ()
-        | Typed _ | Settle ->
-            Debounce_machine.unhandled
-        );
-    ]
+  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape
+    ~owns:(function
+      | Typing _ -> [ Source.after 500 Settle ] | Empty | Settled _ -> []
+      )
+    (fun state event ->
+      match (state, event) with
+      | _, Typed text ->
+          typed text
+      | Typing text, Settle ->
+          Go (Settled text)
+      | _, Clear ->
+          Go Empty
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Debounce_machine.snapshot) : event Node.t =
+let view (state : state) : event Node.t =
   let text, note =
-    match snapshot with
-    | Debounce_machine.At (Empty, ()) ->
+    match state with
+    | Empty ->
         ("", "Type a word.")
-    | Debounce_machine.At (Typing, text) ->
+    | Typing text ->
         (text, "Waiting for you to stop.")
-    | Debounce_machine.At (Settled, text) ->
+    | Settled text ->
         (text, "You typed " ^ text ^ ".")
   in
   <div>
@@ -90,144 +79,239 @@ let view (snapshot : Debounce_machine.snapshot) : event Node.t =
 let component = Component.make machine view
 ]}
 
-{1:cases The table of cases}
+{1:make Make a machine}
 
-[Debounce_machine.make ~id ~init cases] makes the machine. [id] names the
+[Machine.make ~id ~init ~shape update] makes the machine. [id] names the
 machine in the spec, in the checker and in the ids of timers and sources.
-[init] is the first snapshot. [?start] gives actions that run once, before the
-entry of [init].
-
-Each state has one case, made with
-[Debounce_machine.state state name handler]. The handler gets the data of the
-state and the event, and gives an outcome. The options of a case:
+[init] is the first snapshot. [shape] gives the name of a snapshot and the list
+of every name, so that the checker can report the states that it never
+reached. The other options:
 
 {t
 | Option | Meaning |
 |--------|---------|
-| [to_] | The states that the handler can go to. Going to the current state needs no entry. |
-| [entry], [exit] | Actions to run when the machine enters or leaves the state. |
-| [after] | Timers, in milliseconds, with the event that each one raises. |
-| [invoke] | Sources: Remote calls, Live subscriptions and held resources. |
-| [final] | The machine stops here: a final state handles no event. |
+| [owns] | The timers, calls and sources of a snapshot (see {!section-owns}). |
+| [entry], [exit] | The actions to run when the machine enters or leaves a state. They get the snapshot. |
+| [final] | The snapshots where the machine stops: a final state handles no event. |
+| [start] | Actions that run once, before the entry of [init]. |
 }
 
-Timers and sources belong to the state. They start when the machine enters
-the state and stop when it leaves the state, so a timer or an answer of a left
-state never arrives. See {!page-actions} for the sources.
+The last argument is the update: a function of the snapshot and the event that
+gives the next step. Most updates match on the pair and end with
+[| _ -> Ignore]. A case that works in every state, as [Clear] in the example,
+is a case with [_] for the state, before the last one.
 
-[Debounce_machine.always ~to_ handler] is a handler that every state that is
-not final tries after its own handler gives [unhandled]. In the example,
-[Clear] works in every state.
+{1:steps The next step}
 
-A machine that the checker cannot reach is a bug. Two exceptions catch the
-most common ones when the machine is made or stepped:
-
-- {!Silica.Machine.Missing_case}: a state in [init] or in a [to_] list has no
-  case. [Debounce_machine.make] raises it.
-- {!Silica.Machine.Undeclared_target}: a handler went to a state that is not
-  in the [to_] list of its case. The step raises it.
-
-{@ocaml[
-# let broken () =
-    let open Doc_debounce in
-    Debounce_machine.make ~id:"broken"
-      ~init:(Debounce_machine.at States.Empty ())
-      [
-        Debounce_machine.state States.Empty "empty" ~to_:[ States.Typing ]
-          Debounce_machine.ignore;
-      ];;
-val broken :
-  unit -> (Doc_debounce.Debounce_machine.snapshot, 'a) Silica.Machine.t =
-  <fun>
-# broken ();;
-Exception: Silica.Machine.Missing_case {machine = "broken"; index = 1}.
-]}
-
-{1:outcomes Outcomes}
+The update gives a {!Silica.Machine.next}:
 
 {t
-| Outcome | Meaning |
-|---------|---------|
-| [Debounce_machine.goto state data] | Go to the state. To the current state, only the data changes: no exit, no entry, the timers and sources keep running. |
-| [Debounce_machine.reenter state data] | Like [goto], but exit and enter again, also to the current state. Timers and sources start again. |
-| [Debounce_machine.stay actions] | Keep the snapshot and run the actions. |
-| [Debounce_machine.unhandled] | This state does not handle the event. The [always] handlers get it next. |
+| Constructor | Meaning |
+|-------------|---------|
+| [Go snapshot] | Go to the snapshot. When its name is the name of the current state, only the data changes: no exit, no entry, and the timers and sources keep running. |
+| [Go_with (snapshot, actions)] | Like [Go], and run the actions between the exit and the entry. |
+| [Stay actions] | The event is handled: keep the snapshot and run the actions. |
+| [Reenter snapshot] | Like [Go], but exit and enter also when the name does not change. All timers and sources start again. |
+| [Ignore] | The event is not handled. The snapshot does not change. |
 }
 
-[goto] and [reenter] take [?actions], the actions of the step. A debounce is
-[reenter] on a state with an [after] timer: each new text starts the timer
-again, so the timer fires only after the last key.
+A debounce is [Reenter] on a state that owns a timer: each new text starts the
+timer again, so the timer fires only after the last key.
+
+{!Silica.Machine.can} tells whether the machine handles an event in a
+snapshot: the snapshot is not final and the update does not give [Ignore]. A
+view can disable a button with it (see {!section-records}).
+
+{1:owns Timers and sources}
+
+[owns] gives, for each snapshot, the list of its timers ({!Silica.Source.after}),
+Remote calls ({!Silica.Remote.call}) and other sources. A source starts when a
+snapshot starts to own it and stops when the snapshot no longer owns it, so a
+timer or an answer of a left state never arrives.
+
+Each source has a key ({!Silica.Source.key}): the path and the input of a
+call, the topic and key of a subscription, the delay of a timer. After each
+step, the machine compares the keys of the old and the new list. It stops the
+sources whose key went away and starts the new ones. The other sources keep
+running. So a state can own a set of calls that changes with its data, and a
+call whose input changes starts again. See {!page-actions} for the sources.
 
 {1:run Run a machine}
 
 {!Silica.Machine.start} gives the first snapshot and the actions of the start.
-{!Silica.Machine.send} gives the next snapshot, the actions and whether the
-event was handled. {!Silica.Machine.active} lists the timers and sources that
-the current state owns.
+{!Silica.Machine.step} gives the next snapshot, the actions and how the step
+changed the snapshot: [Unhandled], [Kept] (same name) or [Entered].
+{!Silica.Machine.active} lists the timers and sources that the snapshot owns.
+These functions take the props; a machine from [Machine.make] has the props
+[()].
 
 {@ocaml[
 # let machine = Doc_debounce.machine;;
-val machine :
-  (Doc_debounce.Debounce_machine.snapshot, Doc_debounce.event)
-  Silica.Machine.t = <abstr>
-# let snapshot, _ = Silica.Machine.start machine;;
-val snapshot : Doc_debounce.Debounce_machine.snapshot =
-  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Empty, <poly>)
-# let snapshot, actions, _ =
-    Silica.Machine.send machine snapshot (Doc_debounce.Typed "oc");;
-val snapshot : Doc_debounce.Debounce_machine.snapshot =
-  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Typing, <poly>)
+val machine : (unit, Doc_debounce.state, Doc_debounce.event) Silica.Machine.t =
+  <abstr>
+# let state, _ = Silica.Machine.start machine ();;
+val state : Doc_debounce.state = Doc_debounce.Empty
+# let state, actions, _ =
+    Silica.Machine.step machine () state (Doc_debounce.Typed "oc");;
+val state : Doc_debounce.state = Doc_debounce.Typing "oc"
 val actions : Doc_debounce.event Silica.Action.host list =
   [Silica.Action.Start_timer
-    {Silica.Action.id = "debounce/typing/after0"; ms = 500;
+    {Silica.Action.id = "debounce/typing/after 500ms"; ms = 500;
      event = Doc_debounce.Settle}]
-# Silica.Machine.active machine snapshot;;
+# Silica.Machine.active machine () state;;
 - : Silica.Machine.resource list =
 [Silica.Machine.Timer
-  {Silica.Machine.id = "debounce/typing/after0"; ms = 500}]
+  {Silica.Machine.id = "debounce/typing/after 500ms"; ms = 500}]
 ]}
 
 A second text enters [Typing] again. The actions stop the old timer and start
 a new one:
 
 {@ocaml[
-# let snapshot, actions, _ =
-    Silica.Machine.send machine snapshot (Doc_debounce.Typed "ocaml");;
-val snapshot : Doc_debounce.Debounce_machine.snapshot =
-  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Typing, <poly>)
+# let state, actions, _ =
+    Silica.Machine.step machine () state (Doc_debounce.Typed "ocaml");;
+val state : Doc_debounce.state = Doc_debounce.Typing "ocaml"
 val actions : Doc_debounce.event Silica.Action.host list =
-  [Silica.Action.Stop "debounce/typing/after0";
+  [Silica.Action.Stop "debounce/typing/after 500ms";
    Silica.Action.Start_timer
-    {Silica.Action.id = "debounce/typing/after0"; ms = 500;
+    {Silica.Action.id = "debounce/typing/after 500ms"; ms = 500;
      event = Doc_debounce.Settle}]
-# let snapshot, _, _ = Silica.Machine.send machine snapshot Doc_debounce.Settle;;
-val snapshot : Doc_debounce.Debounce_machine.snapshot =
-  Doc_debounce.Debounce_machine.At (Doc_debounce.States.Settled, <poly>)
-# Silica.Machine.key machine snapshot;;
+# let state, _, _ = Silica.Machine.step machine () state Doc_debounce.Settle;;
+val state : Doc_debounce.state = Doc_debounce.Settled "ocaml"
+# Silica.Machine.name machine state;;
 - : string = "settled"
 ]}
 
-{!Silica.Machine.step} is like [send], and also tells a host whether the step
-entered a state. {!Silica.Machine.map_snapshot} shows the same machine over
-another type of snapshot, for example a plain record.
+{1:props Props}
+
+A component that gets props from its parent uses
+{!Silica.Machine.make_with_props}. The update, [owns], [entry] and [exit] get
+the props of the moment as their first argument. The props are not an event and
+are not stored in the snapshot: the view gets them too (see
+{!page-components.children}).
+
+[on_props previous props snapshot] reacts to new props. It runs at the start,
+with [previous = None], and each time the parent gives other props. It gives a
+[next], as the update does, and defaults to [Ignore]. After it, the sources are
+compared by key, so a call whose input comes from the props starts again when
+the props change. A switch that follows a [checked] prop:
+
+{@ocaml skip[
+let machine =
+  Machine.make_with_props ~id:"switch" ~init:Unchecked ~shape:state_shape
+    ~on_props:(fun previous props _ ->
+      match previous with
+      | Some (previous : props) when previous.checked = props.checked ->
+          Ignore
+      | Some _ | None ->
+          Go (of_props props)
+    )
+    (fun (props : props) state Toggle ->
+      if props.disabled then
+        Ignore
+      else
+        match state with Checked -> Go Unchecked | Unchecked -> Go Checked
+    )
+]}
+
+{1:records States in a record}
+
+Some data belongs to every state, such as the text of a form. Then the
+snapshot is a record, and one field holds the variant of the phase. The name of
+the snapshot is the name of its phase. A helper decides the step of the phase
+and gives a [next] of the phase; {!Silica.Machine.map_next} puts the phase back
+into the record:
+
+{@mlx file=examples/shared/doc_signup.mlx[
+open Silica
+
+let subscribe =
+  Remote.declare ~path:"/api/subscribe" ~input:Codec.string ~output:Codec.string
+    ~rejected:Codec.string
+
+type event = Typed of string | Send | Answer of (string, string) Remote.answer
+
+type phase = Editing | Sending | Sent of string | Failed of string
+[@@deriving state_shape]
+
+type state = { email : string; phase : phase }
+
+let phase_step email phase event : (phase, event) Machine.next =
+  match (phase, event) with
+  | (Editing | Failed _), Send when String.contains email '@' ->
+      Go Sending
+  | Sending, Answer (Ok note) ->
+      Go (Sent note)
+  | Sending, Answer (Rejected reason) ->
+      Go (Failed reason)
+  | Sending, Answer (Failed error) ->
+      Go (Failed (Remote.error_to_string error))
+  | _ ->
+      Ignore
+
+let update state event : (state, event) Machine.next =
+  match (state.phase, event) with
+  | (Editing | Failed _), Typed email ->
+      Go { email; phase = Editing }
+  | _ ->
+      Machine.map_next
+        (fun phase -> { state with phase })
+        (phase_step state.email state.phase event)
+
+let machine =
+  Machine.make ~id:"signup"
+    ~init:{ email = ""; phase = Editing }
+    ~shape:
+      (Machine.shape
+         ~name:(fun state -> Machine.shape_name phase_shape state.phase)
+         ~names:(Machine.shape_names phase_shape)
+         ()
+      )
+    ~owns:(fun state ->
+      match state.phase with
+      | Sending ->
+          [ Remote.call subscribe state.email (fun answer -> Answer answer) ]
+      | Editing | Sent _ | Failed _ ->
+          []
+    )
+    update
+
+let view state : event Node.t =
+  match state.phase with
+  | Sent note ->
+      <p>(Node.text note)</p>
+  | Editing | Sending | Failed _ ->
+      <div>
+        <input
+          aria_label="Email"
+          value=state.email
+          disabled=(state.phase = Sending)
+          on_input=(fun email -> Typed email)
+        />
+        <button
+          on_press=Send disabled=(not (Machine.can machine () state Send))>
+          "Subscribe"
+        </button>
+        ( match state.phase with
+        | Failed reason ->
+            <p>(Node.text reason)</p>
+        | Editing | Sending | Sent _ ->
+            Node.list []
+        )
+      </div>
+
+let component = Component.make machine view
+]}
+
+The button is disabled when the machine cannot handle [Send], for example while
+the address has no [@]. So the checker sees no button that does nothing.
 
 {1:spec The spec}
 
-{!Silica.Machine.spec} reads the shape of a machine without running a handler:
-its states, its edges (from the [to_] lists and [always]), its timers and its
-sources. {!Silica.Spec.lint} finds states that no path reaches and states that
-no edge leaves. The checker, the Quint export and the diagrams use the spec;
-see {!page-checker}.
-
-{@ocaml[
-# (Silica.Machine.spec Doc_debounce.machine).edges;;
-- : (string * string) list =
-[("empty", "empty"); ("empty", "typing"); ("settled", "empty");
- ("settled", "typing"); ("typing", "empty"); ("typing", "settled");
- ("typing", "typing")]
-# Silica.Spec.lint (Silica.Machine.spec Doc_debounce.machine);;
-- : Silica.Spec.issue list = []
-]}
+The spec of a machine is the shape that a checker run found: the states it
+reached, the timers and sources of each, and the steps it took. It is in the
+[spec] field of [Check.Ok] (see {!Check.type-report}), and {!Silica.Spec.to_quint} and
+{!Silica.Spec.to_dot} export it. See {!page-checker}.
 
 {1:next Next}
 

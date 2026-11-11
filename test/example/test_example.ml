@@ -82,7 +82,7 @@ let test_item_page () =
   has "loading" (html sim) "Loading item 3...";
   Alcotest.check strings "one call, with the id" [ "3" ] (Sim.call_inputs sim);
   Alcotest.check strings "the call belongs to the page instance"
-    [ "2.1/item/loading/invoke0" ]
+    [ "2.0/item/loading//api/item 3" ]
     (Sim.running sim);
   Alcotest.(check bool)
     "title while loading" true
@@ -97,7 +97,11 @@ let test_item_page () =
     (List.nth (Sim.log sim) (List.length (Sim.log sim) - 1));
   let failing = mount "/item/3" in
   Sim.answer_error failing Example_model.item_endpoint (Http 500);
-  has "failure" (html failing) "Server answered 500"
+  has "failure" (html failing) "The server answered 500";
+  let missing = mount "/item/3" in
+  Sim.reject missing Example_model.item_endpoint "no item 3";
+  has "rejected" (html missing) "<p>no item 3</p>";
+  lacks "no article" (html missing) "<article>"
 
 let test_item_change_reloads () =
   let sim = mount "/item/3" in
@@ -113,7 +117,7 @@ let test_leaving_item_ignores_late_result () =
   Alcotest.check strings "nothing runs" [] (Sim.running sim);
   Sim.clear_log sim;
   let before = html sim in
-  Sim.fire_after_stop sim "2.1/item/loading/invoke0";
+  Sim.fire_after_stop sim "2.0/item/loading//api/item 3";
   Alcotest.(check string) "view unchanged" before (html sim);
   Alcotest.check strings "no action" [] (Sim.log sim)
 
@@ -177,7 +181,10 @@ let test_votes_reconnect () =
   Sim.clear_log sim;
   Sim.press sim "Reconnect";
   Alcotest.check strings "the subscription stops and starts again"
-    [ "stop 4.0/votes/watching/invoke0"; "start 4.1/votes/watching/invoke0" ]
+    [
+      "stop 4.0/votes/watching/live:votes main";
+      "start 4.1/votes/watching/live:votes main";
+    ]
     (Sim.log sim);
   Sim.publish sim Example_model.votes_topic ~key:"main"
     { Topic.seq = 1; status = Status.Ready { data = 5; stale = false } };
@@ -211,18 +218,12 @@ let test_not_found () =
 let test_route_round_trip () =
   let open Example_routes in
   List.iter
-    (fun snapshot ->
+    (fun route ->
       Alcotest.(check bool)
         "round trip" true
-        (Router.parse routes (Router.print routes snapshot) = snapshot)
+        (Router.parse routes (Router.print routes route) = route)
     )
-    Router.
-      [
-        At (State.Home, ());
-        At (State.About, ());
-        At (State.Item, 0);
-        At (State.Item, 42);
-      ]
+    [ Home; About; Item 0; Item 42; Edit; Locked; Not_found "/nope" ]
 
 let rec pressables acc (n : _ Node.t) =
   match Node.view n with
@@ -296,13 +297,21 @@ let test_accessible_names () =
   check_named (Example_counter.view 1)
 
 let test_counter () =
-  let m = Example_counter.machine in
-  let send s e = (fun (s, _, _) -> s) (Machine.send m s e) in
+  let send count event =
+    let count, _, _ = Machine.step Example_counter.machine () count event in
+    count
+  in
   let open Example_model.Counter_event in
   Alcotest.(check int) "incr" 2 (send (send 0 Incr) Incr);
   Alcotest.(check int) "decr" 1 (send 2 Decr);
   Alcotest.(check int) "decr at zero" 0 (send 0 Decr);
   Alcotest.(check int) "reset" 0 (send 5 Reset);
+  Alcotest.(check bool)
+    "decr at zero is ignored" false
+    (Machine.can Example_counter.machine () 0 Decr);
+  Alcotest.(check bool)
+    "decr at one is handled" true
+    (Machine.can Example_counter.machine () 1 Decr);
   has "disabled at 0"
     (Render.to_string (Example_counter.view 0))
     "<button disabled>Decrement</button>";

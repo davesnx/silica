@@ -6,7 +6,7 @@ browser:
 {t
 | Level | Tool | What it shows |
 |-------|------|---------------|
-| one machine | {!Silica.Machine.send} | a step gives the next state and the actions |
+| one machine | {!Silica.Machine.step} | a step gives the next state and the actions |
 | every state | {!Check} | no state that the machine can reach breaks a property |
 | the runtime | {!Silica_memory} | the components, timers, calls and history work together |
 | the server | [Server.handle] | the HTTP policy, the handlers and the first HTML |
@@ -15,8 +15,8 @@ browser:
 
 {1:machines Machines}
 
-A machine is a value: start it, send events, and compare the snapshot, the
-key of the state and the actions. The {{!page-tutorial}tutorial} and
+A machine is a value: start it, step it with events, and compare the snapshot,
+the name of its state and the actions. The {{!page-tutorial}tutorial} and
 {!page-machines.run} show it. This is the fastest test, and the right one for
 the rules of one machine.
 

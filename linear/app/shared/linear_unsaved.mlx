@@ -1,42 +1,27 @@
 open Silica
 
 type event = Attempt of Nav.t | Discard | Keep
-
-module States = struct
-  type _ t = Held : unit t | Asking : Nav.t t
-end
-
-module Unsaved_machine = Machine.Make (States)
+type state = Held | Asking of Nav.t [@@deriving state_shape]
 
 let keep_button = Ref.make "unsaved-keep"
-let block () = Source.block (fun nav -> Attempt nav)
-let ask nav =
-  Unsaved_machine.goto Asking ~actions:[ Action.Focus keep_button ] nav
 
 let machine =
-  Unsaved_machine.make ~id:"unsaved"
-    ~init:(Unsaved_machine.at Held ())
-    [
-      Unsaved_machine.state Held "held" ~to_:[ Asking ]
-        ~invoke:[ block () ]
-        (fun () -> function
-          | Attempt nav -> ask nav | Discard | Keep -> Unsaved_machine.unhandled
-          );
-      Unsaved_machine.state Asking "asking" ~to_:[ Held ]
-        ~invoke:[ block () ]
-        (fun nav -> function
-          | Attempt nav ->
-              ask nav
-          | Discard ->
-              Unsaved_machine.goto Held ~actions:[ Action.Resume nav ] ()
-          | Keep ->
-              Unsaved_machine.goto Held ()
-          );
-    ]
+  Machine.make ~id:"unsaved" ~init:Held ~shape:state_shape
+    ~owns:(fun _ -> [ Source.block (fun nav -> Attempt nav) ])
+    (fun state event ->
+      match (state, event) with
+      | (Held | Asking _), Attempt nav ->
+          Go_with (Asking nav, [ Action.Focus keep_button ])
+      | Asking nav, Discard ->
+          Go_with (Held, [ Action.Resume nav ])
+      | Asking _, Keep ->
+          Go Held
+      | Held, (Discard | Keep) ->
+          Ignore
+    )
 
-let view (snapshot : Unsaved_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Unsaved_machine.At (Asking, _) ->
+let view : state -> event Node.t = function
+  | Asking _ ->
       <div
         id="unsaved"
         role=`alertdialog
@@ -62,7 +47,7 @@ let view (snapshot : Unsaved_machine.snapshot) : event Node.t =
           "Keep editing"
         </button>
       </div>
-  | Unsaved_machine.At (Held, ()) ->
+  | Held ->
       Node.list []
 
 let component = Component.make machine view

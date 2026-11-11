@@ -1,28 +1,19 @@
 open Silica
 
 type event = Go_back
-
-module States = struct
-  type _ t = About : unit t
-end
-
-module About_machine = Machine.Make (States)
+type state = About [@@deriving state_shape]
 
 let machine =
-  About_machine.make ~id:"about"
-    ~init:(About_machine.at About ())
-    [
-      About_machine.state About "about"
-        ~entry:(fun () -> [ Action.Set_title "About" ])
-        (fun () -> function Go_back -> About_machine.stay [ Action.Back ]);
-    ]
+  Machine.make ~id:"about" ~init:About ~shape:state_shape
+    ~entry:(fun About -> [ Action.Set_title "About" ])
+    (fun About Go_back -> Stay [ Action.Back ])
 
 let history =
   List.init 40 (fun i ->
       <p>(Node.text (Printf.sprintf "Release note %d." (i + 1)))</p>
   )
 
-let view (_ : About_machine.snapshot) : event Node.t =
+let view About : event Node.t =
   <div>
     (Node.element "h1"
        [ Attr.bool "data-silica-route-focus" true ]

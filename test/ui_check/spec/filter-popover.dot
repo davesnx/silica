@@ -1,13 +1,10 @@
 digraph "filter-popover" {
 rankdir=LR;
 "filter-popover.__init" [shape=point];
-"filter-popover.__init" -> "filter-popover.idle";
-"filter-popover.idle" [label="idle" shape=box];
+"filter-popover.__init" -> "filter-popover.closed";
 "filter-popover.closed" [label="closed" shape=box];
 "filter-popover.open" [label="open\nhold dismiss\nhold anchor" shape=box];
-"filter-popover.closed" -> "filter-popover.open" [label="open trigger-press, props open"];
-"filter-popover.idle" -> "filter-popover.closed" [label="props, props closed"];
-"filter-popover.idle" -> "filter-popover.open" [label="props open"];
-"filter-popover.open" -> "filter-popover.closed" [label="apply, close close-press, close escape-key, close outside-press, close trigger-press, props closed"];
-"filter-popover.open" -> "filter-popover.open" [label="props, props open"];
+"filter-popover.closed" -> "filter-popover.open" [label="open trigger-press, props"];
+"filter-popover.open" -> "filter-popover.closed" [label="apply, close close-press, close escape-key, close outside-press, close trigger-press, props"];
+"filter-popover.open" -> "filter-popover.open" [label="props"];
 }

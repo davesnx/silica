@@ -15,8 +15,8 @@ belong to the current state.
 
 {1:actions Actions}
 
-A step gives actions in [goto ~actions], [reenter ~actions] and [stay actions], and a
-case gives them in [entry] and [exit]. [Copy_machine.make ?start] gives the
+A step gives actions in [Go_with (snapshot, actions)] and [Stay actions], and
+the machine gives them in [entry] and [exit]. [Machine.make ?start] gives the
 actions of the start.
 
 {t
@@ -42,54 +42,49 @@ An action with a result ([Measure], [Copy], [Load_script]) raises its event in
 the instance that ran it, in any state. When that instance has ended, the
 event is dropped.
 
-This button copies a text and shows the result for two seconds. The [Shown]
-state owns the timer, so the timer stops when the state is left:
+This button copies a text and shows the result for two seconds. The step to
+[Copying] gives the [Copy] action, and the [Shown] state owns the timer, so the
+timer stops when the state is left:
 
 {@mlx file=examples/shared/doc_copy.mlx[
 open Silica
 
 type event = Copy | Result of bool | Back
-
-module States = struct
-  type _ t = Ready : unit t | Shown : bool t
-end
-
-module Copy_machine = Machine.Make (States)
+type state = Ready | Copying | Shown of bool [@@deriving state_shape]
 
 let text = "Hello from Silica"
 
 let machine =
-  Copy_machine.make ~id:"copy" ~init:(Copy_machine.at Ready ())
-    [
-      Copy_machine.state Ready "ready" ~to_:[ Shown ] (fun () -> function
-        | Copy ->
-            Copy_machine.stay
+  Machine.make ~id:"copy" ~init:Ready ~shape:state_shape
+    ~owns:(function
+      | Shown _ -> [ Source.after 2000 Back ] | Ready | Copying -> []
+      )
+    (fun state event ->
+      match (state, event) with
+      | Ready, Copy ->
+          Go_with
+            ( Copying,
               [ Action.Copy { text; on_result = Some (fun ok -> Result ok) } ]
-        | Result ok ->
-            Copy_machine.goto Shown ok
-        | Back ->
-            Copy_machine.unhandled
-        );
-      Copy_machine.state Shown "shown" ~to_:[ Ready ]
-        ~after:[ (2000, Back) ]
-        (fun _ -> function
-          | Back ->
-              Copy_machine.goto Ready ()
-          | Copy | Result _ ->
-              Copy_machine.unhandled
-          );
-    ]
+            )
+      | Copying, Result ok ->
+          Go (Shown ok)
+      | Shown _, Back ->
+          Go Ready
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Copy_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Copy_machine.At (Ready, ()) ->
+let view : state -> event Node.t = function
+  | Ready ->
       <div>
         <code>(Node.text text)</code>
         <button on_press=Copy>"Copy the text"</button>
       </div>
-  | Copy_machine.At (Shown, true) ->
+  | Copying ->
+      <p>"Copying."</p>
+  | Shown true ->
       <p>"Copied."</p>
-  | Copy_machine.At (Shown, false) ->
+  | Shown false ->
       <p>"The browser did not allow the copy."</p>
 
 let component = Component.make machine view
@@ -98,10 +93,9 @@ let component = Component.make machine view
 The step gives the action to the host as [Run]:
 
 {@ocaml[
-# let snapshot, _ = Silica.Machine.start Doc_copy.machine;;
-val snapshot : Doc_copy.Copy_machine.snapshot =
-  Doc_copy.Copy_machine.At (Doc_copy.States.Ready, <poly>)
-# let _, actions, _ = Silica.Machine.send Doc_copy.machine snapshot Doc_copy.Copy;;
+# let state, _ = Silica.Machine.start Doc_copy.machine ();;
+val state : Doc_copy.state = Doc_copy.Ready
+# let _, actions, _ = Silica.Machine.step Doc_copy.machine () state Doc_copy.Copy;;
 val actions : Doc_copy.event Silica.Action.host list =
   [Silica.Action.Run
     (Silica.Action.Copy
@@ -110,13 +104,14 @@ val actions : Doc_copy.event Silica.Action.host list =
 
 {1:sources Sources}
 
-A state lists its sources in [invoke], and its timers in [after]:
+The [owns] function of the machine gives the timers and sources of each
+snapshot:
 
 {t
 | Source | What it does while the state is active |
 |--------|----------------------------------------|
-| [after] | raise an event after a number of milliseconds |
-| {!Silica.Source.call} | one Remote call; the answer is an event (see {!page-data.remote}) |
+| {!Silica.Source.after} | raise an event after a number of milliseconds |
+| {!Silica.Remote.call} | one Remote call; the answer is an event (see {!page-data.remote}) |
 | {!Silica.Source.live} | follow one key of a topic (see {!page-data.topics}) |
 | {!Silica.Source.keys} | a table of keys for the whole page; keys typed in a text field do not count, except with Ctrl or Meta, and Escape |
 | {!Silica.Source.dismiss} | a dismiss layer: Escape, a press outside or focus that leaves raise events; the newest layer gets them first |
@@ -132,9 +127,13 @@ A state lists its sources in [invoke], and its timers in [after]:
 The sources that give a value, such as [media] and [online], raise it once at
 the start, so the machine knows the value when it enters the state.
 
-A source that takes refs gets them when the case is made. A component that
-can show more than once in a page gives each instance its own refs with
-{!Silica.Source.map_refs}, for example from an id in its props.
+The machine compares the sources of the old and the new snapshot by their key
+({!Silica.Source.key}) after each step: a source whose key did not change keeps
+running (see {!page-machines.owns}).
+
+A component that can show more than once in a page gives each instance its own
+refs, for example made from an id in its props. [owns] gets the props, so it can
+make the refs there. {!Silica.Source.map_refs} changes the refs of a source.
 
 {1:rate Rate limits}
 
@@ -144,5 +143,5 @@ lets the first value through and then the last value of each window.
 event attributes ([on_input_rate], see {!page-components.jsx}) and on the
 sources [keys], [resize], [intersection] and [scroll]. A debounce that is part
 of the behaviour, such as "search after the user stops", is better as a state
-with an [after] timer (see {!page-machines.outcomes}): then the checker sees
-it.
+that owns a {!Silica.Source.after} timer (see {!page-machines.steps}): then the
+checker sees it.

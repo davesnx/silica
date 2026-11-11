@@ -535,6 +535,9 @@ let () =
   Driver.register_transformation "silica.ppx"
     ~preprocess_impl:rewrite_jsx#structure
 
+let () = ignore (State_shape.deriver : Deriving.t)
+let () = ignore (Routes.deriver : Deriving.t)
+
 module Svg_names = Svg_names
 
 let svg_attributes () =

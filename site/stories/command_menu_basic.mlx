@@ -10,53 +10,31 @@ let commands =
       item ~keywords:[ "quit" ] "close" "Close window";
     ]
 
-type page = { id : string; open_ : bool option }
-type event = Props of string | Open | Changed of bool
-
-module States = struct
-  type _ t = Idle : unit t | Page : page t
-end
-
-module Command_menu_basic_machine = Machine.Make (States)
+type event = Open | Changed of bool
 
 let machine =
-  Command_menu_basic_machine.make ~id:"command-menu-basic"
-    ~init:(Command_menu_basic_machine.at Idle ())
-    [
-      Command_menu_basic_machine.state Idle "idle" ~to_:[ Page ]
-        (fun () -> function
-        | Props id ->
-            Command_menu_basic_machine.goto Page { id; open_ = None }
-        | Open | Changed _ ->
-            Command_menu_basic_machine.unhandled
-        );
-      Command_menu_basic_machine.state Page "page" (fun page -> function
-        | Props id ->
-            Command_menu_basic_machine.goto Page { page with id }
-        | Open ->
-            Command_menu_basic_machine.goto Page { page with open_ = Some true }
-        | Changed opened ->
-            Command_menu_basic_machine.goto Page
-              { page with open_ = Some opened }
-        );
-    ]
+  Machine.make_with_props ~id:"command-menu-basic" ~init:None
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun _ _ event ->
+      match event with
+      | Open ->
+          Go (Some true)
+      | Changed opened ->
+          Go (Some opened)
+    )
 
-let view = function
-  | Command_menu_basic_machine.At (Idle, ()) ->
-      <div />
-  | Command_menu_basic_machine.At (Page, page) ->
-      <div>
-        <button type_=`button class_=Style.button on_press=Open>
-          "Open commands"
-        </button>
-        (Command_menu.make
-           ~on_open_change:(fun opened _ -> Changed opened)
-           (Command_menu.props ~id:page.id ~title:"Commands"
-              ~placeholder:"Type a command" ~empty:"No command found"
-              ?open_:page.open_ ~classes:Style.command_menu commands
-           )
-        )
-      </div>
+let view id open_ =
+  <div>
+    <button type_=`button class_=Style.button on_press=Open>
+      "Open commands"
+    </button>
+    (Command_menu.make
+       ~on_open_change:(fun opened _ -> Changed opened)
+       (Command_menu.props ~id ~title:"Commands" ~placeholder:"Type a command"
+          ~empty:"No command found" ?open_ ~classes:Style.command_menu commands
+       )
+    )
+  </div>
 
-let component = Component.make machine view
-let render ~id _values = Component.node ~props:(Props id) component
+let component = Component.make_with_props machine view
+let render ~id _values = Component.node_with_props ~props:id component

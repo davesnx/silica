@@ -1,77 +1,40 @@
 open Silica
 
-type event =
-  | Props of string
-  | Loaded of (Site_doc.answer, Remote.error) result
-  | Retry
+type event = Loaded of (Site_doc.answer, string) Remote.answer | Retry
 
-module State = struct
-  type failure = { slug : string; error : Remote.error }
-
-  type _ t =
-    | Idle : unit t
-    | Loading : string t
-    | Ready : Site_doc.page t
-    | Missing : string t
-    | Failed : failure t
-end
-
-open State
-module Doc_page_machine = Machine.Make (State)
-
-let load slug = Doc_page_machine.reenter Loading slug
-
-let props current = function
-  | Props slug when slug <> current ->
-      load slug
-  | Props _ | Loaded _ | Retry ->
-      Doc_page_machine.unhandled
+type state = Loading | Ready of Site_doc.page | Missing | Failed of string
+[@@deriving state_shape]
 
 let machine =
-  Doc_page_machine.make ~id:"doc-page"
-    ~init:(Doc_page_machine.at Idle ())
-    [
-      Doc_page_machine.state Idle "idle" ~to_:[ Loading ] (fun () -> function
-        | Props slug ->
-            load slug
-        | Loaded _ | Retry ->
-            Doc_page_machine.unhandled
-        );
-      Doc_page_machine.state Loading "loading"
-        ~to_:[ Loading; Ready; Missing; Failed ]
-        ~invoke:[ Source.call Site_doc.endpoint Fun.id (fun r -> Loaded r) ]
-        (fun slug -> function
-          | Loaded (Ok (Site_doc.Page page)) ->
-              Doc_page_machine.goto Ready page
-          | Loaded (Ok Site_doc.Missing) ->
-              Doc_page_machine.goto Missing slug
-          | Loaded (Error error) ->
-              Doc_page_machine.goto Failed { slug; error }
-          | event ->
-              props slug event
-          );
-      Doc_page_machine.state Ready "ready" ~to_:[ Loading ] (fun page event ->
-          props page.slug event
-      );
-      Doc_page_machine.state Missing "missing" ~to_:[ Loading ]
-        (fun slug event -> props slug event
-      );
-      Doc_page_machine.state Failed "failed" ~to_:[ Loading ]
-        (fun { slug; _ } -> function
-        | Retry ->
-            load slug
-        | event ->
-            props slug event
-        );
-    ]
-
-let error_text = function
-  | Remote.Http status ->
-      "The server answered with status " ^ string_of_int status ^ "."
-  | Remote.Decode message ->
-      "The answer could not be read: " ^ message
-  | Remote.Network message ->
-      "The network failed: " ^ message
+  Machine.make_with_props ~id:"doc-page" ~init:Loading ~shape:state_shape
+    ~owns:(fun slug -> function
+      | Loading ->
+          [ Remote.call Site_doc.endpoint slug (fun answer -> Loaded answer) ]
+      | Ready _ | Missing | Failed _ ->
+          []
+      )
+    ~on_props:(fun previous slug _ ->
+      match previous with
+      | Some previous when previous <> slug ->
+          Reenter Loading
+      | _ ->
+          Ignore
+    )
+    (fun _ state event ->
+      match (state, event) with
+      | Loading, Loaded (Ok (Site_doc.Page page)) ->
+          Go (Ready page)
+      | Loading, Loaded (Ok Site_doc.Missing) ->
+          Go Missing
+      | Loading, Loaded (Rejected reason) ->
+          Go (Failed reason)
+      | Loading, Loaded (Failed error) ->
+          Go (Failed (Remote.error_to_string error))
+      | Failed _, Retry ->
+          Go Loading
+      | _ ->
+          Ignore
+    )
 
 let pager slug =
   let before, after = Site_nav.neighbours slug in
@@ -164,15 +127,13 @@ let article slug title body =
     <div />
   </div>
 
-let view (snapshot : Doc_page_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Doc_page_machine.At (Idle, ()) ->
-      <div />
-  | Doc_page_machine.At (Loading, slug) ->
+let view slug state : event Node.t =
+  match state with
+  | Loading ->
       article slug
         (Option.value (Site_nav.title slug) ~default:"Loading")
         <p class_="mt-6 text-ui-muted" aria_busy=true>"Loading the page."</p>
-  | Doc_page_machine.At (Ready, page) ->
+  | Ready page ->
       <div class_="grid gap-12 xl:grid-cols-[minmax(0,1fr)_14rem]">
         <article id="doc" class_="min-w-0 max-w-[72ch]">
           (Node.element "h1"
@@ -189,16 +150,16 @@ let view (snapshot : Doc_page_machine.snapshot) : event Node.t =
         </article>
         (toc page.slug page.blocks)
       </div>
-  | Doc_page_machine.At (Missing, slug) ->
+  | Missing ->
       article slug "Page not found"
         <p class_="mt-6">
           "There is no documentation page with this name. Pick one from the \
            list."
         </p>
-  | Doc_page_machine.At (Failed, { slug; error }) ->
+  | Failed reason ->
       article slug "This page did not load"
         <div class_="mt-6 flex flex-col items-start gap-3">
-          <p class_="text-ui-danger">(Node.text (error_text error))</p>
+          <p class_="text-ui-danger">(Node.text reason)</p>
           <button
             type_=`button
             class_="rounded-ui bg-ui-accent px-3 py-1.5 text-sm \
@@ -208,5 +169,5 @@ let view (snapshot : Doc_page_machine.snapshot) : event Node.t =
           </button>
         </div>
 
-let component = Component.make machine view
-let make ?key ~slug () = Component.node ?key ~props:(Props slug) component
+let component = Component.make_with_props machine view
+let make ?key ~slug () = Component.node_with_props ?key ~props:slug component

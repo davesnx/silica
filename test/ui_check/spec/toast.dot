@@ -1,23 +1,20 @@
 digraph "toast" {
 rankdir=LR;
 "toast.__init" [shape=point];
-"toast.__init" -> "toast.idle";
-"toast.idle" [label="idle" shape=box];
+"toast.__init" -> "toast.empty";
 "toast.empty" [label="empty" shape=box];
-"toast.running" [label="running\nafter 100ms" shape=box];
-"toast.paused" [label="paused" shape=box];
 "toast.expired" [label="expired" shape=box];
-"toast.empty" -> "toast.paused" [label="props a, props a,b"];
-"toast.empty" -> "toast.running" [label="props a, props a,b"];
-"toast.expired" -> "toast.empty" [label="props "];
-"toast.expired" -> "toast.paused" [label="props a, props a,b"];
-"toast.expired" -> "toast.running" [label="props a, props a,b"];
-"toast.idle" -> "toast.empty" [label="props "];
-"toast.idle" -> "toast.running" [label="props a, props a,b"];
-"toast.paused" -> "toast.empty" [label="props "];
+"toast.paused" [label="paused" shape=box];
+"toast.running" [label="running\nafter 100ms" shape=box];
+"toast.empty" -> "toast.paused" [label="props"];
+"toast.empty" -> "toast.running" [label="props"];
+"toast.expired" -> "toast.empty" [label="props"];
+"toast.expired" -> "toast.paused" [label="props"];
+"toast.expired" -> "toast.running" [label="props"];
+"toast.paused" -> "toast.empty" [label="props"];
 "toast.paused" -> "toast.running" [label="close a, close b, focus false, hover false"];
-"toast.running" -> "toast.empty" [label="props "];
+"toast.running" -> "toast.empty" [label="props"];
 "toast.running" -> "toast.expired" [label="tick"];
 "toast.running" -> "toast.paused" [label="focus true, hover true"];
-"toast.running" -> "toast.running" [label="props a, props a,b, tick"];
+"toast.running" -> "toast.running" [label="props, tick"];
 }

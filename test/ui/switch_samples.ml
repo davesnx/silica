@@ -4,32 +4,26 @@ open Silica_ui
 type page = { checked : bool; disabled : bool; log : string list }
 type event = Changed of bool | Set_checked of bool | Set_disabled of bool
 
-module Page_state = struct
-  type _ t = Page : page t
-end
-
-module Page_machine = Machine.Make (Page_state)
-
 let machine =
-  Page_machine.make ~id:"switch-page"
-    ~init:(Page_machine.at Page { checked = false; disabled = false; log = [] })
-    [
-      Page_machine.state Page "page" (fun page -> function
-        | Changed checked ->
-            Page_machine.goto Page
-              {
-                page with
-                checked;
-                log = page.log @ [ Printf.sprintf "checked %b" checked ];
-              }
-        | Set_checked checked ->
-            Page_machine.goto Page { page with checked }
-        | Set_disabled disabled ->
-            Page_machine.goto Page { page with disabled }
-        );
-    ]
+  Machine.make ~id:"switch-page"
+    ~init:{ checked = false; disabled = false; log = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed checked ->
+          Go
+            {
+              page with
+              checked;
+              log = page.log @ [ Printf.sprintf "checked %b" checked ];
+            }
+      | Set_checked checked ->
+          Go { page with checked }
+      | Set_disabled disabled ->
+          Go { page with disabled }
+    )
 
-let view (Page_machine.At (Page, page)) =
+let view page =
   Node.element "form" []
     [
       Node.element "p"

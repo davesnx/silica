@@ -56,7 +56,7 @@ val mount :
   ?csrf:string ->
   ?url:string ->
   ?media:(string * bool) list ->
-  ('s, 'e) Component.t ->
+  (unit, 's, 'e) Component.t ->
   t
 (** Start the runtime with the component as the root, and paint. [answers]
     answers calls before the first paint, as a server render does. [csrf] is the
@@ -73,7 +73,7 @@ val mount_app :
   ?csrf:string ->
   ?url:string ->
   ?media:(string * bool) list ->
-  (Url.t -> ('s, Router.event) Component.t) ->
+  (Url.t -> (unit, 's, Router.event) Component.t) ->
   t
 (** Like {!val-mount} for a router app: the app starts at the current URL, and
     each URL change reaches the root as {!Silica.Router.event.Url_changed}, each

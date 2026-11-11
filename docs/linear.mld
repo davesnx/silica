@@ -49,15 +49,17 @@ use the same values, so the types of a call agree on both sides:
 From [linear/app/shared/linear_model.ml]:
 {@ocaml skip[
 let create_endpoint =
-  Silica.Remote.declare ~path:"/api/issues/create"
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/issues/create"
     ~input:(Silica_jsonkit.codec ~to_json:Draft.to_json ~of_json:Draft.of_json)
     ~output:(Silica_jsonkit.codec ~to_json:Issue.to_json ~of_json:Issue.of_json)
 ]}
 
 {1 The routes}
 
-The router is a machine whose states are the routes (see {!page-router}).
-Each route says how it reads and writes a URL. [Issues] carries a record: the flag [create] (the query
+The router is a machine whose states are the routes (see {!page-router}). The
+routes are a plain variant, and each {!Silica.Router.val-route} says how one
+constructor reads and writes a URL. [Issues] carries a record: the flag
+[create] (the query
 [?new=true] opens the create dialog) and the [view] of the list (filters,
 grouping and order, see {{!section-features}Filters, edits and commands}).
 [Route.map_query] turns the query values into that record. [Issue] carries the
@@ -70,38 +72,33 @@ type issues = { create : bool; view : Linear_view.t }
 
 let list = { create = false; view = Linear_view.default }
 
-module State = struct
-  type _ t = Issues : issues t | Issue : int t | Not_found : string t
-
-  let path : type data. data t -> data Route.t = function
-    | Issues ->
+type route =
+  | Issues of issues
+      [@route
         Route.(
           root
           +? map_query
                (fun (create, view) -> { create; view })
                (fun { create; view } -> (create, view))
                (bool_query "new" ~default:false &? Linear_view.query)
-        )
-    | Issue ->
-        Route.(s "issue" / int)
-    | Not_found ->
-        Route.rest
-end
+        )]
+  | Issue of int [@route Route.(s "issue" / int)]
+  | Not_found of string [@route Route.rest]
+[@@deriving routes]
 
-module Router = Router.Make (State)
-
-let preload : Router.snapshot -> Remote.request list = function
-  | Router.At (State.Issue, number) ->
+let preload = function
+  | Issue number ->
       [
         Remote.request Linear_model.issues_endpoint ();
         Remote.request Linear_model.comments_endpoint number;
       ]
-  | Router.At (State.Issues, _) | Router.At (State.Not_found, _) ->
+  | Issues _ | Not_found _ ->
       []
 
 let routes =
-  Router.routes ~not_found:State.Not_found ~preload
-    [ State.Issues; State.Issue; State.Not_found ]
+  Router.routes
+    ~not_found:(function Not_found _ -> true | Issues _ | Issue _ -> false)
+    ~preload route_routes
 ]}
 
 [linear_app.mlx] renders the page of the current route, and a header with
@@ -136,17 +133,18 @@ node shows, and stops when the node goes away.
   differs from the saved text. It holds a {!Silica.Source.block}: a navigation
   becomes a question (Discard or Keep editing), and Discard resumes it.
 
-A parent talks to a child with props: an event that the parent gives with the
-node. A child talks to its parent with [output]: a function that turns the
+A parent talks to a child with props: a value that the parent gives with the
+node. The child machine gets them in its update and its view. A child talks to its parent with [output]: a function that turns the
 events of the child into events of the parent. See {!Silica.Node.child}.
 
 {1 Remote calls}
 
-A state that needs data owns a call: [Source.call endpoint input on_result]
-in the [invoke] list of the state. The call starts when the machine enters the
+A state that needs data owns a call: [Remote.call endpoint input on_answer] in
+the [owns] list of the state. The call starts when the machine enters the
 state. The answer comes back as an event. If the machine leaves the state first,
 the answer is dropped. The list waits in [Loading] for the first answer, and
-goes to [Ready] or to [Failed]. [Failed] has a retry button. See
+goes to [Ready] or to [Failed]. [Failed] has a retry button. The answer is [Ok], [Rejected] (an application
+error of the handler, such as a failed validation) or [Failed] (no answer). See
 {!page-data.remote}.
 
 On the first page load, the server runs these calls before it sends the HTML.
@@ -169,8 +167,8 @@ call. So all open pages show the new issue, also the pages of other visitors.
 
 The create component has its own machine with the states [Closed], [Editing],
 [Submitting] and [Failed]. The dialog itself comes from [silica-ui]: the app
-gives its form to [Silica_ui.Dialog.Make], which adds the focus trap, the
-Escape key, the outside press and the ARIA attributes.
+gives the view of its form to [Silica_ui.Dialog.component], which adds the
+focus trap, the Escape key, the outside press and the ARIA attributes.
 
 The route controls the dialog. [?new=true] gives the [open_] props
 ({{!page-glossary}open request}), and the dialog reports each open change to
@@ -216,8 +214,10 @@ From [linear/app/shared/linear_model.ml]:
 
 The page shows the change at once. It keeps the data in a value of
 {!Silica.Optimistic.Make} (see {!page-optimistic}): the last confirmed issues
-and the changes that wait for the server. Each change goes to the server in its own Remote call, made by
-a small child component. The change stops waiting when the call answers, or
+and the changes that wait for the server. Each change goes to the server in its
+own Remote call. The page owns one call for each waiting change: the calls are
+compared by key after each step, so a new change starts a call and the other
+calls keep running. The change stops waiting when the call answers, or
 when the Live topic first sends issues that already have it. When the call
 fails, the change goes away, the old value comes back, and a toast tells the
 user.

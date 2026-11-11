@@ -257,8 +257,8 @@ describe("site: component browser", () => {
   test("a page shows the statechart, the story source and the story in every theme", async () => {
     const { context, page } = await visit("/components/select");
     const facts = await page.locator("section", { has: page.locator("#statechart") }).textContent();
-    assert.match(facts ?? "", /idle/);
     assert.match(facts ?? "", /closed/);
+    assert.match(facts ?? "", /open/);
     const source = await page.locator("[data-story=basic] figure pre").textContent();
     assert.match(source ?? "", /Select\.make/);
     const themes = await page.locator("#theme-grid [data-theme]").evaluateAll((els) =>

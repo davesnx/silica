@@ -1,32 +1,41 @@
 open Silica
 module Sim = Silica_test_support.Sim
 
-let endpoint = Remote.declare ~path:"/api/n" ~input:Codec.int ~output:Codec.int
+let endpoint =
+  Remote.declare ~path:"/api/n" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
 
-let status_text = function
-  | Status.Idle ->
+let with_last text = function
+  | None ->
+      text
+  | Some old ->
+      Printf.sprintf "%s(%d)" text old
+
+let state_text : (int, int, string) Remote_machine.state -> string = function
+  | Remote_machine.Idle ->
       "idle"
-  | Status.Loading None ->
-      "loading"
-  | Status.Loading (Some old) ->
-      Printf.sprintf "loading(%d)" old
-  | Status.Ready { data; stale } ->
-      Printf.sprintf "ready(%d%s)" data
-        ( if stale then
-            ",stale"
-          else
-            ""
-        )
-  | Status.Failed { last = None; _ } ->
-      "failed"
-  | Status.Failed { last = Some old; _ } ->
-      Printf.sprintf "failed(%d)" old
+  | Remote_machine.Loading { last; _ } ->
+      with_last "loading" last
+  | Remote_machine.Ready { data; _ } ->
+      Printf.sprintf "ready(%d)" data
+  | Remote_machine.Rejected { reason; last; _ } ->
+      with_last ("rejected " ^ reason) last
+  | Remote_machine.Failed { last; _ } ->
+      with_last "failed" last
 
 let component ?timeout_ms () =
   Component.make (Remote_machine.make ?timeout_ms ~id:"n" endpoint)
-    (fun (state : (int, int) Remote_machine.state) ->
-      Node.text (status_text state.status)
+    (fun state -> Node.text (state_text state)
   )
+
+let input_of : (int, int, string) Remote_machine.state -> int option = function
+  | Remote_machine.Idle ->
+      None
+  | Remote_machine.Loading { input; _ }
+  | Remote_machine.Ready { input; _ }
+  | Remote_machine.Rejected { input; _ }
+  | Remote_machine.Failed { input; _ } ->
+      Some input
 
 let strings = Alcotest.(list string)
 
@@ -54,7 +63,8 @@ let tests =
         Sim.answer_error sim endpoint (Remote.Http 500);
         Alcotest.(check string) "failed" "failed" (Sim.html sim);
         Alcotest.(check (option int))
-          "input kept" (Some 3) (Sim.snapshot sim).input;
+          "input kept" (Some 3)
+          (input_of (Sim.snapshot sim));
         Sim.send sim Remote_machine.Retry;
         Alcotest.(check string) "loading again" "loading" (Sim.html sim);
         Alcotest.check strings "same input" [ "3" ] (Sim.call_inputs sim);
@@ -73,6 +83,22 @@ let tests =
         Sim.send sim Remote_machine.Retry;
         Alcotest.(check string) "retry keeps last" "loading(10)" (Sim.html sim);
         Alcotest.check strings "retry input" [ "2" ] (Sim.call_inputs sim)
+    );
+    Alcotest.test_case "a rejection keeps the input and the old data" `Quick
+      (fun () ->
+        let sim = Sim.mount (component ()) in
+        Sim.send sim (Remote_machine.Load 1);
+        Sim.answer sim endpoint 10;
+        Sim.send sim (Remote_machine.Load 2);
+        Sim.reject sim endpoint "too big";
+        Alcotest.(check string) "rejected" "rejected too big(10)" (Sim.html sim);
+        Alcotest.(check (option int))
+          "data" (Some 10)
+          (Remote_machine.data (Sim.snapshot sim));
+        Sim.send sim Remote_machine.Retry;
+        Alcotest.check strings "retry input" [ "2" ] (Sim.call_inputs sim);
+        Sim.answer sim endpoint 20;
+        Alcotest.(check string) "ready" "ready(20)" (Sim.html sim)
     );
     Alcotest.test_case "retry is unhandled outside failed" `Quick (fun () ->
         let sim = Sim.mount (component ()) in
@@ -106,8 +132,8 @@ let tests =
           "timeout given to the host" [ Some 50 ] (Sim.call_timeouts sim);
         Sim.expire_call sim endpoint;
         Alcotest.(check string) "failed" "failed" (Sim.html sim);
-        match (Sim.snapshot sim).status with
-        | Status.Failed { error = Remote.Network "timeout"; _ } ->
+        match Sim.snapshot sim with
+        | Remote_machine.Failed { error = Remote.Network "timeout"; _ } ->
             ()
         | _ ->
             Alcotest.fail "expected Network timeout"

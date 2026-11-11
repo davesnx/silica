@@ -2,56 +2,45 @@ open Silica_test_support
 open Silica
 
 let strings = Alcotest.(list string)
-let echo = Remote.declare ~path:"/api/echo" ~input:Codec.int ~output:Codec.int
+let echo =
+  Remote.declare ~path:"/api/echo" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
 
 module Ticker = struct
-  type event = Props of string | Tick | Bump | Settled of int
-
-  type data = { label : string; ticks : int; bumps : int; last : int option }
-
-  module States = struct
-    type _ t = Running : data t
-  end
-
-  module Ticker_machine = Machine.Make (States)
+  type event = Tick | Bump | Settled of int
+  type state = Running of { ticks : int; bumps : int; last : int option }
+  [@@deriving state_shape]
 
   let machine =
-    Ticker_machine.make ~id:"ticker"
-      ~init:
-        (Ticker_machine.at Running
-           { label = ""; ticks = 0; bumps = 0; last = None }
-        )
-      [
-        Ticker_machine.state Running "running"
-          ~after:[ (10, Tick) ]
-          ~invoke:
-            [
-              Source.call echo
-                (fun data -> data.bumps)
-                (fun r ->
-                  match r with Ok n -> Settled n | Error _ -> Settled (-1)
-                );
-            ]
-          (fun data -> function
-            | Props label ->
-                Ticker_machine.goto Running { data with label }
-            | Tick ->
-                Ticker_machine.reenter Running
-                  { data with ticks = data.ticks + 1 }
-            | Bump ->
-                Ticker_machine.goto Running { data with bumps = data.bumps + 1 }
-            | Settled n ->
-                Ticker_machine.goto Running { data with last = Some n }
+    Machine.make_with_props ~id:"ticker"
+      ~init:(Running { ticks = 0; bumps = 0; last = None })
+      ~shape:state_shape
+      ~owns:(fun _label (Running data) ->
+        [
+          Source.after 10 Tick;
+          Remote.call echo data.bumps (function
+            | Remote.Ok n ->
+                Settled n
+            | Remote.Rejected _ | Remote.Failed _ ->
+                Settled (-1)
             );
-      ]
+        ]
+      )
+      (fun _label (Running data) -> function
+        | Tick ->
+            Machine.Reenter (Running { data with ticks = data.ticks + 1 })
+        | Bump ->
+            Machine.Go (Running { data with bumps = data.bumps + 1 })
+        | Settled n ->
+            Machine.Go (Running { data with last = Some n })
+        )
 
-  let view (Ticker_machine.At (States.Running, data) : Ticker_machine.snapshot)
-      : event Node.t =
+  let view label (Running data) : event Node.t =
     Node.element "button"
       [ Attr.on_press Bump ]
       [
         Node.text
-          (Printf.sprintf "%s:%d:%d%s" data.label data.ticks data.bumps
+          (Printf.sprintf "%s:%d:%d%s" label data.ticks data.bumps
              ( match data.last with
              | Some n ->
                  "=" ^ string_of_int n
@@ -61,48 +50,47 @@ module Ticker = struct
           );
       ]
 
-  let component = Component.make machine view
+  let component = Component.make_with_props machine view
 
   let make ?key ~label ~on_bump () =
-    Component.node ?key ~props:(Props label)
-      ~output:(fun event (Ticker_machine.At (States.Running, data)) ->
+    Component.node_with_props ?key ~props:label
+      ~output:(fun event (Running data) ->
         match event with Bump -> [ on_bump data.bumps ] | _ -> []
       )
       component
 end
 
+let running_ids instance bumps =
+  [
+    Printf.sprintf "%s/ticker/running//api/echo %d" instance bumps;
+    instance ^ "/ticker/running/after 10ms";
+  ]
+
 module Parent = struct
   type event = Show of string list | Bumped of string * int | Label of string
 
-  type data = {
-    keys : string list;
-    heard : (string * int) list;
-    label : string;
-  }
-
-  module States = struct
-    type _ t = Parent : data t
-  end
-
-  module Parent_machine = Machine.Make (States)
+  type state =
+    | Parent of {
+        keys : string list;
+        heard : (string * int) list;
+        label : string;
+      }
+  [@@deriving state_shape]
 
   let machine =
-    Parent_machine.make ~id:"parent"
-      ~init:(Parent_machine.at Parent { keys = []; heard = []; label = "x" })
-      [
-        Parent_machine.state Parent "parent" (fun data -> function
-          | Show keys ->
-              Parent_machine.goto Parent { data with keys }
-          | Bumped (key, n) ->
-              Parent_machine.goto Parent
-                { data with heard = (key, n) :: data.heard }
-          | Label label ->
-              Parent_machine.goto Parent { data with label }
-          );
-      ]
+    Machine.make ~id:"parent"
+      ~init:(Parent { keys = []; heard = []; label = "x" })
+      ~shape:state_shape
+      (fun (Parent data) -> function
+        | Show keys ->
+            Machine.Go (Parent { data with keys })
+        | Bumped (key, n) ->
+            Machine.Go (Parent { data with heard = (key, n) :: data.heard })
+        | Label label ->
+            Machine.Go (Parent { data with label })
+        )
 
-  let view (Parent_machine.At (States.Parent, data) : Parent_machine.snapshot) :
-      event Node.t =
+  let view (Parent data) : event Node.t =
     Node.element "div" []
       (List.map
          (fun key ->
@@ -114,26 +102,19 @@ module Parent = struct
       )
 
   let component = Component.make machine view
-  let heard sim =
-    (fun (Parent_machine.At (States.Parent, data)) -> data.heard)
-      (Sim.snapshot sim)
+  let heard sim = match Sim.snapshot sim with Parent data -> data.heard
 end
 
 module Unkeyed = struct
   type event = Nothing
-
-  module States = struct
-    type _ t = Two : unit t
-  end
-
-  module Unkeyed_machine = Machine.Make (States)
+  type state = Two [@@deriving state_shape]
 
   let machine =
-    Unkeyed_machine.make ~id:"two"
-      ~init:(Unkeyed_machine.at Two ())
-      [ Unkeyed_machine.state Two "two" Unkeyed_machine.ignore ]
+    Machine.make ~id:"two" ~init:Two ~shape:state_shape (fun Two Nothing ->
+        Machine.Ignore
+    )
 
-  let view (_ : Unkeyed_machine.snapshot) : event Node.t =
+  let view Two : event Node.t =
     Node.element "div" []
       [
         Ticker.make ~label:"a" ~on_bump:(fun _ -> Nothing) ();
@@ -142,6 +123,11 @@ module Unkeyed = struct
 
   let component = Component.make machine view
 end
+
+let contains text needle =
+  let n = String.length needle and h = String.length text in
+  let rec go i = i + n <= h && (String.sub text i n = needle || go (i + 1)) in
+  go 0
 
 let has sim needle =
   let html = Sim.html sim in
@@ -156,67 +142,54 @@ let lacks sim needle =
   if go 0 then Alcotest.failf "%S in %s" needle html
 
 module Task = struct
-  type event = Props of bool | Finish
-
-  module States = struct
-    type _ t = Working : unit t | Done : unit t
-  end
-
-  module Task_machine = Machine.Make (States)
+  type event = Finish
+  type state = Working | Done [@@deriving state_shape]
 
   let machine =
-    Task_machine.make ~id:"task"
-      ~init:(Task_machine.at Working ())
-      [
-        Task_machine.state Working "working" ~to_:[ Done ] (fun () -> function
-          | Props true | Finish ->
-              Task_machine.goto Done ()
-          | Props false ->
-              Task_machine.unhandled
-          );
-        Task_machine.state Done "done" ~final:true Task_machine.ignore;
-      ]
+    Machine.make_with_props ~id:"task" ~init:Working ~shape:state_shape
+      ~final:(function Done -> true | Working -> false)
+      ~on_props:(fun _ start_done state ->
+        match (start_done, state) with
+        | true, Working ->
+            Machine.Go Done
+        | _ ->
+            Machine.Ignore
+      )
+      (fun _ state Finish ->
+        match state with Working -> Machine.Go Done | Done -> Machine.Ignore
+      )
 
-  let view : Task_machine.snapshot -> event Node.t = function
-    | Task_machine.At (States.Working, ()) ->
+  let view : state -> event Node.t = function
+    | Working ->
         Node.element "button" [ Attr.on_press Finish ] [ Node.text "finish" ]
-    | Task_machine.At (States.Done, ()) ->
+    | Done ->
         Node.text "finished"
 
   let component = Component.make machine view
 
   let make ?key ~start_done ~on_done () =
-    Component.node ?key ~props:(Props start_done)
+    Component.node_with_props ?key ~props:start_done
       ~on_final:(fun _ -> [ on_done ])
       component
 end
 
 module Boss = struct
   type event = Add of int | Finished of int
-
-  type data = { tasks : int list; finished : int list }
-
-  module States = struct
-    type _ t = Boss : data t
-  end
-
-  module Boss_machine = Machine.Make (States)
+  type state = Boss of { tasks : int list; finished : int list }
+  [@@deriving state_shape]
 
   let machine =
-    Boss_machine.make ~id:"boss"
-      ~init:(Boss_machine.at Boss { tasks = []; finished = [] })
-      [
-        Boss_machine.state Boss "boss" (fun data -> function
-          | Add id ->
-              Boss_machine.goto Boss { data with tasks = data.tasks @ [ id ] }
-          | Finished id ->
-              Boss_machine.goto Boss
-                { data with finished = data.finished @ [ id ] }
-          );
-      ]
+    Machine.make ~id:"boss"
+      ~init:(Boss { tasks = []; finished = [] })
+      ~shape:state_shape
+      (fun (Boss data) -> function
+        | Add id ->
+            Machine.Go (Boss { data with tasks = data.tasks @ [ id ] })
+        | Finished id ->
+            Machine.Go (Boss { data with finished = data.finished @ [ id ] })
+        )
 
-  let view (Boss_machine.At (States.Boss, data) : Boss_machine.snapshot) :
-      event Node.t =
+  let view (Boss data) : event Node.t =
     Node.element "div" []
       (List.map
          (fun id ->
@@ -227,47 +200,40 @@ module Boss = struct
       )
 
   let component = Component.make machine view
-  let finished sim =
-    (fun (Boss_machine.At (States.Boss, data)) -> data.finished)
-      (Sim.snapshot sim)
+  let finished sim = match Sim.snapshot sim with Boss data -> data.finished
 end
 
 module Patient = struct
-  type event = Settled of (int, Remote.error) result
-
-  module States = struct
-    type _ t = Asking : unit t | Answered : int t | Gave_up : string t
-  end
-
-  module Patient_machine = Machine.Make (States)
+  type event = Settled of (int, string) Remote.answer
+  type state = Asking | Answered of int | Gave_up of string
+  [@@deriving state_shape]
 
   let machine =
-    Patient_machine.make ~id:"patient"
-      ~init:(Patient_machine.at Asking ())
-      [
-        Patient_machine.state Asking "asking" ~to_:[ Answered; Gave_up ]
-          ~invoke:
-            [
-              Source.call ~timeout_ms:30 echo (fun () -> 1) (fun r -> Settled r);
-            ]
-          (fun () -> function
-            | Settled (Ok n) ->
-                Patient_machine.goto Answered n
-            | Settled (Error (Remote.Network why)) ->
-                Patient_machine.goto Gave_up why
-            | Settled (Error _) ->
-                Patient_machine.goto Gave_up "other"
-            );
-        Patient_machine.state Answered "answered" Patient_machine.ignore;
-        Patient_machine.state Gave_up "gave_up" Patient_machine.ignore;
-      ]
+    Machine.make ~id:"patient" ~init:Asking ~shape:state_shape
+      ~owns:(function
+        | Asking ->
+            [ Remote.call ~timeout_ms:30 echo 1 (fun r -> Settled r) ]
+        | Answered _ | Gave_up _ ->
+            []
+        )
+      (fun state event ->
+        match (state, event) with
+        | Asking, Settled (Remote.Ok n) ->
+            Machine.Go (Answered n)
+        | Asking, Settled (Remote.Failed (Remote.Network why)) ->
+            Machine.Go (Gave_up why)
+        | Asking, Settled (Remote.Failed _ | Remote.Rejected _) ->
+            Machine.Go (Gave_up "other")
+        | (Answered _ | Gave_up _), Settled _ ->
+            Machine.Ignore
+      )
 
-  let view : Patient_machine.snapshot -> event Node.t = function
-    | Patient_machine.At (States.Asking, ()) ->
+  let view : state -> event Node.t = function
+    | Asking ->
         Node.text "asking"
-    | Patient_machine.At (States.Answered, n) ->
+    | Answered n ->
         Node.text ("answered " ^ string_of_int n)
-    | Patient_machine.At (States.Gave_up, why) ->
+    | Gave_up why ->
         Node.text ("gave up: " ^ why)
 
   let component = Component.make machine view
@@ -338,12 +304,7 @@ let test_mount_starts_children () =
   has sim "ax:0:0";
   has sim "bx:0:0";
   Alcotest.check strings "each child started a timer and a call"
-    [
-      "2.0/ticker/running/after0";
-      "2.0/ticker/running/invoke0";
-      "3.0/ticker/running/after0";
-      "3.0/ticker/running/invoke0";
-    ]
+    (running_ids "2.0" 0 @ running_ids "3.0" 0)
     (Sim.running sim)
 
 let test_unmount_stops_children_first () =
@@ -353,10 +314,10 @@ let test_unmount_stops_children_first () =
   Sim.unmount sim;
   Alcotest.check strings "stops"
     [
-      "stop 2.0/ticker/running/after0";
-      "stop 2.0/ticker/running/invoke0";
-      "stop 3.0/ticker/running/after0";
-      "stop 3.0/ticker/running/invoke0";
+      "stop 2.0/ticker/running/after 10ms";
+      "stop 2.0/ticker/running//api/echo 0";
+      "stop 3.0/ticker/running/after 10ms";
+      "stop 3.0/ticker/running//api/echo 0";
     ]
     (Sim.log sim);
   Alcotest.check strings "nothing runs" [] (Sim.running sim)
@@ -364,23 +325,14 @@ let test_unmount_stops_children_first () =
 let test_unmount_orders_children_before_parent () =
   let module Owner = struct
     type event = Tick
-
-    module States = struct
-      type _ t = Owner : unit t
-    end
-
-    module Owner_machine = Machine.Make (States)
+    type state = Owner [@@deriving state_shape]
 
     let machine =
-      Owner_machine.make ~id:"owner"
-        ~init:(Owner_machine.at Owner ())
-        [
-          Owner_machine.state Owner "owner"
-            ~after:[ (5, Tick) ]
-            Owner_machine.ignore;
-        ]
+      Machine.make ~id:"owner" ~init:Owner ~shape:state_shape
+        ~owns:(fun Owner -> [ Source.after 5 Tick ])
+        (fun Owner Tick -> Machine.Stay [])
 
-    let view (_ : Owner_machine.snapshot) : event Node.t =
+    let view Owner : event Node.t =
       Node.element "div" []
         [ Ticker.make ~label:"k" ~on_bump:(fun _ -> Tick) () ]
   end in
@@ -402,8 +354,8 @@ let test_unmount_orders_children_before_parent () =
   in
   Alcotest.(check bool)
     "the child stops before its parent" true
-    (position "stop 2.0/ticker/running/after0"
-    < position "stop 1.0/owner/owner/after0"
+    (position "stop 2.0/ticker/running/after 10ms"
+    < position "stop 1.0/owner/owner/after 5ms"
     )
 
 let test_removed_child_stops () =
@@ -412,7 +364,10 @@ let test_removed_child_stops () =
   Sim.clear_log sim;
   Sim.send sim (Parent.Show [ "b" ]);
   Alcotest.check strings "only the removed child stops"
-    [ "stop 2.0/ticker/running/after0"; "stop 2.0/ticker/running/invoke0" ]
+    [
+      "stop 2.0/ticker/running/after 10ms";
+      "stop 2.0/ticker/running//api/echo 0";
+    ]
     (Sim.log sim);
   Alcotest.(check int) "root and one child" 2 (Sim.count sim);
   lacks sim "ax:"
@@ -450,7 +405,7 @@ let test_props_reach_child () =
   Sim.clear_log sim;
   Sim.send sim (Parent.Label "y");
   has sim "ay:0:1";
-  Alcotest.check strings "a props change is an event, not a restart" []
+  Alcotest.check strings "a props change does not restart the child" []
     (Sim.log sim);
   Sim.send sim (Parent.Label "y");
   has sim "ay:0:1"
@@ -472,30 +427,29 @@ let test_instances_do_not_clash () =
   Alcotest.(check int)
     "four distinct resources" 4
     (List.length (List.sort_uniq compare ids));
-  Sim.fire sim "2.0/ticker/running/after0";
+  Sim.fire sim "2.0/ticker/running/after 10ms";
   has sim "a:1:0";
   has sim "b:0:0";
   Alcotest.(check bool)
     "the other instance still has its timer" true
-    (List.mem "3.0/ticker/running/after0" (Sim.running sim))
+    (List.mem "3.0/ticker/running/after 10ms" (Sim.running sim))
 
 let test_timer_restarts_with_new_entry () =
   let sim = Sim.mount Parent.component in
   Sim.send sim (Parent.Show [ "a" ]);
-  Sim.fire sim "2.0/ticker/running/after0";
+  Sim.fire sim "2.0/ticker/running/after 10ms";
   has sim "ax:1:0";
   Alcotest.check strings "the restart uses a new entry number"
-    [ "2.1/ticker/running/after0"; "2.1/ticker/running/invoke0" ]
-    (Sim.running sim)
+    (running_ids "2.1" 0) (Sim.running sim)
 
 let test_late_result_of_old_entry_is_dropped () =
   let sim = Sim.mount Parent.component in
   Sim.send sim (Parent.Show [ "a" ]);
-  Sim.fire sim "2.0/ticker/running/after0";
+  Sim.fire sim "2.0/ticker/running/after 10ms";
   has sim "ax:1:0";
-  Sim.fire_after_stop sim "2.0/ticker/running/invoke0";
+  Sim.fire_after_stop sim "2.0/ticker/running//api/echo 0";
   has sim "ax:1:0";
-  Sim.fire_after_stop sim "2.0/ticker/running/after0";
+  Sim.fire_after_stop sim "2.0/ticker/running/after 10ms";
   has sim "ax:1:0";
   Sim.answer sim echo 9;
   has sim "ax:1:0=9"
@@ -511,7 +465,7 @@ let test_message_after_unmount_is_dropped () =
   Sim.send sim (Parent.Show [ "a" ]);
   Sim.unmount sim;
   let before = Sim.log sim in
-  Sim.fire_after_stop sim "2.0/ticker/running/after0";
+  Sim.fire_after_stop sim "2.0/ticker/running/after 10ms";
   Alcotest.check strings "no action after unmount" before (Sim.log sim)
 
 let test_duplicate_key_is_an_error () =
@@ -523,45 +477,35 @@ let test_duplicate_key_is_an_error () =
       ()
 
 module Clip = struct
-  type event = Copied of bool | Moved
-
-  module States = struct
-    type _ t = Copying : unit t | Elsewhere : bool option t
-  end
-
-  module Clip_machine = Machine.Make (States)
+  type event = Copied of bool
+  type state = Copying | Elsewhere of bool option [@@deriving state_shape]
 
   let machine =
-    Clip_machine.make ~id:"clip"
-      ~init:(Clip_machine.at Copying ())
-      [
-        Clip_machine.state Copying "copying" ~to_:[ Elsewhere ]
-          ~entry:(fun () ->
+    Machine.make_with_props ~id:"clip" ~init:Copying ~shape:state_shape
+      ~entry:(fun () -> function
+        | Copying ->
             [
               Action.Copy
                 { text = "hi"; on_result = Some (fun ok -> Copied ok) };
             ]
-          )
-          (fun () -> function
-            | Moved ->
-                Clip_machine.goto Elsewhere None
-            | Copied ok ->
-                Clip_machine.goto Elsewhere (Some ok)
-            );
-        Clip_machine.state Elsewhere "elsewhere" (fun _ -> function
-          | Copied ok ->
-              Clip_machine.goto Elsewhere (Some ok)
-          | Moved ->
-              Clip_machine.unhandled
-          );
-      ]
+        | Elsewhere _ ->
+            []
+        )
+      ~on_props:(fun previous () state ->
+        match (previous, state) with
+        | None, Copying ->
+            Machine.Go (Elsewhere None)
+        | _ ->
+            Machine.Ignore
+      )
+      (fun () _ (Copied ok) -> Machine.Go (Elsewhere (Some ok)))
 
-  let view : Clip_machine.snapshot -> event Node.t = function
-    | Clip_machine.At (States.Copying, ()) ->
+  let view : state -> event Node.t = function
+    | Copying ->
         Node.text "copying"
-    | Clip_machine.At (States.Elsewhere, None) ->
+    | Elsewhere None ->
         Node.text "waiting"
-    | Clip_machine.At (States.Elsewhere, Some ok) ->
+    | Elsewhere (Some ok) ->
         Node.text (Printf.sprintf "copied=%b" ok)
 
   let component = Component.make machine view
@@ -569,28 +513,16 @@ end
 
 module Clip_host = struct
   type event = Show of bool
-
-  module States = struct
-    type _ t = Host : bool t
-  end
-
-  module Clip_host_machine = Machine.Make (States)
+  type state = Host of bool [@@deriving state_shape]
 
   let machine =
-    Clip_host_machine.make ~id:"clip-host"
-      ~init:(Clip_host_machine.at Host true)
-      [
-        Clip_host_machine.state Host "host" (fun _ -> function
-          | Show shown ->
-              Clip_host_machine.goto Host shown
-          );
-      ]
+    Machine.make ~id:"clip-host" ~init:(Host true) ~shape:state_shape
+      (fun _ (Show shown) -> Machine.Go (Host shown)
+    )
 
-  let view
-      (Clip_host_machine.At (States.Host, shown) : Clip_host_machine.snapshot) :
-      event Node.t =
+  let view (Host shown) : event Node.t =
     if shown then
-      Component.node ~props:Clip.Moved Clip.component
+      Component.node Clip.component
     else
       Node.text "none"
 
@@ -636,6 +568,169 @@ let test_action_result_after_end_is_dropped () =
   Alcotest.(check int) "no actions" 0 (List.length actions);
   Alcotest.(check int) "no child starts again" 1 (Instance.count tree)
 
+module Same_id_int = struct
+  type state = Number of int [@@deriving state_shape]
+
+  let machine =
+    Machine.make ~id:"same" ~init:(Number 0) ~shape:state_shape
+      ~owns:(fun _ -> [ Source.after 1 `Up ])
+      (fun (Number n) `Up -> Machine.Go (Number (n + 1)))
+
+  let component =
+    Component.make machine (fun (Number n) ->
+        Node.element "button"
+          [ Attr.on_press `Up ]
+          [ Node.text (Printf.sprintf "int %d" n) ]
+    )
+end
+
+module Same_id_text = struct
+  type state = Text of string [@@deriving state_shape]
+
+  let machine =
+    Machine.make ~id:"same" ~init:(Text "") ~shape:state_shape
+      ~owns:(fun _ -> [ Source.after 1 `Up ])
+      (fun (Text s) `Up -> Machine.Go (Text (s ^ "!")))
+
+  let component =
+    Component.make machine (fun (Text s) ->
+        Node.element "button" [ Attr.on_press `Up ] [ Node.text ("text " ^ s) ]
+    )
+end
+
+module Other_id = struct
+  type state = Number of int [@@deriving state_shape]
+
+  let machine =
+    Machine.make ~id:"other" ~init:(Number 0) ~shape:state_shape
+      ~owns:(fun _ -> [ Source.after 1 `Up ])
+      (fun (Number n) `Up -> Machine.Go (Number (n + 1)))
+
+  let component =
+    Component.make machine (fun (Number n) ->
+        Node.element "button"
+          [ Attr.on_press `Up ]
+          [ Node.text (Printf.sprintf "int %d" n) ]
+    )
+end
+
+module Switcher = struct
+  type shown = Int | Text | Other
+  type event = Show of shown | Redraw
+  type state = Showing of shown * int [@@deriving state_shape]
+
+  let machine =
+    Machine.make ~id:"switcher"
+      ~init:(Showing (Int, 0))
+      ~shape:state_shape
+      (fun (Showing (shown, draws)) -> function
+        | Show next ->
+            Machine.Go (Showing (next, draws))
+        | Redraw ->
+            Machine.Go (Showing (shown, draws + 1))
+        )
+
+  let view (Showing (shown, _)) : event Node.t =
+    Node.element "div" []
+      [
+        ( match shown with
+        | Int ->
+            Component.node Same_id_int.component
+        | Text ->
+            Component.node Same_id_text.component
+        | Other ->
+            Component.node Other_id.component
+        );
+      ]
+
+  let component = Component.make machine view
+end
+
+let test_same_id_keeps_the_child () =
+  let sim = Sim.mount Switcher.component in
+  Sim.press sim "int";
+  has sim "int 1";
+  Sim.clear_log sim;
+  Sim.send sim Switcher.Redraw;
+  has sim "int 1";
+  Alcotest.check strings "no stop and no start" [] (Sim.log sim);
+  Sim.send sim (Switcher.Show Switcher.Int);
+  has sim "int 1"
+
+let raises_two_machines run =
+  match run () with
+  | () ->
+      Alcotest.fail "expected Invalid_argument for two machines under one id"
+  | exception Invalid_argument message ->
+      Alcotest.(check bool)
+        "the message names the id" true
+        (contains message "\"same\"")
+
+let test_same_id_other_types_is_an_error () =
+  let sim = Sim.mount Switcher.component in
+  Sim.press sim "int";
+  has sim "int 1";
+  raises_two_machines (fun () -> Sim.send sim (Switcher.Show Switcher.Text))
+
+module Rebuilt = struct
+  type event = Redraw
+  type state = Drawn of int [@@deriving state_shape]
+
+  let child () =
+    Component.make
+      (Machine.make ~id:"same" ~init:0
+         ~shape:(Machine.shape ~name:(fun _ -> "counting") ())
+         (fun count () -> Machine.Go (count + 1))
+      )
+      (fun count ->
+        Node.element "button"
+          [ Attr.on_press () ]
+          [ Node.text ("rebuilt " ^ string_of_int count) ]
+      )
+
+  let component =
+    Component.make
+      (Machine.make ~id:"rebuilt" ~init:(Drawn 0) ~shape:state_shape
+         (fun (Drawn draws) Redraw -> Machine.Go (Drawn (draws + 1))
+       )
+      )
+      (fun _ -> Component.node (child ()))
+end
+
+let test_machine_built_during_render_is_an_error () =
+  let sim = Sim.mount Rebuilt.component in
+  has sim "rebuilt 0";
+  raises_two_machines (fun () -> Sim.send sim Rebuilt.Redraw)
+
+let test_other_id_is_a_new_child () =
+  let sim = Sim.mount Switcher.component in
+  Sim.press sim "int";
+  has sim "int 1";
+  Sim.clear_log sim;
+  Sim.send sim (Switcher.Show Switcher.Other);
+  has sim "int 0";
+  Alcotest.check strings "the old child ends, a new one starts"
+    [ "start 3.0/other/number/after 1ms"; "stop 2.0/same/number/after 1ms" ]
+    (List.sort compare (Sim.log sim))
+
+let test_changed_call_input_restarts_the_call () =
+  let sim = Sim.mount Parent.component in
+  Sim.send sim (Parent.Show [ "a" ]);
+  Sim.clear_log sim;
+  Sim.press sim "ax";
+  Alcotest.check strings "a new input stops the old call and starts a new one"
+    [
+      "stop 2.0/ticker/running//api/echo 0";
+      "start 2.0/ticker/running//api/echo 1";
+    ]
+    (Sim.log sim);
+  Alcotest.check strings "the timer keeps running" (running_ids "2.0" 1)
+    (Sim.running sim);
+  Sim.fire_after_stop sim "2.0/ticker/running//api/echo 0";
+  has sim "ax:0:1";
+  Sim.answer sim echo 7;
+  has sim "ax:0:1=7"
+
 let () =
   let t n f = Alcotest.test_case n `Quick f in
   Alcotest.run "silica instance"
@@ -673,6 +768,14 @@ let () =
             test_action_result_reaches_its_instance;
           t "action result after the end is dropped"
             test_action_result_after_end_is_dropped;
+          t "same id keeps the child" test_same_id_keeps_the_child;
+          t "same id, other types: an error"
+            test_same_id_other_types_is_an_error;
+          t "a machine built during render: an error"
+            test_machine_built_during_render_is_an_error;
+          t "other id: new child" test_other_id_is_a_new_child;
+          t "changed call input restarts the call"
+            test_changed_call_input_restarts_the_call;
         ]
       );
     ]

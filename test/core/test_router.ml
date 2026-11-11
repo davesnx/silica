@@ -3,87 +3,68 @@ open Silica_test_support
 
 type status = Open | Closed
 
-module State = struct
-  type _ t =
-    | Home : unit t
-    | Issues : (status * int) t
-    | Issue : int t
-    | Not_found : string t
+type route =
+  | Home
+  | Issues of status * int
+  | Issue of int
+  | Not_found of string
 
-  let path : type data. data t -> data Route.t = function
-    | Home ->
-        Route.root
-    | Issues ->
-        Route.(
-          s "issues"
-          +? (choice_query "status" ~default:Open
-                [ ("open", Open); ("closed", Closed) ]
-             &? int_query "page" ~default:1
-             )
-        )
-    | Issue ->
-        Route.(s "issues" / int)
-    | Not_found ->
-        Route.rest
-end
+let route_list =
+  [
+    Router.route Route.root
+      (fun () -> Home)
+      (function Home -> Some () | _ -> None);
+    Router.route
+      Route.(
+        s "issues"
+        +? (choice_query "status" ~default:Open
+              [ ("open", Open); ("closed", Closed) ]
+           &? int_query "page" ~default:1
+           )
+      )
+      (fun (status, page) -> Issues (status, page))
+      (function Issues (status, page) -> Some (status, page) | _ -> None);
+    Router.route
+      Route.(s "issues" / int)
+      (fun id -> Issue id)
+      (function Issue id -> Some id | _ -> None);
+    Router.route Route.rest
+      (fun path -> Not_found path)
+      (function Not_found path -> Some path | _ -> None);
+  ]
 
-module Router = Router.Make (State)
-
+let is_not_found = function Not_found _ -> true | _ -> false
 let strings = Alcotest.(list string)
 let u s = Url.of_string s
 
 module Page = struct
-  type event = Props of int | Bump
-
-  module States = struct
-    type _ t = Page : (int * int) t
-  end
-
-  module Page_machine = Machine.Make (States)
+  type event = Bump
+  type state = Page of int [@@deriving state_shape]
 
   let machine =
-    Page_machine.make ~id:"issue"
-      ~init:(Page_machine.at Page (0, 0))
-      [
-        Page_machine.state Page "page"
-          ~entry:(fun _ -> [ Action.Set_title "issue" ])
-          ~after:[ (5, Bump) ]
-          (fun (id, bumps) -> function
-            | Props id ->
-                Page_machine.goto Page (id, bumps)
-            | Bump ->
-                Page_machine.goto Page (id, bumps + 1)
-            );
-      ]
+    Machine.make_with_props ~id:"issue" ~init:(Page 0) ~shape:state_shape
+      ~entry:(fun _ _ -> [ Action.Set_title "issue" ])
+      ~owns:(fun _ _ -> [ Source.after 5 Bump ])
+      (fun _ (Page bumps) Bump -> Machine.Go (Page (bumps + 1)))
 
-  let view (Page_machine.At (States.Page, (id, bumps)) : Page_machine.snapshot)
-      : event Node.t =
+  let view id (Page bumps) : event Node.t =
     Node.element "button"
       [ Attr.on_press Bump ]
       [ Node.text (Printf.sprintf "issue %d:%d" id bumps) ]
 
-  let component = Component.make machine view
-  let make ~id () = Component.node ~props:(Props id) component
+  let component = Component.make_with_props machine view
+  let make ~id () = Component.node_with_props ~props:id component
 end
 
 module Static = struct
-  module States = struct
-    type _ t = Static : unit t
-  end
-
-  module Static_machine = Machine.Make (States)
-
   let make name =
     let machine =
-      Static_machine.make ~id:name
-        ~init:(Static_machine.at Static ())
-        [
-          Static_machine.state Static name
-            ~entry:(fun () -> [ Action.Set_title name ])
-            Static_machine.ignore;
-        ]
+      Machine.make ~id:name ~init:()
+        ~shape:(Machine.shape ~name:(fun () -> name) ())
+        ~entry:(fun () -> [ Action.Set_title name ])
+        (fun () () -> Machine.Ignore)
     in
-    let view (_ : Static_machine.snapshot) : unit Node.t = Node.text name in
+    let view () : unit Node.t = Node.text name in
     Component.make machine view
 
   let home = make "home"
@@ -91,30 +72,27 @@ module Static = struct
 end
 
 let status_text = function Open -> "open" | Closed -> "closed"
+let routes = Router.routes ~not_found:is_not_found route_list
 
-let routes =
-  Router.routes ~not_found:State.Not_found
-    [ State.Home; State.Issues; State.Issue; State.Not_found ]
-
-let render : Router.snapshot -> Silica.Router.event Node.t = function
-  | Router.At (State.Home, ()) ->
+let render : route -> Router.event Node.t = function
+  | Home ->
       Component.node Static.home
-  | Router.At (State.Issues, (status, page)) ->
+  | Issues (status, page) ->
       Node.element "div" []
         [
           Node.text (Printf.sprintf "list %s %d" (status_text status) page);
           Component.node Static.issues;
           Page.make ~id:0 ();
         ]
-  | Router.At (State.Issue, id) ->
+  | Issue id ->
       Page.make ~id ()
-  | Router.At (State.Not_found, url) ->
+  | Not_found url ->
       Node.element "p" [] [ Node.text ("nothing at " ^ url) ]
 
 let mount ?guard ?exit ?title ?(routes = routes) url =
   Sim.mount (Router.make routes ?guard ?exit ?title ~render (u url))
 
-let go sim url = Sim.send sim (Silica.Router.Url_changed (u url))
+let go sim url = Sim.send sim (Router.Url_changed (u url))
 
 let has sim needle =
   let html = Sim.html sim in
@@ -141,7 +119,7 @@ let test_url_changed_switches_page () =
   go sim "/";
   has sim "home";
   Alcotest.check strings "old page stops, new page starts"
-    [ "stop 2.0/issue/page/after0"; "title home" ]
+    [ "stop 2.0/issue/page/after 5ms"; "title home" ]
     (Sim.log sim);
   Alcotest.check strings "no timer left" [] (Sim.running sim)
 
@@ -159,8 +137,9 @@ let test_same_route_new_parameters_keeps_page () =
 
 let test_reenter_route_restarts_page () =
   let routes =
-    Router.routes ~not_found:State.Not_found ~reenter:[ State.Issue ]
-      [ State.Home; State.Issues; State.Issue; State.Not_found ]
+    Router.routes ~not_found:is_not_found
+      ~reenter:(function Issue _ -> true | _ -> false)
+      route_list
   in
   let sim = mount ~routes "/issues/7" in
   Sim.press sim "issue 7";
@@ -170,7 +149,9 @@ let test_reenter_route_restarts_page () =
   has sim "issue 8:0";
   Alcotest.check strings "start again"
     [
-      "stop 2.0/issue/page/after0"; "title issue"; "start 3.0/issue/page/after0";
+      "stop 2.0/issue/page/after 5ms";
+      "title issue";
+      "start 3.0/issue/page/after 5ms";
     ]
     (Sim.log sim)
 
@@ -241,26 +222,20 @@ let test_route_round_trip () =
         (Url.to_string (Router.print routes (Router.parse routes printed)))
     )
     [
-      Router.At (State.Home, ());
-      Router.At (State.Issues, (Open, 1));
-      Router.At (State.Issues, (Closed, 4));
-      Router.At (State.Issue, 0);
-      Router.At (State.Issue, 42);
-      Router.At (State.Not_found, "/a/b");
+      Home;
+      Issues (Open, 1);
+      Issues (Closed, 4);
+      Issue 0;
+      Issue 42;
+      Not_found "/a/b";
     ];
   Alcotest.(check bool)
     "same data" true
-    (Router.parse routes (u "/issues?status=closed&page=4")
-    = Router.At (State.Issues, (Closed, 4))
-    )
+    (Router.parse routes (u "/issues?status=closed&page=4") = Issues (Closed, 4))
 
 let test_guard_cancel () =
   let guard ~from:_ ~target =
-    match target with
-    | Router.At (State.Home, ()) ->
-        Router.Cancel
-    | _ ->
-        Router.Allow
+    match target with Home -> Router.Cancel | _ -> Router.Allow
   in
   let sim = mount ~guard "/issues/7" in
   Sim.clear_log sim;
@@ -270,11 +245,7 @@ let test_guard_cancel () =
 
 let test_guard_redirect () =
   let guard ~from:_ ~target =
-    match target with
-    | Router.At (State.Issue, 13) ->
-        Router.Redirect (Router.At (State.Home, ()))
-    | _ ->
-        Router.Allow
+    match target with Issue 13 -> Router.Redirect Home | _ -> Router.Allow
   in
   let sim = mount ~guard "/" in
   Sim.clear_log sim;
@@ -284,16 +255,18 @@ let test_guard_redirect () =
 
 let issue_endpoint =
   Remote.declare ~path:"/api/issue" ~input:Codec.int ~output:Codec.string
+    ~rejected:Codec.string
 
 let list_endpoint =
   Remote.declare ~path:"/api/list" ~input:Codec.int ~output:Codec.string
+    ~rejected:Codec.string
 
 let preload_routes ?base () =
-  Router.routes ?base ~not_found:State.Not_found
+  Router.routes ?base ~not_found:is_not_found
     ~preload:(function
-      | Router.At (State.Issue, id) ->
+      | Issue id ->
           [ Remote.request issue_endpoint id ]
-      | Router.At (State.Issues, (_, page)) ->
+      | Issues (_, page) ->
           [
             Remote.request list_endpoint page;
             Remote.request issue_endpoint (100 + page);
@@ -301,7 +274,7 @@ let preload_routes ?base () =
       | _ ->
           []
       )
-    [ State.Home; State.Issues; State.Issue; State.Not_found ]
+    route_list
 
 let html node = Render.to_string node
 
@@ -309,16 +282,16 @@ let test_base_path () =
   let routes = preload_routes ~base:"/app" () in
   Alcotest.(check bool)
     "parse takes the base off" true
-    (Router.parse routes (u "/app/issues/7") = Router.At (State.Issue, 7));
+    (Router.parse routes (u "/app/issues/7") = Issue 7);
   Alcotest.(check bool)
     "the root under the base" true
-    (Router.parse routes (u "/app") = Router.At (State.Home, ()));
+    (Router.parse routes (u "/app") = Home);
   Alcotest.(check string)
     "print puts the base first" "/app/issues?page=2"
-    (Url.to_string (Router.print routes (Router.At (State.Issues, (Open, 2)))));
+    (Url.to_string (Router.print routes (Issues (Open, 2))));
   Alcotest.(check string)
     "the root prints as the base" "/app"
-    (Url.to_string (Router.print routes (Router.At (State.Home, ()))));
+    (Url.to_string (Router.print routes Home));
   ( match Router.parse routes (u "/issues/7") with
   | _ ->
       Alcotest.fail "expected Failure for a path outside the base"
@@ -327,10 +300,8 @@ let test_base_path () =
   );
   Alcotest.(check string)
     "a link has the base" "<a href=\"/app/issues/5\" data-silica-link>go</a>"
-    (html
-       (Router.link ~preload:Never routes State.Issue 5 [] [ Node.text "go" ])
-    );
-  ( match Router.navigate routes State.Issue 5 with
+    (html (Router.link ~preload:Never routes (Issue 5) [] [ Node.text "go" ]));
+  ( match Router.navigate routes (Issue 5) with
   | Action.Navigate url ->
       Alcotest.(check string) "navigate" "/app/issues/5" (Url.to_string url)
   | _ ->
@@ -346,13 +317,13 @@ let test_base_path () =
     (Url.to_string (Router.print routes (Sim.snapshot sim)))
 
 let test_hash () =
-  ( match Router.navigate ~hash:"c3" routes State.Issue 5 with
+  ( match Router.navigate ~hash:"c3" routes (Issue 5) with
   | Action.Navigate url ->
       Alcotest.(check string) "navigate" "/issues/5#c3" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Navigate"
   );
-  ( match Router.replace ~hash:"top" routes State.Home () with
+  ( match Router.replace ~hash:"top" routes Home with
   | Action.Replace url ->
       Alcotest.(check string) "replace" "/#top" (Url.to_string url)
   | _ ->
@@ -360,29 +331,27 @@ let test_hash () =
   );
   Alcotest.(check string)
     "link" "<a href=\"/issues/5#c3\" data-silica-link>go</a>"
-    (html (Router.link ~hash:"c3" routes State.Issue 5 [] [ Node.text "go" ]));
+    (html (Router.link ~hash:"c3" routes (Issue 5) [] [ Node.text "go" ]));
   let sim = mount "/issues/5" in
   Sim.clear_log sim;
   go sim "/issues/5#c3";
   Alcotest.check strings "the router ignores the hash" [] (Sim.log sim)
 
 let test_current () =
-  let current = Router.At (State.Issue, 7) in
+  let current = Issue 7 in
   Alcotest.(check string)
     "same path"
     "<a href=\"/issues/7\" data-silica-link aria-current=\"page\" \
      data-active>x</a>"
-    (html (Router.link ~current routes State.Issue 7 [] [ Node.text "x" ]));
+    (html (Router.link ~current routes (Issue 7) [] [ Node.text "x" ]));
   Alcotest.(check string)
     "other path" "<a href=\"/issues/8\" data-silica-link>x</a>"
-    (html (Router.link ~current routes State.Issue 8 [] [ Node.text "x" ]));
+    (html (Router.link ~current routes (Issue 8) [] [ Node.text "x" ]));
   Alcotest.(check string)
     "parent path, query ignored"
     "<a href=\"/issues?status=closed\" data-silica-link data-active>x</a>"
     (html
-       (Router.link ~current routes State.Issues (Closed, 1) []
-          [ Node.text "x" ]
-       )
+       (Router.link ~current routes (Issues (Closed, 1)) [] [ Node.text "x" ])
     );
   Alcotest.(check string)
     "query ignored for the current page"
@@ -390,8 +359,10 @@ let test_current () =
      data-active>x</a>"
     (html
        (Router.link
-          ~current:(Router.At (State.Issues, (Closed, 1)))
-          routes State.Issues (Open, 3) []
+          ~current:(Issues (Closed, 1))
+          routes
+          (Issues (Open, 3))
+          []
           [ Node.text "x" ]
        )
     );
@@ -399,9 +370,7 @@ let test_current () =
     "a prefix by whole segments only"
     "<a href=\"/issues/7\" data-silica-link>x</a>"
     (html
-       (Router.link
-          ~current:(Router.At (State.Not_found, "/issues/77"))
-          routes State.Issue 7 []
+       (Router.link ~current:(Not_found "/issues/77") routes (Issue 7) []
           [ Node.text "x" ]
        )
     );
@@ -409,9 +378,7 @@ let test_current () =
     "replace link too"
     "<a href=\"/issues/7\" data-silica-link data-silica-replace \
      aria-current=\"page\" data-active>x</a>"
-    (html
-       (Router.link_replace ~current routes State.Issue 7 [] [ Node.text "x" ])
-    )
+    (html (Router.link_replace ~current routes (Issue 7) [] [ Node.text "x" ]))
 
 let test_preload_attribute () =
   let routes = preload_routes () in
@@ -419,44 +386,38 @@ let test_preload_attribute () =
     "intent by default"
     "<a href=\"/issues/5\" data-silica-link \
      data-silica-preload=\"intent\">x</a>"
-    (html (Router.link routes State.Issue 5 [] [ Node.text "x" ]));
+    (html (Router.link routes (Issue 5) [] [ Node.text "x" ]));
   Alcotest.(check string)
     "viewport"
     "<a href=\"/issues/5\" data-silica-link \
      data-silica-preload=\"viewport\">x</a>"
-    (html
-       (Router.link ~preload:Viewport routes State.Issue 5 [] [ Node.text "x" ])
-    );
+    (html (Router.link ~preload:Viewport routes (Issue 5) [] [ Node.text "x" ]));
   Alcotest.(check string)
     "never" "<a href=\"/issues/5\" data-silica-link>x</a>"
-    (html (Router.link ~preload:Never routes State.Issue 5 [] [ Node.text "x" ]));
+    (html (Router.link ~preload:Never routes (Issue 5) [] [ Node.text "x" ]));
   Alcotest.(check string)
     "a route with no calls" "<a href=\"/\" data-silica-link>x</a>"
-    (html (Router.link routes State.Home () [] [ Node.text "x" ]));
+    (html (Router.link routes Home [] [ Node.text "x" ]));
   Alcotest.(check string)
     "routes with no preload" "<a href=\"/issues/5\" data-silica-link>x</a>"
     (html
-       (Router.link
-          (Router.routes [ State.Issue ])
-          State.Issue 5 []
-          [ Node.text "x" ]
-       )
+       (Router.link (Router.routes route_list) (Issue 5) [] [ Node.text "x" ])
     )
 
 let test_preload_event () =
   let routes = preload_routes () in
   let sim = Sim.mount (Router.make routes ~render (u "/")) in
   Sim.clear_log sim;
-  Sim.send sim (Silica.Router.Preload (u "/issues?page=4"));
+  Sim.send sim (Router.Preload (u "/issues?page=4"));
   Alcotest.check strings "a preload for each call of the route"
     [ "preload /api/list 4"; "preload /api/issue 104" ]
     (Sim.log sim);
   has sim "home";
   Alcotest.(check bool)
     "the route does not change" true
-    (Sim.snapshot sim = Router.At (State.Home, ()));
+    (Sim.snapshot sim = Home);
   Sim.clear_log sim;
-  Sim.send sim (Silica.Router.Preload (u "/"));
+  Sim.send sim (Router.Preload (u "/"));
   Alcotest.check strings "no call, no action" [] (Sim.log sim)
 
 let test_guard_at_first_url () =
@@ -464,9 +425,9 @@ let test_guard_at_first_url () =
   let guard ~from ~target =
     seen := (from, target) :: !seen;
     match target with
-    | Router.At (State.Issue, 13) ->
-        Router.Redirect (Router.At (State.Home, ()))
-    | Router.At (State.Issue, 14) ->
+    | Issue 13 ->
+        Router.Redirect Home
+    | Issue 14 ->
         Router.Cancel
     | _ ->
         Router.Allow
@@ -474,7 +435,7 @@ let test_guard_at_first_url () =
   let sim = mount ~guard "/issues/13" in
   Alcotest.(check bool)
     "the guard sees no route before" true
-    (!seen = [ (None, Router.At (State.Issue, 13)) ]);
+    (!seen = [ (None, Issue 13) ]);
   has sim "home";
   Alcotest.check strings "starts in the other route and replaces the URL"
     [ "replace /"; "title home" ]
@@ -482,7 +443,7 @@ let test_guard_at_first_url () =
   let sim = mount ~guard "/issues/7" in
   has sim "issue 7:0";
   Alcotest.check strings "allow"
-    [ "title issue"; "start 2.0/issue/page/after0" ]
+    [ "title issue"; "start 2.0/issue/page/after 5ms" ]
     (Sim.log sim);
   let sim = mount ~guard "/issues/14" in
   has sim "issue 14:0";
@@ -494,9 +455,7 @@ let test_guard_at_first_url () =
   go sim "/issues/13";
   Alcotest.(check bool)
     "later, the guard sees the route before" true
-    (!seen
-    = [ (Some (Router.At (State.Issue, 14)), Router.At (State.Issue, 13)) ]
-    )
+    (!seen = [ (Some (Issue 14), Issue 13) ])
 
 let test_exit_hook () =
   let exit snapshot =
@@ -509,18 +468,42 @@ let test_exit_hook () =
   Sim.clear_log sim;
   go sim "/";
   Alcotest.check strings "exit of the route state runs"
-    [ "focus left /issues/7"; "stop 2.0/issue/page/after0"; "title home" ]
+    [ "focus left /issues/7"; "stop 2.0/issue/page/after 5ms"; "title home" ]
+    (Sim.log sim)
+
+let test_reenter_route_runs_exit () =
+  let routes =
+    Router.routes ~not_found:is_not_found
+      ~reenter:(function Issue _ -> true | _ -> false)
+      route_list
+  in
+  let exit snapshot =
+    [
+      Action.Focus
+        (Ref.make ("left " ^ Url.to_string (Router.print routes snapshot)));
+    ]
+  in
+  let sim = mount ~routes ~exit "/issues/7" in
+  Sim.clear_log sim;
+  go sim "/issues/8";
+  Alcotest.check strings "the exit of the old parameters runs, then the remount"
+    [
+      "focus left /issues/7";
+      "stop 2.0/issue/page/after 5ms";
+      "title issue";
+      "start 3.0/issue/page/after 5ms";
+    ]
     (Sim.log sim)
 
 let titles sim = List.filter (String.starts_with ~prefix:"title ") (Sim.log sim)
 
 let test_title () =
   let title = function
-    | Router.At (State.Issue, id) ->
+    | Issue id ->
         Printf.sprintf "Issue %d" id
-    | Router.At (State.Issues, _) ->
+    | Issues _ ->
         "Issues"
-    | Router.At (State.Home, ()) | Router.At (State.Not_found, _) ->
+    | Home | Not_found _ ->
         "Other"
   in
   let sim = mount ~title "/issues/7" in
@@ -540,11 +523,7 @@ let test_title () =
   go sim "/issues?status=closed";
   Alcotest.check strings "same url, no title" [] (titles sim);
   let guard ~from:_ ~target =
-    match target with
-    | Router.At (State.Home, ()) ->
-        Router.Redirect (Router.At (State.Issue, 1))
-    | _ ->
-        Router.Allow
+    match target with Home -> Router.Redirect (Issue 1) | _ -> Router.Allow
   in
   let sim = mount ~guard ~title "/" in
   Alcotest.(check bool)
@@ -558,7 +537,8 @@ let test_links_and_actions () =
     "link"
     "<a href=\"/issues?status=closed\" data-silica-link class=\"x\">go</a>"
     (Render.to_string
-       (Router.link routes State.Issues (Closed, 1)
+       (Router.link routes
+          (Issues (Closed, 1))
           [ Attr.string "class" "x" ]
           [ Node.text "go" ]
        )
@@ -567,35 +547,34 @@ let test_links_and_actions () =
     "replace link"
     "<a href=\"/issues/5\" data-silica-link data-silica-replace>go</a>"
     (Render.to_string
-       (Router.link_replace routes State.Issue 5 [] [ Node.text "go" ])
+       (Router.link_replace routes (Issue 5) [] [ Node.text "go" ])
     );
-  ( match Router.navigate routes State.Issue 5 with
+  ( match Router.navigate routes (Issue 5) with
   | Action.Navigate url ->
       Alcotest.(check string) "navigate" "/issues/5" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Navigate"
   );
-  match Router.replace routes State.Home () with
+  match Router.replace routes Home with
   | Action.Replace url ->
       Alcotest.(check string) "replace" "/" (Url.to_string url)
   | _ ->
       Alcotest.fail "expected Replace"
 
-let test_spec () =
-  let sim = mount "/" in
-  ignore sim;
-  let component = Router.make routes ~render (u "/") in
-  let spec = Machine.spec component.Component.machine in
+let test_state_names () =
   Alcotest.(check (list string))
-    "states are the routes"
+    "the state names are the route patterns"
     [ "/"; "/issues?status&page"; "/issues/:int"; "/*" ]
-    (List.map (fun (st : Spec.state) -> st.name) spec.states);
-  Alcotest.(check (list string))
-    "lint" []
-    (List.map Spec.issue_to_string (Spec.lint spec))
+    (List.map (Router.name routes)
+       [ Home; Issues (Open, 1); Issue 3; Not_found "/x" ]
+    );
+  let sim = mount "/issues/3" in
+  Alcotest.(check string)
+    "the router machine names its state by route" "/issues/:int"
+    (Router.name routes (Sim.snapshot sim))
 
 let test_no_catch_all () =
-  let routes = Router.routes [ State.Home ] in
+  let routes = Router.routes [ List.hd route_list ] in
   match Router.parse routes (u "/x") with
   | _ ->
       Alcotest.fail "expected Failure"
@@ -659,6 +638,7 @@ let () =
           t "same route, new parameters, keeps the page"
             test_same_route_new_parameters_keeps_page;
           t "reenter route restarts the page" test_reenter_route_restarts_page;
+          t "reenter route runs exit" test_reenter_route_runs_exit;
           t "same url does nothing" test_same_url_does_nothing;
           t "back and forward" test_back_and_forward;
           t "bad path is not found" test_bad_path_is_not_found;
@@ -676,7 +656,7 @@ let () =
           t "exit hook" test_exit_hook;
           t "title" test_title;
           t "links and actions" test_links_and_actions;
-          t "spec" test_spec;
+          t "state names" test_state_names;
           t "no catch-all route" test_no_catch_all;
         ]
       );

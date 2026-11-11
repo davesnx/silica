@@ -5,38 +5,31 @@ type page = { value : string option; events : string list }
 
 type event = Changed of bool * Popup.reason | Value of string | Set_done
 
-module States = struct
-  type _ t = Page : page t
-end
-
-module Select_events_machine = Machine.Make (States)
-
 let note page line = { page with events = page.events @ [ line ] }
 
 let machine =
-  Select_events_machine.make ~id:"select-events"
-    ~init:(Select_events_machine.at Page { value = None; events = [] })
-    [
-      Select_events_machine.state Page "page" (fun page -> function
-        | Changed (opened, reason) ->
-            Select_events_machine.goto Page
-              (note page
-                 (Printf.sprintf "%s %s"
-                    ( if opened then
-                        "open"
-                      else
-                        "close"
-                    )
-                    (Popup.reason_name reason)
-                 )
-              )
-        | Value value ->
-            Select_events_machine.goto Page
-              (note { page with value = Some value } ("value " ^ value))
-        | Set_done ->
-            Select_events_machine.goto Page { page with value = Some "done" }
-        );
-    ]
+  Machine.make ~id:"select-events"
+    ~init:{ value = None; events = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed (opened, reason) ->
+          Go
+            (note page
+               (Printf.sprintf "%s %s"
+                  ( if opened then
+                      "open"
+                    else
+                      "close"
+                  )
+                  (Popup.reason_name reason)
+               )
+            )
+      | Value value ->
+          Go (note { page with value = Some value } ("value " ^ value))
+      | Set_done ->
+          Go { page with value = Some "done" }
+    )
 
 let item ?(disabled = false) value label = { Select.value; label; disabled }
 
@@ -53,7 +46,7 @@ let statuses =
 let priorities =
   [ item "low" "Low"; item "medium" "Medium"; item "high" "High" ]
 
-let view (Select_events_machine.At (Page, page)) =
+let view page =
   <section class_="flex flex-col gap-4">
     <p id="status-value">
       (Node.text ("Status: " ^ Option.value page.value ~default:"none"))

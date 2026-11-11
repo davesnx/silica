@@ -71,6 +71,7 @@ let init_fails = ref false
 
 let echo_session =
   Remote.declare ~path:"/api/who" ~input:Codec.unit ~output:Codec.string
+    ~rejected:Codec.string
 
 let handlers =
   [
@@ -355,6 +356,32 @@ let page_tests =
 let call_tests =
   let open Alcotest in
   [
+    test_case "a session that ends during the request stays ended" `Quick
+      (fun () ->
+        let store = Silica_server.Session.create () in
+        let real = Silica_server.Session.ops store in
+        let vanish = ref false in
+        let sessions =
+          {
+            real with
+            update =
+              (fun ~now id change ->
+                if !vanish then (
+                  real.remove id;
+                  None
+                ) else
+                  real.update ~now id change
+              );
+          }
+        in
+        let t = make ~modify:(fun config -> { config with sessions }) () in
+        let c = visit t in
+        vanish := true;
+        let r = post ~client:c t "/api/double" "21" in
+        check int "the call has no session" 403 r.status;
+        check bool "the session is not brought back" true
+          (Option.is_none (real.get ~now:!clock c.id))
+    );
     test_case "a call with every check passes" `Quick (fun () ->
         let t = make () in
         let r = post t "/api/double" "21" in
@@ -489,19 +516,17 @@ let call_tests =
         check int "garbage" 400 (status (post t "/api/double" "{"));
         check int "wrong type" 400 (status (post t "/api/double" {|"s"|}))
     );
-    test_case "a handler error is a fixed 500 and the detail goes to the log"
-      `Quick (fun () ->
+    test_case "a handler Error is a 422 with the encoded rejection" `Quick
+      (fun () ->
         let t = make () in
         let r = post t "/api/boom" "1" in
-        check int "status" 500 r.status;
-        check string "body" "internal error" r.body;
-        check bool "logged" true
-          (List.exists
-             (fun l ->
-               contains l "silica.remote" && contains l "secret kaput detail"
-             )
-             !logs
-          );
+        check int "status" 422 r.status;
+        check string "body" {|"secret kaput detail"|} r.body
+    );
+    test_case
+      "a handler exception is a fixed 500 and the detail goes to the log" `Quick
+      (fun () ->
+        let t = make () in
         let r = post t "/api/ghost" "1" in
         check int "raise status" 500 r.status;
         check string "raise body" "internal error" r.body;
@@ -1221,13 +1246,13 @@ let island_tests =
                 Server.Island
                   (Live.declare ~channel:"counter" ~state:Codec.int
                      ~event:ev_codec
-                     {
-                       Component.machine =
-                         Silica_test_support.Simple.machine ~id:"r" ~init:0
+                     (Component.make
+                        (Silica_test_support.Simple.machine ~id:"r" ~init:0
                            (fun _ _ -> failwith "step failed"
-                         );
-                       view = (fun _ -> Node.text "");
-                     }
+                         )
+                        )
+                        (fun _ -> Node.text "")
+                     )
                   );
               ]
             ~topics:[]

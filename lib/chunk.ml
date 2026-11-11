@@ -11,11 +11,25 @@ type 'a t = {
 
 let ready value = { state = Here value; loader = (fun _ -> ()) }
 let deferred loader = { state = Idle; loader }
-let get t = match t.state with Here value -> Some value | _ -> None
-let failure t = match t.state with Failed message -> Some message | _ -> None
+let get t =
+  match t.state with
+  | Here value ->
+      Some value
+  | Idle | Loading _ | Failed _ ->
+      None
+let failure t =
+  match t.state with
+  | Failed message ->
+      Some message
+  | Here _ | Idle | Loading _ ->
+      None
 
 let forget_failure t =
-  match t.state with Failed _ -> t.state <- Idle | _ -> ()
+  match t.state with
+  | Failed _ ->
+      t.state <- Idle
+  | Here _ | Idle | Loading _ ->
+      ()
 
 let load t on_done =
   match t.state with
@@ -30,7 +44,11 @@ let load t on_done =
           if not !settled then (
             settled := true;
             let waiting =
-              match t.state with Loading waiting -> waiting | _ -> []
+              match t.state with
+              | Loading waiting ->
+                  waiting
+              | Here _ | Idle | Failed _ ->
+                  []
             in
             t.state <-
               ( match result with

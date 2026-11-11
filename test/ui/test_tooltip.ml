@@ -20,7 +20,7 @@ let no_log sim text =
   if contains (log sim) text then
     Alcotest.failf "log has %S in %s" text (log sim)
 
-let timers sim = List.filter (contains "/after") (Sim.running sim)
+let timers sim = List.filter (fun id -> contains id "/after") (Sim.running sim)
 
 let raises f = match f () with exception Failure _ -> true | () -> false
 
@@ -32,18 +32,7 @@ let ends_with suffix s =
   l >= n && String.sub s (l - n) n = suffix
 
 let fire sim state delay =
-  let index =
-    match delay with
-    | Tooltip.Instant ->
-        0
-    | Short ->
-        1
-    | Medium ->
-        2
-    | Long ->
-        3
-  in
-  let suffix = Printf.sprintf "/%s/after%d" state index in
+  let suffix = Printf.sprintf "/%s/after %dms" state (Tooltip.delay_ms delay) in
   match List.find_opt (ends_with suffix) (Sim.running sim) with
   | Some id ->
       Sim.fire sim id
@@ -65,8 +54,11 @@ let hover_waits_for_the_delay () =
   let sim = Sim.mount (page ()) in
   Sim.pointer_enter sim ~id:"save-trigger";
   Alcotest.(check bool) "not shown before the delay" false (shown sim);
-  fire sim "opening" Tooltip.Short;
-  Alcotest.(check bool) "a shorter timer does not open it" false (shown sim);
+  Alcotest.(check bool)
+    "one timer runs, for the delay" true
+    (List.for_all (ends_with "/opening/after 600ms") (timers sim)
+    && List.length (timers sim) = 1
+    );
   fire sim "opening" Tooltip.Medium;
   Alcotest.check opt "role" (Some "tooltip")
     (Sim.attribute sim ~id:"save-popup" "role");

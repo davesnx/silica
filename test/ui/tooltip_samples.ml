@@ -3,34 +3,27 @@ open Silica_ui
 
 type event = Changed of bool * Popup.reason | Set_delay of Tooltip.delay
 
-module State = struct
-  type _ t = Page : (Tooltip.delay * string list) t
-end
-
-module Page = Machine.Make (State)
-
 let machine ~delay =
-  Page.make ~id:"tooltip-page"
-    ~init:(Page.at Page (delay, []))
-    [
-      Page.state Page "page" (fun (delay, log) -> function
-        | Changed (opened, why) ->
-            Page.goto Page
-              ( delay,
-                log
-                @ [ Printf.sprintf "open %b %s" opened (Popup.reason_name why) ]
-              )
-        | Set_delay delay ->
-            Page.goto Page (delay, log)
-        );
-    ]
+  Machine.make ~id:"tooltip-page" ~init:(delay, [])
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun (delay, log) event ->
+      match event with
+      | Changed (opened, why) ->
+          Go
+            ( delay,
+              log
+              @ [ Printf.sprintf "open %b %s" opened (Popup.reason_name why) ]
+            )
+      | Set_delay delay ->
+          Go (delay, log)
+    )
 
 let props ?(delay = Tooltip.Medium) ?close_delay () =
   Tooltip.props ~id:"save" ~label:"Save" ~tip:"Save the draft" ~delay
     ?close_delay ()
 
 let page ?(delay = Tooltip.Medium) ?close_delay () =
-  Component.make (machine ~delay) (fun (Page.At (Page, (delay, log))) ->
+  Component.make (machine ~delay) (fun (delay, log) ->
       Node.element "main" []
         [
           Node.element "p"

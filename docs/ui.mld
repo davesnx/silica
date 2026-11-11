@@ -48,6 +48,12 @@ A popup ([Dialog], [Popover], [Tooltip], [Menu], [Select], [Combobox],
 change that the popup did by itself, with its reason ([Silica_ui.Popup.reason]),
 such as [Escape_key] or [Outside_press].
 
+A dialog holds content of the app. [Silica_ui.Dialog.component ~id ~closes view]
+makes a dialog for one kind of content, once, at the top level: [view] paints
+the content, and the [content] field of the props gives its data. The dialog
+gives the events of the content to the parent, and closes after an event for
+which [closes] is [true]. [Silica_ui.Dialog.make dialog props] is the node.
+
 {1:styling Classes and data attributes}
 
 The components never write a class of their own. The record [classes] has one

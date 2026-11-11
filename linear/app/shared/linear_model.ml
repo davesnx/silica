@@ -122,16 +122,18 @@ module Draft = struct
 end
 
 let me_endpoint =
-  Silica.Remote.declare ~path:"/api/me" ~input:Silica.Codec.unit
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/me"
+    ~input:Silica.Codec.unit
     ~output:(Silica_jsonkit.codec ~to_json:User.to_json ~of_json:User.of_json)
 
 let issues_endpoint =
-  Silica.Remote.declare ~path:"/api/issues" ~input:Silica.Codec.unit
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/issues"
+    ~input:Silica.Codec.unit
     ~output:
       (Silica_jsonkit.codec ~to_json:Issues.to_json ~of_json:Issues.of_json)
 
 let create_endpoint =
-  Silica.Remote.declare ~path:"/api/issues/create"
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/issues/create"
     ~input:(Silica_jsonkit.codec ~to_json:Draft.to_json ~of_json:Draft.of_json)
     ~output:(Silica_jsonkit.codec ~to_json:Issue.to_json ~of_json:Issue.of_json)
 
@@ -201,7 +203,7 @@ module Change = struct
 end
 
 let update_endpoint =
-  Silica.Remote.declare ~path:"/api/issues/update"
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/issues/update"
     ~input:
       (Silica_jsonkit.codec ~to_json:Change.request_to_json
          ~of_json:Change.request_of_json
@@ -254,12 +256,13 @@ let comment_codec =
   Silica_jsonkit.codec ~to_json:Comment.to_json ~of_json:Comment.of_json
 
 let comments_endpoint =
-  Silica.Remote.declare ~path:"/api/comments" ~input:Silica.Codec.int
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/comments"
+    ~input:Silica.Codec.int
     ~output:
       (Silica_jsonkit.codec ~to_json:Thread.to_json ~of_json:Thread.of_json)
 
 let add_comment_endpoint =
-  Silica.Remote.declare ~path:"/api/comments/add"
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/comments/add"
     ~input:
       (Silica_jsonkit.codec ~to_json:New_comment.to_json
          ~of_json:New_comment.of_json
@@ -267,7 +270,7 @@ let add_comment_endpoint =
     ~output:comment_codec
 
 let edit_comment_endpoint =
-  Silica.Remote.declare ~path:"/api/comments/edit"
+  Silica.Remote.declare ~rejected:Silica.Codec.string ~path:"/api/comments/edit"
     ~input:
       (Silica_jsonkit.codec ~to_json:Comment_edit.to_json
          ~of_json:Comment_edit.of_json

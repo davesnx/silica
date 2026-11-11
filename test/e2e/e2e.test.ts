@@ -276,7 +276,7 @@ describe("silica example", () => {
     await page.close();
 
     const bad = await open("/item/-1");
-    await bad.getByText(/Server answered \d+/).waitFor();
+    await bad.getByText("no item -1").waitFor();
     assert.equal(await bad.locator("article").count(), 0);
     await bad.close();
   });

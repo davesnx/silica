@@ -3,9 +3,8 @@ rankdir=LR;
 "me.__init" [shape=point];
 "me.__init" -> "me.loading";
 "me.loading" [label="loading\ninvoke /api/me" shape=box];
-"me.ready" [label="ready" shape=doublecircle];
 "me.failed" [label="failed" shape=doublecircle];
+"me.ready" [label="ready" shape=doublecircle];
 "me.loading" -> "me.failed" [label="loaded error"];
-"me.loading" -> "me.loading";
 "me.loading" -> "me.ready" [label="loaded ok"];
 }

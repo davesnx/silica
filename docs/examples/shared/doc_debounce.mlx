@@ -2,61 +2,40 @@ open Silica
 
 type event = Typed of string | Settle | Clear
 
-module States = struct
-  type _ t = Empty : unit t | Typing : string t | Settled : string t
-end
+type state = Empty | Typing of string | Settled of string
+[@@deriving state_shape]
 
-module Debounce_machine = Machine.Make (States)
-
-let typed = function
+let typed : string -> (state, event) Machine.next = function
   | "" ->
-      Debounce_machine.goto Empty ()
+      Go Empty
   | text ->
-      Debounce_machine.reenter Typing text
+      Reenter (Typing text)
 
 let machine =
-  Debounce_machine.make ~id:"debounce"
-    ~init:(Debounce_machine.at Empty ())
-    [
-      Debounce_machine.state Empty "empty" ~to_:[ Typing ] (fun () -> function
-        | Typed text ->
-            typed text
-        | Settle | Clear ->
-            Debounce_machine.unhandled
-        );
-      Debounce_machine.state Typing "typing" ~to_:[ Empty; Settled ]
-        ~after:[ (500, Settle) ]
-        (fun text -> function
-          | Typed text ->
-              typed text
-          | Settle ->
-              Debounce_machine.goto Settled text
-          | Clear ->
-              Debounce_machine.unhandled
-          );
-      Debounce_machine.state Settled "settled" ~to_:[ Empty; Typing ]
-        (fun _ -> function
-        | Typed text ->
-            typed text
-        | Settle | Clear ->
-            Debounce_machine.unhandled
-        );
-      Debounce_machine.always ~to_:[ Empty ] (function
-        | Clear ->
-            Debounce_machine.goto Empty ()
-        | Typed _ | Settle ->
-            Debounce_machine.unhandled
-        );
-    ]
+  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape
+    ~owns:(function
+      | Typing _ -> [ Source.after 500 Settle ] | Empty | Settled _ -> []
+      )
+    (fun state event ->
+      match (state, event) with
+      | _, Typed text ->
+          typed text
+      | Typing text, Settle ->
+          Go (Settled text)
+      | _, Clear ->
+          Go Empty
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Debounce_machine.snapshot) : event Node.t =
+let view (state : state) : event Node.t =
   let text, note =
-    match snapshot with
-    | Debounce_machine.At (Empty, ()) ->
+    match state with
+    | Empty ->
         ("", "Type a word.")
-    | Debounce_machine.At (Typing, text) ->
+    | Typing text ->
         (text, "Waiting for you to stop.")
-    | Debounce_machine.At (Settled, text) ->
+    | Settled text ->
         (text, "You typed " ^ text ^ ".")
   in
   <div>

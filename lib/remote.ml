@@ -1,19 +1,31 @@
-type ('i, 'o) endpoint = {
-  path : string;
-  input : 'i Codec.t;
-  output : 'o Codec.t;
-  output_id : 'o Type.Id.t;
-}
+type ('i, 'o, 'x) endpoint = ('i, 'o, 'x) Endpoint.t
+type error = Endpoint.error =
+  | Http of int
+  | Decode of string
+  | Network of string
 
-type error = Http of int | Decode of string | Network of string
+type ('o, 'x) answer = ('o, 'x) Endpoint.answer =
+  | Ok of 'o
+  | Rejected of 'x
+  | Failed of error
 
-let declare ~path ~input ~output =
-  { path; input; output; output_id = Type.Id.make () }
-let path e = e.path
-let input e = e.input
-let output e = e.output
-let output_id e = e.output_id
+let declare = Endpoint.declare
+let path = Endpoint.path
+let input = Endpoint.input
+let output = Endpoint.output
+let rejected = Endpoint.rejected
+let answer_id = Endpoint.answer_id
+let call = Source.remote_call
 
-type request = Request : ('i, 'o) endpoint * 'i -> request
+let error_to_string = function
+  | Http code ->
+      "The server answered " ^ string_of_int code
+  | Decode _ ->
+      "The server sent data that cannot be read"
+  | Network _ ->
+      "The network failed"
+
+type request = Endpoint.request =
+  | Request : ('i, 'o, 'x) endpoint * 'i -> request
 
 let request endpoint input = Request (endpoint, input)

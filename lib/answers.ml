@@ -69,9 +69,11 @@ let to_script ?nonce table =
   Buffer.add_char buffer '"';
   Option.iter
     (fun value ->
-      Buffer.add_string buffer " nonce=\"";
-      Buffer.add_string buffer value;
-      Buffer.add_char buffer '"'
+      if value <> "" then (
+        Buffer.add_string buffer " nonce=\"";
+        Buffer.add_string buffer value;
+        Buffer.add_char buffer '"'
+      )
     )
     nonce;
   Buffer.add_char buffer '>';

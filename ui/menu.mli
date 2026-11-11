@@ -39,7 +39,6 @@ type nav = Next | Previous | First | Last | Letter of char  (** Lowercase. *)
 type edge = Start | End
 
 type event =
-  | Props of props
   | Trigger_press
   | Open_key of Popup.reason * edge
       (** A key on the closed trigger: open on the first ([Start]) or the last
@@ -49,22 +48,18 @@ type event =
   | Choose of int  (** The item at this position was chosen. *)
   | Close of Popup.reason
 
-type opened = { props : props; highlighted : int option }
+type state =
+  | Closed
+  | Open of int option  (** The position of the highlighted item. *)
 
-module State : sig
-  type _ t = Idle : unit t | Closed : props t | Open : opened t
-end
-
-type snapshot = At : 'data State.t * 'data -> snapshot
-
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val item_id : string -> int -> string
 (** [item_id id i] is the element id and ref name of the item at position [i] of

@@ -1,40 +1,38 @@
 open Silica
 open Linear_model
 
-type event = Loaded of (User.t, Remote.error) result
-
-module States = struct
-  type _ t = Loading : unit t | Ready : User.t t | Failed : unit t
-end
-
-module Me_machine = Machine.Make (States)
+type event = Loaded of (User.t, string) Remote.answer
+type state = Loading | Ready of User.t | Failed [@@deriving state_shape]
 
 let machine =
-  Me_machine.make ~id:"me" ~init:(Me_machine.at Loading ())
-    [
-      Me_machine.state Loading "loading" ~to_:[ Ready; Failed ]
-        ~invoke:[ Source.call me_endpoint Fun.id (fun r -> Loaded r) ]
-        (fun () -> function
-          | Loaded (Ok user) ->
-              Me_machine.goto Ready user
-          | Loaded (Error _) ->
-              Me_machine.goto Failed ()
-          );
-      Me_machine.state Ready "ready" ~final:true Me_machine.ignore;
-      Me_machine.state Failed "failed" ~final:true Me_machine.ignore;
-    ]
+  Machine.make ~id:"me" ~init:Loading ~shape:state_shape
+    ~final:(function Ready _ | Failed -> true | Loading -> false)
+    ~owns:(function
+      | Loading ->
+          [ Remote.call me_endpoint () (fun answer -> Loaded answer) ]
+      | Ready _ | Failed ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | Loading, Loaded (Ok user) ->
+          Go (Ready user)
+      | Loading, Loaded (Rejected _ | Failed _) ->
+          Go Failed
+      | (Ready _ | Failed), Loaded _ ->
+          Ignore
+    )
 
 let text = Node.text
 
-let view (snapshot : Me_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Me_machine.At (Loading, ()) ->
+let view : state -> event Node.t = function
+  | Loading ->
       <p id="me" class_="text-sm text-ui-muted">"..."</p>
-  | Me_machine.At (Ready, user) ->
+  | Ready user ->
       <p id="me" class_="text-sm text-ui-muted">
         (text ("you are " ^ User.name user))
       </p>
-  | Me_machine.At (Failed, ()) ->
+  | Failed ->
       <p id="me" class_="text-sm text-ui-muted">"you are nobody"</p>
 
 let component = Component.make machine view

@@ -1,3 +1,5 @@
 (tests
  (names test_check test_verify)
- (libraries silica silica.check silica_test_support alcotest))
+ (libraries silica silica.check silica_test_support alcotest)
+ (preprocess
+  (pps silica.ppx)))

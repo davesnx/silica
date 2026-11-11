@@ -5,14 +5,14 @@ type ('s, 'e) t = {
   channel : string;
   state : 's Codec.t;
   event : 'e Codec.t;
-  component : ('s, 'e) Component.t;
+  component : (unit, 's, 'e) Component.t;
 }
 
 val declare :
   channel:string ->
   state:'s Codec.t ->
   event:'e Codec.t ->
-  ('s, 'e) Component.t ->
+  (unit, 's, 'e) Component.t ->
   ('s, 'e) t
 (** Declare a Live component in shared code. [channel] is the same on the server
     and in the browser. *)

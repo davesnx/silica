@@ -2,4 +2,6 @@
  (name silica)
  (public_name silica)
  (modes byte native melange)
+ (flags
+  (:standard -w @4))
  (libraries silica.json))

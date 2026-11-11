@@ -1,45 +1,34 @@
 open Silica
 module Counter_event = Example_model.Counter_event
 
-module States = struct
-  type _ t = Counter : int t
-end
-
-module Counter_machine = Machine.Make (States)
-
-let machine : (int, Counter_event.t) Machine.t =
-  let table =
-    Counter_machine.make ~id:"counter"
-      ~init:(Counter_machine.at Counter 0)
-      [
-        Counter_machine.state Counter "counter" (fun n e ->
-            match e with
-            | Counter_event.Incr ->
-                Counter_machine.goto Counter (n + 1)
-            | Decr when n = 0 ->
-                Counter_machine.stay []
-            | Decr ->
-                Counter_machine.goto Counter (n - 1)
-            | Reset ->
-                Counter_machine.goto Counter 0
-        );
-      ]
-  in
-  Machine.map_snapshot table
-    ~get:(fun
-        (Counter_machine.At (Counter, n) : Counter_machine.snapshot) : int -> n
+let machine : (unit, int, Counter_event.t) Machine.t =
+  Machine.make ~id:"counter" ~init:0
+    ~shape:(Machine.shape ~name:(fun _ -> "counter") ~names:[ "counter" ] ())
+    (fun count event ->
+      match event with
+      | Counter_event.Incr ->
+          Go (count + 1)
+      | Decr when count = 0 ->
+          Ignore
+      | Decr ->
+          Go (count - 1)
+      | Reset ->
+          Go 0
     )
-    ~set:(fun n -> Counter_machine.at Counter n)
 
-let view (n : int) : Counter_event.t Node.t =
+let view (count : int) : Counter_event.t Node.t =
   <div class_="counter">
-    <button on_press=Counter_event.Decr disabled=(n = 0)>"Decrement"</button>
-    <span>(Node.text (string_of_int n))</span>
+    <button
+      on_press=Counter_event.Decr
+      disabled=(not (Machine.can machine () count Decr))>
+      "Decrement"
+    </button>
+    <span>(Node.text (string_of_int count))</span>
     <button on_press=Counter_event.Incr>"Increment"</button>
     <button on_press=Counter_event.Reset>"Reset"</button>
   </div>
 
-let component : (int, Counter_event.t) Component.t = { machine; view }
+let component = Component.make machine view
 
 let live =
   Live.declare ~channel:"counter" ~state:Example_model.counter_state

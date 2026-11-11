@@ -2,88 +2,65 @@ open Silica
 open Linear_model
 
 type event =
-  | Props of int
   | Typed of string
   | Send
   | Clear
-  | Sent of (Comment.t, Remote.error) result
+  | Sent of (Comment.t, string) Remote.answer
 
-module States = struct
-  type _ t =
-    | Empty : int t
-    | Drafting : (int * string) t
-    | Sending : (int * string) t
-    | Failed : (int * string * Remote.error) t
-end
+type state =
+  | Empty
+  | Drafting of string
+  | Sending of string
+  | Failed of { body : string; message : string }
+[@@deriving state_shape]
 
-module Composer_machine = Machine.Make (States)
-
-let typed number draft =
+let typed draft : (state, event) Machine.next =
   if String.trim draft = "" then
-    Composer_machine.goto Empty number
+    Go Empty
   else
-    Composer_machine.goto Drafting (number, draft)
+    Go (Drafting draft)
 
 let machine =
-  Composer_machine.make ~id:"comment-composer"
-    ~init:(Composer_machine.at Empty 0)
-    [
-      Composer_machine.always ~to_:[ Empty ] (function
-        | Props number ->
-            Composer_machine.goto Empty number
-        | _ ->
-            Composer_machine.unhandled
-        );
-      Composer_machine.state Empty "empty" ~to_:[ Drafting ]
-        (fun number -> function
-        | Typed draft ->
-            typed number draft
-        | _ ->
-            Composer_machine.unhandled
-        );
-      Composer_machine.state Drafting "drafting" ~to_:[ Empty; Sending ]
-        (fun (number, draft) -> function
-        | Typed draft ->
-            typed number draft
-        | Send -> (
-            match Comment.check draft with
-            | Ok body ->
-                Composer_machine.goto Sending (number, body)
-            | Error _ ->
-                Composer_machine.goto Empty number
-          )
-        | Clear ->
-            Composer_machine.goto Empty number
-        | _ ->
-            Composer_machine.unhandled
-        );
-      Composer_machine.state Sending "sending" ~to_:[ Empty; Failed ]
-        ~invoke:
+  Machine.make_with_props ~id:"comment-composer" ~init:Empty ~shape:state_shape
+    ~owns:(fun number -> function
+      | Sending body ->
           [
-            Source.call add_comment_endpoint
-              (fun (number, body) -> { New_comment.number; body })
-              (fun r -> Sent r);
+            Remote.call add_comment_endpoint { New_comment.number; body }
+              (fun answer -> Sent answer
+            );
           ]
-        (fun (number, body) -> function
-          | Sent (Ok _) ->
-              Composer_machine.goto Empty number
-          | Sent (Error error) ->
-              Composer_machine.goto Failed (number, body, error)
-          | _ ->
-              Composer_machine.unhandled
-          );
-      Composer_machine.state Failed "failed" ~to_:[ Sending; Drafting; Empty ]
-        (fun (number, body, _) -> function
-        | Send ->
-            Composer_machine.goto Sending (number, body)
-        | Typed draft ->
-            typed number draft
-        | Clear ->
-            Composer_machine.goto Empty number
-        | _ ->
-            Composer_machine.unhandled
-        );
-    ]
+      | Empty | Drafting _ | Failed _ ->
+          []
+      )
+    ~on_props:(fun previous _ _ ->
+      match previous with Some _ -> Go Empty | None -> Ignore
+    )
+    (fun _ state event ->
+      match (state, event) with
+      | (Empty | Drafting _ | Failed _), Typed draft ->
+          typed draft
+      | Drafting draft, Send -> (
+          match Comment.check draft with
+          | Ok body ->
+              Go (Sending body)
+          | Error _ ->
+              Go Empty
+        )
+      | Failed { body; _ }, Send ->
+          Go (Sending body)
+      | Empty, Clear ->
+          Stay []
+      | (Drafting _ | Failed _), Clear ->
+          Go Empty
+      | Sending _, Sent (Ok _) ->
+          Go Empty
+      | Sending body, Sent (Rejected message) ->
+          Go (Failed { body; message })
+      | Sending body, Sent (Failed error) ->
+          Go (Failed { body; message = Remote.error_to_string error })
+      | _ ->
+          Ignore
+    )
 
 let text = Node.text
 
@@ -134,25 +111,17 @@ let form ~draft ~busy ~can_send ~message =
     </div>
   </div>
 
-let error_text : Remote.error -> string = function
-  | Http code ->
-      "The server answered " ^ string_of_int code
-  | Decode _ ->
-      "The server sent data that cannot be read"
-  | Network _ ->
-      "The network failed"
-
-let view (snapshot : Composer_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Composer_machine.At (Empty, _) ->
+let view : state -> event Node.t = function
+  | Empty ->
       form ~draft:"" ~busy:false ~can_send:false ~message:None
-  | Composer_machine.At (Drafting, (_, draft)) ->
+  | Drafting draft ->
       form ~draft ~busy:false ~can_send:true ~message:None
-  | Composer_machine.At (Sending, (_, draft)) ->
+  | Sending draft ->
       form ~draft ~busy:true ~can_send:false ~message:None
-  | Composer_machine.At (Failed, (_, draft, error)) ->
-      form ~draft ~busy:false ~can_send:true
-        ~message:(Some ("Could not send the comment. " ^ error_text error))
+  | Failed { body; message } ->
+      form ~draft:body ~busy:false ~can_send:true
+        ~message:(Some ("Could not send the comment. " ^ message))
 
 let component = Component.make machine view
-let make ?key ~number () = Component.node ?key ~props:(Props number) component
+let make ?key ~number () =
+  Component.node_with_props ?key ~props:number component

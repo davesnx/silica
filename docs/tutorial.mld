@@ -13,44 +13,39 @@ on this page.
 {2 The machine}
 
 A component is a machine and a view. The machine holds all the behaviour. The
-view shows the snapshot of the machine and sends events to it.
+view shows the state of the machine and sends events to it.
 
-The counter has one state, [Count], which carries an [int]. The type of the
-states is a GADT: each constructor gives the type of the data that the state
-carries. [Machine.Make] makes the functions to build the machine for these
-states.
+The states of a machine are the constructors of a plain OCaml variant. The
+counter has one state, [Count], which carries an [int]. The deriver
+[[@@deriving state_shape]] of [silica.ppx] makes [state_shape], the
+{e shape} of the state type: the name of each state and the list of all
+names. [Machine.make ~shape:state_shape] uses it; the checker and the spec use
+the names.
 
-The machine has two events. [Increment] goes to [Count] with the number plus
-one. [Decrement] goes to [Count] with the number minus one, and stays when the
+The machine has two events. The update function gets the state and the event,
+and gives the next step. [Increment] goes to [Count] with the number plus one.
+[Decrement] goes to [Count] with the number minus one, and stays when the
 number is 0. The view is written in mlx, the JSX syntax for OCaml.
 
 {@mlx file=examples/shared/tutorial_counter.mlx[
 open Silica
 
 type event = Increment | Decrement
-
-module States = struct
-  type _ t = Count : int t
-end
-
-module Counter_machine = Machine.Make (States)
+type state = Count of int [@@deriving state_shape]
 
 let machine =
-  Counter_machine.make ~id:"counter"
-    ~init:(Counter_machine.at Count 0)
-    [
-      Counter_machine.state Count "count" (fun n -> function
-        | Increment ->
-            Counter_machine.goto Count (n + 1)
-        | Decrement when n = 0 ->
-            Counter_machine.stay []
-        | Decrement ->
-            Counter_machine.goto Count (n - 1)
-        );
-    ]
+  Machine.make ~id:"counter" ~init:(Count 0) ~shape:state_shape
+    (fun (Count n) event ->
+      match event with
+      | Increment ->
+          Go (Count (n + 1))
+      | Decrement when n = 0 ->
+          Stay []
+      | Decrement ->
+          Go (Count (n - 1))
+  )
 
-let view (Counter_machine.At (Count, n) : Counter_machine.snapshot) :
-    event Node.t =
+let view (Count n) : event Node.t =
   <div>
     <button on_press=Decrement disabled=(n = 0)>"Decrement"</button>
     <span>(Node.text (string_of_int n))</span>
@@ -63,28 +58,28 @@ let component = Component.make machine view
 {2 Run the machine}
 
 A machine is a plain value. You can start it and send events to it without a
-browser. [Machine.start] gives the first snapshot. [Machine.send] gives the
-next snapshot and the actions that the host must run.
+browser. [Machine.start] gives the first state and the actions that the host
+must run. [Machine.step] gives the next state, the actions, and how the step
+changed the state. A machine made with [Machine.make] has no props, so both
+get [()] as the props.
 
 {@ocaml[
 # let counter = Tutorial_counter.machine;;
 val counter :
-  (Tutorial_counter.Counter_machine.snapshot, Tutorial_counter.event)
-  Silica.Machine.t = <abstr>
-# let snapshot, _ = Silica.Machine.start counter;;
-val snapshot : Tutorial_counter.Counter_machine.snapshot =
-  Tutorial_counter.Counter_machine.At (Tutorial_counter.States.Count, <poly>)
-# let snapshot, _, _ =
-    Silica.Machine.send counter snapshot Tutorial_counter.Increment;;
-val snapshot : Tutorial_counter.Counter_machine.snapshot =
-  Tutorial_counter.Counter_machine.At (Tutorial_counter.States.Count, <poly>)
+  (unit, Tutorial_counter.state, Tutorial_counter.event) Silica.Machine.t =
+  <abstr>
+# let state, _ = Silica.Machine.start counter ();;
+val state : Tutorial_counter.state = Tutorial_counter.Count 0
+# let state, _, _ =
+    Silica.Machine.step counter () state Tutorial_counter.Increment;;
+val state : Tutorial_counter.state = Tutorial_counter.Count 1
 ]}
 
 [Render.to_string] makes the HTML of a view. The server uses it for the first
 paint of a page.
 
 {@ocaml[
-# Silica.Render.to_string (Tutorial_counter.view snapshot);;
+# Silica.Render.to_string (Tutorial_counter.view state);;
 - : string =
 "<div><button>Decrement</button><span>1</span><button>Increment</button></div>"
 ]}
@@ -97,11 +92,8 @@ a name that a screen reader can read. The counter can count forever, so
 [within] limits the search to the numbers 0 to 3.
 
 {@ocaml[
-# let within
-      (Tutorial_counter.Counter_machine.At (Count, n) :
-        Tutorial_counter.Counter_machine.snapshot) =
-    n <= 3;;
-val within : Tutorial_counter.Counter_machine.snapshot -> bool = <fun>
+# let within (Tutorial_counter.Count n) = n <= 3;;
+val within : Tutorial_counter.state -> bool = <fun>
 # match Check.component ~within Tutorial_counter.component with
   | Check.Ok { states; _ } -> Printf.sprintf "%d states, no problem" states
   | _ -> "problem";;
@@ -124,79 +116,76 @@ input and the output to JSON and back.
 {@ocaml file=examples/shared/tutorial_api.ml[
 let greeting =
   Silica.Remote.declare ~path:"/api/greeting" ~input:Silica.Codec.string
-    ~output:Silica.Codec.string
+    ~output:Silica.Codec.string ~rejected:Silica.Codec.string
 ]}
+
+[rejected] is the codec of the application error: the handler on the server
+can answer [Error reason], for example when the input is not valid.
 
 {2 The machine}
 
 The greeting machine has four states. In [Idle], a press on the button sends
 [Ask], and the machine goes to [Asking]. The state [Asking] owns the call: the
-call starts when the machine enters the state, and its answer comes back as
-the event [Answered]. If the machine leaves the state first, the answer is
-dropped. The answer takes the machine to [Shown] or to [Failed].
+[owns] function gives the call for [Asking] and nothing for the other states.
+The call starts when the machine enters the state, and its answer comes back
+as the event [Answered]. If the machine leaves the state first, the answer is
+dropped.
 
-[to_] lists the states that a handler can go to. The checker uses this list to
-find edges that no event takes.
+The answer is a {!Silica.Remote.answer}: [Ok text] takes the machine to
+[Shown]. [Rejected reason] (the handler answered [Error reason]) and
+[Failed error] (no answer, or an answer that does not decode) take it to
+[Failed]. {!Silica.Remote.error_to_string} gives a sentence for the error.
+
+The update ends with [| _ -> Ignore]: the machine does not handle the other
+events in the other states. The checker reports a button whose event the
+machine ignores, so this catch-all cannot hide a mistake.
 
 {@mlx file=examples/shared/tutorial_greeting.mlx[
 open Silica
 
-type event = Ask | Answered of (string, Remote.error) result
+type event = Ask | Answered of (string, string) Remote.answer
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Asking : unit t
-    | Shown : string t
-    | Failed : Remote.error t
-end
-
-module Greeting_machine = Machine.Make (States)
-
-let ask = function
-  | Ask ->
-      Greeting_machine.goto Asking ()
-  | Answered _ ->
-      Greeting_machine.unhandled
+type state = Idle | Asking | Shown of string | Failed of string
+[@@deriving state_shape]
 
 let machine =
-  Greeting_machine.make ~id:"greeting"
-    ~init:(Greeting_machine.at Idle ())
-    [
-      Greeting_machine.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
-      Greeting_machine.state Asking "asking" ~to_:[ Shown; Failed ]
-        ~invoke:
+  Machine.make ~id:"greeting" ~init:Idle ~shape:state_shape
+    ~owns:(function
+      | Asking ->
           [
-            Source.call Tutorial_api.greeting
-              (fun () -> "Ada")
-              (fun result -> Answered result);
+            Remote.call Tutorial_api.greeting "Ada" (fun answer ->
+                Answered answer
+            );
           ]
-        (fun () -> function
-          | Answered (Ok text) ->
-              Greeting_machine.goto Shown text
-          | Answered (Error error) ->
-              Greeting_machine.goto Failed error
-          | Ask ->
-              Greeting_machine.unhandled
-          );
-      Greeting_machine.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
-      Greeting_machine.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
-    ]
+      | Idle | Shown _ | Failed _ ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | (Idle | Shown _ | Failed _), Ask ->
+          Go Asking
+      | Asking, Answered (Ok text) ->
+          Go (Shown text)
+      | Asking, Answered (Rejected reason) ->
+          Go (Failed reason)
+      | Asking, Answered (Failed error) ->
+          Go (Failed (Remote.error_to_string error))
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Greeting_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Greeting_machine.At (Idle, ()) ->
+let view : state -> event Node.t = function
+  | Idle ->
       <button on_press=Ask>"Say hello"</button>
-  | Greeting_machine.At (Asking, ()) ->
+  | Asking ->
       <p>"Asking the server."</p>
-  | Greeting_machine.At (Shown, text) ->
+  | Shown text ->
       <div>
         <p>(Node.text text)</p> <button on_press=Ask>"Ask again"</button>
       </div>
-  | Greeting_machine.At (Failed, _) ->
+  | Failed reason ->
       <div>
-        <p>"The server did not answer."</p>
-        <button on_press=Ask>"Try again"</button>
+        <p>(Node.text reason)</p> <button on_press=Ask>"Try again"</button>
       </div>
 
 let component = Component.make machine view
@@ -204,50 +193,48 @@ let component = Component.make machine view
 
 {2 Run the machine}
 
-When the machine enters [Asking], [Machine.send] gives a [Start_call] action.
+When the machine enters [Asking], [Machine.step] gives a [Start_call] action.
 The host runs the call. The test below does not run it, so the machine stays in
 [Asking].
 
 {@ocaml[
 # let greeting = Tutorial_greeting.machine;;
 val greeting :
-  (Tutorial_greeting.Greeting_machine.snapshot, Tutorial_greeting.event)
-  Silica.Machine.t = <abstr>
-# let snapshot, _ = Silica.Machine.start greeting;;
-val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
-  Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Idle,
-   <poly>)
-# let snapshot, actions, _ =
-    Silica.Machine.send greeting snapshot Tutorial_greeting.Ask;;
-val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
-  Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Asking,
-   <poly>)
+  (unit, Tutorial_greeting.state, Tutorial_greeting.event) Silica.Machine.t =
+  <abstr>
+# let state, _ = Silica.Machine.start greeting ();;
+val state : Tutorial_greeting.state = Tutorial_greeting.Idle
+# let state, actions, _ =
+    Silica.Machine.step greeting () state Tutorial_greeting.Ask;;
+val state : Tutorial_greeting.state = Tutorial_greeting.Asking
 val actions : Tutorial_greeting.event Silica.Action.host list =
   [Silica.Action.Start_call
-    {Silica.Action.id = "greeting/asking/invoke0"; endpoint = <abstr>;
-     input = <poly>; timeout_ms = None; on_result = <fun>}]
-# Silica.Machine.key greeting snapshot;;
-- : string = "asking"
+    {Silica.Action.id = "greeting/asking//api/greeting \"Ada\"";
+     endpoint = <abstr>; input = <poly>; timeout_ms = None;
+     on_result = <fun>}]
+# Silica.Machine.active greeting () state;;
+- : Silica.Machine.resource list =
+[Silica.Machine.Call
+  {Silica.Machine.id = "greeting/asking//api/greeting \"Ada\"";
+   path = "/api/greeting"}]
 ]}
 
 The machine gets the answer as an event, as any other event:
 
 {@ocaml[
-# let snapshot, _, _ =
-    Silica.Machine.send greeting snapshot
+# let state, _, _ =
+    Silica.Machine.step greeting () state
       (Tutorial_greeting.Answered (Ok "Hello, Ada"));;
-val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
-  Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Shown,
-   <poly>)
-# Silica.Render.to_string (Tutorial_greeting.view snapshot);;
+val state : Tutorial_greeting.state = Tutorial_greeting.Shown "Hello, Ada"
+# Silica.Render.to_string (Tutorial_greeting.view state);;
 - : string = "<div><p>Hello, Ada</p><button>Ask again</button></div>"
 ]}
 
 {2 Check the machine}
 
 The checker gives the call each answer in [answers], and also the errors
-[Http 500] and [Network "down"]. So it checks the success path and the error
-paths.
+[Failed (Http 500)] and [Failed (Network "down")]. So it checks the success
+path and the error paths.
 
 {@ocaml[
 # match

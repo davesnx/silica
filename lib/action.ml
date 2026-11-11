@@ -13,7 +13,7 @@ type 'e t =
   | Reload
   | Resume of Nav.t
   | Revert_navigation
-  | Preload of Remote.request
+  | Preload of Endpoint.request
   | Load_chunk of { chunk : Chunk.any; on_ready : 'e option }
   | Set_title of string
   | Set_status of int
@@ -59,10 +59,10 @@ type 'e host =
   | Start_timer of { id : string; ms : int; event : 'e }
   | Start_call : {
       id : string;
-      endpoint : ('i, 'o) Remote.endpoint;
+      endpoint : ('i, 'o, 'x) Endpoint.t;
       input : 'i;
       timeout_ms : int option;
-      on_result : ('o, Remote.error) result -> 'e;
+      on_result : ('o, 'x) Endpoint.answer -> 'e;
     }
       -> 'e host
   | Start_live : {
@@ -129,7 +129,7 @@ let is_cookie_char c =
 let reject what text =
   invalid_arg ("Silica.Action: bad " ^ what ^ " \"" ^ String.escaped text ^ "\"")
 
-let check = function
+let check = function[@warning "-4"]
   | Set_document_attribute { name; _ } ->
       if
         name = ""

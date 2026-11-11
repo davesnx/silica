@@ -95,7 +95,14 @@ let press_selects () =
   Alcotest.check opt "panel shown" None (attr sim (panel "b") "hidden");
   Alcotest.check opt "old panel hidden" (Some "") (attr sim (panel "a") "hidden");
   check_stop sim "b";
-  Sim.press_id sim ~id:(tab "b");
+  Alcotest.(check bool)
+    "the selected tab has no press handler" true
+    ( match Sim.press_id sim ~id:(tab "b") with
+    | exception Failure _ ->
+        true
+    | () ->
+        false
+    );
   Alcotest.(check bool)
     "a press on the selected tab says nothing" false
     (contains (Sim.html sim) "value b; value b");

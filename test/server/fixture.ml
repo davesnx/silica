@@ -83,167 +83,170 @@ let ev_codec =
 
 let double =
   Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
-let boom = Remote.declare ~path:"/api/boom" ~input:Codec.int ~output:Codec.int
-let ghost = Remote.declare ~path:"/api/ghost" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
+
+let boom =
+  Remote.declare ~path:"/api/boom" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
+
+let ghost =
+  Remote.declare ~path:"/api/ghost" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
+
 let x = Ref.make "x"
+let settle = function
+  | Remote.Ok v ->
+      Set v
+  | Remote.Rejected reason ->
+      Set (-String.length reason)
+  | Remote.Failed _ ->
+      Failed
 
-let settle = function Ok v -> Set v | Error _ -> Failed
+type phase =
+  | Resting of int
+  | Mixing of int
+  | Doubling of int
+  | Booming of int
+  | Ghosting of int
+  | Waiting of int
+  | Slowing of int
+[@@deriving state_shape]
 
-module Phase = struct
-  type _ t =
-    | Resting : int t
-    | Mixing : int t
-    | Doubling : int t
-    | Booming : int t
-    | Ghosting : int t
-    | Waiting : int t
-    | Slowing : int t
-end
+let count = function
+  | Resting n
+  | Mixing n
+  | Doubling n
+  | Booming n
+  | Ghosting n
+  | Waiting n
+  | Slowing n ->
+      n
 
-module Phase_machine = Machine.Make (Phase)
+let with_count phase n =
+  match phase with
+  | Resting _ ->
+      Resting n
+  | Mixing _ ->
+      Mixing n
+  | Doubling _ ->
+      Doubling n
+  | Booming _ ->
+      Booming n
+  | Ghosting _ ->
+      Ghosting n
+  | Waiting _ ->
+      Waiting n
+  | Slowing _ ->
+      Slowing n
 
 let machine =
-  let handler self n = function
-    | Inc ->
-        Phase_machine.goto self (n + 1)
-    | Focus_me ->
-        Phase_machine.stay [ Action.Focus x ]
-    | Mixed ->
-        Phase_machine.goto Phase.Mixing n
-          ~actions:[ Action.Focus x; Action.Navigate (Url.of_string "/a?b=c") ]
-    | Double ->
-        Phase_machine.goto Phase.Doubling n
-    | Boom ->
-        Phase_machine.goto Phase.Booming n
-    | Ghost ->
-        Phase_machine.goto Phase.Ghosting n
-    | Slow ->
-        Phase_machine.goto Phase.Slowing n
-    | Later ->
-        Phase_machine.reenter Phase.Waiting n
-    | Cancel_later | Cancel_double ->
-        Phase_machine.goto Phase.Resting n
-    | Set v ->
-        Phase_machine.goto Phase.Resting v
-    | Failed ->
-        Phase_machine.goto Phase.Resting (-1)
-  in
-  let to_ =
-    Phase_machine.
-      [
-        Phase.Resting;
-        Phase.Mixing;
-        Phase.Doubling;
-        Phase.Booming;
-        Phase.Ghosting;
-        Phase.Waiting;
-        Phase.Slowing;
-      ]
-  in
-  Phase_machine.make ~id:"counter"
-    ~init:(Phase_machine.at Phase.Resting 0)
-    [
-      Phase_machine.state Phase.Resting "resting" ~to_ (handler Phase.Resting);
-      Phase_machine.state Phase.Mixing "mixing" ~to_
-        ~after:[ (10, Inc) ]
-        ~invoke:[ Source.call double Fun.id settle ]
-        (handler Phase.Mixing);
-      Phase_machine.state Phase.Doubling "doubling" ~to_
-        ~invoke:[ Source.call double Fun.id settle ]
-        (handler Phase.Doubling);
-      Phase_machine.state Phase.Booming "booming" ~to_
-        ~invoke:[ Source.call boom Fun.id settle ]
-        (handler Phase.Booming);
-      Phase_machine.state Phase.Ghosting "ghosting" ~to_
-        ~invoke:[ Source.call ghost Fun.id settle ]
-        (handler Phase.Ghosting);
-      Phase_machine.state Phase.Waiting "waiting" ~to_
-        ~after:[ (50, Inc) ]
-        (handler Phase.Waiting);
-      Phase_machine.state Phase.Slowing "slowing" ~to_
-        ~invoke:[ Source.call ~timeout_ms:20 double Fun.id settle ]
-        (handler Phase.Slowing);
-    ]
-
-let count : Phase_machine.snapshot -> int = function
-  | Phase_machine.At (Phase.Resting, n) ->
-      n
-  | Phase_machine.At (Phase.Mixing, n) ->
-      n
-  | Phase_machine.At (Phase.Doubling, n) ->
-      n
-  | Phase_machine.At (Phase.Booming, n) ->
-      n
-  | Phase_machine.At (Phase.Ghosting, n) ->
-      n
-  | Phase_machine.At (Phase.Waiting, n) ->
-      n
-  | Phase_machine.At (Phase.Slowing, n) ->
-      n
+  Machine.make ~id:"counter" ~init:(Resting 0) ~shape:phase_shape
+    ~owns:(function
+      | Resting _ ->
+          []
+      | Mixing n ->
+          [ Source.after 10 Inc; Remote.call double n settle ]
+      | Doubling n ->
+          [ Remote.call double n settle ]
+      | Booming n ->
+          [ Remote.call boom n settle ]
+      | Ghosting n ->
+          [ Remote.call ghost n settle ]
+      | Waiting _ ->
+          [ Source.after 50 Inc ]
+      | Slowing n ->
+          [ Remote.call ~timeout_ms:20 double n settle ]
+      )
+    (fun phase event ->
+      let n = count phase in
+      match event with
+      | Inc -> (
+          match phase with
+          | Waiting _ ->
+              Machine.Go (Resting (n + 1))
+          | Mixing _ ->
+              Machine.Go (Doubling (n + 1))
+          | Resting _ | Doubling _ | Booming _ | Ghosting _ | Slowing _ ->
+              Machine.Go (with_count phase (n + 1))
+        )
+      | Focus_me ->
+          Machine.Stay [ Action.Focus x ]
+      | Mixed ->
+          Machine.Go_with
+            ( Mixing n,
+              [ Action.Focus x; Action.Navigate (Url.of_string "/a?b=c") ]
+            )
+      | Double ->
+          Machine.Go (Doubling n)
+      | Boom ->
+          Machine.Go (Booming n)
+      | Ghost ->
+          Machine.Go (Ghosting n)
+      | Slow ->
+          Machine.Go (Slowing n)
+      | Later ->
+          Machine.Reenter (Waiting n)
+      | Cancel_later | Cancel_double ->
+          Machine.Go (Resting n)
+      | Set v ->
+          Machine.Go (Resting v)
+      | Failed ->
+          Machine.Go (Resting (-1))
+    )
 
 let counter_view n =
   Node.element "p" [] [ Node.text ("count <" ^ string_of_int n ^ ">") ]
 
-let component =
-  { Component.machine; view = (fun snapshot -> counter_view (count snapshot)) }
+let component = Component.make machine (fun phase -> counter_view (count phase))
 
-let state_codec : Phase_machine.snapshot Codec.t =
+let state_codec : phase Codec.t =
   Codec.make
-    ~encode:(fun snapshot -> Codec.int.encode (count snapshot))
+    ~encode:(fun phase -> Codec.int.encode (count phase))
     ~decode:(fun _ -> Error "server state only")
 
 let live =
   Live.declare ~channel:"counter" ~state:state_codec ~event:ev_codec component
 
-module State = struct
-  type _ t = Home : unit t | Missing : string t
-
-  let path : type data. data t -> data Route.t = function
-    | Home ->
-        Route.root
-    | Missing ->
-        Route.rest
-end
-
-module Router = Router.Make (State)
+type route = Home | Missing of string
 
 let routes =
-  Router.routes ~not_found:State.Missing [ State.Home; State.Missing ]
+  Router.routes
+    ~not_found:(function Missing _ -> true | Home -> false)
+    [
+      Router.route Route.root
+        (fun () -> Home)
+        (function Home -> Some () | Missing _ -> None);
+      Router.route Route.rest
+        (fun path -> Missing path)
+        (function Missing path -> Some path | Home -> None);
+    ]
 
-let page_component : (int, ev) Component.t =
-  {
-    machine =
-      Silica_test_support.Simple.machine ~id:"page" ~init:0 (fun _ -> function
-        | Set n ->
-            Some (n, [ Action.Set_title ("Count & <" ^ string_of_int n ^ ">") ])
-        | _ ->
-            None
-        );
-    view = counter_view;
-  }
+let titled ~id title =
+  Machine.make_with_props ~id ~init:0
+    ~shape:(Machine.shape ~name:(fun _ -> "active") ())
+    ~on_props:(fun _ n _ -> Machine.Go_with (n, [ Action.Set_title (title n) ]))
+    (fun _ _ (_ : ev) -> Machine.Ignore)
 
-let missing_component : (int, ev) Component.t =
-  {
-    machine =
-      Silica_test_support.Simple.machine ~id:"missing" ~init:0
-        (fun _ -> function
-        | Set _ ->
-            Some (0, [ Action.Set_title "Not found" ])
-        | _ ->
-            None
-        );
-    view = (fun _ -> Node.element "h1" [] [ Node.text "Nothing here" ]);
-  }
+let page_component : (int, int, ev) Component.t =
+  Component.make
+    (titled ~id:"page" (fun n -> "Count & <" ^ string_of_int n ^ ">"))
+    counter_view
 
-let render : Router.snapshot -> Silica.Router.event Node.t = function
-  | Router.At (State.Home, ()) ->
-      Component.node ~props:(Set 7) page_component
-  | Router.At (State.Missing, _) ->
-      Component.node ~props:(Set 0) missing_component
+let missing_component : (int, int, ev) Component.t =
+  Component.make
+    (titled ~id:"missing" (fun _ -> "Not found"))
+    (fun _ -> Node.element "h1" [] [ Node.text "Nothing here" ])
+
+let render : route -> Router.event Node.t = function
+  | Home ->
+      Component.node_with_props ~props:7 page_component
+  | Missing _ ->
+      Component.node_with_props ~props:0 missing_component
 
 let app = Router.make routes ~render
-let status snapshot =
-  if Router.is_not_found routes snapshot then
+
+let status route =
+  if Router.is_not_found routes route then
     404
   else
     200

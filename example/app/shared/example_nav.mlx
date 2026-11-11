@@ -2,14 +2,14 @@ open Silica
 open Example_routes
 
 let text = Node.text
-let link state data label = Router.link routes state data [] [ text label ]
+let link route label = Router.link routes route [] [ text label ]
 
 let make () =
   <nav>
-    (link State.Home () "Home")
-    (link State.Item 1 "Item 1")
-    (link State.Item 2 "Item 2")
-    (link State.About () "About")
-    (link State.Edit () "Edit")
-    (Router.link ~hash:"credits" routes State.About () [] [ text "Credits" ])
+    (link Home "Home")
+    (link (Item 1) "Item 1")
+    (link (Item 2) "Item 2")
+    (link About "About")
+    (link Edit "Edit")
+    (Router.link ~hash:"credits" routes About [] [ text "Credits" ])
   </nav>

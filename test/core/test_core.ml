@@ -2,7 +2,9 @@ open Silica
 
 let strings = Alcotest.(list string)
 
-let ep = Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
+let ep =
+  Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
 
 let test_action_map () =
   ( match
@@ -23,7 +25,15 @@ let test_action_map () =
              endpoint = ep;
              input = 1;
              timeout_ms = Some 7;
-             on_result = (function Ok n -> n | Error _ -> -1);
+             on_result =
+               (function
+               | Remote.Ok n ->
+                   n
+               | Remote.Rejected _ ->
+                   -2
+               | Remote.Failed _ ->
+                   -1
+               );
            }
         )
     with
@@ -31,7 +41,7 @@ let test_action_map () =
       Alcotest.(check string) "path kept" "/api/double" (Remote.path endpoint);
       Alcotest.(check string)
         "continuation mapped" "-1"
-        (on_result (Error (Network "x")))
+        (on_result (Remote.Failed (Network "x")))
   | _ ->
       Alcotest.fail "Start_call not mapped"
   );
@@ -237,13 +247,13 @@ let test_codec () =
 let test_live_slot () =
   let live =
     Live.declare ~channel:"chat" ~state:Codec.int ~event:Codec.unit
-      {
-        machine =
-          Silica_test_support.Simple.machine ~id:"chat" ~init:0 (fun _ () ->
+      (Component.make
+         (Silica_test_support.Simple.machine ~id:"chat" ~init:0 (fun _ () ->
               None
-          );
-        view = (fun _ -> Node.text "");
-      }
+          )
+         )
+         (fun _ -> Node.text "")
+      )
   in
   let slot : unit Node.t = Live.slot live in
   Alcotest.(check string)

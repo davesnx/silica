@@ -132,27 +132,10 @@ let step s = function
             (List.filter (fun r -> r.id <> id) (Array.to_list s.rows));
       }
 
-module States = struct
-  type _ t = Ready : state t
-end
-
-module Keyed_machine = Machine.Make (States)
-
-let machine : (state, event) Machine.t =
-  let table =
-    Keyed_machine.make ~id:"keyed"
-      ~init:(Keyed_machine.at Ready init)
-      [
-        Keyed_machine.state Ready "ready" (fun s e ->
-            Keyed_machine.goto Ready (step s e)
-        );
-      ]
-  in
-  Machine.map_snapshot table
-    ~get:(fun (Keyed_machine.At (Ready, s) : Keyed_machine.snapshot) : state ->
-      s
-    )
-    ~set:(fun s -> Keyed_machine.at Ready s)
+let machine =
+  Machine.make ~id:"keyed" ~init
+    ~shape:(Machine.shape ~name:(fun _ -> "ready") ~names:[ "ready" ] ())
+    (fun state event -> Go (step state event))
 
 let button id label event =
   <div class_="col-sm-6 smallpad">

@@ -14,38 +14,29 @@ type event =
   | Set_indeterminate of bool
   | Set_disabled of bool
 
-module Page_state = struct
-  type _ t = Page : page t
-end
-
-module Page_machine = Machine.Make (Page_state)
-
 let machine =
-  Page_machine.make ~id:"checkbox-page"
-    ~init:
-      (Page_machine.at Page
-         { checked = false; indeterminate = false; disabled = false; log = [] }
-      )
-    [
-      Page_machine.state Page "page" (fun page -> function
-        | Changed checked ->
-            Page_machine.goto Page
-              {
-                page with
-                checked;
-                indeterminate = false;
-                log = page.log @ [ Printf.sprintf "checked %b" checked ];
-              }
-        | Set_checked checked ->
-            Page_machine.goto Page { page with checked }
-        | Set_indeterminate indeterminate ->
-            Page_machine.goto Page { page with indeterminate }
-        | Set_disabled disabled ->
-            Page_machine.goto Page { page with disabled }
-        );
-    ]
+  Machine.make ~id:"checkbox-page"
+    ~init:{ checked = false; indeterminate = false; disabled = false; log = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed checked ->
+          Go
+            {
+              page with
+              checked;
+              indeterminate = false;
+              log = page.log @ [ Printf.sprintf "checked %b" checked ];
+            }
+      | Set_checked checked ->
+          Go { page with checked }
+      | Set_indeterminate indeterminate ->
+          Go { page with indeterminate }
+      | Set_disabled disabled ->
+          Go { page with disabled }
+    )
 
-let view (Page_machine.At (Page, page)) =
+let view page =
   Node.element "form" []
     [
       Node.element "p"

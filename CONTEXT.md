@@ -21,33 +21,82 @@ _Avoid_: realtime, socket state, LiveView
 ## Behaviour
 
 **State**:
-A named node of a machine, together with the type of data it carries, such as
-`Typing` carrying the query. Never a data kind.
+A constructor of the plain variant of a machine, with the data it carries, such
+as `Typing` carrying the query. Each state has a **state name**, which the
+**shape** of the machine gives; no two states have the same name.
+Never a data kind.
 _Avoid_: node, mode, control state
 
+**Shape**:
+The value that tells a machine about its state type: the name of each state
+and the list of all names. `Machine.make` takes it as `~shape`; the
+`[@@deriving state_shape]` deriver makes it.
+_Avoid_: schema, state names (as the name of the value)
+
 **Snapshot**:
-The value a machine holds at one moment: one state and its data.
+The value a machine holds at one moment: a value of its state type, one state
+and its data. A machine whose data belongs to every state holds a record with a
+`phase` field, and the name of the snapshot is the name of the phase.
 _Avoid_: state (as the current value), model, store
 
 **Machine**:
-A statechart: states, the events it accepts, and the actions each transition
-emits.
+A statechart: states, the events it accepts, and one update function that gives
+the next step for each state and event. Made with `Machine.make`, or
+`Machine.make_with_props` for a component with props.
 _Avoid_: reducer, store, actor
+
+**Update**:
+The function of a machine from the props (if any), the snapshot and the event
+to the next step.
+_Avoid_: handler (a handler is in the view), reducer
+
+**Next**:
+What the update gives: `Go` a snapshot, `Go_with` a snapshot and actions,
+`Stay` with actions, `Reenter` a snapshot, or `Ignore`. `Machine.map_next`
+puts the next step of a part, such as a phase, back into the whole snapshot.
+_Avoid_: outcome, result
 
 **Transition**:
 A step of a machine from one state to a state on an event. The Quint export
 writes one Quint `action` for each.
 _Avoid_: action
 
+**Owns**:
+The function of a machine that gives the timers, Remote calls, subscriptions
+and held sources of each snapshot. A source runs while the snapshot owns it.
+_Avoid_: invoke, effect
+
+**Source key**:
+The identity of a source in what a snapshot owns: the path and input of a call,
+the topic and key of a subscription, the delay of a timer. After each step the
+machine stops the sources whose key went away and starts the new ones; the
+others keep running.
+_Avoid_: source id (an id names a running source for the host)
+
+**Props**:
+The value that a parent gives to a child component. The update, `owns` and the
+view get it; `on_props` reacts when it changes. Props are not an event and are
+not kept in the snapshot.
+_Avoid_: props event, attributes
+
+**Ignored event**:
+An event of a view handler, a timer, a call answer, a subscription or an action
+result that the machine does not handle (its update gives `Ignore`). The
+checker reports it as the violation `ignored-event`. `Machine.can` tells
+whether a machine handles an event, so a view can disable the element.
+_Avoid_: unhandled event, dead button
+
 **Component**:
 A machine together with the view of its states. Each rendered component runs
 its own machine while it is rendered; it gets props from its parent and sends
-output to it through function props.
+output to it through function props. A rendered component is the same instance
+as before when it has the same position, machine id and key.
 _Avoid_: widget, region, child machine
 
 **Spec**:
-The static shape of a machine: its states, declared edges, timers, sources and
-final states. Lint, the Quint export and diagrams read it.
+What a checker run found about a machine: the states it reached
+(initial state first, then by name), the timers and sources of each, and the
+edges it took. The Quint export and diagrams read it.
 _Avoid_: schema, graph (as the name of the value)
 
 **Action**:
@@ -82,9 +131,9 @@ server and sent in full to every subscriber, with a sequence number.
 _Avoid_: channel, room, stream
 
 **Subscription**:
-One socket that follows one key of a topic. A state owns it through
-`Source.live`: it starts when the state is entered and stops when the state is
-left. The client reconnects by itself and tells the state when it is offline.
+One socket that follows one key of a topic. A snapshot owns it through
+`Source.live`: it starts when a snapshot starts to own it and stops when the
+snapshot no longer owns it. The client reconnects by itself and tells the state when it is offline.
 _Avoid_: listener, watcher
 
 **Status**:
@@ -107,14 +156,26 @@ _Avoid_: error page, try block
 
 ## Verification
 
+**Answer**:
+The end of a Remote call, as the machine gets it: `Ok` with the output,
+`Rejected` with the application error of the handler, or `Failed` with the
+error of the transport. `Remote.error_to_string` gives a sentence for the
+error.
+_Avoid_: response, result
+
 **Sample**:
 A value that the model checker delivers in place of the server: an answer of
-an endpoint or a state of a topic. Errors of a call are added by themselves.
+an endpoint or a state of a topic. Failures of a call are added by themselves.
 _Avoid_: mock, fixture, stub
 
+**Unreached state**:
+A name in the `states` of a machine that a checker run never reached. The
+checker reports it, unless it is in `allow_unreached`.
+_Avoid_: dead state
+
 **Spec drift**:
-A difference between the spec and what the machine does: a declared edge
-that no check takes, or a change of the exported Quint or Graphviz files.
+A change of the exported Quint or Graphviz files of a machine: the checker run
+found other states or edges than before.
 _Avoid_: dead edge, stale spec
 
 ## Navigation
@@ -124,8 +185,9 @@ What the app shows for one route.
 _Avoid_: screen, view (as a noun for a page)
 
 **Route**:
-A state of the router: it names a page, carries the page's parameters, and
-converts to and from a URL.
+A state of the router, a constructor of the plain route variant: it names a
+page, carries the page's parameters, and converts to and from a URL with its
+`Router.route`.
 _Avoid_: path, link target
 
 **Router**:
@@ -180,7 +242,8 @@ _Avoid_: autofocus
 
 **Session**:
 Temporary server data for one visitor, found by an opaque cookie id. It lives
-8 hours when unused and 7 days at most.
+8 hours when unused and 7 days at most. The store changes one session in one
+step with `update`.
 _Avoid_: user, login
 
 **Session gone**:

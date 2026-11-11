@@ -58,3 +58,10 @@
   (with-stdout-to
    %{target}
    (run %{exe:../../gen/facts_gen.exe} %{deps}))))
+
+(rule
+ (target site_landing_chart.ml)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/landing_gen.exe}))))

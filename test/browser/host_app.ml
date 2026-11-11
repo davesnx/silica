@@ -23,11 +23,7 @@ module Dialog = struct
     seen : string;
   }
 
-  module States = struct
-    type _ t = Closed : data t | Opened : data t
-  end
-
-  module Dialog_machine = Machine.Make (States)
+  type state = Closed of data | Opened of data [@@deriving state_shape]
 
   let opener = Ref.make "opener"
   let dialog = Ref.make "dialog"
@@ -36,76 +32,60 @@ module Dialog = struct
   let initial = { outsides = 0; leaks = 0; escapes = 0; width = 0.; seen = "-" }
 
   let machine ~id ~sources =
-    let to_ = Dialog_machine.[ States.Closed; States.Opened ] in
-    Dialog_machine.make ~id
-      ~init:(Dialog_machine.at States.Closed initial)
-      [
-        Dialog_machine.state States.Closed "closed" ~to_ (fun data -> function
-          | Open | Toggle_k ->
-              Dialog_machine.goto States.Opened data
-          | Outside | Escape ->
-              Dialog_machine.goto States.Closed
-                { data with leaks = data.leaks + 1 }
-          | Close | Resized _ | Seen _ ->
-              Dialog_machine.unhandled
-          );
-        Dialog_machine.state States.Opened "opened" ~to_ ~invoke:sources
-          (fun data -> function
-          | Close ->
-              Dialog_machine.goto States.Closed data
-          | Toggle_k ->
-              Dialog_machine.goto States.Closed data
-          | Outside ->
-              Dialog_machine.goto States.Closed
-                { data with outsides = data.outsides + 1 }
-          | Escape ->
-              Dialog_machine.goto States.Closed
-                { data with escapes = data.escapes + 1 }
-          | Resized width ->
-              Dialog_machine.goto States.Opened { data with width }
-          | Seen visible ->
-              Dialog_machine.goto States.Opened
-                {
-                  data with
-                  seen =
-                    ( if visible then
-                        "visible"
-                      else
-                        "hidden"
-                    );
-                }
-          | Open ->
-              Dialog_machine.unhandled
-          );
-      ]
+    Machine.make ~id ~init:(Closed initial) ~shape:state_shape
+      ~owns:(function Opened _ -> sources | Closed _ -> [])
+      (fun state event ->
+        match (state, event) with
+        | Closed data, (Open | Toggle_k) ->
+            Go (Opened data)
+        | Closed data, (Outside | Escape) ->
+            Go (Closed { data with leaks = data.leaks + 1 })
+        | Opened data, (Close | Toggle_k) ->
+            Go (Closed data)
+        | Opened data, Outside ->
+            Go (Closed { data with outsides = data.outsides + 1 })
+        | Opened data, Escape ->
+            Go (Closed { data with escapes = data.escapes + 1 })
+        | Opened data, Resized width ->
+            Go (Opened { data with width })
+        | Opened data, Seen visible ->
+            Go
+              (Opened
+                 {
+                   data with
+                   seen =
+                     ( if visible then
+                         "visible"
+                       else
+                         "hidden"
+                     );
+                 }
+              )
+        | _ ->
+            Ignore
+      )
 
-  let data (Dialog_machine.At (state, data) : Dialog_machine.snapshot) : data =
-    match state with States.Closed -> data | States.Opened -> data
-
-  let info snapshot =
-    let d = data snapshot in
+  let info data =
     el "p"
       [ id "info" ]
       [
         txt
           (Printf.sprintf "outsides=%d leaks=%d escapes=%d width=%.0f seen=%s"
-             d.outsides d.leaks d.escapes d.width d.seen
+             data.outsides data.leaks data.escapes data.width data.seen
           );
       ]
 
-  let view (Dialog_machine.At (state, _) as snapshot : Dialog_machine.snapshot)
-      : event Node.t =
-    match state with
-    | States.Closed ->
+  let view : state -> event Node.t = function
+    | Closed data ->
         el "main" []
           [
             el "button"
               [ id "opener"; Attr.ref_ opener; Attr.on_press Open ]
               [ txt "open" ];
             el "button" [ id "outside" ] [ txt "elsewhere" ];
-            info snapshot;
+            info data;
           ]
-    | States.Opened ->
+    | Opened data ->
         el "main" []
           [
             el "button" [ id "outside" ] [ txt "elsewhere" ];
@@ -117,7 +97,7 @@ module Dialog = struct
                 el "button" [ id "close"; Attr.on_press Close ] [ txt "close" ];
                 el "span" [ id "box"; Attr.ref_ box ] [ txt "box" ];
               ];
-            info snapshot;
+            info data;
           ]
 
   let sources_of = function
@@ -149,11 +129,9 @@ module Dialog = struct
         []
 
   let component kind =
-    {
-      Component.machine =
-        machine ~id:("dialog-" ^ kind) ~sources:(sources_of kind);
-      view;
-    }
+    Component.make
+      (machine ~id:("dialog-" ^ kind) ~sources:(sources_of kind))
+      view
 end
 
 let mount_dialog kind root = Silica_browser.mount ~root (Dialog.component kind)
@@ -219,13 +197,12 @@ module Events = struct
       ]
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"events" ~init:[] (fun log (Log entry) ->
-            Some (entry :: log, [])
-        );
-      view;
-    }
+    Component.make
+      (simple ~id:"events" ~init:[] (fun log (Log entry) ->
+           Some (entry :: log, [])
+       )
+      )
+      view
 end
 
 let mount_events root = Silica_browser.mount ~root Events.component
@@ -265,16 +242,14 @@ module Hydrate = struct
       ]
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"hydrate" ~init:{ count = 0; typed = "" } (fun s -> function
-          | Inc ->
-              Some ({ s with count = s.count + 1 }, [])
-          | Type typed ->
-              Some ({ s with typed }, [])
-          );
-      view;
-    }
+    Component.make
+      (simple ~id:"hydrate" ~init:{ count = 0; typed = "" } (fun s -> function
+        | Inc ->
+            Some ({ s with count = s.count + 1 }, [])
+        | Type typed ->
+            Some ({ s with typed }, [])
+        ))
+      view
 end
 
 let server_html component =
@@ -328,16 +303,14 @@ module Svg = struct
       ]
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"svg" ~init:{ alt = false; circles = 0 } (fun s -> function
-          | Toggle ->
-              Some ({ s with alt = not s.alt }, [])
-          | Grow ->
-              Some ({ s with circles = s.circles + 1 }, [])
-          );
-      view;
-    }
+    Component.make
+      (simple ~id:"svg" ~init:{ alt = false; circles = 0 } (fun s -> function
+        | Toggle ->
+            Some ({ s with alt = not s.alt }, [])
+        | Grow ->
+            Some ({ s with circles = s.circles + 1 }, [])
+        ))
+      view
 end
 
 let mount_svg root = Silica_browser.mount ~root Svg.component
@@ -375,19 +348,17 @@ module Portal = struct
       )
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"portal" ~init:{ count = 0; open_ = false; target = None }
-          (fun s -> function
-          | Inc ->
-              Some ({ s with count = s.count + 1 }, [])
-          | Toggle ->
-              Some ({ s with open_ = not s.open_ }, [])
-          | Move ->
-              Some ({ s with target = Some "modal-root" }, [])
-          );
-      view;
-    }
+    Component.make
+      (simple ~id:"portal" ~init:{ count = 0; open_ = false; target = None }
+         (fun s -> function
+        | Inc ->
+            Some ({ s with count = s.count + 1 }, [])
+        | Toggle ->
+            Some ({ s with open_ = not s.open_ }, [])
+        | Move ->
+            Some ({ s with target = Some "modal-root" }, [])
+        ))
+      view
 end
 
 let mount_portal root = Silica_browser.mount ~root Portal.component
@@ -405,11 +376,8 @@ module Gadgets = struct
     | Unwatch
     | Got of string
 
-  module States = struct
-    type _ t = Idle : string list t | Watching : string list t
-  end
-
-  module Gadgets_machine = Machine.Make (States)
+  type state = Idle of string list | Watching of string list
+  [@@deriving state_shape]
 
   let box = Ref.make "gadget-box"
 
@@ -474,42 +442,41 @@ module Gadgets = struct
     | Watch | Unwatch | Got _ ->
         []
 
-  let handle state log event =
-    match event with
-    | Got line ->
-        Gadgets_machine.goto state (line :: log)
-    | Watch ->
-        Gadgets_machine.goto States.Watching log
-    | Unwatch ->
-        Gadgets_machine.goto States.Idle log
-    | other ->
-        Gadgets_machine.stay (actions_of other)
+  let log = function Idle log | Watching log -> log
+
+  let with_log state log =
+    match state with Idle _ -> Idle log | Watching _ -> Watching log
 
   let machine =
-    let to_ = Gadgets_machine.[ States.Idle; States.Watching ] in
-    Gadgets_machine.make ~id:"gadgets"
-      ~init:(Gadgets_machine.at States.Idle [])
-      [
-        Gadgets_machine.state States.Idle "idle" ~to_ (handle States.Idle);
-        Gadgets_machine.state States.Watching "watching" ~to_
-          ~invoke:
+    Machine.make ~id:"gadgets" ~init:(Idle []) ~shape:state_shape
+      ~owns:(function
+        | Watching _ ->
             [
               Source.scroll (fun s -> Got (scroll "page" s));
               Source.scroll ~target:box (fun s -> Got (scroll "box" s));
               Source.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
               Source.online (fun v -> Got (Printf.sprintf "online:%b" v));
             ]
-          (handle States.Watching);
-      ]
+        | Idle _ ->
+            []
+        )
+      (fun state event ->
+        match event with
+        | Got line ->
+            Go (with_log state (line :: log state))
+        | Watch ->
+            Go (Watching (log state))
+        | Unwatch ->
+            Go (Idle (log state))
+        | other ->
+            Stay (actions_of other)
+      )
 
   let button name event =
     el "button" [ id name; Attr.on_press event ] [ txt name ]
 
-  let view (Gadgets_machine.At (state, data) : Gadgets_machine.snapshot) :
-      event Node.t =
-    let log : string list =
-      match state with States.Idle -> data | States.Watching -> data
-    in
+  let view state : event Node.t =
+    let log = log state in
     el "main" []
       [
         el "div" [ id "gadget-box"; Attr.ref_ box ] [ txt "box" ];
@@ -540,49 +507,50 @@ module Document = struct
     | Unwatch
     | Dark of bool
 
-  module States = struct
-    type _ t = Idle : string list t | Watching : string list t
-  end
+  type state = Idle of string list | Watching of string list
+  [@@deriving state_shape]
 
-  module Document_machine = Machine.Make (States)
+  let log = function Idle log | Watching log -> log
 
-  let handle state log = function
-    | Attr value ->
-        Document_machine.stay
-          [ Action.Set_document_attribute { name = "data-theme"; value } ]
-    | Bad_attr ->
-        Document_machine.stay
-          [ Action.Set_document_attribute { name = "on click"; value = None } ]
-    | Cookie value ->
-        Document_machine.stay
-          [ Action.Set_cookie { name = "silica-theme"; value; max_age = 60 } ]
-    | Watch ->
-        Document_machine.goto States.Watching log
-    | Unwatch ->
-        Document_machine.goto States.Idle log
-    | Dark dark ->
-        Document_machine.goto state (Printf.sprintf "dark:%b" dark :: log)
+  let with_log state log =
+    match state with Idle _ -> Idle log | Watching _ -> Watching log
 
   let machine =
-    let to_ = Document_machine.[ States.Idle; States.Watching ] in
-    Document_machine.make ~id:"document"
-      ~init:(Document_machine.at States.Idle [])
-      [
-        Document_machine.state States.Idle "idle" ~to_ (handle States.Idle);
-        Document_machine.state States.Watching "watching" ~to_
-          ~invoke:
+    Machine.make ~id:"document" ~init:(Idle []) ~shape:state_shape
+      ~owns:(function
+        | Watching _ ->
             [ Source.media "(prefers-color-scheme: dark)" (fun d -> Dark d) ]
-          (handle States.Watching);
-      ]
+        | Idle _ ->
+            []
+        )
+      (fun state -> function
+        | Attr value ->
+            Stay
+              [ Action.Set_document_attribute { name = "data-theme"; value } ]
+        | Bad_attr ->
+            Stay
+              [
+                Action.Set_document_attribute
+                  { name = "on click"; value = None };
+              ]
+        | Cookie value ->
+            Stay
+              [
+                Action.Set_cookie { name = "silica-theme"; value; max_age = 60 };
+              ]
+        | Watch ->
+            Go (Watching (log state))
+        | Unwatch ->
+            Go (Idle (log state))
+        | Dark dark ->
+            Go (with_log state (Printf.sprintf "dark:%b" dark :: log state))
+        )
 
   let button name event =
     el "button" [ id name; Attr.on_press event ] [ txt name ]
 
-  let view (Document_machine.At (state, data) : Document_machine.snapshot) :
-      event Node.t =
-    let log : string list =
-      match state with States.Idle -> data | States.Watching -> data
-    in
+  let view state : event Node.t =
+    let log = log state in
     el "main" []
       [
         button "attr-ocean" (Attr (Some "ocean"));
@@ -637,17 +605,15 @@ module Twin = struct
       ]
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"twin" ~init:{ first = false; second = false }
-          (fun s -> function
-          | Toggle_first ->
-              Some ({ s with first = not s.first }, [])
-          | Toggle_second ->
-              Some ({ s with second = not s.second }, [])
-          );
-      view;
-    }
+    Component.make
+      (simple ~id:"twin" ~init:{ first = false; second = false }
+         (fun s -> function
+        | Toggle_first ->
+            Some ({ s with first = not s.first }, [])
+        | Toggle_second ->
+            Some ({ s with second = not s.second }, [])
+        ))
+      view
 end
 
 let mount_twin root = Silica_browser.mount ~root Twin.component
@@ -685,17 +651,15 @@ module Scoped = struct
       )
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"scoped" ~init:{ open_ = false; outer = Theme.ocean }
-          (fun s -> function
-          | Toggle ->
-              Some ({ s with open_ = not s.open_ }, [])
-          | Switch ->
-              Some ({ s with outer = Theme.high_contrast }, [])
-          );
-      view;
-    }
+    Component.make
+      (simple ~id:"scoped" ~init:{ open_ = false; outer = Theme.ocean }
+         (fun s -> function
+        | Toggle ->
+            Some ({ s with open_ = not s.open_ }, [])
+        | Switch ->
+            Some ({ s with outer = Theme.high_contrast }, [])
+        ))
+      view
 end
 
 let mount_scoped root = Silica_browser.mount ~root Scoped.component
@@ -755,46 +719,44 @@ module Rows = struct
       ]
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"rows" ~init:{ rows = [||]; next = 1; selected = 0 }
-          (fun s -> function
-          | Create count ->
-              Some
-                ({ s with rows = fresh s.next count; next = s.next + count }, [])
-          | Append ->
-              Some
-                ( {
-                    s with
-                    rows = Array.append s.rows (fresh s.next 1000);
-                    next = s.next + 1000;
-                  },
-                  []
-                )
-          | Clear ->
-              Some ({ s with rows = [||] }, [])
-          | Swap when Array.length s.rows > 998 ->
-              let rows = Array.copy s.rows in
-              rows.(1) <- s.rows.(998);
-              rows.(998) <- s.rows.(1);
-              Some ({ s with rows }, [])
-          | Swap ->
-              None
-          | Select n ->
-              Some ({ s with selected = n }, [])
-          | Remove n ->
-              Some
-                ( {
-                    s with
-                    rows =
-                      Array.of_seq
-                        (Seq.filter (fun r -> r <> n) (Array.to_seq s.rows));
-                  },
-                  []
-                )
-          );
-      view;
-    }
+    Component.make
+      (simple ~id:"rows" ~init:{ rows = [||]; next = 1; selected = 0 }
+         (fun s -> function
+        | Create count ->
+            Some
+              ({ s with rows = fresh s.next count; next = s.next + count }, [])
+        | Append ->
+            Some
+              ( {
+                  s with
+                  rows = Array.append s.rows (fresh s.next 1000);
+                  next = s.next + 1000;
+                },
+                []
+              )
+        | Clear ->
+            Some ({ s with rows = [||] }, [])
+        | Swap when Array.length s.rows > 998 ->
+            let rows = Array.copy s.rows in
+            rows.(1) <- s.rows.(998);
+            rows.(998) <- s.rows.(1);
+            Some ({ s with rows }, [])
+        | Swap ->
+            None
+        | Select n ->
+            Some ({ s with selected = n }, [])
+        | Remove n ->
+            Some
+              ( {
+                  s with
+                  rows =
+                    Array.of_seq
+                      (Seq.filter (fun r -> r <> n) (Array.to_seq s.rows));
+                },
+                []
+              )
+        ))
+      view
 end
 
 let mount_rows root = Silica_browser.mount ~root Rows.component
@@ -803,28 +765,25 @@ module Clamp = struct
   type event = Typed of string
 
   let component =
-    {
-      Component.machine =
-        simple ~id:"clamp" ~init:"abc" (fun s -> function
-          | Typed v when String.length v > 3 ->
-              Some (s, [])
-          | Typed v ->
-              Some (v, [])
-          );
-      view =
-        (fun s ->
-          el "main" []
-            [
-              el "input"
-                [
-                  id "clamp";
-                  Attr.string "value" s;
-                  Attr.on_input (fun v -> Typed v);
-                ]
-                [];
-            ]
-        );
-    }
+    Component.make
+      (simple ~id:"clamp" ~init:"abc" (fun s -> function
+        | Typed v when String.length v > 3 ->
+            Some (s, [])
+        | Typed v ->
+            Some (v, [])
+        ))
+      (fun s ->
+        el "main" []
+          [
+            el "input"
+              [
+                id "clamp";
+                Attr.string "value" s;
+                Attr.on_input (fun v -> Typed v);
+              ]
+              [];
+          ]
+      )
 end
 
 let mount_clamp root = Silica_browser.mount ~root Clamp.component

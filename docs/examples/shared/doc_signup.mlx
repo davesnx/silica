@@ -1,0 +1,78 @@
+open Silica
+
+let subscribe =
+  Remote.declare ~path:"/api/subscribe" ~input:Codec.string ~output:Codec.string
+    ~rejected:Codec.string
+
+type event = Typed of string | Send | Answer of (string, string) Remote.answer
+
+type phase = Editing | Sending | Sent of string | Failed of string
+[@@deriving state_shape]
+
+type state = { email : string; phase : phase }
+
+let phase_step email phase event : (phase, event) Machine.next =
+  match (phase, event) with
+  | (Editing | Failed _), Send when String.contains email '@' ->
+      Go Sending
+  | Sending, Answer (Ok note) ->
+      Go (Sent note)
+  | Sending, Answer (Rejected reason) ->
+      Go (Failed reason)
+  | Sending, Answer (Failed error) ->
+      Go (Failed (Remote.error_to_string error))
+  | _ ->
+      Ignore
+
+let update state event : (state, event) Machine.next =
+  match (state.phase, event) with
+  | (Editing | Failed _), Typed email ->
+      Go { email; phase = Editing }
+  | _ ->
+      Machine.map_next
+        (fun phase -> { state with phase })
+        (phase_step state.email state.phase event)
+
+let machine =
+  Machine.make ~id:"signup"
+    ~init:{ email = ""; phase = Editing }
+    ~shape:
+      (Machine.shape
+         ~name:(fun state -> Machine.shape_name phase_shape state.phase)
+         ~names:(Machine.shape_names phase_shape)
+         ()
+      )
+    ~owns:(fun state ->
+      match state.phase with
+      | Sending ->
+          [ Remote.call subscribe state.email (fun answer -> Answer answer) ]
+      | Editing | Sent _ | Failed _ ->
+          []
+    )
+    update
+
+let view state : event Node.t =
+  match state.phase with
+  | Sent note ->
+      <p>(Node.text note)</p>
+  | Editing | Sending | Failed _ ->
+      <div>
+        <input
+          aria_label="Email"
+          value=state.email
+          disabled=(state.phase = Sending)
+          on_input=(fun email -> Typed email)
+        />
+        <button
+          on_press=Send disabled=(not (Machine.can machine () state Send))>
+          "Subscribe"
+        </button>
+        ( match state.phase with
+        | Failed reason ->
+            <p>(Node.text reason)</p>
+        | Editing | Sending | Sent _ ->
+            Node.list []
+        )
+      </div>
+
+let component = Component.make machine view

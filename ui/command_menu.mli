@@ -22,23 +22,13 @@ type props = {
   items : Combobox.item list;
   open_ : bool option;
       (** When this changes to [Some b], the menu opens or closes. The parent
-          must follow the open changes it gets, as with {!Dialog.Make}. *)
+          must follow the open changes it gets, as with {!Dialog}. *)
   classes : classes;
 }
 
-(** The content of the dialog: the combobox, whose event is the value of the
-    chosen option. *)
-module Search :
-  Dialog.CONTENT with type props = Combobox.props and type event = string
-
-(** The dialog is [Dialog.Make (Search)] (see {!Dialog.Make}). Its machine is
-    the machine of the command menu. *)
-
-(**/**)
-
-module Menu : module type of Dialog.Make (Search)
-
-(**/**)
+val dialog : (Combobox.props, string) Dialog.t
+(** The dialog whose content is the combobox; its event is the value of the
+    chosen option. Its machine is the machine of the command menu. *)
 
 val props :
   id:string ->
@@ -51,7 +41,7 @@ val props :
   props
 (** [placeholder] defaults to [""], [empty] to ["No results"]. *)
 
-val menu_props : props -> Menu.props
+val menu_props : props -> (Combobox.props, string) Dialog.props
 (** The props of the dialog that {!make} renders. *)
 
 val make :

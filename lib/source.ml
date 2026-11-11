@@ -1,40 +1,38 @@
-type ('p, 'e) t =
+type 'e t =
   | Call : {
-      endpoint : ('i, 'o) Remote.endpoint;
-      input : 'p -> 'i;
+      endpoint : ('i, 'o, 'x) Endpoint.t;
+      input : 'i;
       timeout_ms : int option;
-      on_result : ('o, Remote.error) result -> 'e;
+      on_result : ('o, 'x) Endpoint.answer -> 'e;
     }
-      -> ('p, 'e) t
+      -> 'e t
   | Live : {
       topic : 's Topic.t;
-      key : 'p -> string;
+      key : string;
       on_update : 's Topic.update -> 'e;
     }
-      -> ('p, 'e) t
-  | Held : { kind : string; make : 'p -> 'e Action.source } -> ('p, 'e) t
+      -> 'e t
+  | Held of 'e Action.source
+  | Timer of { ms : int; event : 'e }
 
-let call ?timeout_ms endpoint input on_result =
+let remote_call ?timeout_ms endpoint input on_result =
   Call { endpoint; input; timeout_ms; on_result }
 
+let after ms event = Timer { ms; event }
 let live topic key on_update = Live { topic; key; on_update }
 
-let fixed source =
-  Held { kind = Action.source_name source; make = (fun _ -> source) }
-
 let focus_trap ?(return_focus = true) container =
-  fixed (Action.Focus_trap { container; return_focus })
+  Held (Action.Focus_trap { container; return_focus })
 
-let scroll_lock =
-  Held { kind = "scroll_lock"; make = (fun _ -> Action.Scroll_lock) }
+let scroll_lock = Held Action.Scroll_lock
 let outside_press container event =
-  fixed (Action.Outside_press { container; event })
+  Held (Action.Outside_press { container; event })
 
 let keys ?(prevent = false) ?rate bindings =
-  fixed (Action.Global_keys { bindings; prevent; rate })
+  Held (Action.Global_keys { bindings; prevent; rate })
 
 let dismiss ?escape ?outside ?focus_out containers =
-  fixed
+  Held
     (Action.Dismiss
        {
          containers;
@@ -44,58 +42,114 @@ let dismiss ?escape ?outside ?focus_out containers =
        }
     )
 
-let anchor ?(place = fun _ -> Place.default) ~anchor popup =
-  Held
-    {
-      kind = "anchor";
-      make = (fun data -> Action.Anchor { anchor; popup; place = place data });
-    }
+let anchor ?(place = Place.default) ~anchor popup =
+  Held (Action.Anchor { anchor; popup; place })
 
 let resize ?rate target on_resize =
-  fixed (Action.Resize { target; rate; on_resize })
+  Held (Action.Resize { target; rate; on_resize })
 
 let intersection ?rate target on_change =
-  fixed (Action.Intersection { target; rate; on_change })
+  Held (Action.Intersection { target; rate; on_change })
 
 let scroll ?rate ?target on_scroll =
-  fixed (Action.Scroll { target; rate; on_scroll })
+  Held (Action.Scroll { target; rate; on_scroll })
 
-let visibility on_change = fixed (Action.Visibility on_change)
-let online on_change = fixed (Action.Online on_change)
-let media query on_change = fixed (Action.Media { query; on_change })
-let block on_attempt = fixed (Action.Block { on_attempt })
+let visibility on_change = Held (Action.Visibility on_change)
+let online on_change = Held (Action.Online on_change)
+let media query on_change = Held (Action.Media { query; on_change })
+let block on_attempt = Held (Action.Block { on_attempt })
+
+let timer_name ms = "after " ^ string_of_int ms ^ "ms"
 
 let name = function
-  | Call c ->
-      Remote.path c.endpoint
-  | Live l ->
-      "live:" ^ Topic.name l.topic
-  | Held h ->
-      h.kind
+  | Call call ->
+      Endpoint.path call.endpoint
+  | Live live ->
+      "live:" ^ Topic.name live.topic
+  | Held source ->
+      Action.source_name source
+  | Timer timer ->
+      timer_name timer.ms
 
-let topic = function Live l -> Some (Topic.name l.topic) | _ -> None
-let is_held = function Call _ | Live _ -> false | Held _ -> true
-let held data = function Call _ | Live _ -> None | Held h -> Some (h.make data)
+let refs source =
+  let found = ref [] in
+  ignore
+    (Action.map_refs
+       (fun r ->
+         found := Ref.name r :: !found;
+         r
+       )
+       source
+    );
+  List.rev !found
+
+let anchor_place : type e. e Action.source -> string list =
+  function[@warning "-4"]
+  | Action.Anchor { place; _ } ->
+      [
+        Place.side_name place.side;
+        Place.align_name place.align;
+        Float.to_string place.offset;
+        Float.to_string place.padding;
+      ]
+  | _ ->
+      []
+
+let key = function
+  | Call call ->
+      Endpoint.path call.endpoint
+      ^ " "
+      ^ Codec.to_string (Endpoint.input call.endpoint) call.input
+  | Live live ->
+      "live:" ^ Topic.name live.topic ^ " " ^ live.key
+  | Held source ->
+      String.concat " "
+        ((Action.source_name source :: refs source) @ anchor_place source)
+  | Timer timer ->
+      timer_name timer.ms
+
+let same first second = try first = second with Invalid_argument _ -> true
+
+let delay = function
+  | Timer timer ->
+      Some timer.ms
+  | Call _ | Live _ | Held _ ->
+      None
+
+let topic = function
+  | Live live ->
+      Some (Topic.name live.topic)
+  | Call _ | Held _ | Timer _ ->
+      None
+
+let is_held = function Held _ -> true | Call _ | Live _ | Timer _ -> false
+
+let held = function
+  | Held source ->
+      Some source
+  | Call _ | Live _ | Timer _ ->
+      None
 
 let map_refs f = function
-  | Held h ->
-      Held
-        { h with make = (fun data -> Action.map_refs (f data) (h.make data)) }
-  | source ->
+  | Held source ->
+      Held (Action.map_refs f source)
+  | (Call _ | Live _ | Timer _) as source ->
       source
 
-let start id data = function
-  | Call c ->
+let start id = function
+  | Call call ->
       Action.Start_call
         {
           id;
-          endpoint = c.endpoint;
-          input = c.input data;
-          timeout_ms = c.timeout_ms;
-          on_result = c.on_result;
+          endpoint = call.endpoint;
+          input = call.input;
+          timeout_ms = call.timeout_ms;
+          on_result = call.on_result;
         }
-  | Live l ->
+  | Live live ->
       Action.Start_live
-        { id; topic = l.topic; key = l.key data; on_update = l.on_update }
-  | Held h ->
-      Action.Start_source { id; source = h.make data }
+        { id; topic = live.topic; key = live.key; on_update = live.on_update }
+  | Held source ->
+      Action.Start_source { id; source }
+  | Timer timer ->
+      Action.Start_timer { id; ms = timer.ms; event = timer.event }

@@ -1,33 +1,21 @@
 open Silica
 
-type data = { label : string; count : int }
-type event = Props of string | Up | Down
-
-module States = struct
-  type _ t = Count : data t
-end
-
-module Stepper_machine = Machine.Make (States)
+type event = Up | Down
+type state = Count of int [@@deriving state_shape]
 
 let machine =
-  Stepper_machine.make ~id:"stepper"
-    ~init:(Stepper_machine.at Count { label = ""; count = 0 })
-    [
-      Stepper_machine.state Count "count" (fun data -> function
-        | Props label ->
-            Stepper_machine.goto Count { data with label }
-        | Up ->
-            Stepper_machine.goto Count { data with count = data.count + 1 }
-        | Down when data.count = 0 ->
-            Stepper_machine.stay []
-        | Down ->
-            Stepper_machine.goto Count { data with count = data.count - 1 }
-        );
-    ]
+  Machine.make_with_props ~id:"stepper" ~init:(Count 0) ~shape:state_shape
+    (fun _label (Count count) event ->
+      match event with
+      | Up ->
+          Go (Count (count + 1))
+      | Down when count = 0 ->
+          Stay []
+      | Down ->
+          Go (Count (count - 1))
+  )
 
-let view
-    (Stepper_machine.At (Count, { label; count }) : Stepper_machine.snapshot) :
-    event Node.t =
+let view label (Count count) : event Node.t =
   <div>
     <span>(Node.text (label ^ ": " ^ string_of_int count))</span>
     <button aria_label=("Fewer " ^ label) on_press=Down disabled=(count = 0)>
@@ -36,10 +24,9 @@ let view
     <button aria_label=("More " ^ label) on_press=Up>"+"</button>
   </div>
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let make ?key ~label ~on_change () =
-  Component.node ?key component ~props:(Props label)
-    ~output:(fun event (Stepper_machine.At (Count, { count; _ })) ->
-      match event with Up | Down -> [ on_change count ] | Props _ -> []
+  Component.node_with_props ?key component ~props:label
+    ~output:(fun _ (Count count) -> [ on_change count ]
   )

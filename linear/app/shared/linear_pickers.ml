@@ -28,36 +28,30 @@ let menu ~id ~name ~current ~open_ ~on_open_change ~on_pick names label =
        )
     )
 
-module Labels = struct
-  type props = Label.t list
-  type event = Label.t list
+let labels_content (labels : Label.t list) : Label.t list Node.t =
+  Node.element "div"
+    [ Attr.string "class" "flex flex-col gap-1" ]
+    (List.map
+       (fun (name, label) ->
+         Silica_ui.Checkbox.make
+           ~on_checked_change:(fun on ->
+             if on then
+               Linear_view.canonical Linear_view.label_names (label :: labels)
+             else
+               List.filter (fun l -> l <> label) labels
+           )
+           (Silica_ui.Checkbox.props ~id:("label-" ^ name)
+              ~label:(Label.label label) ~checked:(List.mem label labels)
+              ~classes:Silica_ui.Style.checkbox ()
+           )
+       )
+       Linear_view.label_names
+    )
 
-  let id = "labels-picker-content"
-
-  let view (labels : props) : event Node.t =
-    Node.element "div"
-      [ Attr.string "class" "flex flex-col gap-1" ]
-      (List.map
-         (fun (name, label) ->
-           Silica_ui.Checkbox.make
-             ~on_checked_change:(fun on ->
-               if on then
-                 Linear_view.canonical Linear_view.label_names (label :: labels)
-               else
-                 List.filter (fun l -> l <> label) labels
-             )
-             (Silica_ui.Checkbox.props ~id:("label-" ^ name)
-                ~label:(Label.label label) ~checked:(List.mem label labels)
-                ~classes:Silica_ui.Style.checkbox ()
-             )
-         )
-         Linear_view.label_names
-      )
-
-  let closes (_ : event) = false
-end
-
-module Labels_popover = Silica_ui.Popover.Make (Labels)
+let labels_popover =
+  Silica_ui.Popover.component ~id:"labels-picker-content"
+    ~closes:(fun (_ : Label.t list) -> false)
+    labels_content
 
 let labels_text = function
   | [] ->
@@ -96,10 +90,11 @@ let view ~(issue : Issue.t) ~(picker : picker option) ~on_open ~on_pick =
         Linear_view.assignee_names assignee_label
     );
     ( "Labels",
-      Labels_popover.make
+      Silica_ui.Popover.make
         ~on_open_change:(fun opened _ -> open_change Labels_picker opened)
         ~on_content:(fun labels -> on_pick (Change.Labels labels))
-        (Labels_popover.props ~id:"labels-picker"
+        labels_popover
+        (Silica_ui.Popover.props ~id:"labels-picker"
            ~trigger:("Labels: " ^ labels_text issue.labels)
            ~title:"Labels" ~close:"Done" ~open_:(opened Labels_picker)
            ~classes:Silica_ui.Style.popover issue.labels

@@ -1,20 +1,14 @@
 open Silica
 
-module States = struct
-  type _ t = Home : unit t
-end
-
-module Home_machine = Machine.Make (States)
+type state = Home [@@deriving state_shape]
 
 let machine =
-  Home_machine.make ~id:"home" ~init:(Home_machine.at Home ())
-    [
-      Home_machine.state Home "home"
-        ~entry:(fun () -> [ Action.Set_title "Silica example" ])
-        Home_machine.ignore;
-    ]
+  Machine.make ~id:"home" ~init:Home ~shape:state_shape
+    ~final:(fun Home -> true)
+    ~entry:(fun Home -> [ Action.Set_title "Silica example" ])
+    (fun Home () -> Ignore)
 
-let view (_ : Home_machine.snapshot) : unit Node.t =
+let view Home : unit Node.t =
   <div>
     <h1>"Silica example"</h1>
     (Example_nav.make ())

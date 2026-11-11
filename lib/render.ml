@@ -100,7 +100,7 @@ let rec node : type e.
   | Chunk chunk ->
       node ~island ~last_text b (Node.chunk_view chunk)
   | Component child ->
-      let tree = Instance.mount ?props:child.props child.component in
+      let tree = Instance.mount_with_props ~props:child.props child.component in
       node ~island ~last_text b (fst (Instance.update tree None))
   | Element (tag, attrs, children) ->
       if tag = "html" then Buffer.add_string b "<!DOCTYPE html>";
@@ -117,7 +117,7 @@ let rec node : type e.
           | [] ->
               Option.bind
                 (List.find_map
-                   (function
+                   (function[@warning "-4"]
                      | Node.String ("data-silica-live", ch) ->
                          Some ch
                      | _ ->

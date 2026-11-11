@@ -127,20 +127,22 @@ module Make (Io : IO) : sig
       request of the upgrade) and the session of the visitor. *)
 
   val implement :
-    ('i, 'o) Silica.Remote.endpoint ->
-    (context -> 'i -> ('o, string) result Io.t) ->
+    ('i, 'o, 'x) Silica.Remote.endpoint ->
+    (context -> 'i -> ('o, 'x) result Io.t) ->
     handler
-  (** An [Error] or an exception that the handler raises while it runs
-      synchronously gives status 500 with the fixed body ["internal error"]. The
-      detail goes to the [silica.remote] log. An input that does not decode
-      gives status 400. *)
+  (** An [Error x] is an application error, such as a failed validation: status
+      422 with [x] encoded by the [rejected] codec of the endpoint, which the
+      client gets as {!Silica.Remote.Rejected}. An exception that the handler
+      raises while it runs synchronously gives status 500 with the fixed body
+      ["internal error"]; the detail goes to the [silica.remote] log. An input
+      that does not decode gives status 400. *)
 
   type island = Island : ('s, 'e) Silica.Live.t -> island
 
   (** {2 Rendering} *)
 
   val render_page :
-    (Silica.Url.t -> ('s, 'e) Silica.Component.t) ->
+    (Silica.Url.t -> (unit, 's, 'e) Silica.Component.t) ->
     status:('s -> int) ->
     scripts:string list ->
     ?preload:string list ->
@@ -154,8 +156,8 @@ module Make (Io : IO) : sig
     response
   (** Mounts the app root (for example [Router.make routes ~render]) at the URL
       and renders its view, with the page components it holds, as their machines
-      are after the start and their props event. Actions are ignored, except
-      these: the last [Set_title] is the document title; the last
+      are after the start with their props. Actions are ignored, except these:
+      the last [Set_title] is the document title; the last
       [Set_document_attribute] of each name is written on the [<html>] tag (a
       [None] value writes nothing); a [Navigate] or [Replace] (such as a router
       guard [Redirect] at the first URL) makes the answer a redirect, status 303
@@ -186,8 +188,25 @@ module Make (Io : IO) : sig
       runs for errors that a boundary catches too); with no hook the error goes
       to stderr. *)
 
+  type page = {
+    context : context;
+    url : Silica.Url.t;
+    csrf : string;  (** The token for this session; the render writes it. *)
+    nonce : string;  (** For the [Content-Security-Policy] of this response. *)
+    asset : string -> string;
+        (** The URL of a logical asset name (see {!Assets}). Raises [Failure]
+            when the name is not in the manifest. *)
+    imports : string -> string list;
+        (** The public paths that the asset at a public path imports statically
+            (see {!Assets.imports}). Pass them as [preload], so the browser
+            fetches the shared chunks of a split bundle with the entry. *)
+    handlers : handler list;  (** The handlers given to {!create}. *)
+    islands : island list;  (** The islands given to {!create}. *)
+  }
+  (** What the [page] function of {!create} gets for one page request. *)
+
   val render_page_settled :
-    (Silica.Url.t -> ('s, 'e) Silica.Component.t) ->
+    (Silica.Url.t -> (unit, 's, 'e) Silica.Component.t) ->
     status:('s -> int) ->
     scripts:string list ->
     ?preload:string list ->
@@ -195,25 +214,22 @@ module Make (Io : IO) : sig
     ?dev:bool ->
     ?on_error:(exn -> Silica.Node.error -> unit) ->
     ?error_page:(Silica.Node.error -> response) ->
-    ?csrf:string ->
-    ?islands:island list ->
-    ?nonce:string ->
     ?settle_timeout_ms:int ->
-    handlers:handler list ->
-    context:context ->
-    Silica.Url.t ->
+    page ->
     response Io.t
-  (** Like {!render_page}, with a settle step first. It starts the app, then
-      runs the [Start_call] actions of every rendered component against
-      [handlers] (with [context]), steps the machines with the answers, renders
-      again, and repeats until no call is left. [Start_timer] actions, sources
-      and Live subscriptions do not run. Only calls that answer with success
-      count: a call that fails, has no handler or does not answer within
+  (** Like {!render_page} at [page.url], with a settle step first and the
+      [csrf], [nonce], [islands] and [handlers] of the page. It starts the app,
+      then runs the [Start_call] actions of every rendered component against the
+      handlers (with [page.context]), steps the machines with the answers,
+      renders again, and repeats until no call is left. [Start_timer] actions,
+      sources and Live subscriptions do not run. Only calls that answer with
+      success count: a call that fails, has no handler or does not answer within
       [settle_timeout_ms] (default 1000, for the whole settle step) is left
-      unanswered, and the page shows that state as it is at that moment. A
-      [Navigate] or [Replace] at any step ends the settle step with the redirect
-      of {!render_page}; [Set_status] at any step works as there. The answers
-      are written into the page as a
+      unanswered, and the page shows that state as it is at that moment. An
+      application error ({!implement}) is not an answer either. A [Navigate] or
+      [Replace] at any step ends the settle step with the redirect of
+      {!render_page}; [Set_status] at any step works as there. The answers are
+      written into the page as a
       [<script type="application/json" id="silica-answers">] element (see
       {!Silica.Answers}), with [nonce] as its [nonce] attribute. The browser
       answers the same calls from the table before its first paint, so no call
@@ -225,7 +241,7 @@ module Make (Io : IO) : sig
   *)
 
   val render_component :
-    ('s, 'e) Silica.Component.t ->
+    (unit, 's, 'e) Silica.Component.t ->
     title:string ->
     scripts:string list ->
     ?preload:string list ->
@@ -260,10 +276,10 @@ module Make (Io : IO) : sig
       [handlers] directly and [Start_timer] actions through [Io.sleep]; the
       resulting events are stepped like client events, one at a time. A
       [Start_call] with [timeout_ms] also starts a timeout: the first of the
-      answer and the timeout steps the machine, with [Error (Network "timeout")]
-      for the timeout, and the other is dropped. A [Stop] action, for a timer or
-      call, makes the runner drop its event when it arrives. [Start_live]
-      actions do nothing: an island has no topics.
+      answer and the timeout steps the machine, with
+      [Failed (Network "timeout")] for the timeout, and the other is dropped. A
+      [Stop] action, for a timer or call, makes the runner drop its event when
+      it arrives. [Start_live] actions do nothing: an island has no topics.
 
       When a step raises (a machine, a codec or [send]), the error is logged to
       stderr with the channel name, queued events are discarded, the runner
@@ -298,20 +314,6 @@ module Make (Io : IO) : sig
         -> topic_def
         (** [init] makes the first state of a key that nobody has published yet.
         *)
-
-  type page = {
-    context : context;
-    url : Silica.Url.t;
-    csrf : string;  (** The token for this session; pass it to the render. *)
-    nonce : string;  (** For the [Content-Security-Policy] of this response. *)
-    asset : string -> string;
-        (** The URL of a logical asset name (see {!Assets}). Raises [Failure]
-            when the name is not in the manifest. *)
-    imports : string -> string list;
-        (** The public paths that the asset at a public path imports statically
-            (see {!Assets.imports}). Pass them as [preload], so the browser
-            fetches the shared chunks of a split bundle with the entry. *)
-  }
 
   type t
 

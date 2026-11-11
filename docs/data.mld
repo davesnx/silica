@@ -7,7 +7,7 @@ holds all three in the data of its states.
 | Kind | Owner | Tool |
 |------|-------|------|
 | Local | the client | the data of a state |
-| Remote | the server, one request for each call | {!Silica.Remote}, {!Silica.Source.call} |
+| Remote | the server, one request for each call | {!Silica.Remote}, {!Silica.Remote.call} |
 | Live | the server, sent to the client when it changes | {!Silica.Topic}, {!Silica.Source.live}, {!Silica.Live} |
 }
 
@@ -16,30 +16,46 @@ holds all three in the data of its states.
 {1:local Local data}
 
 Local data is the data of the current state: the text of a field, an open
-menu, the count of a stepper. The machine changes it with [goto]. The checker
+menu, the count of a stepper. The machine changes it with [Go]. The checker
 compares and hashes snapshots, so keep functions out of the data that the
 checker explores. See {!page-machines}.
 
 {1:remote Remote data}
 
 A Remote endpoint is declared once, in code that the server and the browser
-share. It has a path and a codec for the input and for the output. The client
-sends the input with POST and the server answers with the output.
+share. It has a path, a codec for the input, a codec for the output and a codec
+for the application error ([rejected]). The client sends the input with POST.
+The server answers with the output, or with an application error, such as a
+failed validation.
 
 {@ocaml file=examples/shared/tutorial_api.ml[
 let greeting =
   Silica.Remote.declare ~path:"/api/greeting" ~input:Silica.Codec.string
-    ~output:Silica.Codec.string
+    ~output:Silica.Codec.string ~rejected:Silica.Codec.string
 ]}
 
-A state that needs the answer owns the call: [Source.call endpoint input
-on_result] in its [invoke] list. The call starts when the machine enters the
-state. [input] gets the data of the state. The answer comes back as the event
-that [on_result] makes. When the machine leaves the state first, the answer is
-dropped. [?timeout_ms] ends a call that takes too long with
-[Error (Network "timeout")]. A failed call gives a {!Silica.Remote.error}:
-[Http status], [Decode message] or [Network message]. The
-{{!page-tutorial.part2}tutorial} shows a machine with a call.
+A snapshot that needs the answer owns the call: [Remote.call endpoint input
+on_answer] in the list that [owns] gives for it. The call starts when the
+machine enters the state. The input is a value: [owns] has the snapshot, so the
+input can come from its data. The answer comes back as the event that
+[on_answer] makes. When the machine leaves the state first, the answer is
+dropped. The key of a call is its path and its input: when a step keeps the
+state but changes the input, the old call stops and a new one starts.
+
+The answer is a {!Silica.Remote.answer}:
+
+{t
+| Constructor | Meaning |
+|-------------|---------|
+| [Ok output] | the output of the handler |
+| [Rejected reason] | the handler answered [Error reason], an application error |
+| [Failed error] | no output: a {!Silica.Remote.error}, [Http status], [Decode message] or [Network message] |
+}
+
+[?timeout_ms] ends a call that takes too long with
+[Failed (Network "timeout")]. {!Silica.Remote.error_to_string} gives a short
+sentence for an error, for a view. The {{!page-tutorial.part2}tutorial} shows a
+machine with a call.
 
 The server implements the endpoint with [Server.implement] (see
 {!page-server.remote}).
@@ -68,34 +84,41 @@ again. {!Silica.Status.data} gives the data of any status that has it.
 - : string option = Some "Hello, Ada"
 ]}
 
-{!Silica.Remote_machine} is a ready-made machine for one endpoint whose
-snapshot holds a [Status.t]. The events are [Load input], [Retry], [Reset] and
-the answer. This view shows each status:
+{!Silica.Remote_machine} is a ready-made machine for one endpoint. Its states
+are [Idle], [Loading], [Ready], [Rejected] and [Failed]; each one keeps the
+input of the last call and the data from before. The events are [Load input],
+[Retry], [Reset] and the answer. This view shows each state:
 
 {@mlx file=examples/shared/doc_greeting_status.mlx[
 open Silica
 
-type state = (string, string) Remote_machine.state
-type event = (string, string) Remote_machine.event
+type state = (string, string, string) Remote_machine.state
+type event = (string, string, string) Remote_machine.event
 
 let machine = Remote_machine.make ~id:"greeting-status" Tutorial_api.greeting
 
-let view ({ status; _ } : state) : event Node.t =
-  match status with
-  | Status.Idle ->
+let view : state -> event Node.t = function
+  | Idle ->
       <button on_press=(Remote_machine.Load "Ada")>"Load"</button>
-  | Status.Loading None ->
+  | Loading { last = None; _ } ->
       <p>"Loading."</p>
-  | Status.Loading (Some old) ->
+  | Loading { last = Some old; _ } ->
       <p>(Node.text (old ^ " Loading again."))</p>
-  | Status.Ready { data; _ } ->
+  | Ready { data; _ } ->
       <div>
         <p>(Node.text data)</p>
         <button on_press=(Remote_machine.Load "Grace")>"Load again"</button>
       </div>
-  | Status.Failed { last; _ } ->
+  | Rejected { reason; _ } ->
       <div>
-        <p>(Node.text (Option.value last ~default:"No greeting."))</p>
+        <p>(Node.text reason)</p>
+        <button on_press=Remote_machine.Retry>"Try again"</button>
+      </div>
+  | Failed { error; last; _ } ->
+      <div>
+        <p>
+          (Node.text (Option.value last ~default:(Remote.error_to_string error)))
+        </p>
         <button on_press=Remote_machine.Retry>"Try again"</button>
       </div>
 
@@ -110,10 +133,10 @@ Live data is owned by the server. Silica has two forms of it.
 
 A topic is a named piece of server data with a state type. The server
 publishes the full state under a key (see {!page-server.publish}), and each
-subscriber of that key gets it with a sequence number. A state subscribes with
-[Source.live topic key on_update] in its [invoke] list, from its entry to its
-exit. The event carries a {!Silica.Topic.update}: a sequence number and a
-[Status.t].
+subscriber of that key gets it with a sequence number. A snapshot subscribes
+with [Source.live topic key on_update] in its [owns] list. The subscription
+runs while the snapshot owns it. The event carries a {!Silica.Topic.update}: a
+sequence number and a [Status.t].
 
 - At the start, the status is [Loading None] while the socket connects.
 - Each published state comes as [Ready] with [stale = false].
@@ -127,36 +150,28 @@ This component of the example app follows the topic [votes]:
 open Silica
 
 type event = Update of int Topic.update | Reconnect
-
-module States = struct
-  type _ t = Watching : int Status.t t
-end
-
-module Votes_machine = Machine.Make (States)
+type state = Watching of int Status.t [@@deriving state_shape]
 
 let machine =
-  Votes_machine.make ~id:"votes"
-    ~init:(Votes_machine.at Watching Status.Idle)
-    [
-      Votes_machine.state Watching "watching"
-        ~invoke:
-          [
-            Source.live Example_model.votes_topic
-              (fun _ -> "main")
-              (fun update -> Update update);
-          ]
-        (fun status -> function
-          | Update { status; _ } ->
-              Votes_machine.goto Watching status
-          | Reconnect ->
-              Votes_machine.reenter Watching status
-          );
-    ]
+  Machine.make ~id:"votes" ~init:(Watching Status.Idle) ~shape:state_shape
+    ~owns:(fun (Watching _) ->
+      [
+        Source.live Example_model.votes_topic "main" (fun update ->
+            Update update
+        );
+      ]
+    )
+    (fun (Watching status) event ->
+      match event with
+      | Update { status; _ } ->
+          Go (Watching status)
+      | Reconnect ->
+          Reenter (Watching status)
+    )
 
 let text = Node.text
 
-let view (Votes_machine.At (Watching, status) : Votes_machine.snapshot) :
-    event Node.t =
+let view (Watching status) : event Node.t =
   let count =
     match Status.data status with Some n -> string_of_int n | None -> "..."
   in
@@ -180,7 +195,7 @@ let component = Component.make machine view
 let make ?key () = Component.node ?key component
 ]}
 
-[Reconnect] uses [reenter]: the state exits and enters again, so the
+[Reconnect] gives [Reenter]: the state exits and enters again, so the
 subscription stops and starts again.
 
 {2:islands Islands}

@@ -54,14 +54,16 @@ let has_loading view =
       )
     view
 
-let pp_result f = function
+let pp_answer f : (_, string) Remote.answer -> unit = function
   | Ok _ ->
       Format.fprintf f "ok"
-  | Error (Remote.Http code) ->
+  | Rejected reason ->
+      Format.fprintf f "rejected %s" reason
+  | Failed (Remote.Http code) ->
       Format.fprintf f "http %d" code
-  | Error (Remote.Network _) ->
+  | Failed (Remote.Network _) ->
       Format.fprintf f "network"
-  | Error (Remote.Decode _) ->
+  | Failed (Remote.Decode _) ->
       Format.fprintf f "decode"
 
 let pp_router_event f = function
@@ -77,24 +79,10 @@ let router_label = function
       "preload"
 
 let all_routes =
-  [
-    Router.At (State.Home, ());
-    Router.At (State.Item, 1);
-    Router.At (State.Item, 2);
-    Router.At (State.About, ());
-    Router.At (State.Edit, ());
-    Router.At (State.Locked, ());
-    Router.At (State.Not_found, "/nowhere");
-  ]
-
-let locked_edges =
-  List.concat_map
-    (fun route -> [ (route, "/locked"); ("/locked", route) ])
-    [ "/"; "/item/:int"; "/about"; "/edit"; "/*" ]
+  [ Home; Item 1; Item 2; About; Edit; Locked; Not_found "/nowhere" ]
 
 let router () =
   Check.app ~max_states:500_000 ~label:router_label
-    ~allow_unreached:locked_edges
     ~inputs:(fun _ ->
       List.map
         (fun path -> Silica.Router.Url_changed (Url.of_string path))
@@ -153,18 +141,18 @@ let todo () =
       )
     Example_todo.component
 
-let pp_item_event f = function
-  | Example_item.Props id ->
-      Format.fprintf f "props %d" id
-  | Example_item.Settled r ->
-      Format.fprintf f "settled %a" pp_result r
+let pp_item_event f (Example_item.Settled answer) =
+  Format.fprintf f "settled %a" pp_answer answer
 
-let item_label = function
-  | Example_item.Props _ ->
-      "props"
-  | Example_item.Settled (Ok _) ->
+let pp_item_input f input = Check.pp_input pp_item_event f input
+
+let item_label (Example_item.Settled answer) =
+  match answer with
+  | Ok _ ->
       "settled ok"
-  | Example_item.Settled (Error _) ->
+  | Rejected _ ->
+      "settled rejected"
+  | Failed _ ->
       "settled error"
 
 let item ?(invariants = []) ~props () =
@@ -176,7 +164,8 @@ let item ?(invariants = []) ~props () =
     :: invariants
   in
   Check.component ~props
-    ~samples:[ Check.answers item_endpoint [ item 1; item 2 ] ]
+    ~samples:
+      [ Check.answers item_endpoint ~rejected:[ "no item" ] [ item 1; item 2 ] ]
     ~label:item_label ~invariants Example_item.component
 
 let about () =
@@ -201,8 +190,7 @@ let edit () =
       )
     Example_edit.component
 
-let not_found ~props () =
-  Check.component ~props ~label:(fun _ -> "url") Example_not_found.component
+let not_found () = Check.component Example_not_found.component
 
 let pp_votes_event f = function
   | Example_votes.Reconnect ->
@@ -239,27 +227,27 @@ let votes () =
 
 let vote () =
   Check.component
-    ~samples:[ Check.answers vote_endpoint [ 1 ] ]
-    ~allow_unreached:
-      [ ("failed", "idle"); ("loading", "idle"); ("ready", "idle") ]
-    ~label:(fun (event : (unit, int) Remote_machine.event) ->
+    ~samples:[ Check.answers vote_endpoint ~rejected:[ "closed" ] [ 1 ] ]
+    ~label:(fun (event : (unit, int, string) Remote_machine.event) ->
       match event with
-      | Remote_machine.Load () ->
+      | Load () ->
           "load"
-      | Remote_machine.Retry ->
+      | Retry ->
           "retry"
-      | Remote_machine.Settled (Ok _) ->
+      | Settled (Ok _) ->
           "settled ok"
-      | Remote_machine.Settled (Error _) ->
+      | Settled (Rejected _) ->
+          "settled rejected"
+      | Settled (Failed _) ->
           "settled error"
-      | Remote_machine.Reset ->
+      | Reset ->
           "reset"
     )
     Example_vote_button.component
 
 let counter_bounded () =
   Check.component
-    ~within:(fun n -> n <= 5)
+    ~within:(fun count -> count <= 5)
     ~label:(function
       | Counter_event.Incr ->
           "incr"

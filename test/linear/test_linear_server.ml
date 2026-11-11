@@ -205,8 +205,10 @@ let test_create_rejects_bad_drafts () =
   let r =
     post t v "/api/issues/create" (encode create_endpoint (draft "   "))
   in
-  Alcotest.(check int) "empty title is refused" 500 r.status;
-  Alcotest.(check string) "no detail leaks" "internal error" r.body;
+  Alcotest.(check int) "empty title is refused" 422 r.status;
+  Alcotest.(check (result string string))
+    "the answer is the message of the store" (Ok "Title is required")
+    (Silica.Codec.of_string (Silica.Remote.rejected create_endpoint) r.body);
   let list = decode issues_endpoint (post t v "/api/issues" "null") in
   Alcotest.(check int) "nothing stored" 30 (List.length list);
   let no_csrf =
@@ -341,7 +343,7 @@ let test_update_over_http () =
          { Change.number = 2; base = 2; change = Change.Title " " }
       )
   in
-  Alcotest.(check bool) "a blank title is refused" true (refused.status >= 400)
+  Alcotest.(check int) "a blank title is refused" 422 refused.status
 
 let comment_bodies sock =
   List.rev !(sock.sent)
@@ -380,7 +382,7 @@ let test_comments_over_http () =
     post t ben "/api/comments/edit"
       (encode edit_comment_endpoint { Comment_edit.id = added.id; body = "Ben" })
   in
-  Alcotest.(check bool) "Ben cannot edit it" true (refused.status >= 400);
+  Alcotest.(check int) "Ben cannot edit it" 422 refused.status;
   let edited =
     decode edit_comment_endpoint
       (post t ada "/api/comments/edit"

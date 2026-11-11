@@ -180,6 +180,7 @@ end
 let item_endpoint =
   Silica.Remote.declare ~path:"/api/item" ~input:Silica.Codec.int
     ~output:(Silica_jsonkit.codec ~to_json:Item.to_json ~of_json:Item.of_json)
+    ~rejected:Silica.Codec.string
 
 let counter_state = Silica.Codec.int
 
@@ -191,7 +192,7 @@ let votes_topic = Silica.Topic.declare ~name:"votes" ~state:Silica.Codec.int
 
 let vote_endpoint =
   Silica.Remote.declare ~path:"/api/vote" ~input:Silica.Codec.unit
-    ~output:Silica.Codec.int
+    ~output:Silica.Codec.int ~rejected:Silica.Codec.string
 ]}
 
 For simple types you do not need [jsonkit]: {!Silica.Codec} has codecs for
@@ -240,8 +241,7 @@ let () =
           (fun _url -> Tutorial_greeting.component)
           ~status:(fun _ -> 200)
           ~scripts:[ page.asset "tutorial_client.js" ]
-          ~csrf:page.csrf ~nonce:page.nonce ~handlers ~context:page.context
-          page.url
+          page
       )
       ()
   in
@@ -251,7 +251,8 @@ let () =
 The parts:
 
 - [Server.implement] connects an endpoint to a function. The function gets the
-  context (the request and the session) and the input.
+  context (the request and the session) and the input, and gives [Ok output]
+  or [Error reason]. The handlers go to [Server.create] once.
 - [Silica_server.Assets.of_metafile] reads the esbuild metafile. The page asks
   for a file by its name before the hash, such as [tutorial_client.js], and
   gets the URL with the hash.
@@ -259,7 +260,8 @@ The parts:
   bytes. [Localhost] is for development only. In production give the list of
   origins of the site.
 - [render_page_settled] runs the Remote calls of the first render on the
-  server, and writes the answers into the page. The browser then starts from
+  server with the handlers of the server, and writes the answers into the
+  page. It takes the [page] record. The browser then starts from
   the same state.
 - The paths in this file assume a [client/] folder at the root of the project,
   with an esbuild rule as in [example/client/dune].

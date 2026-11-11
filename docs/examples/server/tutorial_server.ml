@@ -30,8 +30,7 @@ let () =
           (fun _url -> Tutorial_greeting.component)
           ~status:(fun _ -> 200)
           ~scripts:[ page.asset "tutorial_client.js" ]
-          ~csrf:page.csrf ~nonce:page.nonce ~handlers ~context:page.context
-          page.url
+          page
       )
       ()
   in

@@ -1,31 +1,19 @@
 open Silica
 
 type event = Toggle
-
-module States = struct
-  type _ t = Off : unit t | On : unit t
-end
-
-module Lamp_machine = Machine.Make (States)
+type state = Off | On [@@deriving state_shape]
 
 let machine =
-  Lamp_machine.make ~id:"lamp" ~init:(Lamp_machine.at Off ())
-    [
-      Lamp_machine.state Off "off" ~to_:[ On ] (fun () Toggle ->
-          Lamp_machine.goto On ()
-      );
-      Lamp_machine.state On "on" ~to_:[ Off ] (fun () Toggle ->
-          Lamp_machine.goto Off ()
-      );
-    ]
+  Machine.make ~id:"lamp" ~init:Off ~shape:state_shape (fun state Toggle ->
+      match state with Off -> Go On | On -> Go Off
+  )
 
-let view (snapshot : Lamp_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Lamp_machine.At (Off, ()) ->
+let view : state -> event Node.t = function
+  | Off ->
       <div>
         <p>"The lamp is off."</p> <button on_press=Toggle>"Turn on"</button>
       </div>
-  | Lamp_machine.At (On, ()) ->
+  | On ->
       <div>
         <p>"The lamp is on."</p> <button on_press=Toggle>"Turn off"</button>
       </div>

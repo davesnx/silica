@@ -42,14 +42,12 @@ type props = {
 }
 
 type data = {
-  props : props;
   query : string;
   highlighted : string option;
   selected : string option;
 }
 
 type event =
-  | Props of props
   | Typed of string
   | Move of [ `Next | `Previous | `First | `Last ]
   | Show
@@ -60,14 +58,8 @@ type event =
   | Outside_press
   | Focus_out
 
-module State = struct
-  type _ t = Idle : unit t | Closed : data t | Open : data t | Inline : data t
-end
-
-module Combobox_machine = Machine.Make (State)
-
-type snapshot = Combobox_machine.snapshot =
-  | At : 'data State.t * 'data -> snapshot
+type state = Closed of data | Open of data | Inline of data
+[@@deriving state_shape]
 
 let input_id (props : props) = props.id ^ "-input"
 let listbox_id (props : props) = props.id ^ "-listbox"
@@ -75,25 +67,19 @@ let option_id (props : props) index =
   props.id ^ "-option-" ^ string_of_int index
 let input_ref props = Ref.make (input_id props)
 
-let template_input = Ref.make "input"
+let parts (props : props) =
+  {
+    (Popup.parts props.id) with
+    trigger = input_ref props;
+    trigger_id = input_id props;
+  }
 
-and template_popup = Ref.make "popup"
-
-let sources =
-  List.map
-    (Popup.scoped (fun (data : data) -> data.props.id))
-    [
-      Source.dismiss ~outside:Outside_press ~focus_out:Focus_out
-        [ template_input; template_popup ];
-      Source.anchor ~anchor:template_input template_popup;
-    ]
-
-let shown data =
+let shown (props : props) data =
   List.filter
     (fun (_, item) -> matches data.query item)
-    (List.mapi (fun index item -> (index, item)) data.props.items)
+    (List.mapi (fun index item -> (index, item)) props.items)
 
-let enabled data =
+let enabled props data =
   List.filter_map
     (fun (_, item) ->
       if item.disabled then
@@ -101,9 +87,9 @@ let enabled data =
       else
         Some item.value
     )
-    (shown data)
+    (shown props data)
 
-let index_of data value =
+let index_of (props : props) value =
   List.find_map
     (fun (index, item) ->
       if item.value = value then
@@ -111,21 +97,21 @@ let index_of data value =
       else
         None
     )
-    (List.mapi (fun index item -> (index, item)) data.props.items)
+    (List.mapi (fun index item -> (index, item)) props.items)
 
-let valid data =
+let valid props data =
   match data.highlighted with
-  | Some value when List.mem value (enabled data) ->
+  | Some value when List.mem value (enabled props data) ->
       data
-  | _ ->
+  | Some _ | None ->
       { data with highlighted = None }
 
-let auto data =
-  match (valid data).highlighted with
+let auto props data =
+  match (valid props data).highlighted with
   | Some _ ->
       data
   | None ->
-      { data with highlighted = List.nth_opt (enabled data) 0 }
+      { data with highlighted = List.nth_opt (enabled props data) 0 }
 
 let rec position value i = function
   | [] ->
@@ -136,11 +122,11 @@ let rec position value i = function
       else
         position value (i + 1) rest
 
-let move (direction : [ `Next | `Previous | `First | `Last ]) data =
-  let values = enabled data in
+let move props (direction : [ `Next | `Previous | `First | `Last ]) data =
+  let values = enabled props data in
   let count = List.length values in
   let target =
-    match ((valid data).highlighted, direction) with
+    match ((valid props data).highlighted, direction) with
     | _, _ when count = 0 ->
         None
     | _, `First ->
@@ -158,136 +144,103 @@ let move (direction : [ `Next | `Previous | `First | `Last ]) data =
   in
   let highlighted = Option.map (List.nth values) target in
   let actions =
-    match Option.bind highlighted (index_of data) with
+    match Option.bind highlighted (index_of props) with
     | Some index ->
-        [ Action.Scroll_into_view (Ref.make (option_id data.props index)) ]
+        [ Action.Scroll_into_view (Ref.make (option_id props index)) ]
     | None ->
         []
   in
   ({ data with highlighted }, actions)
 
-let choose data value =
-  match List.find_opt (fun item -> item.value = value) data.props.items with
+let choose (props : props) value =
+  match List.find_opt (fun item -> item.value = value) props.items with
   | Some item when not item.disabled ->
-      Some
-        {
-          data with
-          query = item.label;
-          selected = Some value;
-          highlighted = None;
-        }
-  | _ ->
+      Some { query = item.label; selected = Some value; highlighted = None }
+  | Some _ | None ->
       None
 
-let start props = { props; query = ""; highlighted = None; selected = None }
-
-let settle data =
-  if data.props.inline then
-    Combobox_machine.goto Inline (auto data)
+let settle (props : props) data : (state, event) Machine.next =
+  if props.inline then
+    Go (Inline (auto props data))
   else
-    Combobox_machine.goto Closed { data with highlighted = None }
+    Go (Closed { data with highlighted = None })
 
 let machine =
-  Combobox_machine.make ~id:"combobox"
-    ~init:(Combobox_machine.at Idle ())
-    [
-      Combobox_machine.state Idle "idle" ~to_:[ Closed; Inline ]
-        (fun () -> function
-        | Props props ->
-            settle (start props)
-        | _ ->
-            Combobox_machine.unhandled
-        );
-      Combobox_machine.state Closed "closed" ~to_:[ Open; Inline ]
-        (fun data -> function
-        | Props props ->
-            settle { data with props }
-        | Typed query ->
-            Combobox_machine.goto Open { data with query; highlighted = None }
-        | Move direction ->
-            let data, actions = move direction data in
-            Combobox_machine.goto Open data ~actions
-        | Show ->
-            Combobox_machine.goto Open data
-        | Escape when data.query <> "" ->
-            Combobox_machine.goto Closed { data with query = "" }
-        | Escape
-        | Highlight _
-        | Choose_highlighted
-        | Choose _
-        | Outside_press
-        | Focus_out ->
-            Combobox_machine.unhandled
-        );
-      Combobox_machine.state Open "open" ~to_:[ Closed; Inline ] ~invoke:sources
-        (fun data -> function
-        | Props props when props.inline ->
-            settle { data with props }
-        | Props props ->
-            Combobox_machine.goto Open (valid { data with props })
-        | Typed query ->
-            Combobox_machine.goto Open { data with query; highlighted = None }
-        | Move direction ->
-            let data, actions = move direction data in
-            Combobox_machine.goto Open data ~actions
-        | Highlight value ->
-            Combobox_machine.goto Open
-              (valid { data with highlighted = Some value })
-        | Choose_highlighted -> (
-            match Option.bind data.highlighted (choose data) with
-            | Some data ->
-                Combobox_machine.goto Closed data
-            | None ->
-                Combobox_machine.unhandled
-          )
-        | Choose value -> (
-            match choose data value with
-            | Some data ->
-                Combobox_machine.goto Closed data
-                  ~actions:[ Action.Focus (input_ref data.props) ]
-            | None ->
-                Combobox_machine.unhandled
-          )
-        | Escape | Outside_press | Focus_out ->
-            Combobox_machine.goto Closed { data with highlighted = None }
-        | Show ->
-            Combobox_machine.unhandled
-        );
-      Combobox_machine.state Inline "inline" ~to_:[ Closed ]
-        (fun data -> function
-        | Props props ->
-            settle { data with props }
-        | Typed query ->
-            Combobox_machine.goto Inline
-              (auto { data with query; highlighted = None })
-        | Move direction ->
-            let data, actions = move direction data in
-            Combobox_machine.goto Inline data ~actions
-        | Highlight value ->
-            Combobox_machine.goto Inline
-              (auto { data with highlighted = Some value })
-        | Choose_highlighted -> (
-            match Option.bind data.highlighted (choose data) with
-            | Some data ->
-                Combobox_machine.goto Inline (auto data)
-            | None ->
-                Combobox_machine.unhandled
-          )
-        | Choose value -> (
-            match choose data value with
-            | Some data ->
-                Combobox_machine.goto Inline (auto data)
-                  ~actions:[ Action.Focus (input_ref data.props) ]
-            | None ->
-                Combobox_machine.unhandled
-          )
-        | Escape when data.query <> "" ->
-            Combobox_machine.goto Inline
-              (auto { data with query = ""; highlighted = None })
-        | Escape | Show | Outside_press | Focus_out ->
-            Combobox_machine.unhandled
-        );
-    ]
+  Machine.make_with_props ~id:"combobox"
+    ~init:(Closed { query = ""; highlighted = None; selected = None })
+    ~shape:state_shape
+    ~owns:(fun props -> function
+      | Open _ ->
+          Popup.layer ~outside:Outside_press ~focus_out:Focus_out (parts props)
+      | Closed _ | Inline _ ->
+          []
+      )
+    ~on_props:(fun _ (props : props) -> function
+      | Open data when not props.inline ->
+          Go (Open (valid props data))
+      | Closed data | Open data | Inline data ->
+          settle props data
+      )
+    (fun props state event ->
+      match (state, event) with
+      | (Closed data | Open data), Typed query ->
+          Go (Open { data with query; highlighted = None })
+      | (Closed data | Open data), Move direction ->
+          let data, actions = move props direction data in
+          Go_with (Open data, actions)
+      | Closed data, Show ->
+          Go (Open data)
+      | Closed data, Escape when data.query <> "" ->
+          Go (Closed { data with query = "" })
+      | Open data, Highlight value ->
+          Go (Open (valid props { data with highlighted = Some value }))
+      | Open data, Choose_highlighted -> (
+          match Option.bind data.highlighted (choose props) with
+          | Some data ->
+              Go (Closed data)
+          | None ->
+              Ignore
+        )
+      | Open _, Choose value -> (
+          match choose props value with
+          | Some data ->
+              Go_with (Closed data, [ Action.Focus (input_ref props) ])
+          | None ->
+              Ignore
+        )
+      | Open data, (Escape | Outside_press | Focus_out) ->
+          Go (Closed { data with highlighted = None })
+      | Inline data, Typed query ->
+          Go (Inline (auto props { data with query; highlighted = None }))
+      | Inline data, Move direction ->
+          let data, actions = move props direction data in
+          Go_with (Inline data, actions)
+      | Inline data, Highlight value ->
+          Go (Inline (auto props { data with highlighted = Some value }))
+      | Inline data, Choose_highlighted -> (
+          match Option.bind data.highlighted (choose props) with
+          | Some data ->
+              Go (Inline (auto props data))
+          | None ->
+              Ignore
+        )
+      | Inline _, Choose value -> (
+          match choose props value with
+          | Some data ->
+              Go_with
+                (Inline (auto props data), [ Action.Focus (input_ref props) ])
+          | None ->
+              Ignore
+        )
+      | Inline data, Escape when data.query <> "" ->
+          Go (Inline (auto props { data with query = ""; highlighted = None }))
+      | Closed _, Escape
+      | Closed _, (Highlight _ | Choose_highlighted | Choose _)
+      | Closed _, (Outside_press | Focus_out)
+      | Open _, Show
+      | Inline _, (Escape | Show | Outside_press | Focus_out) ->
+          Ignore
+    )
 
 let el = Node.element
 let flag name on =
@@ -318,8 +271,7 @@ let keys data ~popup_open ~shown (key : Key.t) =
   | _ ->
       None
 
-let input data ~popup_open ~shown =
-  let props = data.props in
+let input props data ~popup_open ~shown =
   el "input"
     ([
        Attr.string "id" (input_id props);
@@ -348,7 +300,7 @@ let input data ~popup_open ~shown =
     @ ( if shown then
           Attr.string "aria-controls" (listbox_id props)
           ::
-          ( match Option.bind data.highlighted (index_of data) with
+          ( match Option.bind data.highlighted (index_of props) with
           | Some index ->
               [ Attr.string "aria-activedescendant" (option_id props index) ]
           | None ->
@@ -361,8 +313,7 @@ let input data ~popup_open ~shown =
     )
     []
 
-let option_ data (index, item) =
-  let props = data.props in
+let option_ props data (index, item) =
   let id = option_id props index in
   let highlighted = data.highlighted = Some item.value
   and selected = data.selected = Some item.value in
@@ -387,14 +338,11 @@ let option_ data (index, item) =
     )
     [ Node.text item.label ]
 
-let popup data =
-  let props = data.props in
-  let options = shown data in
+let popup props data =
+  let options = shown props data in
+  let parts = parts props in
   el "div"
-    ([
-       Attr.string "id" (props.id ^ "-popup");
-       Attr.ref_ (Ref.make (props.id ^ "-popup"));
-     ]
+    ([ Attr.string "id" parts.popup_id; Attr.ref_ parts.popup ]
     @ Popup.open_attrs true
     @ Popup.class_attr props.classes.list
     )
@@ -405,7 +353,7 @@ let popup data =
           Attr.string "role" "listbox";
           Attr.string "aria-label" props.label;
         ]
-        (List.map (option_ data) options);
+        (List.map (option_ props data) options);
       el "div"
         ([
            Attr.string "id" (props.id ^ "-status"); Attr.string "role" "status";
@@ -419,42 +367,43 @@ let popup data =
         );
     ]
 
-let root data children =
-  el "div" (Popup.class_attr data.props.classes.root) children
+let root (props : props) children =
+  el "div" (Popup.class_attr props.classes.root) children
 
-let view : snapshot -> event Node.t = function
-  | At (Idle, ()) ->
-      Node.list []
-  | At (Closed, data) ->
-      root data [ input data ~popup_open:false ~shown:false ]
-  | At (Open, data) ->
-      root data
-        [ input data ~popup_open:true ~shown:true; Node.portal [ popup data ] ]
-  | At (Inline, data) ->
-      root data [ input data ~popup_open:false ~shown:true; popup data ]
+let view props = function
+  | Closed data ->
+      root props [ input props data ~popup_open:false ~shown:false ]
+  | Open data ->
+      root props
+        [
+          input props data ~popup_open:true ~shown:true;
+          Node.portal [ popup props data ];
+        ]
+  | Inline data ->
+      root props
+        [ input props data ~popup_open:false ~shown:true; popup props data ]
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let props ~id ~label ?(placeholder = "") ?(empty = "No results")
     ?(inline = false) ?(classes = no_classes) items =
   { id; label; placeholder; empty; items; inline; classes }
 
-let selected : snapshot -> string option = function
-  | At (Idle, ()) ->
-      None
-  | At (Closed, data) ->
-      data.selected
-  | At (Open, data) ->
-      data.selected
-  | At (Inline, data) ->
-      data.selected
-
 let make ?key ?on_value_change props =
-  let output event snapshot =
-    match (event, on_value_change, selected snapshot) with
+  let output event (Closed data | Open data | Inline data) =
+    match (event, on_value_change, data.selected) with
     | (Choose _ | Choose_highlighted), Some f, Some value ->
         [ f value ]
-    | _ ->
+    | (Choose _ | Choose_highlighted), (Some _ | None), (Some _ | None)
+    | ( ( Typed _
+        | Move _
+        | Show
+        | Highlight _
+        | Escape
+        | Outside_press
+        | Focus_out ),
+        _,
+        _ ) ->
         []
   in
-  Component.node ?key ~props:(Props props) ~output component
+  Component.node_with_props ?key ~props ~output component

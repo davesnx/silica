@@ -4,7 +4,7 @@
     browser, {!deferred} wraps a loader such as a dynamic import (see
     [Silica_browser.import]): the bundler puts the code in its own file, and the
     file loads the first time a view shows the chunk with {!Node.val-chunk}, or
-    earlier when a link preloads its route ({!Router.Make.val-routes}). The same
+    earlier when a link preloads its route ({!Router.val-routes}). The same
     shared view code uses either, because each platform library defines the
     module that holds the chunks. *)
 

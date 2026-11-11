@@ -10,3 +10,17 @@
  (name svg_names_test)
  (modules svg_names_test)
  (libraries silica.ppx))
+
+(test
+ (name state_shape_test)
+ (modules state_shape_test)
+ (libraries silica)
+ (preprocess
+  (pps silica.ppx)))
+
+(test
+ (name routes_test)
+ (modules routes_test)
+ (libraries silica)
+ (preprocess
+  (pps silica.ppx)))

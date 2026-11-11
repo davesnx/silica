@@ -21,23 +21,14 @@ let fruits =
 
 type event = Chose of string * string
 
-module States = struct
-  type _ t = Page : string list t
-end
-
-module Combobox_events_machine = Machine.Make (States)
-
 let machine =
-  Combobox_events_machine.make ~id:"combobox-events"
-    ~init:(Combobox_events_machine.at Page [])
-    [
-      Combobox_events_machine.state Page "page" (fun events -> function
-        | Chose (id, value) ->
-            Combobox_events_machine.goto Page (events @ [ id ^ " " ^ value ])
-        );
-    ]
+  Machine.make ~id:"combobox-events" ~init:[]
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun events event ->
+      match event with Chose (id, value) -> Go (events @ [ id ^ " " ^ value ])
+    )
 
-let view (Combobox_events_machine.At (Page, events)) =
+let view events =
   <section class_="flex flex-col gap-4">
     (Combobox.make
        ~on_value_change:(fun value -> Chose ("fruit", value))

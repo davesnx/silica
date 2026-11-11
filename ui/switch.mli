@@ -27,22 +27,17 @@ type props = {
   classes : classes;
 }
 
-type event = Props of props | Toggle
+type event = Toggle
+type state = Unchecked | Checked
 
-module State : sig
-  type _ t = Idle : unit t | Unchecked : props t | Checked : props t
-end
-
-type snapshot = At : 'data State.t * 'data -> snapshot
-
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val props :
   id:string ->

@@ -2,7 +2,9 @@
 
 (executable
  (name gen)
- (libraries silica))
+ (libraries silica silica.check)
+ (preprocess
+  (pps silica.ppx)))
 
 (rule
  (targets door.qnt dead_end.qnt)

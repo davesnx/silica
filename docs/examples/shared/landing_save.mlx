@@ -2,60 +2,44 @@ open Silica
 
 let save =
   Remote.declare ~path:"/api/save" ~input:Codec.string ~output:Codec.string
+    ~rejected:Codec.string
 
-type event = Save | Answer of (string, Remote.error) result | Reset
+type event = Save | Answer of (string, string) Remote.answer | Reset
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Saving : unit t
-    | Saved : string t
-    | Failed : Remote.error t
-end
-
-module Save_machine = Machine.Make (States)
+type state = Idle | Saving | Saved of string | Failed [@@deriving state_shape]
 
 let machine =
-  Save_machine.make ~id:"save" ~init:(Save_machine.at Idle ())
-    [
-      Save_machine.state Idle "idle" ~to_:[ Saving ] (fun () -> function
-        | Save ->
-            Save_machine.goto Saving ()
-        | Answer _ | Reset ->
-            Save_machine.unhandled
-        );
-      Save_machine.state Saving "saving" ~to_:[ Saved; Failed ]
-        ~invoke:[ Source.call save (fun () -> "draft") (fun r -> Answer r) ]
-        (fun () -> function
-          | Answer (Ok time) ->
-              Save_machine.goto Saved time
-          | Answer (Error error) ->
-              Save_machine.goto Failed error
-          | Save | Reset ->
-              Save_machine.unhandled
-          );
-      Save_machine.state Saved "saved" ~to_:[ Idle ]
-        ~after:[ (2000, Reset) ]
-        (fun _ -> function
-          | Reset -> Save_machine.goto Idle () | _ -> Save_machine.unhandled
-          );
-      Save_machine.state Failed "failed" ~to_:[ Saving ] (fun _ -> function
-        | Save ->
-            Save_machine.goto Saving ()
-        | Answer _ | Reset ->
-            Save_machine.unhandled
-        );
-    ]
+  Machine.make ~id:"save" ~init:Idle ~shape:state_shape
+    ~owns:(function
+      | Saving ->
+          [ Remote.call save "draft" (fun answer -> Answer answer) ]
+      | Saved _ ->
+          [ Source.after 2000 Reset ]
+      | Idle | Failed ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | (Idle | Failed), Save ->
+          Go Saving
+      | Saving, Answer (Ok time) ->
+          Go (Saved time)
+      | Saving, Answer (Rejected _ | Failed _) ->
+          Go Failed
+      | Saved _, Reset ->
+          Go Idle
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Save_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Save_machine.At (Idle, ()) ->
+let view : state -> event Node.t = function
+  | Idle ->
       <button on_press=Save>"Save the draft"</button>
-  | Save_machine.At (Saving, ()) ->
+  | Saving ->
       <button disabled=true>"Saving"</button>
-  | Save_machine.At (Saved, time) ->
+  | Saved time ->
       <p>(Node.text ("Saved at " ^ time))</p>
-  | Save_machine.At (Failed, _) ->
+  | Failed ->
       <button on_press=Save>"Not saved. Try again"</button>
 
 let component = Component.make machine view

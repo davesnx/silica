@@ -158,8 +158,7 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
             (Printf.sprintf "<link rel=\"stylesheet\" href=\"%s\">"
                (page.asset "app.css")
             )
-          ~csrf:page.csrf ~nonce:page.nonce ~islands:[] ~handlers
-          ~context:page.context page.url
+          page
       )
       ()
   in

@@ -27,22 +27,18 @@ module unsaved {
     last' = OnStart,
   }
 
-  action asking_to_asking_on_any = all { state == Asking, enter(Asking, OnAny) }
   action asking_to_held_on_discard = all { state == Asking, enter(Held, OnDiscard) }
   action asking_to_held_on_keep = all { state == Asking, enter(Held, OnKeep) }
   action held_to_asking_on_attempt_push = all { state == Held, enter(Asking, OnAttemptPush) }
   action held_to_asking_on_attempt_traverse = all { state == Held, enter(Asking, OnAttemptTraverse) }
-  action held_to_held_on_any = all { state == Held, enter(Held, OnAny) }
   action asking_stays_on_attempt_push = all { state == Asking, state' = state, running' = running, last' = OnAttemptPush }
   action asking_stays_on_attempt_traverse = all { state == Asking, state' = state, running' = running, last' = OnAttemptTraverse }
 
   action step = any {
-    asking_to_asking_on_any,
     asking_to_held_on_discard,
     asking_to_held_on_keep,
     held_to_asking_on_attempt_push,
     held_to_asking_on_attempt_traverse,
-    held_to_held_on_any,
     asking_stays_on_attempt_push,
     asking_stays_on_attempt_traverse,
   }

@@ -22,41 +22,33 @@ type event =
   | Opened of string * bool * Popup.reason
   | Set_value of string option
 
-module States = struct
-  type _ t = Page : (string option * string list) t
-end
-
-module Page_machine = Machine.Make (States)
-
 let machine =
-  Page_machine.make ~id:"select-page"
-    ~init:(Page_machine.at Page (None, []))
-    [
-      Page_machine.state Page "page" (fun (value, log) -> function
-        | Changed (id, v) ->
-            Page_machine.goto Page
-              (value, log @ [ Printf.sprintf "%s value %s" id v ])
-        | Opened (id, opened, why) ->
-            Page_machine.goto Page
-              ( value,
-                log
-                @ [
-                    Printf.sprintf "%s open %b %s" id opened
-                      (Popup.reason_name why);
-                  ]
-              )
-        | Set_value value ->
-            Page_machine.goto Page (value, log)
-        );
-    ]
+  Machine.make ~id:"select-page" ~init:(None, [])
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun (value, log) event ->
+      match event with
+      | Changed (id, chosen) ->
+          Go (value, log @ [ Printf.sprintf "%s value %s" id chosen ])
+      | Opened (id, opened, why) ->
+          Go
+            ( value,
+              log
+              @ [
+                  Printf.sprintf "%s open %b %s" id opened
+                    (Popup.reason_name why);
+                ]
+            )
+      | Set_value value ->
+          Go (value, log)
+    )
 
 let select ?value ?name id =
   Select.make
-    ~on_value_change:(fun v -> Changed (id, v))
+    ~on_value_change:(fun value -> Changed (id, value))
     ~on_open_change:(fun opened why -> Opened (id, opened, why))
     (props ?value ?name id)
 
-let view (Page_machine.At (Page, (value, log))) =
+let view (value, log) =
   Node.element "main" []
     [
       Node.element "p"

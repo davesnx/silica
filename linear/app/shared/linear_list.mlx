@@ -3,11 +3,11 @@ open Linear_model
 open Linear_routes
 
 type event =
-  | Props of Linear_view.t
-  | Loaded of (Issues.t, Remote.error) result
+  | Loaded of (Issues.t, string) Remote.answer
   | Updated of Issues.t Topic.update
   | Retry
   | Reconnect
+  | Reconnected
   | Filter_open of bool
   | Filter_changed of Linear_view.Filter.t
   | Grouping_picked of string
@@ -19,12 +19,12 @@ type event =
   | Menu_open of bool
   | Command of string
   | Create_key
-  | Saved of int * (Change.answer, Remote.error) result
+  | Saved of int * (Change.answer, string) Remote.answer
   | Toast_closed of string
 
 type ready = {
-  view : Linear_view.t;
   data : Linear_data.t;
+  reconnecting : bool;
   collapsed : Linear_view.group list;
   filter_open : bool;
   cursor : int option;
@@ -32,19 +32,13 @@ type ready = {
   toasts : Silica_ui.Toast.toast list;
 }
 
-module States = struct
-  type _ t =
-    | Loading : Linear_view.t t
-    | Ready : ready t
-    | Failed : (Linear_view.t * Remote.error) t
-end
+type state = Loading | Ready of ready | Failed of string
+[@@deriving state_shape]
 
-module List_machine = Machine.Make (States)
-
-let show view = Router.replace routes State.Issues { create = false; view }
+let show view = Router.replace routes (Issues { create = false; view })
 let row_ref number = Ref.make ("issue-row-" ^ string_of_int number)
 
-let visible (r : ready) =
+let visible view (r : ready) =
   List.concat_map
     (fun (group, members) ->
       if List.mem group r.collapsed then
@@ -52,10 +46,10 @@ let visible (r : ready) =
       else
         List.map (fun (i : Issue.t) -> i.number) members
     )
-    (Linear_view.groups r.view (Linear_data.issues r.data))
+    (Linear_view.groups view (Linear_data.issues r.data))
 
-let move (r : ready) step =
-  let rows = visible r in
+let move view (r : ready) step : (state, event) Machine.next =
+  let rows = visible view r in
   let rec after = function
     | a :: (b :: _ as rest) ->
         if Some a = r.cursor then
@@ -79,11 +73,12 @@ let move (r : ready) step =
   in
   match target with
   | Some number ->
-      List_machine.goto Ready
-        { r with cursor = Some number }
-        ~actions:[ Action.Focus (row_ref number) ]
+      Go_with
+        ( Ready { r with cursor = Some number },
+          [ Action.Focus (row_ref number) ]
+        )
   | None ->
-      List_machine.unhandled
+      Stay []
 
 let add_toast (r : ready) request outcome =
   let key = "toast-" ^ string_of_int (List.length r.toasts) in
@@ -93,32 +88,33 @@ let add_toast (r : ready) request outcome =
   | None ->
       r
 
-let create view = Router.navigate routes State.Issues { create = true; view }
+let create view = Router.navigate routes (Issues { create = true; view })
 
-let ready_event (r : ready) = function
-  | Props view ->
-      List_machine.goto Ready { r with view }
+let ready_event view (r : ready) : event -> (state, event) Machine.next =
+  function
   | Updated update ->
-      List_machine.goto Ready { r with data = Linear_data.apply update r.data }
+      Go (Ready { r with data = Linear_data.apply update r.data })
   | Reconnect ->
-      List_machine.reenter Ready r
+      Go (Ready { r with reconnecting = true })
+  | Reconnected ->
+      Go (Ready { r with reconnecting = false })
   | Filter_open filter_open ->
-      List_machine.goto Ready { r with filter_open }
+      Go (Ready { r with filter_open })
   | Filter_changed filter ->
-      List_machine.stay [ show { r.view with filter } ]
+      Stay [ show { view with filter } ]
   | Grouping_picked name -> (
       match List.assoc_opt name Linear_view.grouping_names with
       | Some grouping ->
-          List_machine.stay [ show { r.view with grouping } ]
+          Stay [ show { view with grouping } ]
       | None ->
-          List_machine.unhandled
+          Ignore
     )
   | Ordering_picked name -> (
       match List.assoc_opt name Linear_view.ordering_names with
       | Some ordering ->
-          List_machine.stay [ show { r.view with ordering } ]
+          Stay [ show { view with ordering } ]
       | None ->
-          List_machine.unhandled
+          Ignore
     )
   | Toggle_group group ->
       let collapsed =
@@ -127,17 +123,17 @@ let ready_event (r : ready) = function
         else
           group :: r.collapsed
       in
-      List_machine.goto Ready { r with collapsed }
+      Go (Ready { r with collapsed })
   | Cursor_next ->
-      move r `Next
+      move view r `Next
   | Cursor_previous ->
-      move r `Previous
+      move view r `Previous
   | Row_focused number ->
-      List_machine.goto Ready { r with cursor = Some number }
+      Go (Ready { r with cursor = Some number })
   | Menu_open menu_open ->
-      List_machine.goto Ready { r with menu_open }
+      Go (Ready { r with menu_open })
   | Create_key ->
-      List_machine.stay [ create r.view ]
+      Stay [ create view ]
   | Command value -> (
       let issues = Linear_data.issues r.data in
       let focused =
@@ -145,37 +141,41 @@ let ready_event (r : ready) = function
       in
       match (Linear_commands.parse ~issues ~focused value, focused) with
       | Some Linear_commands.Create, _ ->
-          List_machine.stay [ create r.view ]
+          Stay [ create view ]
       | Some Linear_commands.Go_list, _ ->
-          List_machine.stay [ Router.navigate routes State.Issues list ]
+          Stay [ Router.navigate routes (Issues list) ]
       | Some (Linear_commands.Open number), _ ->
-          List_machine.stay [ Router.navigate routes State.Issue number ]
+          Stay [ Router.navigate routes (Issue number) ]
       | Some (Linear_commands.Set change), Some issue ->
-          List_machine.goto Ready
-            { r with data = Linear_data.start issue.number change r.data }
+          Go
+            (Ready
+               { r with data = Linear_data.start issue.number change r.data }
+            )
       | Some (Linear_commands.Set _), None | None, _ ->
-          List_machine.unhandled
+          Ignore
     )
-  | Saved (id, result) -> (
-      let data, outcome = Linear_data.finish id result r.data in
+  | Saved (id, answer) -> (
+      let data, outcome = Linear_data.finish id answer r.data in
       let r = { r with data } in
       match outcome with
       | Some (request, outcome) ->
-          List_machine.goto Ready (add_toast r request outcome)
+          Go (Ready (add_toast r request outcome))
       | None ->
-          List_machine.goto Ready r
+          Go (Ready r)
     )
   | Toast_closed key ->
-      List_machine.goto Ready
-        {
-          r with
-          toasts =
-            List.filter
-              (fun (t : Silica_ui.Toast.toast) -> t.key <> key)
-              r.toasts;
-        }
+      Go
+        (Ready
+           {
+             r with
+             toasts =
+               List.filter
+                 (fun (t : Silica_ui.Toast.toast) -> t.key <> key)
+                 r.toasts;
+           }
+        )
   | Loaded _ | Retry ->
-      List_machine.unhandled
+      Ignore
 
 let list_keys =
   [
@@ -188,68 +188,61 @@ let list_keys =
   ]
   @ Linear_commands.keys (Menu_open true)
 
+let live (r : ready) =
+  if r.reconnecting then
+    Source.after 0 Reconnected
+  else
+    Source.live issues_topic issues_key (fun update -> Updated update)
+
 let machine =
-  List_machine.make ~id:"issue-list"
-    ~init:(List_machine.at Loading Linear_view.default)
-    [
-      List_machine.state Loading "loading" ~to_:[ Ready; Failed ]
-        ~entry:(fun _ -> [ Action.Set_title "Issues" ])
-        ~invoke:
-          [ Source.call issues_endpoint (fun _ -> ()) (fun r -> Loaded r) ]
-        (fun view -> function
-          | Props view ->
-              List_machine.goto Loading view
-          | Loaded (Ok issues) ->
-              List_machine.goto Ready
-                {
-                  view;
-                  data = Linear_data.loaded issues;
-                  collapsed = [];
-                  filter_open = false;
-                  cursor = None;
-                  menu_open = false;
-                  toasts = [];
-                }
-          | Loaded (Error error) ->
-              List_machine.goto Failed (view, error)
-          | _ ->
-              List_machine.unhandled
-          );
-      List_machine.state Ready "ready"
-        ~invoke:
-          [
-            Source.live issues_topic
-              (fun _ -> issues_key)
-              (fun update -> Updated update);
-            Source.keys ~prevent:true list_keys;
-          ]
-        ready_event;
-      List_machine.state Failed "failed" ~to_:[ Loading ]
-        (fun (view, error) -> function
-        | Retry ->
-            List_machine.goto Loading view
-        | Props view ->
-            List_machine.goto Failed (view, error)
-        | _ ->
-            List_machine.unhandled
-        );
-    ]
+  Machine.make_with_props ~id:"issue-list" ~init:Loading ~shape:state_shape
+    ~entry:(fun _ -> function
+      | Loading -> [ Action.Set_title "Issues" ] | Ready _ | Failed _ -> []
+      )
+    ~owns:(fun _ -> function
+      | Loading ->
+          [ Remote.call issues_endpoint () (fun answer -> Loaded answer) ]
+      | Ready r ->
+          live r
+          :: Source.keys ~prevent:true list_keys
+          :: Linear_data.calls r.data (fun id answer -> Saved (id, answer))
+      | Failed _ ->
+          []
+      )
+    (fun view state event ->
+      match (state, event) with
+      | Loading, Loaded (Ok issues) ->
+          Go
+            (Ready
+               {
+                 data = Linear_data.loaded issues;
+                 reconnecting = false;
+                 collapsed = [];
+                 filter_open = false;
+                 cursor = None;
+                 menu_open = false;
+                 toasts = [];
+               }
+            )
+      | Loading, Loaded (Rejected message) ->
+          Go (Failed message)
+      | Loading, Loaded (Failed error) ->
+          Go (Failed (Remote.error_to_string error))
+      | Ready r, event ->
+          ready_event view r event
+      | Failed _, Retry ->
+          Go Loading
+      | (Loading | Failed _), _ ->
+          Ignore
+    )
 
 let text = Node.text
-
-let error_text : Remote.error -> string = function
-  | Http code ->
-      "The server answered " ^ string_of_int code
-  | Decode _ ->
-      "The server sent data that cannot be read"
-  | Network _ ->
-      "The network failed"
 
 let row cursor (issue : Issue.t) =
   Node.keyed
     (string_of_int issue.number)
     <li class_="border-b border-ui-border">
-      (Router.link routes State.Issue issue.number
+      (Router.link routes (Issue issue.number)
          ([
             Attr.ref_ (row_ref issue.number);
             Attr.string "id" ("issue-row-" ^ string_of_int issue.number);
@@ -343,17 +336,17 @@ let ordering_label = function
   | Created ->
       "Created"
 
-let toolbar (r : ready) =
+let toolbar (view : Linear_view.t) (r : ready) =
   <div class_="mb-4 flex flex-wrap items-center gap-2">
     (Linear_filter.make ~open_:r.filter_open
        ~on_open_change:(fun open_ _ -> Filter_open open_)
        ~on_change:(fun filter -> Filter_changed filter)
-       r.view.filter
+       view.filter
     )
     (Silica_ui.Select.make
        ~on_value_change:(fun name -> Grouping_picked name)
        (Silica_ui.Select.props ~id:"issue-grouping" ~label:"Grouping"
-          ~value:(Linear_view.name_of Linear_view.grouping_names r.view.grouping)
+          ~value:(Linear_view.name_of Linear_view.grouping_names view.grouping)
           ~classes:Silica_ui.Style.select
           (select_items Linear_view.grouping_names grouping_label)
        )
@@ -361,28 +354,27 @@ let toolbar (r : ready) =
     (Silica_ui.Select.make
        ~on_value_change:(fun name -> Ordering_picked name)
        (Silica_ui.Select.props ~id:"issue-ordering" ~label:"Ordering"
-          ~value:(Linear_view.name_of Linear_view.ordering_names r.view.ordering)
+          ~value:(Linear_view.name_of Linear_view.ordering_names view.ordering)
           ~classes:Silica_ui.Style.select
           (select_items Linear_view.ordering_names ordering_label)
        )
     )
   </div>
 
-let view (snapshot : List_machine.snapshot) : event Node.t =
-  match snapshot with
-  | List_machine.At (Loading, _) ->
+let view (view : Linear_view.t) : state -> event Node.t = function
+  | Loading ->
       <section id="issue-list">
         <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
           "Issues"
         </h1>
         <p class_="text-ui-muted">"Loading issues..."</p>
       </section>
-  | List_machine.At (Failed, (_, error)) ->
+  | Failed message ->
       <section id="issue-list">
         <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
           "Issues"
         </h1>
-        <p role=`alert class_="text-ui-danger">(text (error_text error))</p>
+        <p role=`alert class_="text-ui-danger">(text message)</p>
         <button
           id="issues-retry"
           class_="mt-2 rounded-ui border border-ui-border px-3 py-1"
@@ -390,13 +382,13 @@ let view (snapshot : List_machine.snapshot) : event Node.t =
           "Try again"
         </button>
       </section>
-  | List_machine.At (Ready, r) ->
-      let groups = Linear_view.groups r.view (Linear_data.issues r.data) in
+  | Ready r ->
+      let groups = Linear_view.groups view (Linear_data.issues r.data) in
       <section id="issue-list">
         <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
           "Issues"
         </h1>
-        (toolbar r)
+        (toolbar view r)
         ( if r.data.stale then
             <p id="issues-offline" class_="mb-2 text-sm text-warning">
               "Offline. Showing the last issues received. "
@@ -420,7 +412,6 @@ let view (snapshot : List_machine.snapshot) : event Node.t =
              (Option.bind r.cursor (fun number -> Linear_data.find number r.data)
              )
         )
-        (Linear_data.calls r.data (fun id result -> Saved (id, result)))
         (Silica_ui.Toast.make
            ~on_close:(fun key -> Toast_closed key)
            (Silica_ui.Toast.props ~id:"list-toasts"
@@ -429,5 +420,5 @@ let view (snapshot : List_machine.snapshot) : event Node.t =
         )
       </section>
 
-let component = Component.make machine view
-let make ?key ~view () = Component.node ?key ~props:(Props view) component
+let component = Component.make_with_props machine view
+let make ?key ~view () = Component.node_with_props ?key ~props:view component

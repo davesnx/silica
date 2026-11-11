@@ -1,48 +1,39 @@
 open Silica
 
-type event = Answered of (string, Remote.error) result | Retry
-
-module States = struct
-  type _ t = Loading : unit t | Shown : string t | Failed : unit t
-end
-
-module Hello_machine = Machine.Make (States)
+type event = Answered of (string, string) Remote.answer | Retry
+type state = Loading | Shown of string | Failed [@@deriving state_shape]
 
 let machine =
-  Hello_machine.make ~id:"hello"
-    ~init:(Hello_machine.at Loading ())
-    [
-      Hello_machine.state Loading "loading" ~to_:[ Shown; Failed ]
-        ~invoke:
+  Machine.make ~id:"hello" ~init:Loading ~shape:state_shape
+    ~final:(function Shown _ -> true | Loading | Failed -> false)
+    ~owns:(function
+      | Loading ->
           [
-            Source.call Tutorial_api.greeting
-              (fun () -> "Ada")
-              (fun result -> Answered result);
+            Remote.call Tutorial_api.greeting "Ada" (fun answer ->
+                Answered answer
+            );
           ]
-        (fun () -> function
-          | Answered (Ok text) ->
-              Hello_machine.goto Shown text
-          | Answered (Error _) ->
-              Hello_machine.goto Failed ()
-          | Retry ->
-              Hello_machine.unhandled
-          );
-      Hello_machine.state Shown "shown" ~final:true Hello_machine.ignore;
-      Hello_machine.state Failed "failed" ~to_:[ Loading ] (fun () -> function
-        | Retry ->
-            Hello_machine.goto Loading ()
-        | Answered _ ->
-            Hello_machine.unhandled
-        );
-    ]
+      | Shown _ | Failed ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | Loading, Answered (Ok text) ->
+          Go (Shown text)
+      | Loading, Answered (Rejected _ | Failed _) ->
+          Go Failed
+      | Failed, Retry ->
+          Go Loading
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Hello_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Hello_machine.At (Loading, ()) ->
+let view : state -> event Node.t = function
+  | Loading ->
       <p>"Loading."</p>
-  | Hello_machine.At (Shown, text) ->
+  | Shown text ->
       <p>(Node.text text)</p>
-  | Hello_machine.At (Failed, ()) ->
+  | Failed ->
       <div><p>"No answer."</p> <button on_press=Retry>"Try again"</button></div>
 
 let component = Component.make machine view

@@ -4,33 +4,24 @@ open Silica_ui
 type page = { checked : bool; indeterminate : bool; events : string list }
 type event = Changed of bool | Mixed
 
-module States = struct
-  type _ t = Page : page t
-end
-
-module Checkbox_events_machine = Machine.Make (States)
-
 let machine =
-  Checkbox_events_machine.make ~id:"checkbox-events"
-    ~init:
-      (Checkbox_events_machine.at Page
-         { checked = false; indeterminate = false; events = [] }
-      )
-    [
-      Checkbox_events_machine.state Page "page" (fun page -> function
-        | Changed checked ->
-            Checkbox_events_machine.goto Page
-              {
-                checked;
-                indeterminate = false;
-                events = page.events @ [ Printf.sprintf "checked %b" checked ];
-              }
-        | Mixed ->
-            Checkbox_events_machine.goto Page { page with indeterminate = true }
-        );
-    ]
+  Machine.make ~id:"checkbox-events"
+    ~init:{ checked = false; indeterminate = false; events = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed checked ->
+          Go
+            {
+              checked;
+              indeterminate = false;
+              events = page.events @ [ Printf.sprintf "checked %b" checked ];
+            }
+      | Mixed ->
+          Go { page with indeterminate = true }
+    )
 
-let view (Checkbox_events_machine.At (Page, page)) =
+let view page =
   <section class_="flex flex-col gap-4">
     <form id="terms-form" class_="flex flex-col gap-2">
       (Checkbox.make

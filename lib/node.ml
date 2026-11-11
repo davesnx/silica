@@ -19,7 +19,10 @@ type 'e attr =
   | On_reset
   | Rated of Rate.t * 'e attr
 
-type ('s, 'e) component = { machine : ('s, 'e) Machine.t; view : 's -> 'e t }
+type ('p, 's, 'e) component = {
+  machine : ('p, 's, 'e) Machine.t;
+  view : 'p -> 's -> 'e t;
+}
 
 and 'e t =
   | Element of string * 'e attr list * 'e t list
@@ -28,7 +31,7 @@ and 'e t =
   | Keyed of string * 'e t
   | Portal of string option * 'e t list
   | Boundary of 'e boundary
-  | Component : ('s, 'ce, 'e) child -> 'e t
+  | Component : ('p, 's, 'ce, 'e) child -> 'e t
   | Chunk of 'e chunk
 
 and 'e chunk =
@@ -41,10 +44,10 @@ and 'e chunk =
 
 and 'e boundary = { fallback : error -> reset:'e attr -> 'e t; body : 'e t }
 
-and ('s, 'ce, 'e) child = {
+and ('p, 's, 'ce, 'e) child = {
   key : string option;
-  component : ('s, 'ce) component;
-  props : 'ce option;
+  component : ('p, 's, 'ce) component;
+  props : 'p;
   output : 'ce -> 's -> 'e list;
   on_final : 's -> 'e list;
 }
@@ -58,9 +61,12 @@ let keyed k n = Keyed (k, n)
 let portal ?target children = Portal (target, children)
 let boundary ~fallback body = Boundary { fallback; body }
 
-let component ?key ?props ?(output = fun _ _ -> []) ?(on_final = fun _ -> [])
-    component =
+let component_with_props ?key ~props ?(output = fun _ _ -> [])
+    ?(on_final = fun _ -> []) component =
   Component { key; component; props; output; on_final }
+
+let component ?key ?output ?on_final component =
+  component_with_props ?key ~props:() ?output ?on_final component
 
 let chunk chunk ~loading render = Chunk (Chunk_view { chunk; loading; render })
 

@@ -18,12 +18,6 @@ let commands =
       item ~keywords:[ "exit" ] "sign-out" "Sign out";
     ]
 
-module Page_state = struct
-  type _ t = Page : (bool option * string list) t
-end
-
-module Page = Machine.Make (Page_state)
-
 type event =
   | Chose of string
   | Open_menu
@@ -40,21 +34,20 @@ let log_line = function
   | Ran value ->
       "run " ^ value
 
-let page_machine ~id ~invoke =
-  Page.make ~id
-    ~init:(Page.at Page (None, []))
-    [
-      Page.state Page "page" ~invoke (fun (open_, log) event ->
-          let log = log @ [ log_line event ] in
-          match event with
-          | Open_menu ->
-              Page.goto Page (Some true, log)
-          | Changed (opened, _) ->
-              Page.goto Page (Some opened, log)
-          | Chose _ | Ran _ ->
-              Page.goto Page (open_, log)
-      );
-    ]
+let page_machine ~id ~owns =
+  Machine.make ~id ~init:(None, [])
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~owns:(fun _ -> owns)
+    (fun (open_, log) event ->
+      let log = log @ [ log_line event ] in
+      match event with
+      | Open_menu ->
+          Go (Some true, log)
+      | Changed (opened, _) ->
+          Go (Some opened, log)
+      | Chose _ | Ran _ ->
+          Go (open_, log)
+    )
 
 let log_view log =
   Node.element "p"
@@ -62,8 +55,7 @@ let log_view log =
     [ Node.text (String.concat "; " log) ]
 
 let combobox_page =
-  Component.make (page_machine ~id:"combobox-page" ~invoke:[])
-    (fun (Page.At (Page, (_, log))) ->
+  Component.make (page_machine ~id:"combobox-page" ~owns:[]) (fun (_, log) ->
       Node.element "main" []
         [
           log_view log;
@@ -83,8 +75,8 @@ let shortcut =
     ]
 
 let menu_page =
-  Component.make (page_machine ~id:"menu-page" ~invoke:[ shortcut ])
-    (fun (Page.At (Page, (open_, log))) ->
+  Component.make (page_machine ~id:"menu-page" ~owns:[ shortcut ])
+    (fun (open_, log) ->
       Node.element "main" []
         [
           log_view log;

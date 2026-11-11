@@ -2,28 +2,21 @@ open Silica
 
 type party = { adults : int; children : int }
 type event = Adults of int | Children of int
-
-module States = struct
-  type _ t = Party : party t
-end
-
-module Party_machine = Machine.Make (States)
+type state = Party of party [@@deriving state_shape]
 
 let machine =
-  Party_machine.make ~id:"party"
-    ~init:(Party_machine.at Party { adults = 0; children = 0 })
-    [
-      Party_machine.state Party "party" (fun party -> function
-        | Adults adults ->
-            Party_machine.goto Party { party with adults }
-        | Children children ->
-            Party_machine.goto Party { party with children }
-        );
-    ]
+  Machine.make ~id:"party"
+    ~init:(Party { adults = 0; children = 0 })
+    ~shape:state_shape
+    (fun (Party party) event ->
+      match event with
+      | Adults adults ->
+          Go (Party { party with adults })
+      | Children children ->
+          Go (Party { party with children })
+    )
 
-let view
-    (Party_machine.At (Party, { adults; children }) : Party_machine.snapshot) :
-    event Node.t =
+let view (Party { adults; children }) : event Node.t =
   <div>
     <Doc_stepper key="adults" label="Adults" on_change=(fun n -> Adults n) />
     <Doc_stepper

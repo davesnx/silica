@@ -2,32 +2,12 @@ open Silica
 open Silica_ui
 
 type props = { id : string; orientation : Tabs.orientation }
-type page = { props : props; selected : string }
-type event = Props of props | Changed of string
-
-module States = struct
-  type _ t = Idle : unit t | Page : page t
-end
-
-module Tabs_basic_machine = Machine.Make (States)
+type event = Changed of string
 
 let machine =
-  Tabs_basic_machine.make ~id:"tabs-basic"
-    ~init:(Tabs_basic_machine.at Idle ())
-    [
-      Tabs_basic_machine.state Idle "idle" ~to_:[ Page ] (fun () -> function
-        | Props props ->
-            Tabs_basic_machine.goto Page { props; selected = "overview" }
-        | Changed _ ->
-            Tabs_basic_machine.unhandled
-        );
-      Tabs_basic_machine.state Page "page" (fun page -> function
-        | Props props ->
-            Tabs_basic_machine.goto Page { page with props }
-        | Changed selected ->
-            Tabs_basic_machine.goto Page { page with selected }
-        );
-    ]
+  Machine.make_with_props ~id:"tabs-basic" ~init:"overview"
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun _ _ (Changed selected) -> Go selected)
 
 let tabs =
   [
@@ -37,34 +17,30 @@ let tabs =
     Tabs.tab ~value:"members" "Members";
   ]
 
-let view = function
-  | Tabs_basic_machine.At (Idle, ()) ->
-      <div />
-  | Tabs_basic_machine.At (Page, { props = { id; orientation }; selected }) ->
-      let panel value text =
-        Tabs.panel ~class_:Style.tab_panel ~id ~value ~selected
-          [ Node.text text ]
-      in
-      let layout =
-        if orientation = Tabs.Vertical then
-          "flex gap-4"
-        else
-          "flex flex-col"
-      in
-      <div class_=layout>
-        (Tabs.make
-           ~on_value_change:(fun value -> Changed value)
-           (Tabs.props ~id ~orientation ~value:selected ~classes:Style.tabs tabs)
-        )
-        <div>
-          (panel "overview" "What the project is about.")
-          (panel "activity" "The latest changes.")
-          (panel "files" "No files yet.")
-          (panel "members" "Who works on it.")
-        </div>
-      </div>
+let view { id; orientation } selected =
+  let panel value text =
+    Tabs.panel ~class_:Style.tab_panel ~id ~value ~selected [ Node.text text ]
+  in
+  let layout =
+    if orientation = Tabs.Vertical then
+      "flex gap-4"
+    else
+      "flex flex-col"
+  in
+  <div class_=layout>
+    (Tabs.make
+       ~on_value_change:(fun value -> Changed value)
+       (Tabs.props ~id ~orientation ~value:selected ~classes:Style.tabs tabs)
+    )
+    <div>
+      (panel "overview" "What the project is about.")
+      (panel "activity" "The latest changes.")
+      (panel "files" "No files yet.")
+      (panel "members" "Who works on it.")
+    </div>
+  </div>
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let render ~id values =
   let orientation =
@@ -73,4 +49,4 @@ let render ~id values =
     else
       Tabs.Horizontal
   in
-  Component.node ~props:(Props { id; orientation }) component
+  Component.node_with_props ~props:{ id; orientation } component

@@ -126,11 +126,8 @@ let parent_sets_open () =
   Alcotest.(check bool) "a change to Some true reopens" true (popup_shown sim)
 
 let anchor_uses_props () =
-  let sim =
-    Sim.mount
-      ~props:(Filter_popover.Props (props ~open_:true ()))
-      Filter_popover.component
-  in
+  let props = props ~open_:true () in
+  let sim = Sim.mount_with_props ~props filter_popover.component in
   let anchors =
     List.filter_map
       (function
@@ -139,7 +136,7 @@ let anchor_uses_props () =
         | _ ->
             None
         )
-      (Machine.held Filter_popover.machine (Sim.snapshot sim))
+      (Machine.held filter_popover.component.machine props (Sim.snapshot sim))
   in
   Alcotest.(check bool)
     "the popup is anchored to the trigger, on the side from the props" true

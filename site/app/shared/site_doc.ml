@@ -35,6 +35,7 @@ let endpoint =
   Silica.Remote.declare ~path:"/api/doc" ~input:Silica.Codec.string
     ~output:
       (Silica_jsonkit.codec ~to_json:answer_to_json ~of_json:answer_of_json)
+    ~rejected:Silica.Codec.string
 
 let rec plain inlines = String.concat "" (List.map plain_inline inlines)
 

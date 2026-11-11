@@ -41,7 +41,6 @@ type props = {
 type nav = Next | Previous | First | Last | Letter of char  (** Lowercase. *)
 
 type event =
-  | Props of props
   | Trigger_press
   | Open_key of Popup.reason
   | Move of nav
@@ -51,26 +50,19 @@ type event =
           Space ([Item_press]) or by Tab ([Focus_out]). *)
   | Close of Popup.reason
 
-type selection = { props : props; value : string option }
+type state =
+  | Closed of string option  (** The selected value. *)
+  | Open of string option * int option
+      (** The selected value and the position of the highlighted option. *)
 
-module State : sig
-  type _ t =
-    | Idle : unit t
-    | Closed : selection t
-    | Open : (selection * int option) t
-        (** The selection and the position of the highlighted option. *)
-end
-
-type snapshot = At : 'data State.t * 'data -> snapshot
-
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val option_id : string -> int -> string
 (** [option_id id i] is the element id and ref name of the option at position

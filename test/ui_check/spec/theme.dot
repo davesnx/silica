@@ -1,13 +1,9 @@
 digraph "theme" {
 rankdir=LR;
 "theme.__init" [shape=point];
-"theme.__init" -> "theme.idle";
-"theme.idle" [label="idle" shape=box];
-"theme.fixed" [label="fixed" shape=box];
+"theme.__init" -> "theme.system";
 "theme.system" [label="system\nhold media" shape=box];
-"theme.fixed" -> "theme.system" [label="choose system, props system"];
-"theme.idle" -> "theme.fixed" [label="props ocean"];
-"theme.idle" -> "theme.system" [label="props system"];
-"theme.system" -> "theme.fixed" [label="choose high-contrast, choose light, props ocean"];
-"theme.system" -> "theme.system";
+"theme.fixed" [label="fixed" shape=box];
+"theme.fixed" -> "theme.system" [label="choose system, props"];
+"theme.system" -> "theme.fixed" [label="choose high-contrast, choose light, props"];
 }

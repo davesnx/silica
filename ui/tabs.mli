@@ -44,30 +44,20 @@ type props = {
 type move = Next | Previous | First | Last
 
 type event =
-  | Props of props
   | Select of string  (** A press on the tab with this value. *)
   | Move of move  (** A key on the list moves focus. *)
 
-type model = {
-  props : props;
-  selected : string;
-  focused : string;  (** The tab stop. *)
-}
+type model = { selected : string; focused : string  (** The tab stop. *) }
+type state = Ready of model
 
-module State : sig
-  type _ t = Idle : unit t | Ready : model t
-end
-
-type snapshot = At : 'data State.t * 'data -> snapshot
-
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val tab : ?disabled:bool -> value:string -> string -> tab
 (** [tab ~value label]. [disabled] defaults to [false]. *)

@@ -204,7 +204,8 @@ let test_data_apply () =
 
 (* List *)
 
-let mount_list () = Sim.mount Linear_list.component
+let mount_list () =
+  Sim.mount_with_props ~props:Linear_view.default Linear_list.component
 
 let test_list_loading_then_ready () =
   let sim = mount_list () in
@@ -312,13 +313,17 @@ let test_list_reconnect_after_a_failure () =
   Sim.clear_log sim;
   Sim.press sim "Reconnect";
   Alcotest.(check (list string))
-    "the subscription starts again"
+    "the subscription stops, and starts again after a timer"
     [
-      "stop 1.1/issue-list/ready/invoke0";
-      "stop 1.1/issue-list/ready/invoke1";
-      "start 1.2/issue-list/ready/invoke0";
-      "start 1.2/issue-list/ready/invoke1";
+      "stop 1.1/issue-list/ready/live:issues all";
+      "start 1.1/issue-list/ready/after 0ms";
     ]
+    (Sim.log sim);
+  Sim.clear_log sim;
+  Sim.fire sim "1.1/issue-list/ready/after 0ms";
+  Alcotest.(check (list string))
+    "the fired timer is gone; the subscription starts again"
+    [ "start 1.1/issue-list/ready/live:issues all" ]
     (Sim.log sim);
   has "still offline until a state arrives" (Sim.html sim) "Offline";
   Sim.publish sim issues_topic ~key:"all" (ready 1 issues);
@@ -327,7 +332,7 @@ let test_list_reconnect_after_a_failure () =
 (* Detail *)
 
 let mount_detail number =
-  Sim.mount ~props:(Linear_detail.Props number) Linear_detail.component
+  Sim.mount_with_props ~props:number Linear_detail.component
 
 let test_detail () =
   let sim = mount_detail 2 in
@@ -363,31 +368,42 @@ let test_detail_not_found () =
 let test_detail_reconnect_after_a_failure () =
   let sim = mount_detail 2 in
   Sim.answer sim issues_endpoint issues;
+  Sim.answer sim comments_endpoint { Thread.viewer = User.Ada; comments = [] };
   lacks "no reconnect while live" (Sim.html sim) "Reconnect";
+  Sim.press_id sim ~id:"status-picker-trigger";
+  Sim.press_id sim ~id:(Silica_ui.Menu.item_id "status-picker" 3);
+  let saving = Sim.call_inputs sim in
+  Alcotest.(check int) "a change is saving" 1 (List.length saving);
   Sim.publish sim issues_topic ~key:"all" lost;
   has "offline note" (Sim.html sim) "Offline";
   Sim.clear_log sim;
   Sim.press sim "Reconnect";
   Alcotest.(check (list string))
-    "the subscription starts again"
+    "the subscription stops, and starts again after a timer; the save goes on"
     [
-      "stop 1.2/issue-detail/ready/invoke0";
-      "stop 1.2/issue-detail/ready/invoke1";
-      "start 1.3/issue-detail/ready/invoke0";
-      "start 1.3/issue-detail/ready/invoke1";
+      "stop 1.1/issue-detail/ready/live:issues all";
+      "start 1.1/issue-detail/ready/after 0ms";
     ]
     (Sim.log sim);
+  Sim.clear_log sim;
+  Sim.fire sim "1.1/issue-detail/ready/after 0ms";
+  Alcotest.(check (list string))
+    "the fired timer is gone; the subscription starts again"
+    [ "start 1.1/issue-detail/ready/live:issues all" ]
+    (Sim.log sim);
+  Alcotest.(check (list string))
+    "the save was not sent again" saving (Sim.call_inputs sim);
   Sim.publish sim issues_topic ~key:"all" (ready 1 issues);
   lacks "live again" (Sim.html sim) "Offline"
 
 let test_detail_failure_and_new_number () =
-  let sim = mount_detail 1 in
+  let sim = Sim.mount_with_props ~props:1 Linear_detail.component in
   Sim.answer_error sim issues_endpoint (Remote.Network "down");
   has "error" (Sim.html sim) "The network failed";
   Sim.press sim "Try again";
   Sim.answer sim issues_endpoint issues;
   has "ready" (Sim.html sim) "First";
-  Sim.send sim (Linear_detail.Props 3);
+  Sim.set_props sim 3;
   has "reloading for the new number" (Sim.html sim) "Loading issue";
   Sim.answer sim issues_endpoint issues;
   has "third" (Sim.html sim) "Third"
@@ -395,13 +411,16 @@ let test_detail_failure_and_new_number () =
 (* Create *)
 
 let mount_create () =
-  Sim.mount ~props:(Linear_create.Props Linear_routes.list)
-    Linear_create.component
+  Sim.mount_with_props ~props:Linear_routes.list Linear_create.component
 
 let open_create () =
   let sim = mount_create () in
-  Sim.send sim (Linear_create.Props { Linear_routes.list with create = true });
+  Sim.set_props sim { Linear_routes.list with create = true };
   sim
+
+let reopen sim =
+  Sim.set_props sim Linear_routes.list;
+  Sim.set_props sim { Linear_routes.list with create = true }
 
 let test_create_closed () =
   let sim = mount_create () in
@@ -487,21 +506,22 @@ let test_create_cancel () =
   Sim.press sim "Cancel";
   lacks "closed" (Sim.page sim) "role=\"dialog\"";
   Alcotest.(check bool) "replace" true (List.mem "replace /" (Sim.log sim));
-  Sim.send sim (Linear_create.Props { Linear_routes.list with create = true });
+  reopen sim;
+  has "open again" (Sim.page sim) "role=\"dialog\"";
   lacks "a new dialog has no old draft" (Sim.page sim) "Draft"
 
 let test_create_escape_and_outside () =
   let sim = open_create () in
   Alcotest.(check bool) "escape is bound" true (Sim.escape sim);
   lacks "escape closes" (Sim.page sim) "role=\"dialog\"";
-  Sim.send sim (Linear_create.Props { Linear_routes.list with create = true });
+  reopen sim;
   Sim.outside_press sim;
   lacks "outside press closes" (Sim.page sim) "role=\"dialog\""
 
 let test_create_follows_url () =
   let sim = open_create () in
   Sim.clear_log sim;
-  Sim.send sim (Linear_create.Props Linear_routes.list);
+  Sim.set_props sim Linear_routes.list;
   lacks "closed by the url" (Sim.page sim) "role=\"dialog\"";
   Alcotest.(check bool)
     "no second navigation" false
@@ -521,7 +541,7 @@ let test_create_cannot_be_cancelled_while_sending () =
   Alcotest.(check bool)
     "no navigation" false
     (List.mem "replace /" (Sim.log sim));
-  Sim.send sim (Linear_create.Props Linear_routes.list);
+  Sim.set_props sim Linear_routes.list;
   has "the url does not cancel a call in flight" (Sim.page sim) "Creating..."
 
 (* The app *)
@@ -574,41 +594,28 @@ let test_app_not_found () =
   has "message" (Sim.html sim) "There is nothing at this address.";
   let routes_status =
     Linear_app.status
-      (Linear_routes.Router.parse Linear_routes.routes (Url.of_string "/nowhere")
-      )
+      (Router.parse Linear_routes.routes (Url.of_string "/nowhere"))
   in
   Alcotest.(check int) "404" 404 routes_status;
   Alcotest.(check int)
     "200" 200
     (Linear_app.status
-       (Linear_routes.Router.parse Linear_routes.routes
-          (Url.of_string "/issue/1")
-       )
+       (Router.parse Linear_routes.routes (Url.of_string "/issue/1"))
     )
 
 let test_routes_print () =
-  let print state data =
-    Url.to_string
-      (Linear_routes.Router.print Linear_routes.routes
-         (Linear_routes.Router.At (state, data))
-      )
-  in
+  let print route = Url.to_string (Router.print Linear_routes.routes route) in
   Alcotest.(check string)
     "list" "/"
-    (print Linear_routes.State.Issues Linear_routes.list);
+    (print (Linear_routes.Issues Linear_routes.list));
   Alcotest.(check string)
     "create flag" "/?new=true"
-    (print Linear_routes.State.Issues { Linear_routes.list with create = true });
-  Alcotest.(check string)
-    "issue" "/issue/12"
-    (print Linear_routes.State.Issue 12);
+    (print (Linear_routes.Issues { Linear_routes.list with create = true }));
+  Alcotest.(check string) "issue" "/issue/12" (print (Linear_routes.Issue 12));
   Alcotest.(check bool)
     "a bad flag falls back to the default" true
-    ( match
-        Linear_routes.Router.parse Linear_routes.routes
-          (Url.of_string "/?new=maybe")
-      with
-    | Linear_routes.Router.At (Linear_routes.State.Issues, q) ->
+    ( match Router.parse Linear_routes.routes (Url.of_string "/?new=maybe") with
+    | Linear_routes.Issues q ->
         q = Linear_routes.list
     | _ ->
         false

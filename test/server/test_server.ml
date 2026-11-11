@@ -118,8 +118,8 @@ let protocol_tests =
           )
     );
     test_case "timers, calls and stops are not host actions" `Quick (fun () ->
-        let start, _ = Machine.start machine in
-        let mixing, entered, _ = Machine.send machine start Mixed in
+        let start, _ = Machine.start machine () in
+        let mixing, entered, _ = Machine.step machine () start Mixed in
         check int "focus, navigate, timer, call" 4 (List.length entered);
         check
           (list (option host_testable))
@@ -131,7 +131,7 @@ let protocol_tests =
             None;
           ]
           (List.map Protocol.host_of_host_action entered);
-        let _, left, _ = Machine.send machine mixing Cancel_later in
+        let _, left, _ = Machine.step machine () mixing Cancel_later in
         check
           (list (option host_testable))
           "stops are not actions" [ None; None ]
@@ -179,14 +179,13 @@ let page_tests =
     );
     test_case "an island is filled with the first view of its component" `Quick
       (fun () ->
-        let shell : (int, ev) Component.t =
-          {
-            machine =
-              Silica_test_support.Simple.machine ~id:"shell" ~init:0 (fun _ _ ->
-                  None
-              );
-            view = (fun _ -> Node.element "main" [] [ Live.slot live ]);
-          }
+        let shell : (unit, int, ev) Component.t =
+          Component.make
+            (Silica_test_support.Simple.machine ~id:"shell" ~init:0 (fun _ _ ->
+                 None
+             )
+            )
+            (fun _ -> Node.element "main" [] [ Live.slot live ])
         in
         let render ?islands () =
           (Server.render_page
@@ -371,10 +370,28 @@ let live_tests =
           [ (0, []); (1, []); (2, []); (3, []); (3, []); (6, []) ]
           (states r)
     );
-    test_case "failed handler becomes an error result" `Quick (fun () ->
+    test_case "a handler error reaches the machine as Rejected" `Quick
+      (fun () ->
         let r = start () in
         send r Boom;
         flush ();
+        check states_t "rejected kaput" [ (0, []); (0, []); (-5, []) ] (states r)
+    );
+    test_case "a handler exception becomes a failure" `Quick (fun () ->
+        let r =
+          start
+            ~handlers:
+              [
+                Server.implement boom (fun _ _ -> failwith "inside the handler");
+              ]
+            ()
+        in
+        ignore
+          (capture_stderr (fun () ->
+               send r Boom;
+               flush ()
+           )
+          );
         check states_t "failed" [ (0, []); (0, []); (-1, []) ] (states r)
     );
     test_case "call to an unimplemented endpoint becomes an error result" `Quick

@@ -4,92 +4,75 @@ open Linear_model
 type props = { comment : Comment.t; own : bool }
 
 type event =
-  | Props of props
   | Edit
   | Typed of string
   | Save
   | Cancel
-  | Saved of (Comment.t, Remote.error) result
+  | Saved of (Comment.t, string) Remote.answer
 
-type editing = { props : props; draft : string; error : string option }
+type editing = { draft : string; error : string option }
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Viewing : props t
-    | Editing : editing t
-    | Saving : (props * string) t
-end
-
-module Comment_machine = Machine.Make (States)
+type state =
+  | Viewing
+  | Editing of editing
+  | Saving of string
+  | Edited of Comment.t
+[@@deriving state_shape]
 
 let input_ref id = Ref.make ("comment-" ^ string_of_int id ^ "-input")
 
-let editing props draft error =
-  Comment_machine.goto Editing { props; draft; error }
-    ~actions:[ Action.Focus (input_ref props.comment.id) ]
+let editing (props : props) draft error : (state, event) Machine.next =
+  Go_with
+    (Editing { draft; error }, [ Action.Focus (input_ref props.comment.id) ])
 
 let machine =
-  Comment_machine.make ~id:"comment"
-    ~init:(Comment_machine.at Idle ())
-    [
-      Comment_machine.state Idle "idle" ~to_:[ Viewing ] (fun () -> function
-        | Props props ->
-            Comment_machine.goto Viewing props
-        | _ ->
-            Comment_machine.unhandled
-        );
-      Comment_machine.state Viewing "viewing" ~to_:[ Editing ]
-        (fun props -> function
-        | Props props ->
-            Comment_machine.goto Viewing props
-        | Edit when props.own ->
-            editing props props.comment.body None
-        | _ ->
-            Comment_machine.unhandled
-        );
-      Comment_machine.state Editing "editing" ~to_:[ Saving; Viewing ]
-        (fun e -> function
-        | Props props when not props.own ->
-            Comment_machine.goto Viewing props
-        | Props props ->
-            Comment_machine.goto Editing { e with props }
-        | Typed draft ->
-            Comment_machine.goto Editing { e with draft; error = None }
-        | Save -> (
-            match Comment.check e.draft with
-            | Ok body ->
-                Comment_machine.goto Saving (e.props, body)
-            | Error message ->
-                Comment_machine.goto Editing { e with error = Some message }
-          )
-        | Cancel ->
-            Comment_machine.goto Viewing e.props
-        | _ ->
-            Comment_machine.unhandled
-        );
-      Comment_machine.state Saving "saving" ~to_:[ Viewing; Editing ]
-        ~invoke:
+  Machine.make_with_props ~id:"comment" ~init:Viewing ~shape:state_shape
+    ~owns:(fun props -> function
+      | Saving body ->
           [
-            Source.call edit_comment_endpoint
-              (fun ((props : props), body) ->
-                { Comment_edit.id = props.comment.id; body }
-              )
-              (fun r -> Saved r);
+            Remote.call edit_comment_endpoint
+              { Comment_edit.id = props.comment.id; body } (fun answer ->
+                Saved answer
+            );
           ]
-        (fun (props, body) -> function
-          | Props props when not props.own ->
-              Comment_machine.goto Viewing props
-          | Props props ->
-              Comment_machine.goto Saving (props, body)
-          | Saved (Ok comment) ->
-              Comment_machine.goto Viewing { props with comment }
-          | Saved (Error _) ->
-              editing props body (Some "Could not save the comment. Try again.")
-          | _ ->
-              Comment_machine.unhandled
-          );
-    ]
+      | Viewing | Editing _ | Edited _ ->
+          []
+      )
+    ~on_props:(fun _ props state ->
+      match state with
+      | Edited _ ->
+          Go Viewing
+      | (Editing _ | Saving _) when not props.own ->
+          Go Viewing
+      | Viewing | Editing _ | Saving _ ->
+          Ignore
+    )
+    (fun props state event ->
+      match (state, event) with
+      | Viewing, Edit when props.own ->
+          editing props props.comment.body None
+      | Edited comment, Edit when props.own ->
+          editing props comment.body None
+      | Editing _, Typed draft ->
+          Go (Editing { draft; error = None })
+      | Editing e, Save -> (
+          match Comment.check e.draft with
+          | Ok body ->
+              Go (Saving body)
+          | Error message ->
+              Go (Editing { e with error = Some message })
+        )
+      | Editing _, Cancel ->
+          Go Viewing
+      | Saving _, Saved (Ok comment) ->
+          Go (Edited comment)
+      | Saving body, Saved (Rejected message) ->
+          editing props body (Some message)
+      | Saving body, Saved (Failed _) ->
+          editing props body (Some "Could not save the comment. Try again.")
+      | _ ->
+          Ignore
+    )
 
 let text = Node.text
 
@@ -164,37 +147,39 @@ let editor ~busy (props : props) draft error =
     </div>
   </div>
 
-let view (snapshot : Comment_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Comment_machine.At (Idle, ()) ->
-      Node.list []
-  | Comment_machine.At (Viewing, props) ->
-      let id = base props.comment.id in
-      <li id class_="border-b border-ui-border py-2">
-        (header props.comment)
-        <p class_="whitespace-pre-wrap">(text props.comment.body)</p>
-        ( if props.own then
-            <button
-              id=(id ^ "-edit")
-              type_=`button
-              class_="text-xs text-ui-muted underline"
-              on_press=Edit>
-              "Edit"
-            </button>
-          else
-            Node.list []
-        )
+let shown (props : props) (comment : Comment.t) =
+  let id = base comment.id in
+  <li id class_="border-b border-ui-border py-2">
+    (header comment)
+    <p class_="whitespace-pre-wrap">(text comment.body)</p>
+    ( if props.own then
+        <button
+          id=(id ^ "-edit")
+          type_=`button
+          class_="text-xs text-ui-muted underline"
+          on_press=Edit>
+          "Edit"
+        </button>
+      else
+        Node.list []
+    )
+  </li>
+
+let view (props : props) : state -> event Node.t = function
+  | Viewing ->
+      shown props props.comment
+  | Edited comment ->
+      shown props comment
+  | Editing e ->
+      <li id=(base props.comment.id) class_="py-2">
+        (header props.comment) (editor ~busy:false props e.draft e.error)
       </li>
-  | Comment_machine.At (Editing, e) ->
-      <li id=(base e.props.comment.id) class_="py-2">
-        (header e.props.comment) (editor ~busy:false e.props e.draft e.error)
-      </li>
-  | Comment_machine.At (Saving, (props, body)) ->
+  | Saving body ->
       <li id=(base props.comment.id) class_="py-2">
         (header props.comment) (editor ~busy:true props body None)
       </li>
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let make ?key ~comment ~own () =
-  Component.node ?key ~props:(Props { comment; own }) component
+  Component.node_with_props ?key ~props:{ comment; own } component

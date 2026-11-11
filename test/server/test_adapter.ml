@@ -269,16 +269,18 @@ let state_int = function
 
 let append =
   Live.declare ~channel:"append" ~state:Codec.string ~event:Codec.string
-    {
-      Component.machine =
-        Silica_test_support.Simple.machine ~id:"append" ~init:"" (fun s e ->
+    (Component.make
+       (Silica_test_support.Simple.machine ~id:"append" ~init:"" (fun s e ->
             Some (s ^ e, [])
-        );
-      view = (fun s -> Node.text s);
-    }
+        )
+       )
+       (fun s -> Node.text s)
+    )
 
 let counts_topic = Topic.declare ~name:"counts" ~state:Codec.int
-let bump = Remote.declare ~path:"/api/bump" ~input:Codec.int ~output:Codec.int
+let bump =
+  Remote.declare ~path:"/api/bump" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
 let secret = "0123456789abcdef0123"
 
 let metafile =
@@ -329,8 +331,7 @@ let with_server f =
       ~page:(fun (page : Server.page) ->
         Server.render_page_settled app ~status
           ~scripts:[ page.asset "app.js" ]
-          ~csrf:page.csrf ~nonce:page.nonce ~islands ~handlers
-          ~context:page.context page.url
+          page
       )
       ()
   in
@@ -479,8 +480,8 @@ let http_tests port =
         check int "form" 415
           (post ~content_type:"text/plain" v "/api/double" "21").status;
         let r = post v "/api/boom" "1" in
-        check int "handler error" 500 r.status;
-        check string "fixed body" "internal error" r.body;
+        check int "handler error" 422 r.status;
+        check string "encoded rejection" {|"kaput"|} r.body;
         check int "no cookie, no token" 403
           (http port "POST" "/api/double" "21"
              ~headers:

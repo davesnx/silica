@@ -1,18 +1,15 @@
 digraph "item" {
 rankdir=LR;
 "item.__init" [shape=point];
-"item.__init" -> "item.idle";
-"item.idle" [label="idle" shape=box];
+"item.__init" -> "item.loading";
 "item.loading" [label="loading\ninvoke /api/item" shape=box];
-"item.loaded" [label="loaded" shape=box];
 "item.failed" [label="failed" shape=box];
-"item.failed" -> "item.failed";
+"item.loaded" [label="loaded" shape=box];
+"item.missing" [label="missing" shape=box];
 "item.failed" -> "item.loading" [label="props"];
-"item.idle" -> "item.idle";
-"item.idle" -> "item.loading" [label="props"];
-"item.loaded" -> "item.loaded";
 "item.loaded" -> "item.loading" [label="props"];
 "item.loading" -> "item.failed" [label="settled error"];
 "item.loading" -> "item.loaded" [label="settled ok"];
-"item.loading" -> "item.loading" [label="props"];
+"item.loading" -> "item.missing" [label="settled rejected"];
+"item.missing" -> "item.loading" [label="props"];
 }

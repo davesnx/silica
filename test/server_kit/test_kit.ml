@@ -544,6 +544,64 @@ let test_store_threads () =
   List.iter Domain.join domains;
   Alcotest.(check int) "all stored" 2000 (Session_store.count store)
 
+let counter (s : Session_store.session) =
+  match List.assoc_opt "n" s.data with Some n -> int_of_string n | None -> 0
+
+let bump (s : Session_store.session) =
+  { s with data = [ ("n", string_of_int (counter s + 1)) ] }
+
+let test_store_update () =
+  let store = Session_store.create ~idle:10. () in
+  Alcotest.(check bool)
+    "absent: none" true
+    (Session_store.update store ~now:0. "a" bump = None);
+  Alcotest.(check int) "absent: nothing stored" 0 (Session_store.count store);
+  Session_store.set store (session ~last_seen:0. "a");
+  ( match Session_store.update store ~now:1. "a" bump with
+  | Some s ->
+      Alcotest.(check int) "the new value" 1 (counter s)
+  | None ->
+      Alcotest.fail "expected the updated session"
+  );
+  Alcotest.(check (option int))
+    "stored" (Some 1)
+    (Option.map counter (Session_store.get store ~now:1. "a"));
+  ( match
+      Session_store.update store ~now:1. "a" (fun s ->
+          { (bump s) with id = "b" }
+      )
+    with
+  | Some s ->
+      Alcotest.(check string) "the id is kept" "a" s.id
+  | None ->
+      Alcotest.fail "expected the updated session"
+  );
+  Alcotest.(check bool)
+    "no session b" true
+    (Session_store.get store ~now:1. "b" = None);
+  Alcotest.(check bool)
+    "expired: none" true
+    (Session_store.update store ~now:100. "a" bump = None);
+  let ops = Session_store.ops (Session_store.create ()) in
+  ops.set (session "c");
+  Alcotest.(check (option int))
+    "through ops" (Some 1)
+    (Option.map counter (ops.update ~now:0. "c" bump))
+
+let test_store_update_is_atomic () =
+  let store = Session_store.create () in
+  Session_store.set store (session "shared");
+  let worker () =
+    for _ = 1 to 500 do
+      ignore (Session_store.update store ~now:0. "shared" bump)
+    done
+  in
+  let domains = List.init 4 (fun _ -> Domain.spawn worker) in
+  List.iter Domain.join domains;
+  Alcotest.(check (option int))
+    "no update is lost" (Some 2000)
+    (Option.map counter (Session_store.get store ~now:0. "shared"))
+
 let test_csrf () =
   let secret = "s3cret" in
   let token = Csrf.token ~secret ~session:"sess-1" in
@@ -612,6 +670,9 @@ let () =
           Alcotest.test_case "cap" `Quick test_store_cap;
           Alcotest.test_case "ops" `Quick test_store_ops;
           Alcotest.test_case "domains" `Quick test_store_threads;
+          Alcotest.test_case "update" `Quick test_store_update;
+          Alcotest.test_case "update is atomic across domains" `Quick
+            test_store_update_is_atomic;
         ]
       );
       ("csrf", [ Alcotest.test_case "tokens" `Quick test_csrf ]);

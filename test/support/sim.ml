@@ -6,6 +6,7 @@ type call = {
   input : string;
   timeout_ms : int option;
   respond : string -> unit;
+  reject : string -> unit;
   fail : Remote.error -> unit;
 }
 
@@ -18,8 +19,15 @@ type subscription =
     }
       -> subscription
 
-type ('s, 'e) t = {
-  tree : ('s, 'e) Instance.t;
+type ('p, 's, 'e) t = {
+  tree_set_props : 'p -> unit;
+  update :
+    Instance.message option ->
+    Instance.message Node.t * Instance.message Action.host list;
+  tree_snapshot : unit -> 's;
+  tree_count : unit -> int;
+  tree_message : 'e -> Instance.message;
+  tree_unmount : unit -> Instance.message Action.host list;
   mutable node : Instance.message Node.t;
   mutable timers : (string * Instance.message) list;
   mutable calls : call list;
@@ -61,11 +69,19 @@ let rec apply t actions =
                 (fun wire ->
                   match Codec.of_string (Remote.output endpoint) wire with
                   | Ok value ->
-                      deliver t (on_result (Ok value))
+                      deliver t (on_result (Remote.Ok value))
                   | Error message ->
                       failwith message
                 );
-              fail = (fun error -> deliver t (on_result (Error error)));
+              reject =
+                (fun wire ->
+                  match Codec.of_string (Remote.rejected endpoint) wire with
+                  | Ok value ->
+                      deliver t (on_result (Remote.Rejected value))
+                  | Error message ->
+                      failwith message
+                );
+              fail = (fun error -> deliver t (on_result (Remote.Failed error)));
             }
           in
           t.calls <- call :: List.filter (fun c -> c.id <> id) t.calls;
@@ -136,15 +152,22 @@ let rec apply t actions =
     actions
 
 and deliver t message =
-  let node, actions = Instance.update t.tree (Some message) in
+  let node, actions = t.update (Some message) in
   t.node <- node;
   apply t actions
 
-let mount ?dev ?props component =
-  let tree = Instance.mount ?dev ~on_error:(fun _ _ -> ()) ?props component in
+let mount_with_props ?dev ~props component =
+  let tree =
+    Instance.mount_with_props ?dev ~on_error:(fun _ _ -> ()) ~props component
+  in
   let t =
     {
-      tree;
+      tree_set_props = Instance.set_props tree;
+      update = Instance.update tree;
+      tree_snapshot = (fun () -> Instance.snapshot tree);
+      tree_count = (fun () -> Instance.count tree);
+      tree_message = Instance.message tree;
+      tree_unmount = (fun () -> Instance.unmount tree);
       node = Node.text "";
       timers = [];
       calls = [];
@@ -154,11 +177,12 @@ let mount ?dev ?props component =
       log = [];
     }
   in
-  let node, actions = Instance.update tree None in
+  let node, actions = t.update None in
   t.node <- node;
   apply t actions;
   t
 
+let mount ?dev component = mount_with_props ?dev ~props:() component
 let node t = t.node
 
 let html t = Render.to_string t.node
@@ -181,9 +205,15 @@ let rec inline_portals node =
       node
 
 let page t = Render.to_string (inline_portals t.node)
-let snapshot t = Instance.snapshot t.tree
-let count t = Instance.count t.tree
-let send t event = deliver t (Instance.message t.tree event)
+let snapshot t = t.tree_snapshot ()
+let count t = t.tree_count ()
+let send t event = deliver t (t.tree_message event)
+
+let set_props t props =
+  t.tree_set_props props;
+  let node, actions = t.update None in
+  t.node <- node;
+  apply t actions
 
 let rec find f node =
   match Node.view node with
@@ -469,6 +499,10 @@ let answer t endpoint value =
   let call = find_call t endpoint in
   call.respond (Codec.to_string (Remote.output endpoint) value)
 
+let reject t endpoint value =
+  let call = find_call t endpoint in
+  call.reject (Codec.to_string (Remote.rejected endpoint) value)
+
 let answer_error t endpoint error = (find_call t endpoint).fail error
 
 let call_timeouts t = List.rev_map (fun c -> c.timeout_ms) t.calls
@@ -484,7 +518,7 @@ let call_inputs t = List.rev_map (fun c -> c.input) t.calls
 let log t = List.rev t.log
 let clear_log t = t.log <- []
 
-let unmount t = apply t (Instance.unmount t.tree)
+let unmount t = apply t (t.tree_unmount ())
 
 let subscriptions t =
   List.rev_map

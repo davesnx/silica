@@ -36,10 +36,13 @@ type 'e attr =
       (** The wrapped event handler is rate limited (see {!Rate}): [run] still
           sees every payload at once, and the event it returns is held back. *)
 
-type ('s, 'e) component = { machine : ('s, 'e) Machine.t; view : 's -> 'e t }
-(** A machine together with the view of its states. Define it once, at the top
-    level: a rendered component is the same one as before when its [machine] is
-    physically equal to the earlier one. *)
+type ('p, 's, 'e) component = {
+  machine : ('p, 's, 'e) Machine.t;
+  view : 'p -> 's -> 'e t;
+}
+(** A machine together with the view of its props and states. Define it once, at
+    the top level. A rendered component is the same one as before when it is at
+    the same place and its machine has the same {!Machine.id} and types. *)
 
 and 'e t =
   | Element of string * 'e attr list * 'e t list
@@ -54,7 +57,7 @@ and 'e t =
           the nearest element above the node that has one, so the children keep
           the theme of their place (see [Silica_ui.Theme.scope]). *)
   | Boundary of 'e boundary
-  | Component : ('s, 'ce, 'e) child -> 'e t
+  | Component : ('p, 's, 'ce, 'e) child -> 'e t
   | Chunk of 'e chunk
 
 and 'e chunk =
@@ -75,19 +78,19 @@ and 'e boundary = { fallback : error -> reset:'e attr -> 'e t; body : 'e t }
     renders [body] again, and the components under it start from their initial
     state. An exception in [fallback] goes to the next boundary above. *)
 
-and ('s, 'ce, 'e) child = {
+and ('p, 's, 'ce, 'e) child = {
   key : string option;
-  component : ('s, 'ce) component;
-  props : 'ce option;
+  component : ('p, 's, 'ce) component;
+  props : 'p;
   output : 'ce -> 's -> 'e list;
   on_final : 's -> 'e list;
 }
 (** A component node in the view of a parent whose events are ['e]. The child
-    machine has snapshots ['s] and events ['ce]. [props] is an event that
-    carries the props: the host sends it to the child machine right after the
-    start and again each time it changes (compared with [=]). [output] turns
-    each event the child handled, with the snapshot after it, into events for
-    the parent: this is how function props reach the parent. [on_final] does the
+    machine has props ['p], snapshots ['s] and events ['ce]. The host gives
+    [props] to the child machine at its start and again each time they change
+    (compared with [=]; see {!Machine.make_with_props}). [output] turns each
+    event the child handled, with the snapshot after it, into events for the
+    parent: this is how function props reach the parent. [on_final] does the
     same once, at the moment the child machine enters a final state (at its
     start or by a step); the parent gets the events at once, after the handler
     that caused it. *)
@@ -114,13 +117,21 @@ val boundary : fallback:(error -> reset:'e attr -> 'e t) -> 'e t -> 'e t
 
 val component :
   ?key:string ->
-  ?props:'ce ->
   ?output:('ce -> 's -> 'e list) ->
   ?on_final:('s -> 'e list) ->
-  ('s, 'ce) component ->
+  (unit, 's, 'ce) component ->
   'e t
-(** A component node. [key] keeps the component through reordering. Without
-    [output] the parent hears nothing. *)
+(** A component node for a component with no props. [key] keeps the component
+    through reordering. Without [output] the parent hears nothing. *)
+
+val component_with_props :
+  ?key:string ->
+  props:'p ->
+  ?output:('ce -> 's -> 'e list) ->
+  ?on_final:('s -> 'e list) ->
+  ('p, 's, 'ce) component ->
+  'e t
+(** Like {!val-component}, for a component with props. *)
 
 val chunk : 'a Chunk.t -> loading:'e t -> ('a -> 'e t) -> 'e t
 (** [chunk c ~loading render] shows [render value] once the value of [c] is

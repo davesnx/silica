@@ -109,8 +109,7 @@ let () =
       ~page:(fun (page : Server.page) ->
         Server.render_page_settled Example_app.app ~status:Example_app.status
           ~scripts:[ page.asset "client_main.js" ]
-          ~csrf:page.csrf ~nonce:page.nonce ~islands ~handlers
-          ~context:page.context page.url
+          page
       )
       ()
   in

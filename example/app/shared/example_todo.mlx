@@ -7,81 +7,73 @@ type event = Draft of string | Add | Toggle of int | Delete of int
 let init = { todos = []; draft = ""; next_id = 1 }
 let input_ref = Ref.make "todo-input"
 
-module States = struct
-  type _ t = Todo : state t
-end
-
-module Todo_machine = Machine.Make (States)
-
-let machine : (state, event) Machine.t =
-  let table =
-    Todo_machine.make ~id:"todo"
-      ~init:(Todo_machine.at Todo init)
-      [
-        Todo_machine.state Todo "todo" (fun s e ->
-            match e with
-            | Draft draft ->
-                Todo_machine.goto Todo { s with draft }
-            | Add when String.trim s.draft = "" ->
-                Todo_machine.stay [ Action.Focus input_ref ]
-            | Add ->
-                let todo =
-                  {
-                    id = s.next_id;
-                    text = String.trim s.draft;
-                    completed = false;
-                  }
-                in
-                Todo_machine.goto Todo ~actions:[ Action.Focus input_ref ]
-                  {
-                    todos = s.todos @ [ todo ];
-                    draft = "";
-                    next_id = s.next_id + 1;
-                  }
-            | Toggle id ->
-                let flip t =
-                  if t.id = id then
-                    { t with completed = not t.completed }
-                  else
-                    t
-                in
-                Todo_machine.goto Todo { s with todos = List.map flip s.todos }
-            | Delete id ->
-                Todo_machine.goto Todo
-                  { s with todos = List.filter (fun t -> t.id <> id) s.todos }
-        );
-      ]
-  in
-  Machine.map_snapshot table
-    ~get:(fun (Todo_machine.At (Todo, s) : Todo_machine.snapshot) : state -> s)
-    ~set:(fun s -> Todo_machine.at Todo s)
+let machine =
+  Machine.make ~id:"todo" ~init
+    ~shape:(Machine.shape ~name:(fun _ -> "todo") ~names:[ "todo" ] ())
+    (fun state event ->
+      match event with
+      | Draft draft ->
+          Go { state with draft }
+      | Add when String.trim state.draft = "" ->
+          Stay [ Action.Focus input_ref ]
+      | Add ->
+          let todo =
+            {
+              id = state.next_id;
+              text = String.trim state.draft;
+              completed = false;
+            }
+          in
+          Go_with
+            ( {
+                todos = state.todos @ [ todo ];
+                draft = "";
+                next_id = state.next_id + 1;
+              },
+              [ Action.Focus input_ref ]
+            )
+      | Toggle id ->
+          let flip todo =
+            if todo.id = id then
+              { todo with completed = not todo.completed }
+            else
+              todo
+          in
+          Go { state with todos = List.map flip state.todos }
+      | Delete id ->
+          Go
+            {
+              state with
+              todos = List.filter (fun todo -> todo.id <> id) state.todos;
+            }
+    )
 
 let text = Node.text
 
-let row t =
-  Node.keyed (string_of_int t.id)
+let row todo =
+  Node.keyed (string_of_int todo.id)
     <li>
       <button
-        class_=( if t.completed then
+        class_=( if todo.completed then
                    "todo done"
                  else
                    "todo"
                )
-        on_press=(Toggle t.id)
-        on_double_press=(Delete t.id)>
+        on_press=(Toggle todo.id)
+        on_double_press=(Delete todo.id)>
         (text
-           (( if t.completed then
+           (( if todo.completed then
                 "[x] "
               else
                 "[ ] "
             )
-           ^ t.text
+           ^ todo.text
            )
         )
       </button>
     </li>
 
-let view (s : state) : event Node.t =
+let view (state : state) : event Node.t =
   <section>
     <h2>"Todos"</h2>
     <p>"Press a todo to toggle it, double press to delete it."</p>
@@ -89,14 +81,14 @@ let view (s : state) : event Node.t =
       <input
         ref=input_ref
         type_=`text
-        value=s.draft
+        value=state.draft
         placeholder="What needs doing?"
         aria_label="New todo"
         on_input=(fun v -> Draft v)
       />
       <button type_=`submit>"Add"</button>
     </form>
-    <ul>(Node.list (List.map row s.todos))</ul>
+    <ul>(Node.list (List.map row state.todos))</ul>
   </section>
 
 let component = Component.make machine view

@@ -48,7 +48,7 @@ let fail t fatal =
     ( match fatal with
     | Close_code code when code = Protocol.close_session ->
         t.io.session_gone ()
-    | _ ->
+    | Close_code _ | Server_error _ ->
         ()
     );
     t.on_fatal fatal

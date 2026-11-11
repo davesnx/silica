@@ -7,7 +7,7 @@
  (module_systems
   (esm mjs))
  (preprocess
-  (pps melange.ppx))
+  (pps silica.ppx melange.ppx))
  (libraries
   silica
   silica.browser

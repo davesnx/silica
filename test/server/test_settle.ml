@@ -45,51 +45,51 @@ let check_absent message s sub =
 
 let double =
   Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
+
 let triple =
   Remote.declare ~path:"/api/triple" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
 
 module Lookup = struct
-  type event = Answered of (int, Remote.error) result
-
-  module States = struct
-    type _ t = Loading : int t | Ready : int t | Failed : string t
-  end
-
-  module Lookup_machine = Machine.Make (States)
+  type event = Answered of (int, string) Remote.answer
+  type state = Loading of int | Ready of int | Failed of string
+  [@@deriving state_shape]
 
   let machine ~id ~endpoint ~input =
-    let to_ = Lookup_machine.[ States.Ready; States.Failed ] in
-    Lookup_machine.make ~id
-      ~init:(Lookup_machine.at States.Loading input)
-      [
-        Lookup_machine.state States.Loading "loading" ~to_
-          ~entry:(fun _ -> [ Action.Set_title "loading" ])
-          ~invoke:
-            [
-              Source.call endpoint (fun n -> n) (fun result -> Answered result);
-            ]
-          (fun _ -> function
-            | Answered (Ok n) ->
-                Lookup_machine.goto States.Ready n
-            | Answered (Error _) ->
-                Lookup_machine.goto States.Failed "failed"
-            );
-        Lookup_machine.state States.Ready "ready"
-          ~entry:(fun n -> [ Action.Set_title (Printf.sprintf "ready %d" n) ])
-          Lookup_machine.ignore;
-        Lookup_machine.state States.Failed "failed" Lookup_machine.ignore;
-      ]
+    Machine.make ~id ~init:(Loading input) ~shape:state_shape
+      ~entry:(function
+        | Loading _ ->
+            [ Action.Set_title "loading" ]
+        | Ready n ->
+            [ Action.Set_title (Printf.sprintf "ready %d" n) ]
+        | Failed _ ->
+            []
+        )
+      ~owns:(function
+        | Loading n ->
+            [ Remote.call endpoint n (fun answer -> Answered answer) ]
+        | Ready _ | Failed _ ->
+            []
+        )
+      (fun state (Answered answer) ->
+        match (state, answer) with
+        | Loading _, Remote.Ok n ->
+            Machine.Go (Ready n)
+        | Loading _, (Remote.Rejected _ | Remote.Failed _) ->
+            Machine.Go (Failed "failed")
+        | (Ready _ | Failed _), _ ->
+            Machine.Ignore
+      )
 
-  let view id (Lookup_machine.At (state, data) : Lookup_machine.snapshot) :
-      event Node.t =
-    match state with
-    | States.Loading ->
+  let view id : state -> event Node.t = function
+    | Loading n ->
         Node.element "p" []
-          [ Node.text (id ^ " loading"); Node.text (string_of_int data) ]
-    | States.Ready ->
-        Node.element "p" [] [ Node.text (Printf.sprintf "%s ready %d" id data) ]
-    | States.Failed ->
-        Node.element "p" [] [ Node.text (id ^ " " ^ data) ]
+          [ Node.text (id ^ " loading"); Node.text (string_of_int n) ]
+    | Ready n ->
+        Node.element "p" [] [ Node.text (Printf.sprintf "%s ready %d" id n) ]
+    | Failed text ->
+        Node.element "p" [] [ Node.text (id ^ " " ^ text) ]
 
   let component ~id ~endpoint ~input =
     Component.make (machine ~id ~endpoint ~input) (view id)
@@ -97,17 +97,12 @@ end
 
 module Page = struct
   type event = Nothing
-
-  module States = struct
-    type _ t = Page : unit t
-  end
-
-  module Page_machine = Machine.Make (States)
+  type state = Page [@@deriving state_shape]
 
   let machine =
-    Page_machine.make ~id:"page"
-      ~init:(Page_machine.at States.Page ())
-      [ Page_machine.state States.Page "page" Page_machine.ignore ]
+    Machine.make ~id:"page" ~init:Page ~shape:state_shape (fun Page Nothing ->
+        Machine.Ignore
+    )
 
   let first = Lookup.component ~id:"first" ~endpoint:double ~input:4
   let second = Lookup.component ~id:"second" ~endpoint:triple ~input:5
@@ -155,12 +150,24 @@ let handlers ~calls =
     );
   ]
 
+let page ?(csrf = "") ?(nonce = "") ?(islands = []) ?(url = "/") handlers :
+    Server.page =
+  {
+    context;
+    url = Url.of_string url;
+    csrf;
+    nonce;
+    asset = (fun name -> "/" ^ name);
+    imports = (fun _ -> []);
+    handlers;
+    islands;
+  }
+
 let render ?(timeout = 1000) handlers =
   Server.render_page_settled
     (fun (_ : Url.t) -> Page.component)
     ~status:(fun _ -> 200)
-    ~scripts:[ "/app.js" ] ~settle_timeout_ms:timeout ~handlers ~context
-    (Url.of_string "/")
+    ~scripts:[ "/app.js" ] ~settle_timeout_ms:timeout (page handlers)
 
 let reset () =
   Queue.clear pending;
@@ -169,13 +176,13 @@ let reset () =
   stall := false
 
 let answers_of (response : Silica_server.response) =
-  let marker = "id=\"silica-answers\">" in
+  let marker = "id=\"silica-answers\"" in
   let n = String.length marker in
   let rec find i =
     if i + n > String.length response.body then
       Alcotest.fail "no answers element"
     else if String.sub response.body i n = marker then
-      i + n
+      String.index_from response.body (i + n) '>' + 1
     else
       find (i + 1)
   in
@@ -215,10 +222,72 @@ let test_settle_nonce () =
     Server.render_page_settled
       (fun (_ : Url.t) -> Page.component)
       ~status:(fun _ -> 200)
-      ~scripts:[] ~nonce:"abc" ~handlers:(handlers ~calls) ~context
-      (Url.of_string "/")
+      ~scripts:[]
+      (page ~nonce:"abc" (handlers ~calls))
   in
   check_contains "nonce" response.body "id=\"silica-answers\" nonce=\"abc\""
+
+let test_settle_empty_nonce () =
+  reset ();
+  let calls = ref 0 in
+  let response =
+    Server.render_page_settled
+      (fun (_ : Url.t) -> Page.component)
+      ~status:(fun _ -> 200)
+      ~scripts:[]
+      (page ~nonce:"" (handlers ~calls))
+  in
+  check_contains "the answers are written" response.body "id=\"silica-answers\"";
+  check_absent "no empty nonce" response.body "nonce=\"\""
+
+let island_codec =
+  Codec.make
+    ~encode:(fun Page.Page -> Codec.int.encode 0)
+    ~decode:(fun _ -> Ok Page.Page)
+
+let island =
+  Live.declare ~channel:"isle" ~state:island_codec
+    ~event:
+      (Codec.make
+         ~encode:(fun Page.Nothing -> Codec.unit.encode ())
+         ~decode:(fun _ -> Ok Page.Nothing)
+      )
+    (Component.make Page.machine (fun _ -> Node.text "island body"))
+
+let test_settle_uses_the_page_record () =
+  reset ();
+  let calls = ref 0 in
+  let shell =
+    Component.make Page.machine (fun _ ->
+        Node.element "main" []
+          [
+            Live.slot island;
+            Component.node Page.first
+            |> Node.map (fun (_ : Lookup.event) -> Page.Nothing);
+          ]
+    )
+  in
+  let response =
+    Server.render_page_settled
+      (fun url ->
+        Alcotest.(check string) "the url of the page" "/here" (Url.to_string url);
+        shell
+      )
+      ~status:(fun _ -> 200)
+      ~scripts:[]
+      (page ~csrf:"tok" ~nonce:"n1" ~url:"/here"
+         ~islands:[ Server.Island island ]
+         [ List.hd (handlers ~calls) ]
+      )
+  in
+  check_contains "the handlers of the page answer" response.body "first ready 8";
+  Alcotest.(check int) "one call" 1 !calls;
+  check_contains "the csrf of the page" response.body
+    {|<meta name="silica-csrf" content="tok">|};
+  check_contains "the nonce of the page" response.body
+    "id=\"silica-answers\" nonce=\"n1\"";
+  check_contains "the islands of the page" response.body
+    {|<div data-silica-live="isle">island body</div>|}
 
 let test_failed_call_stays_loading () =
   reset ();
@@ -227,7 +296,7 @@ let test_failed_call_stays_loading () =
     [
       Server.implement double (fun _ _ ->
           incr calls;
-          Error "down"
+          failwith "down"
       );
       Server.implement triple (fun _ n ->
           incr calls;
@@ -243,6 +312,26 @@ let test_failed_call_stays_loading () =
   Alcotest.(check (option string))
     "no answer for the failed call" None
     (Answers.find table ~path:"/api/double" ~input:"4")
+
+let test_rejected_call_stays_loading () =
+  reset ();
+  let calls = ref 0 in
+  let handlers =
+    [
+      Server.implement double (fun _ _ ->
+          incr calls;
+          Error "no"
+      );
+      List.nth (handlers ~calls) 1;
+    ]
+  in
+  let response = render handlers in
+  Alcotest.(check int) "both handlers ran" 2 !calls;
+  check_contains "a rejection is not an answer" response.body "first loading";
+  check_contains "the other call is settled" response.body "second ready 15";
+  Alcotest.(check (option string))
+    "no answer for the rejected call" None
+    (Answers.find (answers_of response) ~path:"/api/double" ~input:"4")
 
 let test_missing_handler_stays_loading () =
   reset ();
@@ -281,56 +370,49 @@ let test_no_calls_no_script () =
         Component.make Page.machine (fun _ -> Node.text "static")
       )
       ~status:(fun _ -> 200)
-      ~scripts:[] ~handlers:[] ~context (Url.of_string "/")
+      ~scripts:[] (page [])
   in
   check_contains "text" response.body "static";
   check_absent "no answers element" response.body "silica-answers"
 
 module Chain = struct
   type event =
-    | Got_a of (int, Remote.error) result
-    | Got_b of (int, Remote.error) result
+    | Got_a of (int, string) Remote.answer
+    | Got_b of (int, string) Remote.answer
 
-  module States = struct
-    type _ t = First : int t | Second : int t | Done : int t
-  end
-
-  module Chain_machine = Machine.Make (States)
+  type state = First of int | Second of int | Done of int
+  [@@deriving state_shape]
 
   let machine =
-    let to_ = Chain_machine.[ States.Second; States.Done ] in
-    Chain_machine.make ~id:"chain"
-      ~init:(Chain_machine.at States.First 1)
-      [
-        Chain_machine.state States.First "first" ~to_
-          ~invoke:[ Source.call double (fun n -> n) (fun r -> Got_a r) ]
-          (fun _ -> function
-            | Got_a (Ok a) ->
-                Chain_machine.goto States.Second a
-            | _ ->
-                Chain_machine.unhandled
-            );
-        Chain_machine.state States.Second "second" ~to_
-          ~invoke:[ Source.call triple (fun n -> n) (fun r -> Got_b r) ]
-          (fun _ -> function
-            | Got_b (Ok b) ->
-                Chain_machine.goto States.Done b
-            | _ ->
-                Chain_machine.unhandled
-            );
-        Chain_machine.state States.Done "done" Chain_machine.ignore;
-      ]
+    Machine.make ~id:"chain" ~init:(First 1) ~shape:state_shape
+      ~owns:(function
+        | First n ->
+            [ Remote.call double n (fun r -> Got_a r) ]
+        | Second n ->
+            [ Remote.call triple n (fun r -> Got_b r) ]
+        | Done _ ->
+            []
+        )
+      (fun state event ->
+        match (state, event) with
+        | First _, Got_a (Remote.Ok a) ->
+            Machine.Go (Second a)
+        | Second _, Got_b (Remote.Ok b) ->
+            Machine.Go (Done b)
+        | _ ->
+            Machine.Ignore
+      )
 
   let component =
-    Component.make machine (fun (Chain_machine.At (state, data)) ->
+    Component.make machine (fun state ->
         Node.text
           ( match state with
-          | States.First ->
+          | First _ ->
               "first"
-          | States.Second ->
-              "second " ^ string_of_int data
-          | States.Done ->
-              "done " ^ string_of_int data
+          | Second n ->
+              "second " ^ string_of_int n
+          | Done n ->
+              "done " ^ string_of_int n
           )
     )
 end
@@ -342,7 +424,8 @@ let test_chained_calls_settle () =
     Server.render_page_settled
       (fun (_ : Url.t) -> Chain.component)
       ~status:(fun _ -> 200)
-      ~scripts:[] ~handlers:(handlers ~calls) ~context (Url.of_string "/")
+      ~scripts:[]
+      (page (handlers ~calls))
   in
   check_contains "second call ran with the first answer" response.body "done 6";
   Alcotest.(check int) "two calls" 2 !calls;
@@ -353,17 +436,12 @@ let test_chained_calls_settle () =
 
 module Bad = struct
   type event = Nothing
-
-  module States = struct
-    type _ t = Only : unit t
-  end
-
-  module Bad_machine = Machine.Make (States)
+  type state = Only [@@deriving state_shape]
 
   let machine =
-    Bad_machine.make ~id:"bad"
-      ~init:(Bad_machine.at States.Only ())
-      [ Bad_machine.state States.Only "only" Bad_machine.ignore ]
+    Machine.make ~id:"bad" ~init:Only ~shape:state_shape (fun Only Nothing ->
+        Machine.Ignore
+    )
 
   let component =
     Component.make machine (fun _ -> failwith "secret detail of the view")
@@ -422,7 +500,7 @@ let test_render_error_in_settled_page () =
       ~status:(fun _ -> 200)
       ~scripts:[]
       ~on_error:(fun _ _ -> incr seen)
-      ~handlers:[] ~context (Url.of_string "/")
+      (page [])
   in
   Alcotest.(check int) "status 500" 500 response.status;
   Alcotest.(check int) "hook" 1 !seen
@@ -451,37 +529,34 @@ let test_render_component_error () =
   in
   Alcotest.(check int) "status 500" 500 response.status
 
-module Gate = struct
-  type _ t =
-    | Home : unit t
-    | Login : unit t
-    | Secret : unit t
-    | Lost : string t
-
-  let path : type d. d t -> d Route.t = function
-    | Home ->
-        Route.root
-    | Login ->
-        Route.s "login"
-    | Secret ->
-        Route.s "secret"
-    | Lost ->
-        Route.rest
-end
-
-module Gate_router = Router.Make (Gate)
+type gate = Home | Login | Secret | Lost of string
 
 let gate_routes =
-  Gate_router.routes ~not_found:Gate.Lost Gate.[ Home; Login; Secret; Lost ]
+  Router.routes
+    ~not_found:(function Lost _ -> true | _ -> false)
+    [
+      Router.route Route.root
+        (fun () -> Home)
+        (function Home -> Some () | _ -> None);
+      Router.route (Route.s "login")
+        (fun () -> Login)
+        (function Login -> Some () | _ -> None);
+      Router.route (Route.s "secret")
+        (fun () -> Secret)
+        (function Secret -> Some () | _ -> None);
+      Router.route Route.rest
+        (fun path -> Lost path)
+        (function Lost path -> Some path | _ -> None);
+    ]
 
 let gate_app url =
-  Gate_router.make gate_routes
+  Router.make gate_routes
     ~guard:(fun ~from ~target ->
       match (from, target) with
-      | None, Gate_router.At (Gate.Secret, ()) ->
-          Gate_router.Redirect (Gate_router.At (Gate.Login, ()))
+      | None, Secret ->
+          Router.Redirect Login
       | _ ->
-          Gate_router.Allow
+          Router.Allow
     )
     ~render:(fun _ -> Node.text "gate")
     url
@@ -489,21 +564,13 @@ let gate_app url =
 let header name (response : Silica_server.response) =
   List.assoc_opt name response.headers
 
-module Only = struct
-  type _ t = Only : unit t
-end
+type only = Only [@@deriving state_shape]
 
-module Only_machine = Machine.Make (Only)
-
-let starting ~id actions : (Only_machine.snapshot, unit) Component.t =
+let starting ~id actions : (unit, only, unit) Component.t =
   Component.make
-    (Only_machine.make ~id
-       ~init:(Only_machine.at Only.Only ())
-       [
-         Only_machine.state Only.Only "only"
-           ~entry:(fun () -> actions)
-           Only_machine.ignore;
-       ]
+    (Machine.make ~id ~init:Only ~shape:only_shape
+       ~entry:(fun Only -> actions)
+       (fun Only () -> Machine.Ignore)
     )
     (fun _ -> Node.text "body")
 
@@ -625,28 +692,25 @@ let test_cookie_reader () =
     (Silica_server.cookie (request "xsilica-theme=dark") "silica-theme")
 
 module After = struct
-  type event = Answered of (int, Remote.error) result
-
-  module States = struct
-    type _ t = Loading : unit t | Done : unit t
-  end
-
-  module After_machine = Machine.Make (States)
+  type event = Answered of (int, string) Remote.answer
+  type state = Loading | Done [@@deriving state_shape]
 
   let component on_answer =
     Component.make
-      (After_machine.make ~id:"after"
-         ~init:(After_machine.at States.Loading ())
-         [
-           After_machine.state States.Loading "loading"
-             ~to_:After_machine.[ States.Done ]
-             ~invoke:[ Source.call double (fun () -> 1) (fun r -> Answered r) ]
-             (fun () -> function
-               | Answered _ ->
-                   After_machine.goto ~actions:on_answer States.Done ()
-               );
-           After_machine.state States.Done "done" After_machine.ignore;
-         ]
+      (Machine.make ~id:"after" ~init:Loading ~shape:state_shape
+         ~owns:(function
+           | Loading ->
+               [ Remote.call double 1 (fun r -> Answered r) ]
+           | Done ->
+               []
+           )
+         (fun state (Answered _) ->
+           match state with
+           | Loading ->
+               Machine.Go_with (Done, on_answer)
+           | Done ->
+               Machine.Ignore
+         )
       )
       (fun _ -> Node.text "after")
 end
@@ -658,7 +722,8 @@ let test_settled_status_and_redirect () =
     Server.render_page_settled
       (fun (_ : Url.t) -> After.component actions)
       ~status:(fun _ -> 200)
-      ~scripts:[] ~handlers:(handlers ~calls) ~context (Url.of_string "/")
+      ~scripts:[]
+      (page (handlers ~calls))
   in
   let r = settled [ Action.Set_status 404 ] in
   Alcotest.(check int) "Set_status after an answer" 404 r.status;
@@ -676,7 +741,11 @@ let () =
           t "answers every component and embeds them"
             test_settle_answers_and_embeds;
           t "nonce on the answers element" test_settle_nonce;
+          t "no nonce attribute for an empty nonce" test_settle_empty_nonce;
           t "a failed call stays loading" test_failed_call_stays_loading;
+          t "a rejected call stays loading" test_rejected_call_stays_loading;
+          t "the page record gives csrf, nonce, islands and handlers"
+            test_settle_uses_the_page_record;
           t "a call with no handler stays loading"
             test_missing_handler_stays_loading;
           t "timeout sends the loading page" test_timeout_sends_the_loading_page;

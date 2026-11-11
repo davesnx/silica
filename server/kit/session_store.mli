@@ -21,6 +21,12 @@ val set : t -> session -> unit
 (** When the store is full and the id is new, the session with the oldest
     [last_seen] is removed first. *)
 
+val update : t -> now:float -> string -> (session -> session) -> session option
+(** [update t ~now id f] replaces the session [id] with [f session] in one step:
+    no other call of the store runs between the read and the write. [None], and
+    no change, when the session is absent or expired (see {!val-get}). The [id]
+    of the result is always [id]. *)
+
 val remove : t -> string -> unit
 (** Remove the session with this id. An unknown id does nothing. *)
 
@@ -33,6 +39,7 @@ val count : t -> int
 type ops = {
   get : now:float -> string -> session option;
   set : session -> unit;
+  update : now:float -> string -> (session -> session) -> session option;
   remove : string -> unit;
   expire : now:float -> int;
 }

@@ -29,115 +29,89 @@ type props = {
   classes : classes;
 }
 
-type event =
-  | Props of props
-  | Close of string
-  | Tick
-  | Hover of bool
-  | Focus of bool
+type event = Close of string | Tick | Hover of bool | Focus of bool
+type model = { hovered : bool; focused : bool }
 
-type model = { props : props; hovered : bool; focused : bool }
-
-module State = struct
-  type _ t =
-    | Idle : unit t
-    | Empty : model t
-    | Running : (model * int) t
-    | Paused : model t
-    | Expired : model t
-end
-
-module Toast_machine = Machine.Make (State)
-
-type snapshot = Toast_machine.snapshot =
-  | At : 'data State.t * 'data -> snapshot
+type state =
+  | Empty of model
+  | Running of model * int
+  | Paused of model
+  | Expired of model
+[@@deriving state_shape]
 
 let tick_ms = 100
-let settle model =
-  if model.props.toasts = [] then
-    Toast_machine.goto Empty model
+
+let settle (props : props) model : (state, event) Machine.next =
+  if props.toasts = [] then
+    Go (Empty model)
   else if model.hovered || model.focused then
-    Toast_machine.goto Paused model
+    Go (Paused model)
   else
-    Toast_machine.reenter Running (model, 0)
+    Reenter (Running (model, 0))
 
-let shows model key =
-  List.exists (fun toast -> toast.key = key) model.props.toasts
-
-let new_list model (props : props) = props.toasts <> model.props.toasts
+let shows (props : props) key =
+  List.exists (fun toast -> toast.key = key) props.toasts
 
 let machine =
-  Toast_machine.make ~id:"toast" ~init:(Toast_machine.at Idle ())
-    [
-      Toast_machine.state Idle "idle" ~to_:[ Empty; Running ]
-        (fun () -> function
-        | Props props ->
-            settle { props; hovered = false; focused = false }
-        | _ ->
-            Toast_machine.unhandled
-        );
-      Toast_machine.state Empty "empty" ~to_:[ Running; Paused ]
-        (fun model -> function
-        | Props props ->
-            settle { model with props }
-        | Hover hovered ->
-            Toast_machine.goto Empty { model with hovered }
-        | Focus focused ->
-            Toast_machine.goto Empty { model with focused }
-        | Close _ | Tick ->
-            Toast_machine.unhandled
-        );
-      Toast_machine.state Running "running" ~to_:[ Empty; Paused; Expired ]
-        ~after:[ (tick_ms, Tick) ]
-        (fun (model, elapsed) -> function
-          | Props props when new_list model props ->
-              settle { model with props }
-          | Props props ->
-              Toast_machine.goto Running ({ model with props }, elapsed)
-          | Hover true ->
-              Toast_machine.goto Paused { model with hovered = true }
-          | Focus true ->
-              Toast_machine.goto Paused { model with focused = true }
-          | Hover false | Focus false ->
-              Toast_machine.unhandled
-          | Close key when shows model key ->
-              Toast_machine.stay []
-          | Close _ ->
-              Toast_machine.unhandled
-          | Tick when elapsed + tick_ms >= model.props.timeout_ms ->
-              Toast_machine.goto Expired model
-          | Tick ->
-              Toast_machine.reenter Running (model, elapsed + tick_ms)
-          );
-      Toast_machine.state Paused "paused" ~to_:[ Empty; Running ]
-        (fun model -> function
-        | Props props ->
-            settle { model with props }
-        | Hover hovered ->
-            settle { model with hovered }
-        | Focus focused ->
-            settle { model with focused }
-        | Close key when shows model key ->
-            settle { model with focused = false }
-        | Close _ | Tick ->
-            Toast_machine.unhandled
-        );
-      Toast_machine.state Expired "expired" ~to_:[ Empty; Running; Paused ]
-        (fun model -> function
-        | Props props when new_list model props ->
-            settle { model with props }
-        | Props props ->
-            Toast_machine.goto Expired { model with props }
-        | Hover hovered ->
-            Toast_machine.goto Expired { model with hovered }
-        | Focus focused ->
-            Toast_machine.goto Expired { model with focused }
-        | Close key when shows model key ->
-            Toast_machine.goto Expired { model with focused = false }
-        | Close _ | Tick ->
-            Toast_machine.unhandled
-        );
-    ]
+  Machine.make_with_props ~id:"toast"
+    ~init:(Empty { hovered = false; focused = false })
+    ~shape:state_shape
+    ~owns:(fun _ -> function
+      | Running _ ->
+          [ Source.after tick_ms Tick ]
+      | Empty _ | Paused _ | Expired _ ->
+          []
+      )
+    ~on_props:(fun previous props state ->
+      let new_list =
+        match previous with
+        | Some (previous : props) ->
+            previous.toasts <> props.toasts
+        | None ->
+            true
+      in
+      match state with
+      | Empty model | Paused model ->
+          settle props model
+      | (Running (model, _) | Expired model) when new_list ->
+          settle props model
+      | Running _ | Expired _ ->
+          Ignore
+    )
+    (fun props state event ->
+      match (state, event) with
+      | Empty model, Hover hovered ->
+          Go (Empty { model with hovered })
+      | Empty model, Focus focused ->
+          Go (Empty { model with focused })
+      | Running (model, _), Hover true ->
+          Go (Paused { model with hovered = true })
+      | Running (model, _), Focus true ->
+          Go (Paused { model with focused = true })
+      | Running _, Close key when shows props key ->
+          Stay []
+      | Running _, (Hover false | Focus false) ->
+          Stay []
+      | Running (model, elapsed), Tick
+        when elapsed + tick_ms >= props.timeout_ms ->
+          Go (Expired model)
+      | Running (model, elapsed), Tick ->
+          Reenter (Running (model, elapsed + tick_ms))
+      | Paused model, Hover hovered ->
+          settle props { model with hovered }
+      | Paused model, Focus focused ->
+          settle props { model with focused }
+      | Paused model, Close key when shows props key ->
+          settle props { model with focused = false }
+      | Expired model, Hover hovered ->
+          Go (Expired { model with hovered })
+      | Expired model, Focus focused ->
+          Go (Expired { model with focused })
+      | Expired model, Close key when shows props key ->
+          Go (Expired { model with focused = false })
+      | (Empty _ | Running _ | Paused _ | Expired _), (Close _ | Tick) ->
+          Ignore
+    )
 
 let el = Node.element
 let text = Node.text
@@ -200,8 +174,7 @@ let toast_view (props : props) toast =
        ]
     )
 
-let viewport model ~paused =
-  let props = model.props in
+let viewport (props : props) ~paused =
   el "div"
     ([
        Attr.string "id" props.id;
@@ -225,19 +198,13 @@ let viewport model ~paused =
     )
     (List.map (toast_view props) props.toasts)
 
-let view : snapshot -> event Node.t = function
-  | At (Idle, ()) ->
-      Node.list []
-  | At (Running, (model, _)) ->
-      viewport model ~paused:false
-  | At (Empty, model) ->
-      viewport model ~paused:false
-  | At (Expired, model) ->
-      viewport model ~paused:false
-  | At (Paused, model) ->
-      viewport model ~paused:true
+let view props = function
+  | Empty _ | Running _ | Expired _ ->
+      viewport props ~paused:false
+  | Paused _ ->
+      viewport props ~paused:true
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let toast ?description ?(priority = Low) ~key title =
   { key; title; description; priority }
@@ -248,14 +215,16 @@ let props ~id ?(timeout_ms = 5000) ?(label = "Notifications")
     invalid_arg "Toast.props: timeout_ms must be more than 0";
   { id; toasts; timeout_ms; label; close_label; classes }
 
-let make ?key ?on_close props =
-  let output event (snapshot : snapshot) =
-    match (on_close, event, snapshot) with
-    | Some f, Close key, _ ->
+let make ?key ?on_close (props : props) =
+  let output event state =
+    match (on_close, event, state, props.toasts) with
+    | Some f, Close key, _, _ ->
         [ f key ]
-    | Some f, Tick, At (Expired, { props = { toasts = oldest :: _; _ }; _ }) ->
+    | Some f, Tick, Expired _, oldest :: _ ->
         [ f oldest.key ]
-    | _ ->
+    | Some _, Tick, (Empty _ | Running _ | Paused _ | Expired _), _
+    | Some _, (Hover _ | Focus _), _, _
+    | None, _, _, _ ->
         []
   in
-  Component.node ?key ~props:(Props props) ~output component
+  Component.node_with_props ?key ~props ~output component

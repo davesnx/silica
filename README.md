@@ -12,17 +12,17 @@ Most UI bugs aren't rendering bugs, they are behaviour bugs. The spinner that ne
 
 Silica takes a strong position on this:
 
-- **Behaviour is a machine, not a side effect of rendering.** The states of a machine are the constructors of a GADT, and each state carries its own data. `Saved` carries the time, `Failed` carries the error, `Saving` carries nothing. A state that can't exist can't be written.
-- **A state owns its resources.** Timers, calls and subscriptions are declared on a state. They start when the machine enters it and stop when it leaves it. There is nothing to clean up, so there is nothing to forget to clean up.
+- **Behaviour is a machine, not a side effect of rendering.** The states of a machine are the constructors of a plain OCaml variant, and each state carries its own data. `Saved` carries the time, `Failed` carries the error, `Saving` carries nothing. A state that can't exist can't be written.
+- **A state owns its resources.** Timers, calls and subscriptions are what a state owns: one `owns` function gives them for each state. They start when the machine enters it and stop when it leaves it. There is nothing to clean up, so there is nothing to forget to clean up.
 - **Handlers are data.** `on_press=Save` is an event value, not a closure. So a view is plain data, and a program can read it: the server renders it, the browser diffs it, and the checker finds every event in it.
 - **One language, both sides.** The machine, the view, the routes and the endpoints are written once in OCaml. The server renders the first HTML with the answers of its calls, and the browser adopts that HTML and doesn't call again. A Remote endpoint is one typed value shared by the client that calls it and the server that implements it.
-- **If it's a machine, check it.** A statechart is small enough to explore in full. The checker runs every event in every reachable state, checks properties of each view (every pressable element has a name a screen reader can read, no dead ends, every running timer belongs to the current state) and gives the shortest list of events that breaks one. The shape of each machine exports to [Quint](https://quint-lang.org) and Graphviz.
+- **If it's a machine, check it.** A statechart is small enough to explore in full. The checker runs every event in every reachable state, checks properties of each view (every pressable element has a name a screen reader can read, no dead ends, every running timer belongs to the current state, no button whose event the machine ignores) and gives the shortest list of events that breaks one. The spec that a check finds exports to [Quint](https://quint-lang.org) and Graphviz.
 
 The browser, the server and the model checker are three hosts of the same machines. That's the whole idea.
 
 ## Features
 
-- **[Machines](docs/machines.mld)**: typed states, declared edges (`~to_`), timers (`~after`) and sources (`~invoke`) owned by a state
+- **[Machines](docs/machines.mld)**: plain variant states, one update function that returns `Go`, `Stay`, `Reenter` or `Ignore`, and timers, calls and sources owned by a state (`~owns`), compared by key after each step
 - **[Views in JSX](docs/components.mld)** with [mlx](https://github.com/ocaml-mlx/mlx), child components, props and output through function props
 - **[Local, Remote and Live data](docs/data.mld)**: client data, typed endpoints, and server data pushed over a socket to topics and islands, plus [optimistic changes](docs/optimistic.mld)
 - **[Server render and hydration](docs/hydration.mld)**: the first HTML holds the answers of the calls, so a page reads with JavaScript off
@@ -36,67 +36,51 @@ The browser, the server and the model checker are three hosts of the same machin
 
 ## Example
 
-A button that saves a draft. It calls the server, shows the time of the save for two seconds, and goes back to idle. Four states, one Remote call, one timer:
+A button that saves a draft. It calls the server, shows the time of the save for two seconds, and goes back to idle. Four states, one Remote call, one timer. `[@@deriving state_shape]` names the states for the checker:
 
 ```ocaml
 open Silica
 
 let save =
   Remote.declare ~path:"/api/save" ~input:Codec.string ~output:Codec.string
+    ~rejected:Codec.string
 
-type event = Save | Answer of (string, Remote.error) result | Reset
+type event = Save | Answer of (string, string) Remote.answer | Reset
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Saving : unit t
-    | Saved : string t
-    | Failed : Remote.error t
-end
-
-module Save_machine = Machine.Make (States)
+type state = Idle | Saving | Saved of string | Failed [@@deriving state_shape]
 
 let machine =
-  Save_machine.make ~id:"save" ~init:(Save_machine.at Idle ())
-    [
-      Save_machine.state Idle "idle" ~to_:[ Saving ] (fun () -> function
-        | Save ->
-            Save_machine.goto Saving ()
-        | Answer _ | Reset ->
-            Save_machine.unhandled
-        );
-      Save_machine.state Saving "saving" ~to_:[ Saved; Failed ]
-        ~invoke:[ Source.call save (fun () -> "draft") (fun r -> Answer r) ]
-        (fun () -> function
-          | Answer (Ok time) ->
-              Save_machine.goto Saved time
-          | Answer (Error error) ->
-              Save_machine.goto Failed error
-          | Save | Reset ->
-              Save_machine.unhandled
-          );
-      Save_machine.state Saved "saved" ~to_:[ Idle ]
-        ~after:[ (2000, Reset) ]
-        (fun _ -> function
-          | Reset -> Save_machine.goto Idle () | _ -> Save_machine.unhandled
-          );
-      Save_machine.state Failed "failed" ~to_:[ Saving ] (fun _ -> function
-        | Save ->
-            Save_machine.goto Saving ()
-        | Answer _ | Reset ->
-            Save_machine.unhandled
-        );
-    ]
+  Machine.make ~id:"save" ~init:Idle ~shape:state_shape
+    ~owns:(function
+      | Saving ->
+          [ Remote.call save "draft" (fun answer -> Answer answer) ]
+      | Saved _ ->
+          [ Source.after 2000 Reset ]
+      | Idle | Failed ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | (Idle | Failed), Save ->
+          Go Saving
+      | Saving, Answer (Ok time) ->
+          Go (Saved time)
+      | Saving, Answer (Rejected _ | Failed _) ->
+          Go Failed
+      | Saved _, Reset ->
+          Go Idle
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Save_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Save_machine.At (Idle, ()) ->
+let view : state -> event Node.t = function
+  | Idle ->
       <button on_press=Save>"Save the draft"</button>
-  | Save_machine.At (Saving, ()) ->
+  | Saving ->
       <button disabled=true>"Saving"</button>
-  | Save_machine.At (Saved, time) ->
+  | Saved time ->
       <p>(Node.text ("Saved at " ^ time))</p>
-  | Save_machine.At (Failed, _) ->
+  | Failed ->
       <button on_press=Save>"Not saved. Try again"</button>
 
 let component = Component.make machine view
@@ -104,15 +88,15 @@ let component = Component.make machine view
 
 This is [`docs/examples/shared/landing_save.mlx`](docs/examples/shared/landing_save.mlx), the sample that runs on the landing page of the site.
 
-Look at what isn't there. The call starts when the machine enters `Saving` and its answer is dropped if the machine left. The timer starts in `Saved` and dies with it. A double click can't send two requests, because `Saving` doesn't handle `Save`.
+Look at what isn't there. The call starts when the machine enters `Saving` and its answer is dropped if the machine left. The timer starts in `Saved` and dies with it. A double click can't send two requests, because `Saving` doesn't handle `Save`. The answer says what happened: `Ok` with the output, `Rejected` with the application error of the handler, or `Failed` when no answer came. This sample treats both errors the same; `Remote.error_to_string` turns a `Failed` into a sentence when a view needs one.
 
 A machine is a value, so a test steps it on native OCaml, with no browser:
 
 ```ocaml
-let snapshot, _ = Machine.start Landing_save.machine
-let snapshot, _, _ = Machine.send Landing_save.machine snapshot Landing_save.Save
+let state, _ = Machine.start Landing_save.machine ()
+let state, _, _ = Machine.step Landing_save.machine () state Landing_save.Save
 
-let html = Render.to_string (Landing_save.view snapshot)
+let html = Render.to_string (Landing_save.view state)
 (* <button disabled>Saving</button> *)
 ```
 
@@ -127,7 +111,7 @@ with
 | Check.Ok { states; transitions; _ } ->
     Printf.printf "%d states, %d transitions, no problem" states transitions
 | _ -> print_string "problem"
-(* 5 states, 7 transitions, no problem *)
+(* 4 states, 6 transitions, no problem *)
 ```
 
 The [tutorial](docs/tutorial.mld) builds a counter and then a component like this one, with the client file and the server.

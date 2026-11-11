@@ -46,17 +46,14 @@ let mixed =
   ]
 
 let parse url =
-  match Linear_routes.Router.parse Linear_routes.routes (Url.of_string url) with
-  | Linear_routes.Router.At (Linear_routes.State.Issues, q) ->
-      (q : Linear_routes.issues)
+  match Router.parse Linear_routes.routes (Url.of_string url) with
+  | Linear_routes.Issues q ->
+      q
   | _ ->
       Alcotest.failf "%s is not the list route" url
 
 let print (q : Linear_routes.issues) =
-  Url.to_string
-    (Linear_routes.Router.print Linear_routes.routes
-       (Linear_routes.Router.At (Linear_routes.State.Issues, q))
-    )
+  Url.to_string (Router.print Linear_routes.routes (Linear_routes.Issues q))
 
 (* Filters and display options in the URL *)
 
@@ -181,7 +178,7 @@ let test_grouping_and_ordering () =
 (* The list component *)
 
 let mount_list view =
-  let sim = Sim.mount ~props:(Linear_list.Props view) Linear_list.component in
+  let sim = Sim.mount_with_props ~props:view Linear_list.component in
   Sim.answer sim issues_endpoint mixed;
   sim
 
@@ -211,11 +208,9 @@ let test_list_filter_goes_to_the_url () =
     [ "replace /?status=done" ]
     (Sim.log sim);
   has "the list waits for the props" (Sim.html sim) "Todo bug";
-  Sim.send sim
-    (Linear_list.Props
-       (with_filter
-          { Linear_view.Filter.none with statuses = [ Issue_status.Done ] }
-       )
+  Sim.set_props sim
+    (with_filter
+       { Linear_view.Filter.none with statuses = [ Issue_status.Done ] }
     );
   lacks "filtered by the new props" (Sim.html sim) "Todo bug";
   has "done stays" (Sim.html sim) "Done docs";
@@ -264,10 +259,8 @@ let test_list_display_options () =
     "grouping goes to the URL"
     [ "replace /?group=assignee" ]
     (replaces sim);
-  Sim.send sim
-    (Linear_list.Props
-       { Linear_view.default with grouping = Linear_view.By_assignee }
-    );
+  Sim.set_props sim
+    { Linear_view.default with grouping = Linear_view.By_assignee };
   has "grouped by assignee" (Sim.html sim) "Unassigned";
   Sim.press_id sim ~id:"issue-ordering-trigger";
   Sim.clear_log sim;
@@ -382,11 +375,11 @@ let test_data_failure_goes_back () =
   in
   let id, request = List.hd (Linear_data.requests data) in
   let data, outcome =
-    Linear_data.finish id (Error (Remote.Network "down")) data
+    Linear_data.finish id (Failed (Remote.Network "down")) data
   in
   Alcotest.(check bool)
     "failed" true
-    (outcome = Some (request, Linear_data.Failed (Remote.Network "down")));
+    (outcome = Some (request, Linear_data.Failed "The network failed"));
   Alcotest.(check bool)
     "back to todo" true
     ((shown data 1).status = Issue_status.Todo)
@@ -452,7 +445,7 @@ let test_data_conflict () =
   Alcotest.(check string) "the winner shows" "Theirs" (shown data 1).title
 
 let mount_detail () =
-  let sim = Sim.mount ~props:(Linear_detail.Props 1) Linear_detail.component in
+  let sim = Sim.mount_with_props ~props:1 Linear_detail.component in
   Sim.answer sim issues_endpoint two;
   Sim.answer sim comments_endpoint { Thread.viewer = User.Ada; comments = [] };
   sim
@@ -499,6 +492,38 @@ let test_detail_pick_topic_first () =
     (Change.Saved (v 1 ~version:2 ~title:"One" ~status:Issue_status.Done));
   has "done" (Sim.html sim) "Status: Done";
   Alcotest.(check int) "no call" 0 (List.length (Sim.call_inputs sim))
+
+let test_detail_one_call_per_change () =
+  let sim = mount_detail () in
+  pick_status sim 3;
+  Sim.press_id sim ~id:"priority-picker-trigger";
+  Sim.press_id sim ~id:(Silica_ui.Menu.item_id "priority-picker" 1);
+  Alcotest.(check int)
+    "two changes, two calls" 2
+    (List.length (Sim.call_inputs sim));
+  Alcotest.(check (option string)) "two pending" (Some "2") (pending sim);
+  Sim.answer sim update_endpoint
+    (Change.Saved
+       {
+         (v 1 ~version:3 ~title:"One" ~status:Issue_status.Done) with
+         priority = Priority.Urgent;
+       }
+    );
+  Alcotest.(check int)
+    "the answered call ends, the other runs" 1
+    (List.length (Sim.call_inputs sim));
+  has "the call that runs is the status change"
+    (String.concat "" (Sim.call_inputs sim))
+    "Done";
+  Alcotest.(check (option string)) "one pending" (Some "1") (pending sim)
+
+let test_detail_rejected_change () =
+  let sim = mount_detail () in
+  pick_status sim 3;
+  Sim.reject sim update_endpoint "Status is locked";
+  has "back to todo" (Sim.html sim) "Status: Todo";
+  has "the toast shows the message of the server" (Sim.page sim)
+    "Status is locked. The old value is back."
 
 let test_detail_title_conflict () =
   let sim = mount_detail () in
@@ -616,9 +641,7 @@ let thread =
   }
 
 let mount_comments () =
-  let sim =
-    Sim.mount ~props:(Linear_comments.Props 1) Linear_comments.component
-  in
+  let sim = Sim.mount_with_props ~props:1 Linear_comments.component in
   Sim.answer sim comments_endpoint thread;
   sim
 
@@ -669,6 +692,14 @@ let test_composer () =
   Alcotest.(check (option string))
     "cleared" (Some "")
     (Sim.attribute sim ~id:"comment-input" "value")
+
+let test_composer_rejected () =
+  let sim = mount_comments () in
+  Sim.input sim ~label:"Comment" "Hello";
+  Sim.press_id sim ~id:"comment-send";
+  Sim.reject sim add_comment_endpoint "The comment is too long";
+  has "the message of the server" (Sim.html sim)
+    "Could not send the comment. The comment is too long"
 
 let test_edit_own_comment () =
   let sim = mount_comments () in
@@ -801,10 +832,22 @@ let test_detail_command_menu () =
     "C opens the create modal" true
     (List.mem "navigate /?new=true" (Sim.log sim))
 
+let test_create_rejected () =
+  let sim =
+    Sim.mount_with_props
+      ~props:{ Linear_routes.list with create = true }
+      Linear_create.component
+  in
+  Sim.input sim ~label:"Title" "Fine here";
+  Sim.submit sim;
+  Sim.reject sim create_endpoint "Title is too long";
+  has "the message of the server" (Sim.page sim)
+    "Could not create the issue. Title is too long"
+
 let test_create_ctrl_enter () =
   let sim =
-    Sim.mount
-      ~props:(Linear_create.Props { Linear_routes.list with create = true })
+    Sim.mount_with_props
+      ~props:{ Linear_routes.list with create = true }
       Linear_create.component
   in
   Sim.input sim ~label:"Title" "From the keyboard";
@@ -845,6 +888,8 @@ let () =
           t "detail: pick, success" test_detail_pick_success;
           t "detail: pick, failure" test_detail_pick_failure;
           t "detail: pick, topic first" test_detail_pick_topic_first;
+          t "detail: one call per change" test_detail_one_call_per_change;
+          t "detail: a rejected change" test_detail_rejected_change;
           t "detail: title conflict keeps the draft" test_detail_title_conflict;
           t "detail: Escape cancels, Ctrl+Enter saves"
             test_detail_escape_cancels;
@@ -856,6 +901,7 @@ let () =
           t "store" test_store_comments;
           t "list, own, live" test_comments_show;
           t "composer" test_composer;
+          t "composer: a rejected comment" test_composer_rejected;
           t "edit own comment" test_edit_own_comment;
         ]
       );
@@ -866,6 +912,7 @@ let () =
           t "list: C" test_list_c_key;
           t "detail: command menu and C" test_detail_command_menu;
           t "create: Ctrl+Enter submits" test_create_ctrl_enter;
+          t "create: a rejected draft" test_create_rejected;
         ]
       );
     ]

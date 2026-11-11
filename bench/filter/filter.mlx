@@ -81,27 +81,10 @@ let items =
 type state = string
 type event = Query of string
 
-module States = struct
-  type _ t = Ready : state t
-end
-
-module Filter_machine = Machine.Make (States)
-
-let machine : (state, event) Machine.t =
-  let table =
-    Filter_machine.make ~id:"filter"
-      ~init:(Filter_machine.at Ready "")
-      [
-        Filter_machine.state Ready "ready" (fun _ (Query q) ->
-            Filter_machine.goto Ready q
-        );
-      ]
-  in
-  Machine.map_snapshot table
-    ~get:(fun
-        (Filter_machine.At (Ready, s) : Filter_machine.snapshot) : state -> s
-    )
-    ~set:(fun s -> Filter_machine.at Ready s)
+let machine =
+  Machine.make ~id:"filter" ~init:""
+    ~shape:(Machine.shape ~name:(fun _ -> "ready") ~names:[ "ready" ] ())
+    (fun _ (Query query) -> Go query)
 
 let contains ~sub s =
   let n = String.length sub and m = String.length s in

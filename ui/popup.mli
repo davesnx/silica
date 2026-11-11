@@ -35,18 +35,36 @@ val trigger_attrs :
 (** The id and ref of the trigger, [aria-haspopup], [aria-expanded],
     [aria-controls] (while open) and [data-popup-open] (while open). *)
 
-val template : parts
-(** Parts whose refs are named ["trigger"] and ["popup"], for the [invoke] list
-    of a state, where the id is not known yet. See {!scoped}. *)
+val dismiss :
+  ?escape:'e -> ?outside:'e -> ?focus_out:'e -> parts -> 'e Silica.Source.t
+(** The dismiss layer of the popup: the trigger and the popup are inside (see
+    {!Silica.Source.dismiss}). *)
 
-val scoped :
-  ('p -> string) -> ('p, 'e) Silica.Source.t -> ('p, 'e) Silica.Source.t
-(** [scoped id source] renames each ref [r] of the source to
-    [id data ^ "-" ^ r], so that {!template} refs become the refs of
-    [parts (id data)]. *)
+val layer :
+  ?escape:'e ->
+  ?outside:'e ->
+  ?focus_out:'e ->
+  ?place:Silica.Place.t ->
+  parts ->
+  'e Silica.Source.t list
+(** The sources of an open popup next to its trigger: {!dismiss} and
+    {!Silica.Source.anchor} of the popup to the trigger. *)
 
-val dismiss : ?escape:'e -> ?outside:'e -> parts -> ('p, 'e) Silica.Source.t
-(** The dismiss layer of the popup: the trigger and the popup are inside. *)
+val close : ?focus:bool -> parts -> 's -> ('s, 'e) Silica.Machine.next
+(** [close parts closed] goes to the closed snapshot and, unless [focus] is
+    [false], moves focus to the trigger. A close by an outside press passes
+    [~focus:false]: focus stays where the press put it. *)
 
 val class_attr : string -> 'e Silica.Node.attr list
 (** [class] when the string is not empty. *)
+
+val open_change : ('p -> bool option) -> 'p option -> 'p -> bool option
+(** [open_change open_ previous props] is the open state that a parent asks for
+    with a controlled prop [open_ props]: [Some b] when it is [Some b] and the
+    previous props ([None] at the start) did not ask for [b] already, [None]
+    otherwise. Use it in the [on_props] of a popup machine (see
+    {!Silica.Machine.make_with_props}). *)
+
+val report : (bool -> reason -> 'e) option -> bool -> reason -> 'e list
+(** [report on_open_change open_ reason] is the output of an open change for the
+    parent: [[f open_ reason]] when [on_open_change] is [Some f]. *)

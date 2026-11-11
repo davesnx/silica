@@ -268,85 +268,73 @@ module Held = struct
     | Seen of bool
 
   type data = { opened : bool; log : string list }
-
-  module States = struct
-    type _ t = Shut : data t | Popup : data t
-  end
-
-  module Held_machine = Machine.Make (States)
+  type state = Shut of data | Popup of data [@@deriving state_shape]
 
   let panel = Ref.make "panel"
   let box = Ref.make "box"
 
-  let machine =
-    let to_ = Held_machine.[ States.Shut; States.Popup ] in
-    let note data text = { data with log = text :: data.log } in
-    Held_machine.make ~id:"held"
-      ~init:(Held_machine.at States.Shut { opened = false; log = [] })
-      [
-        Held_machine.state States.Shut "shut" ~to_ (fun data -> function
-          | Open ->
-              Held_machine.goto States.Popup { data with opened = true }
-          | _ ->
-              Held_machine.unhandled
-          );
-        Held_machine.state States.Popup "popup" ~to_
-          ~invoke:
-            [
-              Source.focus_trap panel;
-              Source.scroll_lock;
-              Source.outside_press panel Outside;
-              Source.keys ~prevent:true
-                [ (Key.escape, Escape); (Key.make ~ctrl:true "k", Close) ];
-              Source.resize box (fun rect -> Resized rect);
-              Source.intersection box (fun visible -> Seen visible);
-            ]
-          (fun data -> function
-            | Close | Escape | Outside ->
-                Held_machine.goto States.Shut { data with opened = false }
-            | Resized rect ->
-                Held_machine.goto States.Popup
-                  (note data (Printf.sprintf "resized %.0f" rect.width))
-            | Seen visible ->
-                Held_machine.goto States.Popup
-                  (note data
-                     ( if visible then
-                         "seen"
-                       else
-                         "hidden"
-                     )
-                  )
-            | Open ->
-                Held_machine.unhandled
-            );
-      ]
+  let sources =
+    [
+      Source.focus_trap panel;
+      Source.scroll_lock;
+      Source.outside_press panel Outside;
+      Source.keys ~prevent:true
+        [ (Key.escape, Escape); (Key.make ~ctrl:true "k", Close) ];
+      Source.resize box (fun rect -> Resized rect);
+      Source.intersection box (fun visible -> Seen visible);
+    ]
 
-  let view (Held_machine.At (state, data) : Held_machine.snapshot) :
-      event Node.t =
-    ignore data;
-    match state with
-    | States.Shut ->
+  let machine =
+    let note data text = { data with log = text :: data.log } in
+    Machine.make ~id:"held"
+      ~init:(Shut { opened = false; log = [] })
+      ~shape:state_shape
+      ~owns:(function Shut _ -> [] | Popup _ -> sources)
+      (fun state event ->
+        match (state, event) with
+        | Shut data, Open ->
+            Machine.Go (Popup { data with opened = true })
+        | Popup data, (Close | Escape | Outside) ->
+            Machine.Go (Shut { data with opened = false })
+        | Popup data, Resized rect ->
+            Machine.Go
+              (Popup (note data (Printf.sprintf "resized %.0f" rect.width)))
+        | Popup data, Seen visible ->
+            Machine.Go
+              (Popup
+                 (note data
+                    ( if visible then
+                        "seen"
+                      else
+                        "hidden"
+                    )
+                 )
+              )
+        | Shut _, _ | Popup _, Open ->
+            Machine.Ignore
+      )
+
+  let view : state -> event Node.t = function
+    | Shut _ ->
         Node.element "button" [ Attr.on_press Open ] [ Node.text "open" ]
-    | States.Popup ->
+    | Popup _ ->
         Node.element "div"
           [ Attr.ref_ panel ]
           [ Node.element "span" [ Attr.ref_ box ] [ Node.text "popup" ] ]
 
   let component = Component.make machine view
-  let data (Held_machine.At (state, data) : Held_machine.snapshot) : data =
-    match state with States.Shut -> data | States.Popup -> data
-
+  let data = function Shut data | Popup data -> data
   let opened sim = (data (Sim.snapshot sim)).opened
 end
 
 let test_machine_sources () =
   let machine = Held.machine in
-  let state, actions = Machine.start machine in
+  let state, actions = Machine.start machine () in
   Alcotest.(check int) "no source in the first state" 0 (List.length actions);
   Alcotest.(check int)
     "no held source" 0
-    (List.length (Machine.held machine state));
-  let state, actions, _ = Machine.send machine state Held.Open in
+    (List.length (Machine.held machine () state));
+  let state, actions, _ = Machine.step machine () state Held.Open in
   let started =
     List.filter_map
       (function
@@ -357,28 +345,20 @@ let test_machine_sources () =
         )
       actions
   in
-  Alcotest.check strings "sources start on entry"
+  Alcotest.check strings "sources start on entry, keyed by kind and refs"
     [
-      "held/popup/invoke0 focus_trap";
-      "held/popup/invoke1 scroll_lock";
-      "held/popup/invoke2 outside_press";
-      "held/popup/invoke3 keys";
-      "held/popup/invoke4 resize";
-      "held/popup/invoke5 intersection";
+      "held/popup/focus_trap panel focus_trap";
+      "held/popup/scroll_lock scroll_lock";
+      "held/popup/outside_press panel outside_press";
+      "held/popup/keys keys";
+      "held/popup/resize box resize";
+      "held/popup/intersection box intersection";
     ]
     started;
   Alcotest.(check int)
     "held lists them" 6
-    (List.length (Machine.held machine state));
-  Alcotest.(check bool)
-    "active lists them as held" true
-    (List.for_all
-       (function Machine.Held _ -> true | _ -> false)
-       (Machine.active machine state)
-    );
-  let spec = Machine.spec machine in
-  let popup = List.find (fun s -> s.Spec.name = "popup") spec.Spec.states in
-  Alcotest.check strings "spec names the held sources"
+    (List.length (Machine.held machine () state));
+  Alcotest.check strings "active names the held sources"
     [
       "focus_trap";
       "scroll_lock";
@@ -387,9 +367,23 @@ let test_machine_sources () =
       "resize";
       "intersection";
     ]
-    popup.held;
-  Alcotest.check strings "calls are not held" [] popup.sources;
-  let _, actions, _ = Machine.send machine state Held.Escape in
+    (List.map
+       (function
+         | Machine.Held { name; _ } ->
+             name
+         | Machine.Timer _ | Machine.Call _ | Machine.Subscription _ ->
+             "not held"
+         )
+       (Machine.active machine () state)
+    );
+  Alcotest.(check bool)
+    "every held source is held" true
+    (List.for_all Source.is_held Held.sources);
+  let state, actions, how = Machine.step machine () state (Held.Seen true) in
+  Alcotest.(check bool)
+    "a step in the state keeps the sources" true
+    (how = Machine.Kept && actions = []);
+  let _, actions, _ = Machine.step machine () state Held.Escape in
   let stopped =
     List.filter_map (function Action.Stop id -> Some id | _ -> None) actions
   in
@@ -403,7 +397,7 @@ let test_sim_sources () =
   Alcotest.(check bool)
     "ids are qualified by instance and entry" true
     (List.for_all
-       (fun (id, _) -> contains id "1.1/held/popup/invoke")
+       (fun (id, _) -> String.starts_with ~prefix:"1.1/held/popup/" id)
        (Sim.sources sim)
     );
   Alcotest.(check bool)
@@ -422,35 +416,26 @@ let test_sim_sources () =
 
 module Bomb = struct
   type event = Inc | Boom | Break_view | Tick
-
-  type data = { count : int; ticks : int; broken : bool }
-
-  module States = struct
-    type _ t = Live : data t
-  end
-
-  module Bomb_machine = Machine.Make (States)
+  type state = Live of { count : int; ticks : int; broken : bool }
+  [@@deriving state_shape]
 
   let machine =
-    Bomb_machine.make ~id:"bomb"
-      ~init:(Bomb_machine.at Live { count = 0; ticks = 0; broken = false })
-      [
-        Bomb_machine.state Live "live"
-          ~after:[ (10, Tick) ]
-          (fun data -> function
-            | Inc ->
-                Bomb_machine.goto Live { data with count = data.count + 1 }
-            | Tick ->
-                Bomb_machine.reenter Live { data with ticks = data.ticks + 1 }
-            | Boom ->
-                failwith "boom"
-            | Break_view ->
-                Bomb_machine.goto Live { data with broken = true }
-            );
-      ]
+    Machine.make ~id:"bomb"
+      ~init:(Live { count = 0; ticks = 0; broken = false })
+      ~shape:state_shape
+      ~owns:(fun _ -> [ Source.after 10 Tick ])
+      (fun (Live data) -> function
+        | Inc ->
+            Machine.Go (Live { data with count = data.count + 1 })
+        | Tick ->
+            Machine.Reenter (Live { data with ticks = data.ticks + 1 })
+        | Boom ->
+            failwith "boom"
+        | Break_view ->
+            Machine.Go (Live { data with broken = true })
+        )
 
-  let view (Bomb_machine.At (States.Live, data) : Bomb_machine.snapshot) :
-      event Node.t =
+  let view (Live data) : event Node.t =
     if data.broken then failwith "view broke";
     Node.element "div" []
       [
@@ -468,26 +453,18 @@ end
 
 module Shell = struct
   type event = Bump | Child of Bomb.event
-
-  type data = { bumps : int }
-
-  module States = struct
-    type _ t = Shell : data t
-  end
-
-  module Shell_machine = Machine.Make (States)
+  type state = Shell of { bumps : int } [@@deriving state_shape]
 
   let machine =
-    Shell_machine.make ~id:"shell"
-      ~init:(Shell_machine.at Shell { bumps = 0 })
-      [
-        Shell_machine.state Shell "shell" (fun data -> function
-          | Bump ->
-              Shell_machine.goto Shell { bumps = data.bumps + 1 }
-          | Child _ ->
-              Shell_machine.unhandled
-          );
-      ]
+    Machine.make ~id:"shell"
+      ~init:(Shell { bumps = 0 })
+      ~shape:state_shape
+      (fun (Shell data) -> function
+        | Bump ->
+            Machine.Go (Shell { bumps = data.bumps + 1 })
+        | Child _ ->
+            Machine.Ignore
+        )
 
   let fallback (error : Node.error) ~reset : event Node.t =
     Node.element "section" []
@@ -506,8 +483,8 @@ module Shell = struct
     Component.node ~output:(fun event _ -> [ Child event ]) Bomb.component
     |> Node.map (fun event -> event)
 
-  let guarded : (Shell_machine.snapshot, event) Component.t =
-    Component.make machine (fun (Shell_machine.At (States.Shell, data)) ->
+  let guarded : (unit, state, event) Component.t =
+    Component.make machine (fun (Shell data) ->
         Node.element "main" []
           [
             Node.element "button"
@@ -517,12 +494,10 @@ module Shell = struct
           ]
     )
 
-  let unguarded : (Shell_machine.snapshot, event) Component.t =
+  let unguarded : (unit, state, event) Component.t =
     Component.make machine (fun _ -> Node.element "main" [] [ bomb () ])
 
-  let bumps sim =
-    (fun (Shell_machine.At (States.Shell, data)) -> data.bumps)
-      (Sim.snapshot sim)
+  let bumps sim = match Sim.snapshot sim with Shell data -> data.bumps
 end
 
 let test_boundary_catches_step_exception () =
@@ -644,24 +619,19 @@ let test_no_boundary_exception_escapes () =
 
 module Nested = struct
   type event = Nothing
-
-  module States = struct
-    type _ t = Only : unit t
-  end
-
-  module Nested_machine = Machine.Make (States)
+  type state = Only [@@deriving state_shape]
 
   let machine =
-    Nested_machine.make ~id:"nested"
-      ~init:(Nested_machine.at Only ())
-      [ Nested_machine.state Only "only" Nested_machine.ignore ]
+    Machine.make ~id:"nested" ~init:Only ~shape:state_shape (fun Only Nothing ->
+        Machine.Ignore
+    )
 
   let bad_fallback _ ~reset:_ : event Node.t = failwith "fallback broke"
 
   let ok_fallback _ ~reset : event Node.t =
     Node.element "p" [ reset ] [ Node.text "outer fallback" ]
 
-  let component : (Nested_machine.snapshot, event) Component.t =
+  let component : (unit, state, event) Component.t =
     Component.make machine (fun _ ->
         Node.boundary ~fallback:ok_fallback
           (Node.element "div" []

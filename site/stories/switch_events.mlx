@@ -4,27 +4,21 @@ open Silica_ui
 type page = { checked : bool; events : string list }
 type event = Changed of bool
 
-module States = struct
-  type _ t = Page : page t
-end
-
-module Switch_events_machine = Machine.Make (States)
-
 let machine =
-  Switch_events_machine.make ~id:"switch-events"
-    ~init:(Switch_events_machine.at Page { checked = false; events = [] })
-    [
-      Switch_events_machine.state Page "page" (fun page -> function
-        | Changed checked ->
-            Switch_events_machine.goto Page
-              {
-                checked;
-                events = page.events @ [ Printf.sprintf "checked %b" checked ];
-              }
-        );
-    ]
+  Machine.make ~id:"switch-events"
+    ~init:{ checked = false; events = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Changed checked ->
+          Go
+            {
+              checked;
+              events = page.events @ [ Printf.sprintf "checked %b" checked ];
+            }
+    )
 
-let view (Switch_events_machine.At (Page, page)) =
+let view page =
   <section class_="flex flex-col gap-4">
     <form id="wifi-form">
       (Switch.make

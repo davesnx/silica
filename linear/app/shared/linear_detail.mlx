@@ -12,18 +12,18 @@ type editor = {
 }
 
 type event =
-  | Props of int
-  | Loaded of (Issues.t, Remote.error) result
+  | Loaded of (Issues.t, string) Remote.answer
   | Updated of Issues.t Topic.update
   | Retry
   | Reconnect
+  | Reconnected
   | Edit of text_field
   | Draft_changed of string
   | Save
   | Cancel_edit
   | Picker of Linear_pickers.picker option
   | Pick of Change.t
-  | Saved of int * (Change.answer, Remote.error) result
+  | Saved of int * (Change.answer, string) Remote.answer
   | Toast_closed of string
   | Menu_open of bool
   | Command of string
@@ -33,24 +33,16 @@ type event =
 type view_state = {
   number : int;
   data : Linear_data.t;
+  reconnecting : bool;
   editor : editor option;
   picker : Linear_pickers.picker option;
   toasts : Silica_ui.Toast.toast list;
   menu_open : bool;
 }
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Loading : int t
-    | Ready : view_state t
-    | Not_found : int t
-    | Failed : (int * Remote.error) t
-end
+type state = Loading | Ready of view_state | Not_found | Failed of string
+[@@deriving state_shape]
 
-module Detail_machine = Machine.Make (States)
-
-let title number = [ Action.Set_title ("ENG-" ^ string_of_int number) ]
 let title_input = Ref.make "title-input"
 let description_input = Ref.make "description-input"
 
@@ -81,14 +73,6 @@ let field_of_change : Change.t -> (text_field * string) option = function
   | Change.Status _ | Change.Priority _ | Change.Assignee _ | Change.Labels _ ->
       None
 
-let error_text : Remote.error -> string = function
-  | Http code ->
-      "The server answered " ^ string_of_int code
-  | Decode _ ->
-      "The server sent data that cannot be read"
-  | Network _ ->
-      "The network failed"
-
 let add_toast state request outcome =
   let key = "toast-" ^ string_of_int (List.length state.toasts) in
   match Linear_data.toast ~key request outcome with
@@ -109,145 +93,158 @@ let conflict_note (current : Issue.t) field =
     )
   ^ ". Your text is kept: save again to replace it."
 
-let finished state id result =
-  let data, outcome = Linear_data.finish id result state.data in
+let finished state id answer : (state, event) Machine.next =
+  let data, outcome = Linear_data.finish id answer state.data in
   let state = { state with data } in
   match outcome with
   | None | Some (_, Linear_data.Saved) ->
-      Detail_machine.goto Ready state
+      Go (Ready state)
   | Some (request, (Linear_data.Conflict current as outcome)) -> (
       match field_of_change request.change with
       | Some (field, draft) ->
-          Detail_machine.goto Ready
-            ~actions:[ Action.Focus (input_ref field) ]
-            {
-              state with
-              editor =
-                Some
-                  {
-                    field;
-                    draft;
-                    base = current.version;
-                    note = Some (conflict_note current field);
-                  };
-            }
+          Go_with
+            ( Ready
+                {
+                  state with
+                  editor =
+                    Some
+                      {
+                        field;
+                        draft;
+                        base = current.version;
+                        note = Some (conflict_note current field);
+                      };
+                },
+              [ Action.Focus (input_ref field) ]
+            )
       | None ->
-          Detail_machine.goto Ready (add_toast state request outcome)
+          Go (Ready (add_toast state request outcome))
     )
   | Some (request, (Linear_data.Failed _ as outcome)) ->
-      Detail_machine.goto Ready (add_toast state request outcome)
+      Go (Ready (add_toast state request outcome))
 
-let save state (editor : editor) =
+let save state (editor : editor) : (state, event) Machine.next =
   match Change.check (change_of editor.field editor.draft) with
   | Error message ->
-      Detail_machine.goto Ready
-        { state with editor = Some { editor with note = Some message } }
+      Go (Ready { state with editor = Some { editor with note = Some message } })
   | Ok change ->
-      Detail_machine.goto Ready
-        {
-          state with
-          editor = None;
-          data =
-            Linear_data.start ~base:editor.base state.number change state.data;
-        }
+      Go
+        (Ready
+           {
+             state with
+             editor = None;
+             data =
+               Linear_data.start ~base:editor.base state.number change
+                 state.data;
+           }
+        )
 
-let ready state = function
+let ready state : event -> (state, event) Machine.next = function
   | Updated update ->
-      Detail_machine.goto Ready
-        { state with data = Linear_data.apply update state.data }
+      Go (Ready { state with data = Linear_data.apply update state.data })
   | Reconnect ->
-      Detail_machine.reenter Ready state
+      Go (Ready { state with reconnecting = true })
+  | Reconnected ->
+      Go (Ready { state with reconnecting = false })
   | Edit field -> (
       match Linear_data.find state.number state.data with
       | Some issue ->
-          Detail_machine.goto Ready
-            ~actions:[ Action.Focus (input_ref field) ]
-            {
-              state with
-              editor =
-                Some
-                  {
-                    field;
-                    draft = text_of issue field;
-                    base = issue.version;
-                    note = None;
-                  };
-            }
+          Go_with
+            ( Ready
+                {
+                  state with
+                  editor =
+                    Some
+                      {
+                        field;
+                        draft = text_of issue field;
+                        base = issue.version;
+                        note = None;
+                      };
+                },
+              [ Action.Focus (input_ref field) ]
+            )
       | None ->
-          Detail_machine.unhandled
+          Ignore
     )
   | Draft_changed draft -> (
       match state.editor with
       | Some editor ->
-          Detail_machine.goto Ready
-            { state with editor = Some { editor with draft } }
+          Go (Ready { state with editor = Some { editor with draft } })
       | None ->
-          Detail_machine.unhandled
+          Ignore
     )
   | Save -> (
       match state.editor with
       | Some editor ->
           save state editor
       | None ->
-          Detail_machine.unhandled
+          Ignore
     )
   | Cancel_edit -> (
       match state.editor with
       | Some _ ->
-          Detail_machine.goto Ready { state with editor = None }
+          Go (Ready { state with editor = None })
       | None ->
-          Detail_machine.unhandled
+          Ignore
     )
   | Keep_editing -> (
       match state.editor with
       | Some editor ->
-          Detail_machine.stay [ Action.Focus (input_ref editor.field) ]
+          Stay [ Action.Focus (input_ref editor.field) ]
       | None ->
-          Detail_machine.unhandled
+          Ignore
     )
   | Picker picker ->
-      Detail_machine.goto Ready { state with picker }
+      Go (Ready { state with picker })
   | Pick change ->
-      Detail_machine.goto Ready
-        { state with data = Linear_data.start state.number change state.data }
-  | Saved (id, result) ->
-      finished state id result
+      Go
+        (Ready
+           {
+             state with
+             data = Linear_data.start state.number change state.data;
+           }
+        )
+  | Saved (id, answer) ->
+      finished state id answer
   | Toast_closed key ->
-      Detail_machine.goto Ready
-        {
-          state with
-          toasts =
-            List.filter
-              (fun (t : Silica_ui.Toast.toast) -> t.key <> key)
-              state.toasts;
-        }
+      Go
+        (Ready
+           {
+             state with
+             toasts =
+               List.filter
+                 (fun (t : Silica_ui.Toast.toast) -> t.key <> key)
+                 state.toasts;
+           }
+        )
   | Menu_open menu_open ->
-      Detail_machine.goto Ready { state with menu_open }
+      Go (Ready { state with menu_open })
   | Create_key ->
-      Detail_machine.stay
-        [ Router.navigate routes State.Issues { list with create = true } ]
+      Stay [ Router.navigate routes (Issues { list with create = true }) ]
   | Command value -> (
       let issues = Linear_data.issues state.data in
       let focused = Linear_data.find state.number state.data in
       match Linear_commands.parse ~issues ~focused value with
       | Some Linear_commands.Create ->
-          Detail_machine.stay
-            [ Router.navigate routes State.Issues { list with create = true } ]
+          Stay [ Router.navigate routes (Issues { list with create = true }) ]
       | Some Linear_commands.Go_list ->
-          Detail_machine.stay [ Router.navigate routes State.Issues list ]
+          Stay [ Router.navigate routes (Issues list) ]
       | Some (Linear_commands.Open number) ->
-          Detail_machine.stay [ Router.navigate routes State.Issue number ]
+          Stay [ Router.navigate routes (Issue number) ]
       | Some (Linear_commands.Set change) ->
-          Detail_machine.goto Ready
-            {
-              state with
-              data = Linear_data.start state.number change state.data;
-            }
+          Go
+            (Ready
+               {
+                 state with
+                 data = Linear_data.start state.number change state.data;
+               }
+            )
       | None ->
-          Detail_machine.unhandled
+          Ignore
     )
-  | Props _ | Loaded _ | Retry ->
-      Detail_machine.unhandled
+  | Loaded _ | Retry ->
+      Ignore
 
 let picker_keys =
   Linear_pickers.
@@ -260,73 +257,73 @@ let picker_keys =
     ]
   @ Linear_commands.keys (Menu_open true)
 
+let live (state : view_state) =
+  if state.reconnecting then
+    Source.after 0 Reconnected
+  else
+    Source.live issues_topic issues_key (fun update -> Updated update)
+
 let machine =
-  Detail_machine.make ~id:"issue-detail"
-    ~init:(Detail_machine.at Idle ())
-    [
-      Detail_machine.always ~to_:[ Loading ] (function
-        | Props number ->
-            Detail_machine.reenter Loading number
-        | _ ->
-            Detail_machine.unhandled
-        );
-      Detail_machine.state Idle "idle" Detail_machine.ignore;
-      Detail_machine.state Loading "loading"
-        ~to_:[ Ready; Not_found; Failed ]
-        ~entry:title
-        ~invoke:
-          [ Source.call issues_endpoint (fun _ -> ()) (fun r -> Loaded r) ]
-        (fun number -> function
-          | Loaded (Ok issues) -> (
-              let data = Linear_data.loaded issues in
-              match Linear_data.find number data with
-              | Some issue ->
-                  Detail_machine.goto Ready
-                    ~actions:
-                      [
-                        Action.Set_title
-                          (Issue.identifier issue ^ " " ^ issue.title);
-                      ]
+  Machine.make_with_props ~id:"issue-detail" ~init:Loading ~shape:state_shape
+    ~entry:(fun number -> function
+      | Loading ->
+          [ Action.Set_title ("ENG-" ^ string_of_int number) ]
+      | Ready _ | Not_found | Failed _ ->
+          []
+      )
+    ~owns:(fun _ -> function
+      | Loading ->
+          [ Remote.call issues_endpoint () (fun answer -> Loaded answer) ]
+      | Ready state ->
+          live state
+          :: Source.keys ~prevent:true picker_keys
+          :: Linear_data.calls state.data (fun id answer -> Saved (id, answer))
+      | Not_found | Failed _ ->
+          []
+      )
+    ~on_props:(fun previous _ _ ->
+      match previous with Some _ -> Reenter Loading | None -> Ignore
+    )
+    (fun number state event ->
+      match (state, event) with
+      | Loading, Loaded (Ok issues) -> (
+          let data = Linear_data.loaded issues in
+          match Linear_data.find number data with
+          | Some issue ->
+              Go_with
+                ( Ready
                     {
                       number;
                       data;
+                      reconnecting = false;
                       editor = None;
                       picker = None;
                       toasts = [];
                       menu_open = false;
-                    }
-              | None ->
-                  Detail_machine.goto Not_found
-                    ~actions:[ Action.Set_status 404 ] number
-            )
-          | Loaded (Error error) ->
-              Detail_machine.goto Failed (number, error)
-          | _ ->
-              Detail_machine.unhandled
-          );
-      Detail_machine.state Ready "ready"
-        ~invoke:
-          [
-            Source.live issues_topic
-              (fun _ -> issues_key)
-              (fun update -> Updated update);
-            Source.keys ~prevent:true picker_keys;
-          ]
-        ready;
-      Detail_machine.state Not_found "not_found" Detail_machine.ignore;
-      Detail_machine.state Failed "failed" ~to_:[ Loading ]
-        (fun (number, _) -> function
-        | Retry ->
-            Detail_machine.goto Loading number
-        | _ ->
-            Detail_machine.unhandled
-        );
-    ]
+                    },
+                  [
+                    Action.Set_title (Issue.identifier issue ^ " " ^ issue.title);
+                  ]
+                )
+          | None ->
+              Go_with (Not_found, [ Action.Set_status 404 ])
+        )
+      | Loading, Loaded (Rejected message) ->
+          Go (Failed message)
+      | Loading, Loaded (Failed error) ->
+          Go (Failed (Remote.error_to_string error))
+      | Ready state, event ->
+          ready state event
+      | Failed _, Retry ->
+          Go Loading
+      | (Loading | Not_found | Failed _), _ ->
+          Ignore
+    )
 
 let text = Node.text
 
 let back =
-  Router.link routes State.Issues list
+  Router.link routes (Issues list)
     [ Attr.string "class" "text-sm text-ui-muted hover:underline" ]
     [ text "Back to issues" ]
 
@@ -495,7 +492,6 @@ let issue_view (state : view_state) (issue : Issue.t) : event Node.t =
         ~on_run:(fun value -> Command value)
         ~issues:(Linear_data.issues state.data)
         ~focused:(Some issue);
-      Linear_data.calls state.data (fun id result -> Saved (id, result));
       Silica_ui.Toast.make
         ~on_close:(fun key -> Toast_closed key)
         (Silica_ui.Toast.props ~id:"issue-toasts" ~classes:toast_classes
@@ -503,19 +499,19 @@ let issue_view (state : view_state) (issue : Issue.t) : event Node.t =
         );
     ]
 
-let view (snapshot : Detail_machine.snapshot) : event Node.t =
+let view number state : event Node.t =
   <section>
     <p class_="mb-4">back</p>
-    ( match snapshot with
-    | Detail_machine.At (Idle, ()) | Detail_machine.At (Loading, _) ->
+    ( match state with
+    | Loading ->
         <p class_="text-ui-muted">"Loading issue..."</p>
-    | Detail_machine.At (Not_found, number) ->
+    | Not_found ->
         <p id="issue-not-found">
           (text ("There is no issue ENG-" ^ string_of_int number ^ "."))
         </p>
-    | Detail_machine.At (Failed, (_, error)) ->
+    | Failed message ->
         <div>
-          <p role=`alert class_="text-ui-danger">(text (error_text error))</p>
+          <p role=`alert class_="text-ui-danger">(text message)</p>
           <button
             id="issue-retry"
             class_="mt-2 rounded-ui border border-ui-border px-3 py-1"
@@ -523,7 +519,7 @@ let view (snapshot : Detail_machine.snapshot) : event Node.t =
             "Try again"
           </button>
         </div>
-    | Detail_machine.At (Ready, state) -> (
+    | Ready state -> (
         match Linear_data.find state.number state.data with
         | Some issue ->
             issue_view state issue
@@ -537,5 +533,6 @@ let view (snapshot : Detail_machine.snapshot) : event Node.t =
     )
   </section>
 
-let component = Component.make machine view
-let make ?key ~number () = Component.node ?key ~props:(Props number) component
+let component = Component.make_with_props machine view
+let make ?key ~number () =
+  Component.node_with_props ?key ~props:number component

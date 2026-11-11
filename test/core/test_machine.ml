@@ -4,24 +4,20 @@ type event =
   | Input of string
   | Clear
   | Fire
-  | Got of (string list, Remote.error) result
+  | Got of (string list, string) Remote.answer
   | Retry
 
-module State = struct
-  type _ t =
-    | Idle : unit t
-    | Typing : string t
-    | Searching : string t
-    | Shown : (string * string list) t
-    | Failed : (string * Remote.error) t
-end
-
-module Search = Machine.Make (State)
-open State
+type state =
+  | Idle
+  | Typing of string
+  | Searching of string
+  | Shown of string * string list
+  | Failed of string * Remote.error
+[@@deriving state_shape]
 
 let endpoint =
   Remote.declare ~path:"/api/search" ~input:Codec.string
-    ~output:(Codec.list Codec.string)
+    ~output:(Codec.list Codec.string) ~rejected:Codec.string
 
 let note text = Action.Focus (Ref.make text)
 
@@ -39,117 +35,117 @@ let describe : type e. e Action.host -> string = function
 
 let described : type e. e Action.host list -> string list =
  fun actions -> List.map describe actions
+
 let strings = Alcotest.(list string)
 
 let search =
-  Search.make ~id:"search" ~init:(Search.at Idle ())
-    [
-      Search.always ~to_:[ Typing; Idle ] (function
-        | Input query ->
-            Search.reenter Typing query
-        | Clear ->
-            Search.goto Idle ()
-        | _ ->
-            Search.unhandled
-        );
-      Search.state Idle "idle" Search.ignore;
-      Search.state Typing "typing"
-        ~after:[ (300, Fire) ]
-        ~to_:[ Searching ]
-        (fun query -> function
-          | Fire -> Search.goto Searching query | _ -> Search.unhandled
-          );
-      Search.state Searching "searching" ~to_:[ Shown; Failed ]
-        ~invoke:[ Source.call endpoint Fun.id (fun result -> Got result) ]
-        (fun query -> function
-          | Got (Ok hits) ->
-              Search.goto Shown (query, hits)
-          | Got (Error error) ->
-              Search.goto Failed (query, error)
-          | _ ->
-              Search.unhandled
-          );
-      Search.state Shown "shown" Search.ignore;
-      Search.state Failed "failed" ~to_:[ Searching ]
-        (fun (query, _) -> function
-        | Retry ->
-            Search.goto Searching query
-        | _ ->
-            Search.unhandled
-        );
-    ]
+  Machine.make ~id:"search" ~init:Idle ~shape:state_shape
+    ~owns:(function
+      | Typing _ ->
+          [ Source.after 300 Fire ]
+      | Searching query ->
+          [ Remote.call endpoint query (fun answer -> Got answer) ]
+      | Idle | Shown _ | Failed _ ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | _, Input query ->
+          Machine.Reenter (Typing query)
+      | _, Clear ->
+          Machine.Go Idle
+      | Typing query, Fire ->
+          Machine.Go (Searching query)
+      | Searching query, Got (Remote.Ok hits) ->
+          Machine.Go (Shown (query, hits))
+      | Searching query, Got (Remote.Rejected reason) ->
+          Machine.Go (Failed (query, Remote.Decode reason))
+      | Searching query, Got (Remote.Failed error) ->
+          Machine.Go (Failed (query, error))
+      | Failed (query, _), Retry ->
+          Machine.Go (Searching query)
+      | _ ->
+          Machine.Ignore
+    )
+
+let typing_id = "search/typing/after 300ms"
+let searching_id query = "search/searching//api/search \"" ^ query ^ "\""
 
 let send snapshot event =
-  let snapshot, actions, handled = Machine.send search snapshot event in
-  (snapshot, described actions, handled)
+  let snapshot, actions, how = Machine.step search () snapshot event in
+  (snapshot, described actions, how)
 
-let state_name = Machine.key search
-let start () = fst (Machine.start search)
+let start () = fst (Machine.start search ())
 
 let test_start () =
-  let snapshot, actions = Machine.start search in
-  Alcotest.(check string) "init" "idle" (state_name snapshot);
+  let snapshot, actions = Machine.start search () in
+  Alcotest.(check string) "init" "idle" (Machine.shape_name state_shape snapshot);
   Alcotest.check strings "no entry" [] (described actions);
   Alcotest.(check string) "id" "search" (Machine.id search);
-  Alcotest.(check bool) "not final" false (Machine.is_final search snapshot)
+  Alcotest.(check bool) "not final" false (Machine.is_final search snapshot);
+  Alcotest.(check (option strings))
+    "states"
+    (Some (Machine.shape_names state_shape))
+    (Machine.states search)
 
 let test_timer_starts_on_entry () =
-  let snapshot, actions, handled = send (start ()) (Input "ab") in
-  Alcotest.(check string) "state" "typing" (state_name snapshot);
-  Alcotest.(check bool) "handled" true (handled = `Handled);
-  Alcotest.check strings "start" [ "start search/typing/after0 300ms" ] actions
+  let snapshot, actions, how = send (start ()) (Input "ab") in
+  Alcotest.(check string)
+    "state" "typing"
+    (Machine.shape_name state_shape snapshot);
+  Alcotest.(check bool) "entered" true (how = Machine.Entered);
+  Alcotest.check strings "start" [ "start " ^ typing_id ^ " 300ms" ] actions
 
 let test_timer_stops_on_exit () =
   let snapshot, _, _ = send (start ()) (Input "ab") in
   let snapshot, actions, _ = send snapshot Fire in
-  Alcotest.(check string) "state" "searching" (state_name snapshot);
+  Alcotest.(check string)
+    "state" "searching"
+    (Machine.shape_name state_shape snapshot);
   Alcotest.check strings "stop then call"
-    [ "stop search/typing/after0"; "call search/searching/invoke0 /api/search" ]
+    [ "stop " ^ typing_id; "call " ^ searching_id "ab" ^ " /api/search" ]
     actions;
   let typing, _, _ = send (start ()) (Input "x") in
   let _, actions, _ = send typing Clear in
-  Alcotest.check strings "clear stops the timer"
-    [ "stop search/typing/after0" ]
-    actions
+  Alcotest.check strings "clear stops the timer" [ "stop " ^ typing_id ] actions
 
 let test_reenter_restarts () =
   let snapshot, _, _ = send (start ()) (Input "a") in
-  let snapshot, actions, _ = send snapshot (Input "ab") in
-  Alcotest.(check string) "state" "typing" (state_name snapshot);
+  let snapshot, actions, how = send snapshot (Input "ab") in
+  Alcotest.(check string)
+    "state" "typing"
+    (Machine.shape_name state_shape snapshot);
+  Alcotest.(check bool) "entered" true (how = Machine.Entered);
   Alcotest.check strings "debounce"
-    [ "stop search/typing/after0"; "start search/typing/after0 300ms" ]
+    [ "stop " ^ typing_id; "start " ^ typing_id ^ " 300ms" ]
     actions;
-  let query : Search.snapshot -> string option = function
-    | Search.At (Typing, query) ->
-        Some query
-    | _ ->
-        None
-  in
-  Alcotest.(check (option string)) "new data" (Some "ab") (query snapshot)
+  Alcotest.(check bool) "new data" true (snapshot = Typing "ab")
 
 let test_source_stops_on_exit () =
   let snapshot, _, _ = send (start ()) (Input "q") in
   let snapshot, _, _ = send snapshot Fire in
-  let snapshot, actions, _ = send snapshot (Got (Ok [ "hit" ])) in
-  Alcotest.(check string) "state" "shown" (state_name snapshot);
-  Alcotest.check strings "stop" [ "stop search/searching/invoke0" ] actions;
+  let snapshot, actions, _ = send snapshot (Got (Remote.Ok [ "hit" ])) in
+  Alcotest.(check string)
+    "state" "shown"
+    (Machine.shape_name state_shape snapshot);
+  Alcotest.check strings "stop" [ "stop " ^ searching_id "q" ] actions;
   let snapshot, _, _ = send (start ()) (Input "q") in
   let snapshot, _, _ = send snapshot Fire in
   let _, actions, _ = send snapshot Clear in
   Alcotest.check strings "leaving early stops the call"
-    [ "stop search/searching/invoke0" ]
+    [ "stop " ^ searching_id "q" ]
     actions
 
 let test_late_result_is_unhandled () =
   let snapshot, _, _ = send (start ()) (Input "q") in
-  let late, actions, handled = send snapshot (Got (Ok [ "old" ])) in
-  Alcotest.(check bool) "unhandled" true (handled = `Unhandled);
+  let late, actions, how = send snapshot (Got (Remote.Ok [ "old" ])) in
+  Alcotest.(check bool) "unhandled" true (how = Machine.Unhandled);
   Alcotest.check strings "no actions" [] actions;
   Alcotest.(check bool) "same snapshot" true (late == snapshot)
 
 let test_start_input_uses_data () =
   let snapshot, _, _ = send (start ()) (Input "cats") in
-  let _, actions, _ = Machine.send search snapshot Fire in
+  let _, actions, _ = Machine.step search () snapshot Fire in
   match actions with
   | [ _; Action.Start_call { input; endpoint; _ } ] ->
       Alcotest.(check string)
@@ -158,7 +154,7 @@ let test_start_input_uses_data () =
   | _ ->
       Alcotest.fail "expected stop and call"
 
-let resource_ids machine snapshot =
+let resource_ids machine props snapshot =
   List.map
     (function
       | Machine.Timer { id; _ }
@@ -167,33 +163,43 @@ let resource_ids machine snapshot =
       | Machine.Held { id; _ } ->
           id
       )
-    (Machine.active machine snapshot)
+    (Machine.active machine props snapshot)
 
-let test_active_follows_actions () =
+let tracker () =
   let running = ref [] in
   let apply actions =
     List.iter
       (function
-        | Action.Start_timer { id; _ } | Action.Start_call { id; _ } ->
-            running := List.sort_uniq compare (id :: !running)
+        | Action.Start_timer { id; _ }
+        | Action.Start_call { id; _ }
+        | Action.Start_source { id; _ }
+        | Action.Start_live { id; _ } ->
+            if List.mem id !running then Alcotest.fail ("started twice: " ^ id);
+            running := List.sort compare (id :: !running)
         | Action.Stop id ->
+            if not (List.mem id !running) then
+              Alcotest.fail ("stopped while not running: " ^ id);
             running := List.filter (( <> ) id) !running
-        | _ ->
+        | Action.Run _ ->
             ()
         )
       actions
   in
-  let snapshot, actions = Machine.start search in
+  (running, apply)
+
+let test_active_follows_actions () =
+  let running, apply = tracker () in
+  let snapshot, actions = Machine.start search () in
   apply actions;
   let snapshot = ref snapshot in
   List.iter
     (fun event ->
-      let next, actions, _ = Machine.send search !snapshot event in
+      let next, actions, _ = Machine.step search () !snapshot event in
       snapshot := next;
       apply actions;
       Alcotest.check strings
-        (state_name next ^ " resources")
-        (List.sort compare (resource_ids search next))
+        (Machine.shape_name state_shape next ^ " resources")
+        (List.sort compare (resource_ids search () next))
         !running
     )
     [
@@ -204,31 +210,27 @@ let test_active_follows_actions () =
       Clear;
       Input "z";
       Fire;
-      Got (Error (Remote.Http 500));
+      Got (Remote.Failed (Remote.Http 500));
       Retry;
-      Got (Ok []);
+      Got (Remote.Ok []);
       Clear;
     ]
 
+type pair = A | B [@@deriving state_shape]
+
 let test_entry_exit_order () =
-  let module Pair = struct
-    type _ t = A : unit t | B : unit t
-  end in
-  let module Pair_machine = Machine.Make (Pair) in
   let machine =
-    Pair_machine.make ~id:"pair"
-      ~init:(Pair_machine.at Pair.A ())
-      [
-        Pair_machine.state Pair.A "a" ~to_:[ Pair.B ]
-          ~entry:(fun () -> [ note "enter a" ])
-          ~exit:(fun () -> [ note "exit a" ])
-          ~after:[ (5, ()) ]
-          (fun () () -> Pair_machine.goto ~actions:[ note "move" ] Pair.B ());
-        Pair_machine.state Pair.B "b"
-          ~entry:(fun () -> [ note "enter b" ])
-          ~after:[ (7, ()) ]
-          Pair_machine.ignore;
-      ]
+    Machine.make ~id:"pair" ~init:A ~shape:pair_shape
+      ~entry:(function A -> [ note "enter a" ] | B -> [ note "enter b" ])
+      ~exit:(function A -> [ note "exit a" ] | B -> [])
+      ~owns:(function A -> [ Source.after 5 () ] | B -> [ Source.after 7 () ])
+      (fun state () ->
+        match state with
+        | A ->
+            Machine.Go_with (B, [ note "move" ])
+        | B ->
+            Machine.Ignore
+      )
   in
   let describe actions =
     List.map
@@ -244,343 +246,422 @@ let test_entry_exit_order () =
         )
       actions
   in
-  let snapshot, actions = Machine.start machine in
+  let snapshot, actions = Machine.start machine () in
   Alcotest.check strings "start"
-    [ "enter a"; "start pair/a/after0" ]
+    [ "enter a"; "start pair/a/after 5ms" ]
     (describe actions);
-  let _, actions, _ = Machine.send machine snapshot () in
+  let _, actions, _ = Machine.step machine () snapshot () in
   Alcotest.check strings "transition"
-    [ "exit a"; "stop pair/a/after0"; "move"; "enter b"; "start pair/b/after0" ]
+    [
+      "exit a";
+      "stop pair/a/after 5ms";
+      "move";
+      "enter b";
+      "start pair/b/after 7ms";
+    ]
     (describe actions);
   Alcotest.check strings "exit"
-    [ "exit a"; "stop pair/a/after0" ]
-    (describe (Machine.exit machine snapshot))
+    [ "exit a"; "stop pair/a/after 5ms" ]
+    (describe (Machine.exit machine () snapshot))
+
+type counter = Count of int [@@deriving state_shape]
 
 let test_self_goto_keeps_resources () =
-  let module Counter = struct
-    type _ t = Count : int t
-  end in
-  let module Counter_machine = Machine.Make (Counter) in
   let machine =
-    Counter_machine.make ~id:"counter"
-      ~init:(Counter_machine.at Counter.Count 0)
-      [
-        Counter_machine.state Counter.Count "count"
-          ~entry:(fun _ -> [ note "enter" ])
-          ~exit:(fun _ -> [ note "exit" ])
-          ~after:[ (10, `Tick) ]
-          (fun n -> function
-            | `Tick ->
-                Counter_machine.goto Counter.Count (n + 1)
-            | `Again ->
-                Counter_machine.reenter Counter.Count (n + 1)
-            );
-      ]
-  in
-  let snapshot, _ = Machine.start machine in
-  let snapshot, actions, _ = Machine.send machine snapshot `Tick in
-  Alcotest.(check int) "goto: no actions" 0 (List.length actions);
-  let _, actions, _ = Machine.send machine snapshot `Again in
-  Alcotest.(check int)
-    "reenter: exit, stop, enter, start" 4 (List.length actions)
-
-let declared_error f =
-  match f () with
-  | exception Machine.Undeclared_target { machine; from; target } ->
-      (machine, from, target)
-  | _ ->
-      Alcotest.fail "expected Undeclared_target"
-
-let test_undeclared_target () =
-  let module Pair = struct
-    type _ t = A : unit t | B : unit t | C : unit t
-  end in
-  let module Pair_machine = Machine.Make (Pair) in
-  let machine =
-    Pair_machine.make ~id:"bad"
-      ~init:(Pair_machine.at Pair.A ())
-      [
-        Pair_machine.always ~to_:[ Pair.A ] (function
-          | `To_c ->
-              Pair_machine.goto Pair.C ()
-          | _ ->
-              Pair_machine.unhandled
-          );
-        Pair_machine.state Pair.A "a" ~to_:[ Pair.B ] (fun () -> function
-          | `To_b ->
-              Pair_machine.goto Pair.B ()
-          | `To_c_here ->
-              Pair_machine.goto Pair.C ()
-          | `Self ->
-              Pair_machine.goto Pair.A ()
-          | `Again ->
-              Pair_machine.reenter Pair.A ()
-          | _ ->
-              Pair_machine.unhandled
-          );
-        Pair_machine.state Pair.B "b" Pair_machine.ignore;
-        Pair_machine.state Pair.C "c" Pair_machine.ignore;
-      ]
-  in
-  let snapshot, _ = Machine.start machine in
-  let ok event = ignore (Machine.send machine snapshot event) in
-  ok `To_b;
-  ok `Self;
-  ok `Again;
-  Alcotest.(check (triple string string string))
-    "state handler" ("bad", "a", "c")
-    (declared_error (fun () -> Machine.send machine snapshot `To_c_here));
-  Alcotest.(check (triple string string string))
-    "always handler" ("bad", "a", "c")
-    (declared_error (fun () -> Machine.send machine snapshot `To_c))
-
-let test_missing_case () =
-  let module Pair = struct
-    type _ t = A : unit t | B : unit t | Orphan : unit t
-  end in
-  let module Pair_machine = Machine.Make (Pair) in
-  let table =
-    [
-      Pair_machine.state Pair.A "a" ~to_:[ Pair.B ] (fun () () ->
-          Pair_machine.goto Pair.B ()
-      );
-      Pair_machine.state Pair.B "b" Pair_machine.ignore;
-    ]
-  in
-  Alcotest.check_raises "initial state"
-    (Machine.Missing_case { machine = "m"; index = 2 })
-    (fun () ->
-      ignore
-        (Pair_machine.make ~id:"m" ~init:(Pair_machine.at Pair.Orphan ()) table)
-    );
-  let machine =
-    Pair_machine.make ~id:"m" ~init:(Pair_machine.at Pair.A ()) table
-  in
-  Pair_machine.cases_cover machine [ Pair.A; Pair.B ];
-  Alcotest.check_raises "cases_cover"
-    (Machine.Missing_case { machine = "m"; index = 2 })
-    (fun () -> Pair_machine.cases_cover machine [ Pair.A; Pair.Orphan ]);
-  Alcotest.check_raises "to_ lists a state with no case"
-    (Machine.Missing_case { machine = "m"; index = 2 })
-    (fun () ->
-      ignore
-        (Pair_machine.make ~id:"m"
-           ~init:(Pair_machine.at Pair.A ())
-           [
-             Pair_machine.state Pair.A "a" ~to_:[ Pair.Orphan ]
-               Pair_machine.ignore;
-           ]
+    Machine.make ~id:"counter" ~init:(Count 0) ~shape:counter_shape
+      ~entry:(fun _ -> [ note "enter" ])
+      ~exit:(fun _ -> [ note "exit" ])
+      ~owns:(fun _ -> [ Source.after 10 `Tick ])
+      (fun (Count n) -> function
+        | `Tick ->
+            Machine.Go (Count (n + 1))
+        | `Again ->
+            Machine.Reenter (Count (n + 1))
+        | `Note ->
+            Machine.Stay [ note "stay" ]
         )
-    );
-  let wild =
-    Pair_machine.make ~id:"m"
-      ~init:(Pair_machine.at Pair.A ())
-      [
-        Pair_machine.state Pair.A "a" (fun () () ->
-            Pair_machine.goto Pair.Orphan ()
-        );
-        Pair_machine.state Pair.B "b" Pair_machine.ignore;
-      ]
   in
-  let snapshot, _ = Machine.start wild in
-  match Machine.send wild snapshot () with
-  | exception Machine.Undeclared_target { target; _ } ->
-      Alcotest.(check string) "goto to a state with no case" "#2" target
-  | _ ->
-      Alcotest.fail "expected Undeclared_target"
+  let snapshot, _ = Machine.start machine () in
+  let ticked, actions, how = Machine.step machine () snapshot `Tick in
+  Alcotest.(check int) "go: no actions" 0 (List.length actions);
+  Alcotest.(check bool) "go: kept" true (how = Machine.Kept);
+  Alcotest.(check bool) "go: new data" true (ticked = Count 1);
+  let _, actions, how = Machine.step machine () snapshot `Again in
+  Alcotest.(check int)
+    "reenter: exit, stop, enter, start" 4 (List.length actions);
+  Alcotest.(check bool) "reenter: entered" true (how = Machine.Entered);
+  let stayed, actions, how = Machine.step machine () snapshot `Note in
+  Alcotest.check strings "stay: its actions only" [ "note stay" ]
+    (described actions);
+  Alcotest.(check bool) "stay: kept" true (how = Machine.Kept);
+  Alcotest.(check bool) "stay: same data" true (stayed = snapshot)
 
-let test_search_covers_all_states () =
-  Search.cases_cover search [ Idle; Typing; Searching; Shown; Failed ]
+type list_state = Watching of string list [@@deriving state_shape]
+
+let list_endpoint =
+  Remote.declare ~path:"/api/item" ~input:Codec.string ~output:Codec.int
+    ~rejected:Codec.string
+
+let watcher =
+  Machine.make ~id:"watch"
+    ~init:(Watching [ "a"; "b" ])
+    ~shape:list_state_shape
+    ~owns:(fun (Watching items) ->
+      List.map
+        (fun item -> Remote.call list_endpoint item (fun _ -> `Answer))
+        items
+    )
+    (fun _ -> function
+      | `Set items ->
+          Machine.Go (Watching items)
+      | `Restart items ->
+          Machine.Reenter (Watching items)
+      | `Answer ->
+          Machine.Stay []
+      )
+
+let call_id item = "watch/watching//api/item \"" ^ item ^ "\""
+
+let test_keyed_sources () =
+  let running, apply = tracker () in
+  let snapshot, actions = Machine.start watcher () in
+  apply actions;
+  Alcotest.check strings "both calls run" [ call_id "a"; call_id "b" ] !running;
+  let snapshot, actions, how =
+    Machine.step watcher () snapshot (`Set [ "a"; "c" ])
+  in
+  apply actions;
+  Alcotest.(check bool) "kept" true (how = Machine.Kept);
+  Alcotest.check strings "the changed input restarts, the same key runs on"
+    [ "stop " ^ call_id "b"; "call " ^ call_id "c" ^ " /api/item" ]
+    (described actions);
+  Alcotest.check strings "running" [ call_id "a"; call_id "c" ] !running;
+  let snapshot, actions, _ =
+    Machine.step watcher () snapshot (`Set [ "a"; "c" ])
+  in
+  Alcotest.check strings "unchanged keys keep running" [] (described actions);
+  let snapshot, actions, _ =
+    Machine.step watcher () snapshot (`Set [ "a"; "c"; "a" ])
+  in
+  apply actions;
+  Alcotest.check strings "a duplicate gets #2"
+    [ "call " ^ call_id "a" ^ "#2 /api/item" ]
+    (described actions);
+  Alcotest.check strings "active agrees" !running
+    (List.sort compare (resource_ids watcher () snapshot));
+  let _, actions, how =
+    Machine.step watcher () snapshot (`Restart [ "a"; "c"; "a" ])
+  in
+  apply actions;
+  Alcotest.(check bool) "reenter entered" true (how = Machine.Entered);
+  Alcotest.check strings "reenter restarts all"
+    [
+      "stop " ^ call_id "a";
+      "stop " ^ call_id "c";
+      "stop " ^ call_id "a" ^ "#2";
+      "call " ^ call_id "a" ^ " /api/item";
+      "call " ^ call_id "c" ^ " /api/item";
+      "call " ^ call_id "a" ^ "#2 /api/item";
+    ]
+    (described actions);
+  Alcotest.(check string)
+    "source key" "/api/item \"a\""
+    (Source.key (Remote.call list_endpoint "a" (fun _ -> ())));
+  Alcotest.(check string)
+    "timer key" "after 5ms"
+    (Source.key (Source.after 5 ()))
+
+let test_anchor_place_is_in_key () =
+  let popup = Ref.make "popup" and trigger = Ref.make "trigger" in
+  let anchored side =
+    Source.anchor ~place:{ Place.default with side } ~anchor:trigger popup
+  in
+  let machine =
+    Machine.make ~id:"anchored" ~init:Place.Bottom
+      ~shape:(Machine.shape ~name:(fun _ -> "open") ())
+      ~owns:(fun side -> [ anchored side ])
+      (fun _ side -> Machine.Go side)
+  in
+  let snapshot, _ = Machine.start machine () in
+  let _, actions, how = Machine.step machine () snapshot Place.Top in
+  Alcotest.(check bool) "kept" true (how = Machine.Kept);
+  Alcotest.(check int)
+    "the old anchor stops, the new one starts" 2 (List.length actions);
+  Alcotest.(check bool)
+    "keys differ" true
+    (Source.key (anchored Place.Top) <> Source.key (anchored Place.Bottom))
+
+let test_state_names () =
+  Alcotest.check strings "every constructor, in order"
+    [ "idle"; "typing"; "searching"; "shown"; "failed" ]
+    (Machine.shape_names state_shape);
+  List.iter
+    (fun state ->
+      Alcotest.(check bool)
+        (Machine.shape_name state_shape state ^ " listed")
+        true
+        (List.mem
+           (Machine.shape_name state_shape state)
+           (Machine.shape_names state_shape)
+        )
+    )
+    [
+      Idle; Typing ""; Searching ""; Shown ("", []); Failed ("", Remote.Http 1);
+    ]
+
+type gate = Open | Closed [@@deriving state_shape]
 
 let test_final_ignores_events () =
-  let module Gate = struct
-    type _ t = Open : unit t | Closed : unit t
-  end in
-  let module Gate_machine = Machine.Make (Gate) in
   let machine =
-    Gate_machine.make ~id:"gate"
-      ~init:(Gate_machine.at Gate.Open ())
-      [
-        Gate_machine.always ~to_:[ Gate.Open ] (function
-          | `Reopen ->
-              Gate_machine.goto Gate.Open ()
-          | _ ->
-              Gate_machine.unhandled
-          );
-        Gate_machine.state Gate.Open "open" ~to_:[ Gate.Closed ]
-          (fun () -> function
-          | `Close ->
-              Gate_machine.goto Gate.Closed ()
-          | _ ->
-              Gate_machine.unhandled
-          );
-        Gate_machine.state Gate.Closed "closed" ~final:true ~to_:[ Gate.Open ]
-          (fun () -> function
-          | `Close ->
-              Gate_machine.stay [ note "ignored" ]
-          | _ ->
-              Gate_machine.unhandled
-          );
-      ]
+    Machine.make ~id:"gate" ~init:Open ~shape:gate_shape
+      ~final:(function Closed -> true | Open -> false)
+      (fun state event ->
+        match (state, event) with
+        | _, `Reopen ->
+            Machine.Go Open
+        | Open, `Close ->
+            Machine.Go Closed
+        | Closed, `Close ->
+            Machine.Stay [ note "ignored" ]
+        | Open, `Other ->
+            Machine.Ignore
+        | Closed, `Other ->
+            Machine.Ignore
+      )
   in
-  let snapshot, _ = Machine.start machine in
-  let closed, _, _ = Machine.send machine snapshot `Close in
+  let snapshot, _ = Machine.start machine () in
+  let closed, _, _ = Machine.step machine () snapshot `Close in
   Alcotest.(check bool) "final" true (Machine.is_final machine closed);
   List.iter
     (fun event ->
-      let next, actions, handled = Machine.send machine closed event in
-      Alcotest.(check bool) "unhandled" true (handled = `Unhandled);
+      let next, actions, how = Machine.step machine () closed event in
+      Alcotest.(check bool) "unhandled" true (how = Machine.Unhandled);
       Alcotest.(check int) "no actions" 0 (List.length actions);
-      Alcotest.(check bool) "same" true (next == closed)
+      Alcotest.(check bool) "same" true (next == closed);
+      Alcotest.(check bool) "cannot" false (Machine.can machine () closed event)
     )
     [ `Close; `Reopen ];
-  let _, _, handled = Machine.send machine snapshot `Reopen in
-  Alcotest.(check bool) "always works while not final" true (handled = `Handled);
-  let spec = Machine.spec machine in
-  Alcotest.(check bool)
-    "no edge leaves a final state" true
-    (not (List.exists (fun (a, _) -> a = "closed") spec.edges))
+  let _, _, how = Machine.step machine () snapshot `Reopen in
+  Alcotest.(check bool) "handled while not final" true (how <> Machine.Unhandled)
 
-let test_always_order () =
-  let module One = struct
-    type _ t = Only : unit t
-  end in
-  let module One_machine = Machine.Make (One) in
+let test_can () =
+  let idle = start () in
+  Alcotest.(check bool)
+    "input in idle" true
+    (Machine.can search () idle (Input "a"));
+  Alcotest.(check bool) "fire in idle" false (Machine.can search () idle Fire);
+  let typing, _, _ = send idle (Input "a") in
+  Alcotest.(check bool)
+    "fire while typing" true
+    (Machine.can search () typing Fire);
+  Alcotest.(check bool)
+    "retry while typing" false
+    (Machine.can search () typing Retry);
+  let typing_again, _, _ = send typing Retry in
+  Alcotest.(check bool) "can agrees with step" true (typing_again == typing)
+
+type form = { name : string; saving : bool }
+type field = Editing of string | Saving_field of string
+
+let field_step field event =
+  match (field, event) with
+  | Editing _, `Type text ->
+      Machine.Go (Editing text)
+  | Editing text, `Save ->
+      Machine.Reenter (Saving_field text)
+  | Editing _, `Note ->
+      Machine.Stay [ note "noted" ]
+  | Saving_field _, (`Type _ | `Save | `Note)
+  | Editing _, `Other
+  | Saving_field _, `Other ->
+      Machine.Ignore
+
+let test_map_next () =
+  let into_form saving = function
+    | Editing name ->
+        { name; saving }
+    | Saving_field name ->
+        { name; saving = true }
+  in
+  let text form =
+    form.name
+    ^
+    if form.saving then
+      " (saving)"
+    else
+      ""
+  in
+  let shown = function
+    | Machine.Ignore ->
+        "ignore"
+    | Machine.Stay [ Action.Focus r ] ->
+        "stay " ^ Ref.name r
+    | Machine.Stay _ ->
+        "stay"
+    | Machine.Go form ->
+        "go " ^ text form
+    | Machine.Go_with (form, _) ->
+        "go_with " ^ text form
+    | Machine.Reenter form ->
+        "reenter " ^ text form
+  in
+  let step event =
+    shown (Machine.map_next (into_form false) (field_step (Editing "a") event))
+  in
+  Alcotest.(check string) "go" "go ab" (step (`Type "ab"));
+  Alcotest.(check string) "reenter" "reenter a (saving)" (step `Save);
+  Alcotest.(check string) "ignore" "ignore" (step `Other);
+  Alcotest.(check string) "stay keeps its actions" "stay noted" (step `Note);
+  Alcotest.(check string)
+    "go_with" "go_with abc (saving)"
+    (shown
+       (Machine.map_next (into_form true) (Machine.Go_with (Editing "abc", [])))
+    )
+
+type item_state = Showing | Loading_item of int [@@deriving state_shape]
+
+let item_endpoint =
+  Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
+
+let item_machine on_props =
+  Machine.make_with_props ~id:"item" ~init:Showing ~shape:item_state_shape
+    ~owns:(fun number -> function
+      | Showing ->
+          [ Source.after (number * 10) `Tick ]
+      | Loading_item n ->
+          [ Remote.call item_endpoint n (fun _ -> `Answer) ]
+      )
+    ~on_props
+    (fun _ state event ->
+      match (state, event) with
+      | Showing, `Tick ->
+          Machine.Stay []
+      | _ ->
+          Machine.Ignore
+    )
+
+let test_on_props () =
+  let seen = ref [] in
   let machine =
-    One_machine.make ~id:"one"
-      ~init:(One_machine.at One.Only ())
-      [
-        One_machine.always (function
-          | `Both ->
-              One_machine.stay [ note "first always" ]
-          | _ ->
-              One_machine.unhandled
-          );
-        One_machine.always (function
-          | `Both | `Second ->
-              One_machine.stay [ note "second always" ]
-          | _ ->
-              One_machine.unhandled
-          );
-        One_machine.state One.Only "only" (fun () -> function
-          | `Own | `Both ->
-              One_machine.stay [ note "own" ]
-          | _ ->
-              One_machine.unhandled
-          );
-      ]
+    item_machine (fun previous number state ->
+        seen := (previous, number) :: !seen;
+        match (previous, state) with
+        | None, _ ->
+            Machine.Stay [ note ("start " ^ string_of_int number) ]
+        | Some previous, Showing when number > 5 ->
+            Machine.Go_with
+              (Loading_item number, [ note ("was " ^ string_of_int previous) ])
+        | Some _, _ ->
+            Machine.Ignore
+    )
   in
-  let snapshot, _ = Machine.start machine in
-  let names event =
-    let _, actions, _ = Machine.send machine snapshot event in
-    List.map
-      (function Action.Run (Action.Focus r) -> Ref.name r | _ -> "?")
-      actions
+  Alcotest.(check (option unit))
+    "no default props" None
+    (Option.map ignore (Machine.default_props machine));
+  let snapshot, actions = Machine.start machine 1 in
+  Alcotest.(check (list (pair (option int) int)))
+    "start: previous None"
+    [ (None, 1) ]
+    !seen;
+  Alcotest.check strings "start: entry then on_props"
+    [ "start item/showing/after 10ms 10ms"; "note start 1" ]
+    (described actions);
+  let snapshot, actions, how =
+    Machine.set_props machine ~previous:1 2 snapshot
   in
-  Alcotest.check strings "state first" [ "own" ] (names `Both);
-  Alcotest.check strings "always in list order" [ "second always" ]
-    (names `Second);
-  Alcotest.check strings "nothing" [] (names `Other)
+  Alcotest.(check (list (pair (option int) int)))
+    "change: previous Some"
+    [ (Some 1, 2); (None, 1) ]
+    !seen;
+  Alcotest.(check bool) "kept" true (how = Machine.Kept);
+  Alcotest.check strings "a source that depends on the props restarts"
+    [ "stop item/showing/after 10ms"; "start item/showing/after 20ms 20ms" ]
+    (described actions);
+  let snapshot, actions, how =
+    Machine.set_props machine ~previous:2 2 snapshot
+  in
+  Alcotest.(check bool) "same props: unhandled" true (how = Machine.Unhandled);
+  Alcotest.check strings "same props: nothing" [] (described actions);
+  let snapshot, actions, how =
+    Machine.set_props machine ~previous:2 7 snapshot
+  in
+  Alcotest.(check bool) "go: entered" true (how = Machine.Entered);
+  Alcotest.check strings "go: exit with the old props, enter with the new"
+    [
+      "stop item/showing/after 20ms";
+      "note was 2";
+      "call item/loading_item//api/double 7 /api/double";
+    ]
+    (described actions);
+  Alcotest.(check bool) "state" true (snapshot = Loading_item 7);
+  Alcotest.(check bool)
+    "update gets the props" true
+    (Machine.can machine 7 Showing `Tick)
 
-let test_spec () =
-  let spec = Machine.spec search in
-  Alcotest.(check string) "id" "search" spec.id;
-  Alcotest.(check string) "init" "idle" spec.init;
-  Alcotest.(check (list string))
-    "states"
-    [ "idle"; "typing"; "searching"; "shown"; "failed" ]
-    (List.map (fun (s : Spec.state) -> s.name) spec.states);
-  let typing =
-    List.find (fun (s : Spec.state) -> s.name = "typing") spec.states
-  in
-  Alcotest.(check (list int)) "timers" [ 300 ] typing.timers;
-  let searching =
-    List.find (fun (s : Spec.state) -> s.name = "searching") spec.states
-  in
-  Alcotest.(check (list string)) "sources" [ "/api/search" ] searching.sources;
-  let has edge = List.mem edge spec.edges in
-  Alcotest.(check bool) "to_" true (has ("typing", "searching"));
-  Alcotest.(check bool)
-    "always reaches every state" true
-    (List.for_all
-       (fun name -> has (name, "typing") && has (name, "idle"))
-       [ "idle"; "typing"; "searching"; "shown"; "failed" ]
-    );
-  Alcotest.(check bool) "retry" true (has ("failed", "searching"));
-  Alcotest.(check bool)
-    "no edge searching to retry target" false
-    (has ("shown", "searching"));
-  Alcotest.(check (list (pair string string)))
-    "sorted and unique"
-    (List.sort_uniq compare spec.edges)
-    spec.edges
+let test_on_props_default () =
+  let machine = item_machine (fun _ _ _ -> Machine.Ignore) in
+  let snapshot, actions = Machine.start machine 3 in
+  Alcotest.check strings "start"
+    [ "start item/showing/after 30ms 30ms" ]
+    (described actions);
+  let _, actions, how = Machine.set_props machine ~previous:3 4 snapshot in
+  Alcotest.(check bool) "sources moved: kept" true (how = Machine.Kept);
+  Alcotest.check strings "ignore still restarts the keyed timer"
+    [ "stop item/showing/after 30ms"; "start item/showing/after 40ms 40ms" ]
+    (described actions)
 
-let test_spec_self_edges () =
-  let module Pair = struct
-    type _ t =
-      | Plain : unit t
-      | Timed : unit t
-      | Hooked : unit t
-      | Next : unit t
-  end in
-  let module Pair_machine = Machine.Make (Pair) in
-  let machine =
-    Pair_machine.make ~id:"self"
-      ~init:(Pair_machine.at Pair.Plain ())
+let spec_state ?(final = false) ?(timers = []) ?(sources = []) name =
+  { Spec.name; final; timers; sources; held = [] }
+
+let search_spec =
+  {
+    Spec.id = "search";
+    init = "idle";
+    states =
       [
-        Pair_machine.state Pair.Plain "plain"
-          ~to_:[ Pair.Timed; Pair.Hooked; Pair.Next ] (fun () () ->
-            Pair_machine.goto Pair.Plain ()
-        );
-        Pair_machine.state Pair.Timed "timed"
-          ~after:[ (1, ()) ]
-          ~to_:[ Pair.Next ]
-          (fun () () -> Pair_machine.goto Pair.Timed ());
-        Pair_machine.state Pair.Hooked "hooked"
-          ~exit:(fun () -> [])
-          ~to_:[ Pair.Next ] Pair_machine.ignore;
-        Pair_machine.state Pair.Next "next" ~final:true Pair_machine.ignore;
-      ]
-  in
-  let edges = (Machine.spec machine).edges in
-  Alcotest.(check bool)
-    "goto to self adds no edge" false
-    (List.mem ("plain", "plain") edges);
-  Alcotest.(check bool)
-    "timer can restart" true
-    (List.mem ("timed", "timed") edges);
-  Alcotest.(check bool)
-    "exit can run again" true
-    (List.mem ("hooked", "hooked") edges);
-  Alcotest.(check bool) "final has none" false (List.mem ("next", "next") edges)
+        spec_state "idle";
+        spec_state "failed";
+        spec_state ~sources:[ "/api/search" ] "searching";
+        spec_state "shown";
+        spec_state ~timers:[ 300 ] "typing";
+      ];
+    edges =
+      [
+        ("failed", "searching");
+        ("idle", "typing");
+        ("searching", "failed");
+        ("searching", "shown");
+        ("shown", "idle");
+        ("typing", "searching");
+        ("typing", "typing");
+      ];
+  }
 
 let test_lint () =
   Alcotest.(check (list string))
     "search is clean" []
-    (List.map Spec.issue_to_string (Spec.lint (Machine.spec search)));
-  let module Bad = struct
-    type _ t =
-      | Start : unit t
-      | Island : unit t
-      | Sink : unit t
-      | Timed : unit t
-      | Done : unit t
-  end in
-  let module Bad_machine = Machine.Make (Bad) in
-  let machine =
-    Bad_machine.make ~id:"bad"
-      ~init:(Bad_machine.at Bad.Start ())
-      [
-        Bad_machine.state Bad.Start "start" ~to_:[ Bad.Sink; Bad.Timed ]
-          Bad_machine.ignore;
-        Bad_machine.state Bad.Island "island" ~to_:[ Bad.Done ]
-          Bad_machine.ignore;
-        Bad_machine.state Bad.Sink "sink" Bad_machine.ignore;
-        Bad_machine.state Bad.Timed "timed"
-          ~after:[ (1, ()) ]
-          Bad_machine.ignore;
-        Bad_machine.state Bad.Done "done" ~final:true Bad_machine.ignore;
-      ]
+    (List.map Spec.issue_to_string (Spec.lint search_spec));
+  let bad =
+    {
+      Spec.id = "bad";
+      init = "start";
+      states =
+        [
+          spec_state "start";
+          spec_state "island";
+          spec_state "sink";
+          spec_state ~timers:[ 1 ] "timed";
+          spec_state ~final:true "done";
+        ];
+      edges =
+        [
+          ("island", "done");
+          ("start", "sink");
+          ("start", "timed");
+          ("timed", "timed");
+        ];
+    }
   in
   Alcotest.(check (list string))
     "issues"
@@ -590,7 +671,7 @@ let test_lint () =
       "bad.timed: non-final dead end";
       "bad.done: unreachable";
     ]
-    (List.map Spec.issue_to_string (Spec.lint (Machine.spec machine)))
+    (List.map Spec.issue_to_string (Spec.lint bad))
 
 let test_dot () =
   let expected =
@@ -599,59 +680,37 @@ rankdir=LR;
 "search.__init" [shape=point];
 "search.__init" -> "search.idle";
 "search.idle" [label="idle" shape=box];
-"search.typing" [label="typing\nafter 300ms" shape=box];
+"search.failed" [label="failed" shape=box];
 "search.searching" [label="searching\ninvoke /api/search" shape=box];
 "search.shown" [label="shown" shape=box];
-"search.failed" [label="failed" shape=box];
-"search.failed" -> "search.idle";
+"search.typing" [label="typing\nafter 300ms" shape=box];
 "search.failed" -> "search.searching";
-"search.failed" -> "search.typing";
-"search.idle" -> "search.idle";
 "search.idle" -> "search.typing";
 "search.searching" -> "search.failed";
-"search.searching" -> "search.idle";
-"search.searching" -> "search.searching";
 "search.searching" -> "search.shown";
-"search.searching" -> "search.typing";
 "search.shown" -> "search.idle";
-"search.shown" -> "search.typing";
-"search.typing" -> "search.idle";
 "search.typing" -> "search.searching";
 "search.typing" -> "search.typing";
 }
 |}
   in
-  Alcotest.(check string) "dot" expected (Spec.to_dot (Machine.spec search))
+  Alcotest.(check string) "dot" expected (Spec.to_dot search_spec)
 
-let test_map_snapshot () =
-  let doubled =
-    Machine.map_snapshot search ~get:(fun snapshot -> (snapshot, 1)) ~set:fst
-  in
-  let snapshot, actions = Machine.start doubled in
-  Alcotest.(check int) "view" 1 (snd snapshot);
-  Alcotest.(check int) "no actions" 0 (List.length actions);
-  let next, actions, _ = Machine.send doubled snapshot (Input "a") in
-  Alcotest.(check string) "key" "typing" (Machine.key doubled next);
-  Alcotest.check strings "actions"
-    [ "start search/typing/after0 300ms" ]
-    (described actions);
-  Alcotest.(check bool)
-    "spec shared" true
-    (Machine.spec doubled == Machine.spec search)
+let double =
+  Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
 
 let test_remote_machine () =
-  let ep =
-    Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
-  in
-  let machine = Remote_machine.make ~id:"r" ep in
-  let snapshot, actions = Machine.start machine in
-  let status (state : (int, int) Remote_machine.state) = state.status in
-  Alcotest.(check bool) "idle" true (status snapshot = Status.Idle);
+  let machine = Remote_machine.make ~id:"r" double in
+  let snapshot, actions = Machine.start machine () in
+  Alcotest.(check bool) "idle" true (snapshot = Remote_machine.Idle);
   Alcotest.(check int) "no entry" 0 (List.length actions);
   let loading, actions, _ =
-    Machine.send machine snapshot (Remote_machine.Load 4)
+    Machine.step machine () snapshot (Remote_machine.Load 4)
   in
-  Alcotest.(check bool) "loading" true (status loading = Status.Loading None);
+  Alcotest.(check bool)
+    "loading" true
+    (loading = Remote_machine.Loading { input = 4; last = None });
   let first_id =
     match actions with
     | [
@@ -661,8 +720,8 @@ let test_remote_machine () =
         Alcotest.(check string)
           "input" "4"
           (Codec.to_string (Remote.input endpoint) input);
-        match on_result (Error (Network "x")) with
-        | Remote_machine.Settled (Error (Network "x")) ->
+        match on_result (Remote.Failed (Network "x")) with
+        | Remote_machine.Settled (Remote.Failed (Network "x")) ->
             id
         | _ ->
             Alcotest.fail "continuation must build Settled"
@@ -671,50 +730,56 @@ let test_remote_machine () =
         Alcotest.fail "expected one Start_call"
   in
   let loaded, actions, _ =
-    Machine.send machine loading (Remote_machine.Settled (Ok 8))
+    Machine.step machine () loading (Remote_machine.Settled (Remote.Ok 8))
   in
   Alcotest.(check bool)
     "ready" true
-    (status loaded = Status.Ready { data = 8; stale = false });
+    (loaded = Remote_machine.Ready { input = 4; data = 8 });
   Alcotest.check strings "stops the call"
     [ "stop " ^ first_id ]
     (described actions);
   let failed, _, _ =
-    Machine.send machine loading (Remote_machine.Settled (Error (Http 500)))
+    Machine.step machine () loading
+      (Remote_machine.Settled (Remote.Failed (Http 500)))
   in
   Alcotest.(check bool)
     "failed" true
-    (status failed = Status.Failed { error = Http 500; last = None });
-  let _, _, handled =
-    Machine.send machine snapshot (Remote_machine.Settled (Ok 1))
+    (failed = Remote_machine.Failed { input = 4; error = Http 500; last = None });
+  let rejected, _, _ =
+    Machine.step machine () loading
+      (Remote_machine.Settled (Remote.Rejected "no"))
   in
-  Alcotest.(check bool) "result without a call" true (handled = `Unhandled);
-  let reset, _, _ = Machine.send machine loaded Remote_machine.Reset in
-  Alcotest.(check bool) "reset" true (status reset = Status.Idle)
+  Alcotest.(check bool)
+    "rejected" true
+    (rejected
+    = Remote_machine.Rejected { input = 4; reason = "no"; last = None }
+    );
+  let _, _, how =
+    Machine.step machine () snapshot (Remote_machine.Settled (Remote.Ok 1))
+  in
+  Alcotest.(check bool) "result without a call" true (how = Machine.Unhandled);
+  let reset, _, _ = Machine.step machine () loaded Remote_machine.Reset in
+  Alcotest.(check bool) "reset" true (reset = Remote_machine.Idle)
+
+type slow = Waiting | Done [@@deriving state_shape]
 
 let test_call_timeout () =
-  let module Slow = struct
-    type _ t = Waiting : unit t | Done : unit t
-  end in
-  let module Slow_machine = Machine.Make (Slow) in
-  let ep =
-    Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
-  in
   let machine =
-    Slow_machine.make ~id:"slow"
-      ~init:(Slow_machine.at Waiting ())
-      [
-        Slow_machine.state Waiting "waiting" ~to_:[ Done ]
-          ~invoke:
+    Machine.make ~id:"slow" ~init:Waiting ~shape:slow_shape
+      ~owns:(function
+        | Waiting ->
             [
-              Source.call ~timeout_ms:250 ep (fun () -> 1) (fun r -> r);
-              Source.call ep (fun () -> 2) (fun r -> r);
+              Remote.call ~timeout_ms:250 double 1 Fun.id;
+              Remote.call double 2 Fun.id;
             ]
-          (fun () -> function Ok _ | Error _ -> Slow_machine.goto Done ());
-        Slow_machine.state Done "done" Slow_machine.ignore;
-      ]
+        | Done ->
+            []
+        )
+      (fun state _ ->
+        match state with Waiting -> Machine.Go Done | Done -> Machine.Ignore
+      )
   in
-  let _, actions = Machine.start machine in
+  let _, actions = Machine.start machine () in
   let timeouts =
     List.map
       (function
@@ -729,24 +794,25 @@ let test_call_timeout () =
     "timeout only where asked" [ Some 250; None ] timeouts
 
 let test_remote_machine_reload () =
-  let ep =
-    Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
+  let machine = Remote_machine.make ~id:"r" double in
+  let snapshot, _ = Machine.start machine () in
+  let snapshot, _, _ =
+    Machine.step machine () snapshot (Remote_machine.Load 1)
   in
-  let machine = Remote_machine.make ~id:"r" ep in
-  let snapshot, _ = Machine.start machine in
-  let snapshot, _, _ = Machine.send machine snapshot (Remote_machine.Load 1) in
   let snapshot, actions, _ =
-    Machine.send machine snapshot (Remote_machine.Load 2)
+    Machine.step machine () snapshot (Remote_machine.Load 2)
   in
   Alcotest.(check bool)
     "newest input" true
-    (snapshot.Remote_machine.input = Some 2);
+    (snapshot = Remote_machine.Loading { input = 2; last = None });
   Alcotest.check strings "old call stops, new call starts"
-    [ "stop r/loading/invoke0"; "call r/loading/invoke0 /api/double" ]
+    [
+      "stop r/loading//api/double 1"; "call r/loading//api/double 2 /api/double";
+    ]
     (described actions);
-  let _, actions, _ = Machine.send machine snapshot Reset in
+  let _, actions, _ = Machine.step machine () snapshot Reset in
   Alcotest.check strings "reset stops"
-    [ "stop r/loading/invoke0" ]
+    [ "stop r/loading//api/double 2" ]
     (described actions)
 
 let () =
@@ -765,22 +831,17 @@ let () =
           t "active follows the actions" test_active_follows_actions;
           t "entry and exit order" test_entry_exit_order;
           t "self goto keeps resources" test_self_goto_keeps_resources;
-          t "undeclared target" test_undeclared_target;
-          t "missing case" test_missing_case;
-          t "cases_cover on a full table" test_search_covers_all_states;
+          t "keyed sources" test_keyed_sources;
+          t "state names cover every state" test_state_names;
           t "final ignores events" test_final_ignores_events;
-          t "always order" test_always_order;
-          t "map_snapshot" test_map_snapshot;
+          t "anchor place is in the key" test_anchor_place_is_in_key;
+          t "can" test_can;
+          t "map_next" test_map_next;
+          t "on_props" test_on_props;
+          t "props without on_props" test_on_props_default;
         ]
       );
-      ( "spec",
-        [
-          t "shape" test_spec;
-          t "self edges" test_spec_self_edges;
-          t "lint" test_lint;
-          t "dot" test_dot;
-        ]
-      );
+      ("spec", [ t "lint" test_lint; t "dot" test_dot ]);
       ( "remote machine",
         [
           t "states" test_remote_machine;

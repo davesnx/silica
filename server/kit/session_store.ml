@@ -16,6 +16,7 @@ type t = {
 type ops = {
   get : now:float -> string -> session option;
   set : session -> unit;
+  update : now:float -> string -> (session -> session) -> session option;
   remove : string -> unit;
   expire : now:float -> int;
 }
@@ -33,14 +34,25 @@ let create ?(max_sessions = 10_000) ?(idle = 8. *. 3600.)
 let expired t ~now s =
   now -. s.last_seen > t.idle || now -. s.created > t.absolute
 
-let get t ~now id =
+let find t ~now id =
+  match Hashtbl.find_opt t.table id with
+  | Some s when expired t ~now s ->
+      Hashtbl.remove t.table id;
+      None
+  | found ->
+      found
+
+let get t ~now id = Mutex.protect t.lock (fun () -> find t ~now id)
+
+let update t ~now id f =
   Mutex.protect t.lock (fun () ->
-      match Hashtbl.find_opt t.table id with
-      | Some s when expired t ~now s ->
-          Hashtbl.remove t.table id;
-          None
-      | found ->
-          found
+      Option.map
+        (fun s ->
+          let changed = { (f s) with id } in
+          Hashtbl.replace t.table id changed;
+          changed
+        )
+        (find t ~now id)
   )
 
 let oldest t =
@@ -88,6 +100,7 @@ let ops t =
   {
     get = (fun ~now id -> get t ~now id);
     set = set t;
+    update = (fun ~now id f -> update t ~now id f);
     remove = remove t;
     expire = (fun ~now -> expire t ~now);
   }

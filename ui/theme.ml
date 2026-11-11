@@ -327,21 +327,16 @@ type props = { id : string; label : string; set : set; choice : choice }
 let props ~id ?(label = "Theme") set choice = { id; label; set; choice }
 
 type current = { choice : choice; theme : t }
-type event = Props of props | Choose of string | System_dark of bool
+type event = Choose of string | System_dark of bool
 
-module State = struct
-  type fixed = { props : props; theme : t }
-  type system = { props : props; dark : bool option }
-  type _ t = Idle : unit t | Fixed : fixed t | System : system t
-end
-
-module Mach = Machine.Make (State)
-
-type snapshot = Mach.snapshot = At : 'data State.t * 'data -> snapshot
+type state =
+  | Fixed_theme of t [@state_name "fixed"]
+  | System_scheme of bool option [@state_name "system"]
+[@@deriving state_shape]
 
 let one_year = 365 * 24 * 60 * 60
 
-let apply ~store (props : props) choice =
+let apply ~store choice : (state, event) Machine.next =
   let actions =
     Action.Set_document_attribute
       { name = "data-theme"; value = Some (choice_name choice) }
@@ -361,67 +356,62 @@ let apply ~store (props : props) choice =
   in
   match choice with
   | System ->
-      Mach.goto ~actions State.System { State.props; dark = None }
+      Go_with (System_scheme None, actions)
   | Fixed theme ->
-      Mach.goto ~actions State.Fixed { State.props; theme }
+      Go_with (Fixed_theme theme, actions)
 
-let handle ~current_name ~(last : props) ~keep = function
-  | Props props when choice_name props.choice <> choice_name last.choice ->
-      apply ~store:true props props.choice
-  | Props props ->
-      keep props
-  | Choose name -> (
-      match choice_of_name last.set name with
-      | None ->
-          Mach.unhandled
-      | Some choice when choice_name choice = current_name ->
-          Mach.stay []
-      | Some choice ->
-          apply ~store:true last choice
-    )
-  | System_dark _ ->
-      Mach.unhandled
+let current_name = function
+  | Fixed_theme theme ->
+      theme.name
+  | System_scheme _ ->
+      "system"
 
 let machine =
-  Mach.make ~id:"theme" ~init:(Mach.at State.Idle ())
-    [
-      Mach.state State.Idle "idle" ~to_:[ Fixed; System ] (fun () -> function
-        | Props props ->
-            apply ~store:false props props.choice
-        | Choose _ | System_dark _ ->
-            Mach.unhandled
-        );
-      Mach.state State.Fixed "fixed" ~to_:[ System ]
-        (fun (data : State.fixed) ->
-          handle ~current_name:data.theme.name ~last:data.props
-            ~keep:(fun props -> Mach.goto State.Fixed { data with props }
-          )
-      );
-      Mach.state State.System "system" ~to_:[ Fixed ]
-        ~invoke:
+  Machine.make_with_props ~id:"theme" ~init:(Fixed_theme light)
+    ~shape:state_shape
+    ~owns:(fun _ -> function
+      | System_scheme _ ->
           [
             Source.media "(prefers-color-scheme: dark)" (fun dark ->
                 System_dark dark
             );
           ]
-        (fun (data : State.system) -> function
-          | System_dark dark ->
-              Mach.goto State.System { data with dark = Some dark }
-          | event ->
-              handle ~current_name:"system" ~last:data.props
-                ~keep:(fun props -> Mach.goto State.System { data with props })
-                event
-          );
-    ]
+      | Fixed_theme _ ->
+          []
+      )
+    ~on_props:(fun previous (props : props) _ ->
+      match previous with
+      | None ->
+          apply ~store:false props.choice
+      | Some (previous : props)
+        when choice_name previous.choice <> choice_name props.choice ->
+          apply ~store:true props.choice
+      | Some _ ->
+          Ignore
+    )
+    (fun (props : props) state event ->
+      match (state, event) with
+      | System_scheme _, System_dark dark ->
+          Go (System_scheme (Some dark))
+      | Fixed_theme _, System_dark _ ->
+          Ignore
+      | (Fixed_theme _ | System_scheme _), Choose name -> (
+          match choice_of_name props.set name with
+          | None ->
+              Ignore
+          | Some choice when choice_name choice = current_name state ->
+              Stay []
+          | Some choice ->
+              apply ~store:true choice
+        )
+    )
 
-let current = function
-  | At (State.Idle, ()) ->
-      None
-  | At (State.Fixed, { theme; _ }) ->
+let current (props : props) = function
+  | Fixed_theme theme ->
       Some { choice = Fixed theme; theme }
-  | At (State.System, { dark = None; _ }) ->
+  | System_scheme None ->
       None
-  | At (State.System, { props; dark = Some dark }) ->
+  | System_scheme (Some dark) ->
       Some
         {
           choice = System;
@@ -446,28 +436,21 @@ let select (props : props) value =
        (items props.set)
     )
 
-let switcher_view = function
-  | At (State.Idle, ()) ->
-      Node.list []
-  | At (State.Fixed, { props; theme }) ->
-      select props theme.name
-  | At (State.System, { props; _ }) ->
-      select props "system"
-
-let switcher_component = Component.make machine switcher_view
+let switcher_view props state = select props (current_name state)
+let switcher_component = Component.make_with_props machine switcher_view
 let provider_component = Component.make machine (fun _ -> Node.list [])
 
-let output on_change event snapshot =
+let output on_change props event state =
   match (on_change, event) with
   | Some on_change, (Choose _ | System_dark _) ->
-      Option.to_list (Option.map on_change (current snapshot))
-  | _ ->
+      Option.to_list (Option.map on_change (current props state))
+  | None, (Choose _ | System_dark _) ->
       []
 
 let switcher ?key ?on_change props =
-  Component.node ?key switcher_component ~props:(Props props)
-    ~output:(output on_change)
+  Component.node_with_props ?key switcher_component ~props
+    ~output:(output on_change props)
 
 let provider ?key ?on_change props =
-  Component.node ?key provider_component ~props:(Props props)
-    ~output:(output on_change)
+  Component.node_with_props ?key provider_component ~props
+    ~output:(output on_change props)

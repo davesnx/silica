@@ -4,43 +4,33 @@ open Silica_ui
 type page = { toasts : Toast.toast list; next : int; log : string list }
 type event = Add of Toast.priority | Closed of string
 
-module Page_state = struct
-  type _ t = Page : page t
-end
-
-module Page_machine = Machine.Make (Page_state)
-
 let machine =
-  Page_machine.make ~id:"toast-page"
-    ~init:(Page_machine.at Page { toasts = []; next = 1; log = [] })
-    [
-      Page_machine.state Page "page" (fun page -> function
-        | Add priority ->
-            let key = "t" ^ string_of_int page.next in
-            let toast =
-              Toast.toast ~key ~description:("Message " ^ key) ~priority
-                ("Saved " ^ key)
-            in
-            Page_machine.goto Page
-              {
-                page with
-                toasts = page.toasts @ [ toast ];
-                next = page.next + 1;
-              }
-        | Closed key ->
-            Page_machine.goto Page
-              {
-                page with
-                toasts =
-                  List.filter
-                    (fun (t : Toast.toast) -> t.key <> key)
-                    page.toasts;
-                log = page.log @ [ "close " ^ key ];
-              }
-        );
-    ]
+  Machine.make ~id:"toast-page"
+    ~init:{ toasts = []; next = 1; log = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    (fun page event ->
+      match event with
+      | Add priority ->
+          let key = "t" ^ string_of_int page.next in
+          let toast =
+            Toast.toast ~key ~description:("Message " ^ key) ~priority
+              ("Saved " ^ key)
+          in
+          Go
+            { page with toasts = page.toasts @ [ toast ]; next = page.next + 1 }
+      | Closed key ->
+          Go
+            {
+              page with
+              toasts =
+                List.filter
+                  (fun (toast : Toast.toast) -> toast.key <> key)
+                  page.toasts;
+              log = page.log @ [ "close " ^ key ];
+            }
+    )
 
-let view (Page_machine.At (Page, page)) =
+let view page =
   Node.element "main" []
     [
       Node.element "p"

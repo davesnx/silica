@@ -35,7 +35,7 @@ type t = {
   next_id : int;
 }
 
-type outcome = Saved | Conflict of Issue.t | Failed of Remote.error
+type outcome = Saved | Conflict of Issue.t | Failed of string
 
 let loaded issues =
   { edits = Edits.make issues; stale = false; requests = []; next_id = 1 }
@@ -85,14 +85,14 @@ let apply (update : Issues.t Topic.update) t =
   | Status.Failed _ ->
       { t with stale = true }
 
-let finish id result t =
+let finish id (answer : (Change.answer, string) Remote.answer) t =
   match List.assoc_opt id t.requests with
   | None ->
       (t, None)
   | Some request -> (
       let t = { t with requests = List.remove_assoc id t.requests } in
       let confirmed = Edits.confirmed t.edits in
-      match result with
+      match answer with
       | Ok (Change.Saved issue) ->
           ( {
               t with
@@ -109,19 +109,15 @@ let finish id result t =
             },
             Some (request, Conflict issue)
           )
-      | Error error ->
+      | Rejected message ->
           ( { t with edits = Edits.drop ~id t.edits },
-            Some (request, Failed error)
+            Some (request, Failed message)
+          )
+      | Failed error ->
+          ( { t with edits = Edits.drop ~id t.edits },
+            Some (request, Failed (Remote.error_to_string error))
           )
     )
-
-let error_text : Remote.error -> string = function
-  | Http code ->
-      "The server answered " ^ string_of_int code
-  | Decode _ ->
-      "The server sent data that cannot be read"
-  | Network _ ->
-      "The network failed"
 
 let toast ~key (request : request) = function
   | Saved ->
@@ -135,41 +131,22 @@ let toast ~key (request : request) = function
              )
            ("Your " ^ Change.field request.change ^ " change lost")
         )
-  | Failed error ->
+  | Failed message ->
       Some
         (Silica_ui.Toast.toast ~key ~priority:High
-           ~description:(error_text error ^ ". The old value is back.")
+           ~description:(message ^ ". The old value is back.")
            ("Could not save the " ^ Change.field request.change)
         )
 
-let call =
-  Component.make (Remote_machine.make ~id:"update-issue" update_endpoint)
-    (fun _ -> Node.list []
-  )
-
-let calls t on_done =
-  Node.list
-    (List.map
-       (fun (id, (r : request)) ->
-         Component.node
-           ~key:("update-" ^ string_of_int id)
-           ~props:
-             (Remote_machine.Load
-                { Change.number = r.number; base = r.base; change = r.change }
-             )
-           ~output:(fun event _ ->
-             match event with
-             | Remote_machine.Settled result ->
-                 [ on_done id result ]
-             | Remote_machine.Load _
-             | Remote_machine.Retry
-             | Remote_machine.Reset ->
-                 []
-           )
-           call
-       )
-       t.requests
+let calls t on_answer =
+  List.map
+    (fun (id, (r : request)) ->
+      Remote.call update_endpoint
+        { Change.number = r.number; base = r.base; change = r.change }
+        (fun answer -> on_answer id answer
+      )
     )
+    t.requests
 
 let date_of_epoch seconds =
   let days = seconds / 86400 in

@@ -1,16 +1,13 @@
 digraph "comments" {
 rankdir=LR;
 "comments.__init" [shape=point];
-"comments.__init" -> "comments.idle";
-"comments.idle" [label="idle" shape=box];
+"comments.__init" -> "comments.loading";
 "comments.loading" [label="loading\ninvoke /api/comments" shape=box];
-"comments.ready" [label="ready\ninvoke live:comments" shape=box];
 "comments.failed" [label="failed" shape=box];
+"comments.ready" [label="ready\ninvoke live:comments" shape=box];
 "comments.failed" -> "comments.loading" [label="props, retry"];
-"comments.idle" -> "comments.loading" [label="props"];
 "comments.loading" -> "comments.failed" [label="loaded error"];
 "comments.loading" -> "comments.loading" [label="props"];
 "comments.loading" -> "comments.ready" [label="loaded ok"];
 "comments.ready" -> "comments.loading" [label="props"];
-"comments.ready" -> "comments.ready";
 }

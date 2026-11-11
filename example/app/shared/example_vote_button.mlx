@@ -1,18 +1,17 @@
 open Silica
 
 let machine = Remote_machine.make ~id:"vote" Example_model.vote_endpoint
-let text = Node.text
 
-let view (state : (unit, int) Remote_machine.state) :
-    (unit, int) Remote_machine.event Node.t =
+let view (state : (unit, int, string) Remote_machine.state) :
+    (unit, int, string) Remote_machine.event Node.t =
   <div>
     <button on_press=(Remote_machine.Load ()) id="vote">"Vote"</button>
-    ( match state.status with
-    | Status.Failed _ ->
+    ( match state with
+    | Rejected _ | Failed _ ->
         <button on_press=Remote_machine.Retry id="vote-retry">
           "Vote failed. Try again"
         </button>
-    | _ ->
+    | Idle | Loading _ | Ready _ ->
         Node.list []
     )
   </div>

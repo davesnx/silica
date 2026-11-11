@@ -14,66 +14,41 @@ type props = {
   classes : classes;
 }
 
-type event = Props of props | Toggle | Enter_key
+type event = Toggle | Enter_key
+type state = Unchecked | Checked | Indeterminate [@@deriving state_shape]
 
-module State = struct
-  type _ t =
-    | Idle : unit t
-    | Unchecked : props t
-    | Checked : props t
-    | Indeterminate : props t
-end
-
-module Checkbox_machine = Machine.Make (State)
-
-type snapshot = Checkbox_machine.snapshot =
-  | At : 'data State.t * 'data -> snapshot
-
-let take (props : props) =
+let of_props (props : props) =
   if props.indeterminate then
-    Checkbox_machine.goto Indeterminate props
+    Indeterminate
   else if props.checked then
-    Checkbox_machine.goto Checked props
+    Checked
   else
-    Checkbox_machine.goto Unchecked props
+    Unchecked
 
 let requested (previous : props) (props : props) =
   props.checked <> previous.checked
   || props.indeterminate <> previous.indeterminate
 
-let handle current ~toggle (previous : props) = function
-  | Props props when requested previous props ->
-      take props
-  | Props props ->
-      Checkbox_machine.goto current props
-  | Toggle when previous.disabled ->
-      Checkbox_machine.unhandled
-  | Toggle ->
-      toggle previous
-  | Enter_key ->
-      Checkbox_machine.stay []
-
 let machine =
-  Checkbox_machine.make ~id:"checkbox"
-    ~init:(Checkbox_machine.at Idle ())
-    [
-      Checkbox_machine.state Idle "idle"
-        ~to_:[ Unchecked; Checked; Indeterminate ] (fun () -> function
-        | Props props ->
-            take props
-        | _ ->
-            Checkbox_machine.unhandled
-        );
-      Checkbox_machine.state Unchecked "unchecked"
-        ~to_:[ Checked; Indeterminate ]
-        (handle Unchecked ~toggle:(Checkbox_machine.goto Checked));
-      Checkbox_machine.state Checked "checked"
-        ~to_:[ Unchecked; Indeterminate ]
-        (handle Checked ~toggle:(Checkbox_machine.goto Unchecked));
-      Checkbox_machine.state Indeterminate "indeterminate"
-        ~to_:[ Unchecked; Checked ]
-        (handle Indeterminate ~toggle:(Checkbox_machine.goto Checked));
-    ]
+  Machine.make_with_props ~id:"checkbox" ~init:Unchecked ~shape:state_shape
+    ~on_props:(fun previous props _ ->
+      match previous with
+      | Some previous when not (requested previous props) ->
+          Ignore
+      | Some _ | None ->
+          Go (of_props props)
+    )
+    (fun (props : props) state event ->
+      match (event, state) with
+      | Toggle, (Unchecked | Checked | Indeterminate) when props.disabled ->
+          Ignore
+      | Toggle, (Unchecked | Indeterminate) ->
+          Go Checked
+      | Toggle, Checked ->
+          Go Unchecked
+      | Enter_key, (Unchecked | Checked | Indeterminate) ->
+          Stay []
+    )
 
 let el = Node.element
 
@@ -127,30 +102,28 @@ let box (props : props) ~aria ~data ~checked =
       );
     ]
 
-let view : snapshot -> event Node.t = function
-  | At (Idle, ()) ->
-      Node.list []
-  | At (Unchecked, props) ->
+let view props = function
+  | Unchecked ->
       box props ~aria:"false" ~data:"data-unchecked" ~checked:false
-  | At (Checked, props) ->
+  | Checked ->
       box props ~aria:"true" ~data:"data-checked" ~checked:true
-  | At (Indeterminate, props) ->
+  | Indeterminate ->
       box props ~aria:"mixed" ~data:"data-indeterminate" ~checked:false
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let props ~id ~label ?(checked = false) ?(indeterminate = false)
     ?(disabled = false) ?name ?(classes = no_classes) () =
   { id; label; checked; indeterminate; disabled; name; classes }
 
 let make ?key ?on_checked_change props =
-  let output event (snapshot : snapshot) =
-    match (on_checked_change, event, snapshot) with
-    | Some f, Toggle, At (Checked, _) ->
+  let output event state =
+    match (on_checked_change, event, state) with
+    | Some f, Toggle, Checked ->
         [ f true ]
-    | Some f, Toggle, At (Unchecked, _) ->
+    | Some f, Toggle, Unchecked ->
         [ f false ]
-    | _ ->
+    | Some _, Toggle, Indeterminate | Some _, Enter_key, _ | None, _, _ ->
         []
   in
-  Component.node ?key ~props:(Props props) ~output component
+  Component.node_with_props ?key ~props ~output component

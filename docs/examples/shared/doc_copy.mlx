@@ -1,47 +1,41 @@
 open Silica
 
 type event = Copy | Result of bool | Back
-
-module States = struct
-  type _ t = Ready : unit t | Shown : bool t
-end
-
-module Copy_machine = Machine.Make (States)
+type state = Ready | Copying | Shown of bool [@@deriving state_shape]
 
 let text = "Hello from Silica"
 
 let machine =
-  Copy_machine.make ~id:"copy" ~init:(Copy_machine.at Ready ())
-    [
-      Copy_machine.state Ready "ready" ~to_:[ Shown ] (fun () -> function
-        | Copy ->
-            Copy_machine.stay
+  Machine.make ~id:"copy" ~init:Ready ~shape:state_shape
+    ~owns:(function
+      | Shown _ -> [ Source.after 2000 Back ] | Ready | Copying -> []
+      )
+    (fun state event ->
+      match (state, event) with
+      | Ready, Copy ->
+          Go_with
+            ( Copying,
               [ Action.Copy { text; on_result = Some (fun ok -> Result ok) } ]
-        | Result ok ->
-            Copy_machine.goto Shown ok
-        | Back ->
-            Copy_machine.unhandled
-        );
-      Copy_machine.state Shown "shown" ~to_:[ Ready ]
-        ~after:[ (2000, Back) ]
-        (fun _ -> function
-          | Back ->
-              Copy_machine.goto Ready ()
-          | Copy | Result _ ->
-              Copy_machine.unhandled
-          );
-    ]
+            )
+      | Copying, Result ok ->
+          Go (Shown ok)
+      | Shown _, Back ->
+          Go Ready
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Copy_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Copy_machine.At (Ready, ()) ->
+let view : state -> event Node.t = function
+  | Ready ->
       <div>
         <code>(Node.text text)</code>
         <button on_press=Copy>"Copy the text"</button>
       </div>
-  | Copy_machine.At (Shown, true) ->
+  | Copying ->
+      <p>"Copying."</p>
+  | Shown true ->
       <p>"Copied."</p>
-  | Copy_machine.At (Shown, false) ->
+  | Shown false ->
       <p>"The browser did not allow the copy."</p>
 
 let component = Component.make machine view

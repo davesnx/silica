@@ -23,7 +23,11 @@ of a state are:
   {{!section-samples}Samples});
 - [inputs state]: the events that need a value, such as the text of an
   [on_input];
-- every event in [props].
+- every value in [props], given as new props ([Check.Props p]).
+
+A machine made with [Machine.make] has the props [()]. A machine with props
+needs [props]: the check starts once with each of them. The trace of a report
+is a list of {!Check.type-input}: [Check.Event e] or [Check.Props p].
 
 A handler on an element with [disabled] is not an event. [within] limits a
 state space that has no end: the checker does not explore a state outside it.
@@ -51,8 +55,35 @@ The built-in properties hold for every component:
   component or an island ([dead-end]).
 - Every running timer, call and subscription belongs to the current state
   ([timer-owner], [call-owner]).
-- A handler goes only to the states of its [to_] list ([undeclared-target]),
-  and each such state has a case ([missing-case]).
+- The machine handles every event of a handler of the view, of a timer, of
+  a call answer, of a subscription and of an action result
+  ([ignored-event]). It may ignore the events of held sources, of [inputs]
+  and new props. So an update that ends with [| _ -> Ignore] cannot hide a
+  button that does nothing.
+
+When the machine ignores the event of a button, disable the button (for
+example with {!Silica.Machine.can}), or handle the event, for example with
+[Stay []]. This lamp ignores [Toggle] when it is on. The trace ends with the
+ignored event:
+
+{@ocaml[
+# let broken =
+    let machine =
+      Silica.Machine.make ~id:"broken-lamp" ~init:Doc_lamp.Off
+        ~shape:Doc_lamp.state_shape (fun state Doc_lamp.Toggle ->
+          match state with
+          | Doc_lamp.Off -> Silica.Machine.Go Doc_lamp.On
+          | Doc_lamp.On -> Silica.Machine.Ignore)
+    in
+    Silica.Component.make machine Doc_lamp.view;;
+val broken : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Node.component =
+  {Silica.Component.machine = <abstr>; view = <fun>}
+# match Check.component broken with
+  | Check.Violation { invariant; trace; _ } -> (invariant, trace)
+  | _ -> ("none", []);;
+- : string * (unit, Doc_lamp.event) Check.input list =
+("ignored-event", [Check.Event Doc_lamp.Toggle; Check.Event Doc_lamp.Toggle])
+]}
 
 An invariant of the app is a name and a function of the state and the view.
 This one fails on the stepper of {!page-components}, and the report gives the
@@ -61,29 +92,40 @@ shortest trace:
 {@ocaml[
 # let at_most_two =
     { Check.name = "at-most-two";
-      holds =
-        (fun (Doc_stepper.Stepper_machine.At (Count, data)) _ ->
-          data.count <= 2) };;
-val at_most_two : (Doc_stepper.Stepper_machine.snapshot, 'a) Check.invariant =
+      holds = (fun (Doc_stepper.Count count) _ -> count <= 2) };;
+val at_most_two : (Doc_stepper.state, 'a) Check.invariant =
   {Check.name = "at-most-two"; holds = <fun>}
 # match
-    Check.component ~invariants:[ at_most_two ]
-      ~within:(fun (Doc_stepper.Stepper_machine.At (Count, data)) ->
-        data.count <= 5)
+    Check.component ~props:[ "Adults" ] ~invariants:[ at_most_two ]
+      ~within:(fun (Doc_stepper.Count count) -> count <= 5)
       Doc_stepper.component
   with
   | Check.Violation { invariant; trace; _ } -> (invariant, trace)
   | _ -> ("none", []);;
-- : string * Doc_stepper.event list =
-("at-most-two", [Doc_stepper.Up; Doc_stepper.Up; Doc_stepper.Up])
+- : string * (string, Doc_stepper.event) Check.input list =
+("at-most-two",
+ [Check.Event Doc_stepper.Up; Check.Event Doc_stepper.Up;
+  Check.Event Doc_stepper.Up])
 ]}
 
 {!Check.pp_report} prints a report as numbered steps.
 
-When the search ends with no violation, a declared edge between two states
-that no step took is reported as [Unreached]: the [to_] list says more than
-the machine does. List an edge that only a test can reach in
-[allow_unreached].
+When the search ends with no violation, each name of the [states] of the
+machine that the search never reached is reported in [Unreached { states }].
+A name that only a test can reach goes in [allow_unreached].
+
+[Ok] gives the result of the run: the number of [states] and [transitions],
+the [edges] that the run took, the [spec] that it found (see {!section-quint}),
+and [paths]: for each state name, a shortest list of steps from the start to
+it.
+
+{@ocaml[
+# match Check.component Doc_lamp.component with
+  | Check.Ok { paths; _ } -> paths
+  | _ -> [];;
+- : (string * (unit, Doc_lamp.event) Check.input list) list =
+[("off", []); ("on", [Check.Event Doc_lamp.Toggle])]
+]}
 
 {1:samples Samples}
 
@@ -91,7 +133,8 @@ The checker has no server. A sample gives the values that the server could
 give:
 
 - {!Check.answers} [endpoint values]: a call can end with each value, and
-  also with [Error (Http 500)] and [Error (Network "down")].
+  also with [Failed (Http 500)] and [Failed (Network "down")]. [rejected]
+  gives the application errors that it can end with, as [Rejected x].
 - {!Check.states} [topic values]: a subscription gets [Loading None], then up
   to [arrivals] states, one loss of the connection with the old data, and one
   fatal failure.
@@ -126,17 +169,15 @@ parent gave in [children]. Check the child alone with those props:
 component stepper
 val children : Check.children = <abstr>
 # let props = Check.props children Doc_stepper.component;;
-val props : Doc_stepper.event list =
-  [Doc_stepper.Props "Adults"; Doc_stepper.Props "Children"]
+val props : string list = ["Adults"; "Children"]
 # match
     Check.component ~props
-      ~within:(fun (Doc_stepper.Stepper_machine.At (Count, data)) ->
-        data.count <= 3)
+      ~within:(fun (Doc_stepper.Count count) -> count <= 3)
       Doc_stepper.component
   with
   | Check.Ok { states; _ } -> states
   | _ -> 0;;
-- : int = 12
+- : int = 8
 ]}
 
 {1:live Live components}
@@ -169,14 +210,14 @@ properties hold:
           [ "/"; "/books/7"; "/search?q=ocaml"; "/nowhere" ])
       ~routes:
         [
-          Router.At (State.Home, ());
-          Router.At (State.Book, 7);
-          Router.At (State.Search, { text = ""; page = 1 });
-          Router.At (State.Search, { text = "ocaml"; page = 2 });
-          Router.At (State.Not_found, "/x");
+          Home;
+          Book 7;
+          Search { text = ""; page = 1 };
+          Search { text = "ocaml"; page = 2 };
+          Not_found "/x";
         ]
-      ~parse:(Router.parse routes) ~print:(Router.print routes)
-      ~is_not_found:(Router.is_not_found routes)
+      ~parse:(Silica.Router.parse routes) ~print:(Silica.Router.print routes)
+      ~is_not_found:(Silica.Router.is_not_found routes)
       ~url_event:(fun url -> Silica.Router.Url_changed url)
       app
   with
@@ -191,8 +232,9 @@ as a child.
 
 {1:quint Diagrams and Quint}
 
-{!Silica.Spec} is the shape of a machine: its states, its declared edges, its
-timers and its sources (see {!page-machines.spec}). It has two exports:
+{!Silica.Spec} is the shape of a machine that a checker run found: the states it
+reached, the timers and sources of each, and the edges it took (see
+{!page-machines.spec}). It is the [spec] of [Check.Ok]. It has two exports:
 
 - {!Silica.Spec.to_dot}: a Graphviz diagram.
 - {!Silica.Spec.to_quint}: a module for {{:https://quint-lang.org} Quint}, a
@@ -202,18 +244,17 @@ timers and its sources (see {!page-machines.spec}). It has two exports:
   [resources_owned] (every running resource belongs to the current state),
   [can_move] and [inv] (both).
 
-Give the export the [edges] of a checker report, and each edge gets the names
-of the events that took it:
+Give the export the [edges] of the same report, and each edge gets the names of
+the events that took it. The states come in a fixed order: the initial state
+first, then by name.
 
 {@ocaml[
-# let labels =
-    match Check.component ~label:(fun Doc_lamp.Toggle -> "toggle") Doc_lamp.component with
-    | Check.Ok { edges; _ } -> edges
-    | _ -> [];;
-val labels : Silica.Spec.label list =
-  [{Silica.Spec.from = "off"; target = "on"; event = "toggle"; kept = false};
-   {Silica.Spec.from = "on"; target = "off"; event = "toggle"; kept = false}]
-# print_string (Silica.Spec.to_quint ~labels (Silica.Machine.spec Doc_lamp.machine));;
+# match
+    Check.component ~label:(fun Doc_lamp.Toggle -> "toggle") Doc_lamp.component
+  with
+  | Check.Ok { spec; edges; _ } ->
+      print_string (Silica.Spec.to_quint ~labels:edges spec)
+  | _ -> print_string "problem";;
 // Generated from the spec of the machine "lamp". Do not edit.
 module lamp {
   type State = | Off | On
@@ -258,8 +299,9 @@ module lamp {
 - : unit = ()
 ]}
 
-The model holds the edges only, not the code of the handlers, so it allows
-more runs than the machine.
+The model holds the edges only, not the code of the update, so it allows more
+runs than the machine. It holds only the edges that the run took: give the
+checker the samples and inputs that reach every state.
 
 The repository writes the exports of its machines in a dune rule, and keeps a
 copy in [spec/] next to the tests. A [diff] rule fails the build when a change

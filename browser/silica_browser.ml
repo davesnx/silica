@@ -61,7 +61,7 @@ let rec session :
         Js.log2 "silica: bad state message" m
     | Ok s ->
         Dom.remove_attribute root "data-silica-offline";
-        renderer.paint (live.component.view s);
+        renderer.paint (live.component.view () s);
         List.iter (fun h -> renderer.run (Protocol.host_to_action h)) actions
   in
   let c =
@@ -105,12 +105,12 @@ let platform ?live_config ?on_session_gone ~dev ~hydrate ~lives root =
     io = Web.io ?on_session_gone ();
   }
 
-let run (type s e) ?live_config ?on_session_gone ?(dev = false) ?on_error
+let run (type p s e) ?live_config ?on_session_gone ?(dev = false) ?on_error
     ?(hydrate = true) ~lives ~root
     ~(create :
        dev:bool ->
        on_error:(exn -> Node.error -> unit) option ->
-       (s, e) Instance.t
+       (p, s, e) Instance.t
        ) ~(on_route : (Router.event -> e) option) () =
   let root = root_of root in
   Runtime.start ?live_config ~dev ?on_error ~answers:(read_answers ()) ?on_route
@@ -119,13 +119,13 @@ let run (type s e) ?live_config ?on_session_gone ?(dev = false) ?on_error
   Dom.set_attribute root "data-silica-ready" ""
 
 let mount ?live_config ?on_session_gone ?dev ?on_error ?hydrate ?(lives = [])
-    ~root (component : _ Component.t) =
+    ~root (component : (_, _, _) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error -> Instance.mount ~dev ?on_error component)
     ~on_route:None ()
 
 let mount_app ?live_config ?on_session_gone ?dev ?on_error ?hydrate
-    ?(lives = []) ~root (app : Url.t -> (_, Router.event) Component.t) =
+    ?(lives = []) ~root (app : Url.t -> (_, _, Router.event) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error ->
       Instance.mount ~dev ?on_error (app (Dom_renderer.current_url ()))
@@ -141,7 +141,7 @@ let mount_live ?live_config ?on_session_gone ?(dev = false) ~root
   ()
 
 let mount_with_renderer ?dev ?on_error ?answers ~renderer
-    (component : _ Component.t) =
+    (component : (_, _, _) Component.t) =
   Runtime.start ?dev ?on_error ?answers
     ~platform:
       {

@@ -2,14 +2,21 @@ type running = (string, unit -> unit) Hashtbl.t
 
 let call (type e) (io : Platform.io) ~(deliver : e -> unit) ep input (k : _ -> e)
     =
-  let fail err = deliver (k (Error err)) in
+  let fail err = deliver (k (Remote.Failed err)) in
   io.post ~path:(Remote.path ep)
     ~body:(Codec.to_string (Remote.input ep) input)
     (function
       | Ok { Platform.status = 200; body } -> (
           match Codec.of_string (Remote.output ep) body with
           | Ok o ->
-              deliver (k (Ok o))
+              deliver (k (Remote.Ok o))
+          | Error m ->
+              fail (Remote.Decode m)
+        )
+      | Ok { Platform.status = 422; body } -> (
+          match Codec.of_string (Remote.rejected ep) body with
+          | Ok x ->
+              deliver (k (Remote.Rejected x))
           | Error m ->
               fail (Remote.Decode m)
         )
@@ -44,7 +51,7 @@ let preloads (io : Platform.io) =
       let entry = { waiter = None; kept = None } in
       Hashtbl.replace table key entry;
       io.post ~path ~body (fun result ->
-          match (entry.waiter, result) with
+          match[@warning "-4"] (entry.waiter, result) with
           | Some answer, Ok { Platform.status = 200; _ } ->
               answer result
           | Some answer, _ ->
@@ -102,7 +109,7 @@ let max_replay_rounds = 200
 
 let answered : type e.
     Answers.t -> e Action.host -> (string * e * string * string) option =
- fun table -> function
+ fun table -> function[@warning "-4"]
   | Action.Start_call { id; endpoint; input; on_result; _ } -> (
       let path = Remote.path endpoint in
       let encoded = Codec.to_string (Remote.input endpoint) input in
@@ -112,7 +119,7 @@ let answered : type e.
       | Some output -> (
           match Codec.of_string (Remote.output endpoint) output with
           | Ok value ->
-              Some (id, on_result (Ok value), path, encoded)
+              Some (id, on_result (Remote.Ok value), path, encoded)
           | Error _ ->
               None
         )
@@ -123,17 +130,17 @@ let answered : type e.
 let live_actions actions =
   List.fold_left
     (fun live action ->
-      match action with
+      match[@warning "-4"] action with
       | Action.Start_call { id; _ } ->
           List.filter
-            (function
+            (function[@warning "-4"]
               | Action.Start_call { id = other; _ } -> other <> id | _ -> true
               )
             live
           @ [ action ]
       | Action.Stop id ->
           List.filter
-            (function
+            (function[@warning "-4"]
               | Action.Start_call { id = other; _ } -> other <> id | _ -> true
               )
             live
@@ -142,13 +149,13 @@ let live_actions actions =
     )
     [] actions
 
-let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
+let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
     ?live_config ?(on_route : (Router.event -> e) option)
     ~(platform : Instance.message Platform.t)
     ~(create :
        dev:bool ->
        on_error:(exn -> Node.error -> unit) option ->
-       (s, e) Instance.t
+       (p, s, e) Instance.t
        ) () =
   let hook exn (error : Node.error) =
     platform.io.log
@@ -186,7 +193,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
       )
   and exec_one (action : Instance.message Action.host) =
     let r = Lazy.force renderer_value in
-    match action with
+    match[@warning "-4"] action with
     | Action.Run (Action.Preload (Remote.Request (endpoint, input))) ->
         preload ~path:(Remote.path endpoint)
           ~body:(Codec.to_string (Remote.input endpoint) input)
@@ -215,7 +222,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
                   if !live then (
                     live := false;
                     Hashtbl.remove running id;
-                    send (on_result (Error (Remote.Network "timeout")))
+                    send (on_result (Remote.Failed (Remote.Network "timeout")))
                   )
               )
             )
@@ -307,7 +314,7 @@ let start (type s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
           answers := Answers.remove !answers ~path ~input:encoded;
           let pending =
             List.filter
-              (function
+              (function[@warning "-4"]
                 | Action.Start_call { id = other; _ } -> other <> id | _ -> true
                 )
               pending

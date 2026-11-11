@@ -26,11 +26,9 @@ module about {
     last' = OnStart,
   }
 
-  action about_to_about_on_any = all { state == About, enter(About, OnAny) }
   action about_stays_on_go_back = all { state == About, state' = state, running' = running, last' = OnGoBack }
 
   action step = any {
-    about_to_about_on_any,
     about_stays_on_go_back,
   }
 

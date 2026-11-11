@@ -59,14 +59,12 @@ type props = {
 }
 
 type data = {
-  props : props;
   query : string;  (** The text of the input. *)
   highlighted : string option;  (** The value of the highlighted option. *)
   selected : string option;  (** The value of the last chosen option. *)
 }
 
 type event =
-  | Props of props
   | Typed of string  (** The text of the input changed. *)
   | Move of [ `Next | `Previous | `First | `Last ]
       (** ArrowDown or ArrowUp: open the list and move the highlight. Home or
@@ -80,24 +78,19 @@ type event =
   | Outside_press
   | Focus_out  (** Tab, or focus moved outside the input and the list. *)
 
-module State : sig
-  type _ t =
-    | Idle : unit t  (** Before the first props. *)
-    | Closed : data t  (** Popup mode, list not shown. *)
-    | Open : data t  (** Popup mode, list shown. *)
-    | Inline : data t  (** Inline mode: the list is always shown. *)
-end
+type state =
+  | Closed of data  (** Popup mode, list not shown. *)
+  | Open of data  (** Popup mode, list shown. *)
+  | Inline of data  (** Inline mode: the list is always shown. *)
 
-type snapshot = At : 'data State.t * 'data -> snapshot
-
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val props :
   id:string ->

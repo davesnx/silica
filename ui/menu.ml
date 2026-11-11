@@ -17,7 +17,6 @@ type nav = Next | Previous | First | Last | Letter of char
 type edge = Start | End
 
 type event =
-  | Props of props
   | Trigger_press
   | Open_key of Popup.reason * edge
   | Move of nav
@@ -25,27 +24,10 @@ type event =
   | Choose of int
   | Close of Popup.reason
 
-type opened = { props : props; highlighted : int option }
-
-module State = struct
-  type _ t = Idle : unit t | Closed : props t | Open : opened t
-end
-
-module Menu_machine = Machine.Make (State)
-
-type snapshot = Menu_machine.snapshot = At : 'data State.t * 'data -> snapshot
+type state = Closed | Open of int option [@@deriving state_shape]
 
 let item_id id i = id ^ "-item-" ^ string_of_int i
 let parts (props : props) = Popup.parts props.id
-
-let sources =
-  List.map
-    (Popup.scoped (fun (o : opened) -> o.props.id))
-    [
-      Popup.dismiss ~escape:(Close Popup.Escape_key)
-        ~outside:(Close Popup.Outside_press) Popup.template;
-      Source.anchor ~anchor:Popup.template.trigger Popup.template.popup;
-    ]
 
 let enabled (props : props) i =
   match List.nth_opt props.items i with
@@ -84,93 +66,83 @@ let navigate (props : props) highlighted nav =
   in
   match found with Some _ -> found | None -> highlighted
 
-let focus (o : opened) =
-  match o.highlighted with
+let focus (props : props) = function
   | Some i ->
-      Action.Focus (Ref.make (item_id o.props.id i))
+      Action.Focus (Ref.make (item_id props.id i))
   | None ->
-      Action.Focus (parts o.props).popup
+      Action.Focus (parts props).popup
 
-let show (o : opened) = Menu_machine.goto Open o ~actions:[ focus o ]
+let show props highlighted : (state, event) Machine.next =
+  Go_with (Open highlighted, [ focus props highlighted ])
 
-let close ?(focus = true) (props : props) =
-  Menu_machine.goto Closed props
-    ~actions:
-      ( if focus then
-          [ Action.Focus (parts props).trigger ]
-        else
-          []
-      )
-
-let opened_by (previous : props option) (props : props) =
-  props.open_ = Some true
-  && Option.map (fun (p : props) -> p.open_) previous <> Some (Some true)
-
-let closed_by (previous : props) (props : props) =
-  props.open_ = Some false && previous.open_ <> Some false
+let close ?focus props : (state, event) Machine.next =
+  Popup.close ?focus (parts props) Closed
 
 let machine =
-  Menu_machine.make ~id:"menu" ~init:(Menu_machine.at Idle ())
-    [
-      Menu_machine.state Idle "idle" ~to_:[ Closed; Open ] (fun () -> function
-        | Props props when opened_by None props ->
-            show { props; highlighted = None }
-        | Props props ->
-            Menu_machine.goto Closed props
-        | _ ->
-            Menu_machine.unhandled
-        );
-      Menu_machine.state Closed "closed" ~to_:[ Open ] (fun previous -> function
-        | Props props when opened_by (Some previous) props ->
-            show { props; highlighted = None }
-        | Props props ->
-            Menu_machine.goto Closed props
-        | Trigger_press ->
-            show { props = previous; highlighted = None }
-        | Open_key (_, edge) ->
-            let nav = match edge with Start -> First | End -> Last in
-            show { props = previous; highlighted = navigate previous None nav }
-        | Move _ | Highlight _ | Choose _ | Close _ ->
-            Menu_machine.unhandled
-        );
-      Menu_machine.state Open "open" ~to_:[ Closed ] ~invoke:sources
-        (fun o -> function
-        | Props props when closed_by o.props props ->
-            close props
-        | Props props ->
-            let highlighted =
-              Option.bind o.highlighted (fun i ->
-                  if enabled props i then
-                    Some i
-                  else
-                    None
-              )
-            in
-            Menu_machine.goto Open { props; highlighted }
-        | Trigger_press ->
-            close o.props
-        | Move nav -> (
-            match navigate o.props o.highlighted nav with
-            | highlighted when highlighted = o.highlighted ->
-                Menu_machine.stay []
-            | highlighted ->
-                show { o with highlighted }
-          )
-        | Highlight i when enabled o.props i ->
-            if o.highlighted = Some i then
-              Menu_machine.stay []
-            else
-              show { o with highlighted = Some i }
-        | Choose i when enabled o.props i ->
-            close o.props
-        | Close Popup.Outside_press ->
-            close ~focus:false o.props
-        | Close _ ->
-            close o.props
-        | Highlight _ | Choose _ | Open_key _ ->
-            Menu_machine.unhandled
-        );
-    ]
+  Machine.make_with_props ~id:"menu" ~init:Closed ~shape:state_shape
+    ~owns:(fun props -> function
+      | Open _ ->
+          Popup.layer ~escape:(Close Popup.Escape_key)
+            ~outside:(Close Popup.Outside_press) (parts props)
+      | Closed ->
+          []
+      )
+    ~on_props:(fun previous props state ->
+      match
+        ( Popup.open_change (fun (props : props) -> props.open_) previous props,
+          state
+        )
+      with
+      | Some true, Closed ->
+          show props None
+      | Some false, Open _ ->
+          close props
+      | (Some _ | None), Open highlighted -> (
+          match
+            Option.bind highlighted (fun i ->
+                if enabled props i then
+                  Some i
+                else
+                  None
+            )
+          with
+          | kept when kept = highlighted ->
+              Ignore
+          | kept ->
+              Go (Open kept)
+        )
+      | (Some _ | None), Closed ->
+          Ignore
+    )
+    (fun props state event ->
+      match (state, event) with
+      | Closed, Trigger_press ->
+          show props None
+      | Closed, Open_key (_, edge) ->
+          let nav = match edge with Start -> First | End -> Last in
+          show props (navigate props None nav)
+      | Open _, Trigger_press ->
+          close props
+      | Open highlighted, Move nav -> (
+          match navigate props highlighted nav with
+          | next when next = highlighted ->
+              Stay []
+          | next ->
+              show props next
+        )
+      | Open highlighted, Highlight i when enabled props i ->
+          if highlighted = Some i then
+            Stay []
+          else
+            show props (Some i)
+      | Open _, Choose i when enabled props i ->
+          close props
+      | Open _, Close reason ->
+          close ~focus:(reason <> Popup.Outside_press) props
+      | Closed, (Move _ | Highlight _ | Choose _ | Close _)
+      | Open _, (Highlight _ | Choose _ | Open_key _) ->
+          Ignore
+    )
 
 let el = Node.element
 let text = Node.text
@@ -232,9 +204,9 @@ let trigger (props : props) ~open_ =
     )
     [ text props.label ]
 
-let item (o : opened) i (item : item) =
-  let id = item_id o.props.id i in
-  let highlighted = o.highlighted = Some i in
+let item (props : props) highlighted i (item : item) =
+  let id = item_id props.id i in
+  let highlighted = highlighted = Some i in
   el "div"
     ([
        Attr.string "id" id;
@@ -260,12 +232,12 @@ let item (o : opened) i (item : item) =
             Attr.on_pointer_enter (fun _ -> Some (Highlight i));
           ]
       )
-    @ Popup.class_attr o.props.classes.item
+    @ Popup.class_attr props.classes.item
     )
     [ text item.label ]
 
-let popup (o : opened) =
-  let parts = parts o.props in
+let popup (props : props) highlighted =
+  let parts = parts props in
   Node.portal
     [
       el "div"
@@ -275,47 +247,45 @@ let popup (o : opened) =
            Attr.string "role" "menu";
            Attr.string "aria-labelledby" parts.trigger_id;
            Attr.string "tabindex" "-1";
-           Attr.on_key_down ~prevent:true (menu_key o.highlighted);
+           Attr.on_key_down ~prevent:true (menu_key highlighted);
            Attr.on_key_down tab_key;
          ]
         @ Popup.open_attrs true
-        @ Popup.class_attr o.props.classes.popup
+        @ Popup.class_attr props.classes.popup
         )
-        (List.mapi (item o) o.props.items);
+        (List.mapi (item props highlighted) props.items);
     ]
 
-let view : snapshot -> event Node.t = function
-  | At (Idle, ()) ->
-      Node.list []
-  | At (Closed, props) ->
+let view props = function
+  | Closed ->
       trigger props ~open_:false
-  | At (Open, o) ->
-      Node.list [ trigger o.props ~open_:true; popup o ]
+  | Open highlighted ->
+      Node.list [ trigger props ~open_:true; popup props highlighted ]
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let props ~id ~label ?open_ ?(classes = no_classes) items =
   { id; label; items; open_; classes }
 
-let make ?key ?on_open_change ?on_select props =
-  let opened value reason =
-    Option.to_list (Option.map (fun f -> f value reason) on_open_change)
-  in
-  let output event (snapshot : snapshot) =
-    match (event, snapshot) with
-    | Trigger_press, At (Open, _) ->
+let make ?key ?on_open_change ?on_select (props : props) =
+  let opened = Popup.report on_open_change in
+  let output event state =
+    match (event, state) with
+    | Trigger_press, Open _ ->
         opened true Popup.Trigger_press
-    | Trigger_press, At (Closed, _) ->
+    | Trigger_press, Closed ->
         opened false Popup.Trigger_press
-    | Open_key (reason, _), At (Open, _) ->
+    | Open_key (reason, _), Open _ ->
         opened true reason
-    | Choose i, At (Closed, props) ->
+    | Choose i, Closed ->
         Option.to_list
           (Option.map (fun f -> f (List.nth props.items i).value) on_select)
         @ opened false Popup.Item_press
-    | Close reason, At (Closed, _) ->
+    | Close reason, Closed ->
         opened false reason
-    | _ ->
+    | Open_key _, Closed
+    | (Move _ | Highlight _), (Closed | Open _)
+    | (Choose _ | Close _), Open _ ->
         []
   in
-  Component.node ?key ~props:(Props props) ~output component
+  Component.node_with_props ?key ~props ~output component

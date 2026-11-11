@@ -56,7 +56,8 @@ From [docs/examples/native/dune]:
 
 The Melange library is the same with [(modes melange)] and the preprocessors
 [silica.ppx melange.ppx]. The ppx [silica.ppx] turns the JSX elements into
-calls of {!Silica.Node.element} (see {!page-components.jsx}). An app that
+calls of {!Silica.Node.element} (see {!page-components.jsx}), and gives the
+deriver [[@@deriving state_shape]] (see {!page-machines.states}). An app that
 derives JSON codecs needs a different library for each side; see
 {!page-recipes.json}.
 
@@ -80,38 +81,27 @@ stanza. See [example/client/dune] in the repository for the esbuild rule, and
 {1:first A first component}
 
 A component is a machine and a view. This lamp has two states, [Off] and
-[On], and one event, [Toggle]. The view shows a text and a button for each
-state.
+[On], and one event, [Toggle]. The states are a plain variant, and
+[[@@deriving state_shape]] gives their names. The view shows a text and a button
+for each state.
 
 {@mlx file=examples/shared/doc_lamp.mlx[
 open Silica
 
 type event = Toggle
-
-module States = struct
-  type _ t = Off : unit t | On : unit t
-end
-
-module Lamp_machine = Machine.Make (States)
+type state = Off | On [@@deriving state_shape]
 
 let machine =
-  Lamp_machine.make ~id:"lamp" ~init:(Lamp_machine.at Off ())
-    [
-      Lamp_machine.state Off "off" ~to_:[ On ] (fun () Toggle ->
-          Lamp_machine.goto On ()
-      );
-      Lamp_machine.state On "on" ~to_:[ Off ] (fun () Toggle ->
-          Lamp_machine.goto Off ()
-      );
-    ]
+  Machine.make ~id:"lamp" ~init:Off ~shape:state_shape (fun state Toggle ->
+      match state with Off -> Go On | On -> Go Off
+  )
 
-let view (snapshot : Lamp_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Lamp_machine.At (Off, ()) ->
+let view : state -> event Node.t = function
+  | Off ->
       <div>
         <p>"The lamp is off."</p> <button on_press=Toggle>"Turn on"</button>
       </div>
-  | Lamp_machine.At (On, ()) ->
+  | On ->
       <div>
         <p>"The lamp is on."</p> <button on_press=Toggle>"Turn off"</button>
       </div>
@@ -124,15 +114,12 @@ HTML of the view:
 
 {@ocaml[
 # let lamp = Doc_lamp.machine;;
-val lamp : (Doc_lamp.Lamp_machine.snapshot, Doc_lamp.event) Silica.Machine.t =
-  <abstr>
-# let snapshot, _ = Silica.Machine.start lamp;;
-val snapshot : Doc_lamp.Lamp_machine.snapshot =
-  Doc_lamp.Lamp_machine.At (Doc_lamp.States.Off, <poly>)
-# let snapshot, _, _ = Silica.Machine.send lamp snapshot Doc_lamp.Toggle;;
-val snapshot : Doc_lamp.Lamp_machine.snapshot =
-  Doc_lamp.Lamp_machine.At (Doc_lamp.States.On, <poly>)
-# Silica.Render.to_string (Doc_lamp.view snapshot);;
+val lamp : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Machine.t = <abstr>
+# let state, _ = Silica.Machine.start lamp ();;
+val state : Doc_lamp.state = Doc_lamp.Off
+# let state, _, _ = Silica.Machine.step lamp () state Doc_lamp.Toggle;;
+val state : Doc_lamp.state = Doc_lamp.On
+# Silica.Render.to_string (Doc_lamp.view state);;
 - : string = "<div><p>The lamp is on.</p><button>Turn off</button></div>"
 ]}
 

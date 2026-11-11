@@ -14,8 +14,7 @@ let find : 'e. string -> (unit -> 'e Node.t) option = function
   | "examples/shared/doc_stepper.mlx" ->
       Some
         (fun () ->
-          Component.node ~props:(Doc_stepper.Props "Adults")
-            Doc_stepper.component
+          Component.node_with_props ~props:"Adults" Doc_stepper.component
         )
   | "examples/shared/doc_party.mlx" ->
       Some (fun () -> Component.node Doc_party.component)

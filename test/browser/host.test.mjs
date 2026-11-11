@@ -848,7 +848,7 @@ test("the runtime runs with another renderer and no DOM", () => {
   log = App.fake_log();
   assert.equal(log.length, 3);
   assert.match(log[1], /^paint <main>.*<div id="dialog"/, "the new view is painted");
-  assert.equal(log[2], "start 1.1/dialog-trap/opened/invoke0 focus_trap", "then the source starts, after the paint");
+  assert.equal(log[2], "start 1.1/dialog-trap/opened/focus_trap dialog focus_trap", "then the source starts, after the paint");
   assert.equal(document.getElementById("root").children.length, 0, "the DOM was not used");
 });
 

@@ -2,33 +2,29 @@ open Silica
 open Linear_model
 open Linear_routes
 
-type form = { view : Linear_view.t; draft : Draft.t; error : string option }
+type form = { draft : Draft.t; error : string option }
 
 type event =
-  | Props of issues
   | Title of string
   | Description of string
   | Status_picked of Issue_status.t
   | Priority_picked of Priority.t
   | Submit
   | Cancel
-  | Created of (Issue.t, Remote.error) result
+  | Created of (Issue.t, string) Remote.answer
 
-module States = struct
-  type _ t =
-    | Closed : Linear_view.t t
-    | Editing : form t
-    | Submitting : (Linear_view.t * Draft.t) t
-    | Failed : (Linear_view.t * Draft.t * Remote.error) t
-end
+type state =
+  | Closed
+  | Editing of form
+  | Submitting of Draft.t
+  | Failed of { draft : Draft.t; message : string }
+[@@deriving state_shape]
 
-module Create_machine = Machine.Make (States)
-
-let fresh view = { view; draft = Draft.empty; error = None }
+let fresh = Editing { draft = Draft.empty; error = None }
 let focus_opener = Action.Focus Linear_refs.new_issue
 
-let close view =
-  [ Router.replace routes State.Issues { create = false; view }; focus_opener ]
+let close (route : issues) =
+  [ Router.replace routes (Issues { route with create = false }); focus_opener ]
 
 let edited (draft : Draft.t) = function
   | Title title ->
@@ -39,75 +35,62 @@ let edited (draft : Draft.t) = function
       Some { draft with status }
   | Priority_picked priority ->
       Some { draft with priority }
-  | Props _ | Submit | Cancel | Created _ ->
+  | Submit | Cancel | Created _ ->
       None
 
 let machine =
-  Create_machine.make ~id:"create-issue"
-    ~init:(Create_machine.at Closed Linear_view.default)
-    [
-      Create_machine.state Closed "closed" ~to_:[ Editing ] (fun _ -> function
-        | Props { create = true; view } ->
-            Create_machine.goto Editing (fresh view)
-        | Props { create = false; view } ->
-            Create_machine.goto Closed view
-        | _ ->
-            Create_machine.unhandled
-        );
-      Create_machine.state Editing "editing" ~to_:[ Submitting; Closed ]
-        (fun form event ->
-          match event with
-          | Submit -> (
-              match Draft.check form.draft with
-              | Ok draft ->
-                  Create_machine.goto Submitting (form.view, draft)
-              | Error message ->
-                  Create_machine.goto Editing { form with error = Some message }
-            )
-          | Cancel ->
-              Create_machine.goto Closed form.view ~actions:(close form.view)
-          | Props { create = false; view } ->
-              Create_machine.goto Closed view ~actions:[ focus_opener ]
-          | Props { create = true; view } ->
-              Create_machine.goto Editing { form with view }
-          | event -> (
-              match edited form.draft event with
-              | Some draft ->
-                  Create_machine.goto Editing { form with draft; error = None }
-              | None ->
-                  Create_machine.unhandled
-            )
-      );
-      Create_machine.state Submitting "submitting" ~to_:[ Closed; Failed ]
-        ~invoke:[ Source.call create_endpoint snd (fun r -> Created r) ]
-        (fun (view, draft) -> function
-          | Created (Ok _) ->
-              Create_machine.goto Closed view ~actions:(close view)
-          | Created (Error error) ->
-              Create_machine.goto Failed (view, draft, error)
-          | _ ->
-              Create_machine.unhandled
-          );
-      Create_machine.state Failed "failed" ~to_:[ Submitting; Editing; Closed ]
-        (fun (view, draft, error) event ->
-          match event with
-          | Submit ->
-              Create_machine.goto Submitting (view, draft)
-          | Cancel ->
-              Create_machine.goto Closed view ~actions:(close view)
-          | Props { create = false; view } ->
-              Create_machine.goto Closed view ~actions:[ focus_opener ]
-          | Props { create = true; view } ->
-              Create_machine.goto Failed (view, draft, error)
-          | event -> (
-              match edited draft event with
-              | Some draft ->
-                  Create_machine.goto Editing { view; draft; error = None }
-              | None ->
-                  Create_machine.unhandled
-            )
-      );
-    ]
+  Machine.make_with_props ~id:"create-issue" ~init:Closed ~shape:state_shape
+    ~owns:(fun _ -> function
+      | Submitting draft ->
+          [ Remote.call create_endpoint draft (fun answer -> Created answer) ]
+      | Closed | Editing _ | Failed _ ->
+          []
+      )
+    ~on_props:(fun _ (route : issues) state ->
+      match (state, route.create) with
+      | Closed, true ->
+          Go fresh
+      | (Editing _ | Failed _), false ->
+          Go_with (Closed, [ focus_opener ])
+      | Closed, false | (Editing _ | Failed _), true | Submitting _, _ ->
+          Ignore
+    )
+    (fun route state event ->
+      match (state, event) with
+      | Editing form, Submit -> (
+          match Draft.check form.draft with
+          | Ok draft ->
+              Go (Submitting draft)
+          | Error message ->
+              Go (Editing { form with error = Some message })
+        )
+      | Failed { draft; _ }, Submit ->
+          Go (Submitting draft)
+      | (Editing _ | Failed _), Cancel ->
+          Go_with (Closed, close route)
+      | Editing form, event -> (
+          match edited form.draft event with
+          | Some draft ->
+              Go (Editing { draft; error = None })
+          | None ->
+              Ignore
+        )
+      | Failed { draft; _ }, event -> (
+          match edited draft event with
+          | Some draft ->
+              Go (Editing { draft; error = None })
+          | None ->
+              Ignore
+        )
+      | Submitting _, Created (Ok _) ->
+          Go_with (Closed, close route)
+      | Submitting draft, Created (Rejected message) ->
+          Go (Failed { draft; message })
+      | Submitting draft, Created (Failed error) ->
+          Go (Failed { draft; message = Remote.error_to_string error })
+      | (Closed | Submitting _), _ ->
+          Ignore
+    )
 
 let text = Node.text
 
@@ -166,95 +149,81 @@ let priority_select (draft : Draft.t) ~disabled =
     )
   </select>
 
-let error_text : Remote.error -> string = function
-  | Http code ->
-      "The server answered " ^ string_of_int code
-  | Decode _ ->
-      "The server sent data that cannot be read"
-  | Network _ ->
-      "The network failed"
+type content = { draft : Draft.t; busy : bool; message : string option }
 
-module Form = struct
-  type props = { draft : Draft.t; busy : bool; message : string option }
-
-  type nonrec event = event
-
-  let id = "create-issue-dialog"
-
-  let view { draft; busy; message } : event Node.t =
-    <form
-      on_submit=Submit
-      on_key_down=(fun key ->
-                    if
-                      Key.equal key (Key.make ~ctrl:true "Enter")
-                      || Key.equal key (Key.make ~meta:true "Enter")
-                    then
-                      Some Submit
-                    else
-                      None
-                  )
-      class_="mt-3 flex flex-col gap-3">
-      <input
-        ref=Linear_refs.title
-        id="new-issue-title"
-        type_=`text
-        aria_label="Title"
-        placeholder="Issue title"
-        class_=input_class
-        value=draft.title
+let form { draft; busy; message } : event Node.t =
+  <form
+    on_submit=Submit
+    on_key_down=(fun key ->
+                  if
+                    Key.equal key (Key.make ~ctrl:true "Enter")
+                    || Key.equal key (Key.make ~meta:true "Enter")
+                  then
+                    Some Submit
+                  else
+                    None
+                )
+    class_="mt-3 flex flex-col gap-3">
+    <input
+      ref=Linear_refs.title
+      id="new-issue-title"
+      type_=`text
+      aria_label="Title"
+      placeholder="Issue title"
+      class_=input_class
+      value=draft.title
+      disabled=busy
+      on_input=(fun value -> Title value)
+    />
+    <textarea
+      id="new-issue-description"
+      aria_label="Description"
+      placeholder="Description"
+      rows=4
+      class_=input_class
+      value=draft.description
+      disabled=busy
+      on_input=(fun value -> Description value)
+    />
+    <div class_="flex gap-3">
+      (status_select draft ~disabled:busy) (priority_select draft ~disabled:busy)
+    </div>
+    ( match message with
+    | Some message ->
+        <p id="new-issue-error" role=`alert class_="text-sm text-ui-danger">
+          (text message)
+        </p>
+    | None ->
+        Node.list []
+    )
+    <div class_="flex justify-end gap-2">
+      <button
+        type_=`button
+        id="new-issue-cancel"
+        class_="rounded-ui px-3 py-1 text-ui-muted"
         disabled=busy
-        on_input=(fun value -> Title value)
-      />
-      <textarea
-        id="new-issue-description"
-        aria_label="Description"
-        placeholder="Description"
-        rows=4
-        class_=input_class
-        value=draft.description
-        disabled=busy
-        on_input=(fun value -> Description value)
-      />
-      <div class_="flex gap-3">
-        (status_select draft ~disabled:busy)
-        (priority_select draft ~disabled:busy)
-      </div>
-      ( match message with
-      | Some message ->
-          <p id="new-issue-error" role=`alert class_="text-sm text-ui-danger">
-            (text message)
-          </p>
-      | None ->
-          Node.list []
-      )
-      <div class_="flex justify-end gap-2">
-        <button
-          type_=`button
-          id="new-issue-cancel"
-          class_="rounded-ui px-3 py-1 text-ui-muted"
-          disabled=busy
-          on_press=Cancel>
-          "Cancel"
-        </button>
-        <button
-          type_=`submit
-          id="new-issue-submit"
-          class_="rounded-ui bg-ui-accent px-3 py-1 text-ui-accent-text \
-                  disabled:opacity-50"
-          disabled=busy>
-          ( if busy then
-              text "Creating..."
-            else
-              text "Create issue"
-          )
-        </button>
-      </div>
-    </form>
+        on_press=Cancel>
+        "Cancel"
+      </button>
+      <button
+        type_=`submit
+        id="new-issue-submit"
+        class_="rounded-ui bg-ui-accent px-3 py-1 text-ui-accent-text \
+                disabled:opacity-50"
+        disabled=busy>
+        ( if busy then
+            text "Creating..."
+          else
+            text "Create issue"
+        )
+      </button>
+    </div>
+  </form>
 
-  let closes (_ : event) = false
-end
-
-module Create_dialog = Silica_ui.Dialog.Make (Form)
+let dialog_component =
+  Silica_ui.Dialog.component ~id:"create-issue-dialog"
+    ~closes:(fun (_ : event) -> false)
+    form
 
 let classes : Silica_ui.Dialog.classes =
   {
@@ -267,25 +236,25 @@ let classes : Silica_ui.Dialog.classes =
   }
 
 let dialog ~busy ~message draft =
-  Create_dialog.make
+  Silica_ui.Dialog.make
     ~on_open_change:(fun _ _ -> Cancel)
-    ~on_content:Fun.id
-    (Create_dialog.props ~id:"create-issue" ~title:"New issue" ~open_:true
-       ~dismissible:(not busy) ~classes
-       { Form.draft; busy; message }
+    ~on_content:Fun.id dialog_component
+    (Silica_ui.Dialog.props ~id:"create-issue" ~title:"New issue" ~open_:true
+       ~dismissible:(not busy) ~classes { draft; busy; message }
     )
 
 let closed_dialog =
-  Create_dialog.make
+  Silica_ui.Dialog.make
     ~on_open_change:(fun _ _ -> Cancel)
-    ~on_content:Fun.id
-    (Create_dialog.props ~id:"create-issue" ~title:"New issue" ~open_:false
+    ~on_content:Fun.id dialog_component
+    (Silica_ui.Dialog.props ~id:"create-issue" ~title:"New issue" ~open_:false
        ~classes
-       { Form.draft = Draft.empty; busy = false; message = None }
+       { draft = Draft.empty; busy = false; message = None }
     )
 
-let trigger view =
-  Router.link routes State.Issues { create = true; view }
+let trigger (route : issues) =
+  Router.link routes
+    (Issues { route with create = true })
     [
       Attr.ref_ Linear_refs.new_issue;
       Attr.string "id" "new-issue";
@@ -295,31 +264,22 @@ let trigger view =
     ]
     [ text "New issue" ]
 
-let view (snapshot : Create_machine.snapshot) : event Node.t =
+let view route state : event Node.t =
   <div>
-    ( match snapshot with
-    | Create_machine.At (Closed, view) ->
-        trigger view
-    | Create_machine.At (Editing, form) ->
-        trigger form.view
-    | Create_machine.At (Submitting, (view, _)) ->
-        trigger view
-    | Create_machine.At (Failed, (view, _, _)) ->
-        trigger view
-    )
-    ( match snapshot with
-    | Create_machine.At (Closed, _) ->
+    (trigger route)
+    ( match state with
+    | Closed ->
         closed_dialog
-    | Create_machine.At (Editing, form) ->
+    | Editing form ->
         dialog ~busy:false ~message:form.error form.draft
-    | Create_machine.At (Submitting, (_, draft)) ->
+    | Submitting draft ->
         dialog ~busy:true ~message:None draft
-    | Create_machine.At (Failed, (_, draft, error)) ->
+    | Failed { draft; message } ->
         dialog ~busy:false
-          ~message:(Some ("Could not create the issue. " ^ error_text error))
+          ~message:(Some ("Could not create the issue. " ^ message))
           draft
     )
   </div>
 
-let component = Component.make machine view
-let make ?key ~route () = Component.node ?key ~props:(Props route) component
+let component = Component.make_with_props machine view
+let make ?key ~route () = Component.node_with_props ?key ~props:route component

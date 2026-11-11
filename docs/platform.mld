@@ -1,6 +1,6 @@
 {0 The platform and the renderers}
 
-A machine is a value. A host runs it: it keeps the snapshot, sends events,
+A machine is a value. A host runs it: it keeps the snapshot, steps events,
 paints the view and carries out the actions. Silica has three hosts that run
 components: the browser, the server render and the memory platform of the
 tests. The checker is a fourth host, which runs one machine at a time (see
@@ -11,13 +11,13 @@ tests. The checker is a fourth host, which runs one machine at a time (see
 Every host that renders components uses one instance tree,
 {!Silica.Instance}. It starts the machine of each component node that a view
 holds, gives the props, takes the output to the parent, and ends a child that
-is no longer rendered. [Instance.update] delivers one message and gives the
+is no longer rendered. A child is the same instance as before when it has the
+same position, a machine with the same {!Silica.Machine.id} and the same key. [Instance.update] delivers one message and gives the
 resolved view (with no component nodes left) and the actions of the step:
 
 {@ocaml[
 # let tree = Silica.Instance.mount Doc_party.component;;
-val tree :
-  (Doc_party.Party_machine.snapshot, Doc_party.event) Silica.Instance.t =
+val tree : (unit, Doc_party.state, Doc_party.event) Silica.Instance.t =
   <abstr>
 # Silica.Render.to_string (fst (Silica.Instance.update tree None));;
 - : string =

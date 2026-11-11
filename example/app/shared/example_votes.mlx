@@ -1,36 +1,28 @@
 open Silica
 
 type event = Update of int Topic.update | Reconnect
-
-module States = struct
-  type _ t = Watching : int Status.t t
-end
-
-module Votes_machine = Machine.Make (States)
+type state = Watching of int Status.t [@@deriving state_shape]
 
 let machine =
-  Votes_machine.make ~id:"votes"
-    ~init:(Votes_machine.at Watching Status.Idle)
-    [
-      Votes_machine.state Watching "watching"
-        ~invoke:
-          [
-            Source.live Example_model.votes_topic
-              (fun _ -> "main")
-              (fun update -> Update update);
-          ]
-        (fun status -> function
-          | Update { status; _ } ->
-              Votes_machine.goto Watching status
-          | Reconnect ->
-              Votes_machine.reenter Watching status
-          );
-    ]
+  Machine.make ~id:"votes" ~init:(Watching Status.Idle) ~shape:state_shape
+    ~owns:(fun (Watching _) ->
+      [
+        Source.live Example_model.votes_topic "main" (fun update ->
+            Update update
+        );
+      ]
+    )
+    (fun (Watching status) event ->
+      match event with
+      | Update { status; _ } ->
+          Go (Watching status)
+      | Reconnect ->
+          Reenter (Watching status)
+    )
 
 let text = Node.text
 
-let view (Votes_machine.At (Watching, status) : Votes_machine.snapshot) :
-    event Node.t =
+let view (Watching status) : event Node.t =
   let count =
     match Status.data status with Some n -> string_of_int n | None -> "..."
   in

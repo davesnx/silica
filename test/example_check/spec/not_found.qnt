@@ -11,8 +11,8 @@ module not_found {
     | NotFound => Set()
   }
 
-  pure val finals: Set[State] = Set()
-  pure val movable: Set[State] = Set(NotFound)
+  pure val finals: Set[State] = Set(NotFound)
+  pure val movable: Set[State] = Set()
 
   action enter(s: State, e: Event): bool = all {
     state' = s,
@@ -26,10 +26,10 @@ module not_found {
     last' = OnStart,
   }
 
-  action not_found_to_not_found_on_any = all { state == NotFound, enter(NotFound, OnAny) }
-
-  action step = any {
-    not_found_to_not_found_on_any,
+  action step = all {
+    state' = state,
+    running' = running,
+    last' = last,
   }
 
   val resources_owned = running.subseteq(owned(state))

@@ -16,12 +16,6 @@ type page = { open_ : bool option; events : string list }
 
 type event = Open_menu | Changed of bool * Popup.reason | Ran of string
 
-module States = struct
-  type _ t = Page : page t
-end
-
-module Command_menu_events_machine = Machine.Make (States)
-
 let shortcut =
   Source.keys ~prevent:true
     [
@@ -29,36 +23,34 @@ let shortcut =
     ]
 
 let machine =
-  Command_menu_events_machine.make ~id:"command-menu-events"
-    ~init:(Command_menu_events_machine.at Page { open_ = None; events = [] })
-    [
-      Command_menu_events_machine.state Page "page" ~invoke:[ shortcut ]
-        (fun page -> function
-        | Open_menu ->
-            Command_menu_events_machine.goto Page
-              { page with open_ = Some true }
-        | Changed (opened, reason) ->
-            Command_menu_events_machine.goto Page
-              {
-                open_ = Some opened;
-                events =
-                  page.events
-                  @ [
-                      ( if opened then
-                          "open "
-                        else
-                          "close "
-                      )
-                      ^ Popup.reason_name reason;
-                    ];
-              }
-        | Ran value ->
-            Command_menu_events_machine.goto Page
-              { page with events = page.events @ [ "run " ^ value ] }
-        );
-    ]
+  Machine.make ~id:"command-menu-events"
+    ~init:{ open_ = None; events = [] }
+    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~owns:(fun _ -> [ shortcut ])
+    (fun page event ->
+      match event with
+      | Open_menu ->
+          Go { page with open_ = Some true }
+      | Changed (opened, reason) ->
+          Go
+            {
+              open_ = Some opened;
+              events =
+                page.events
+                @ [
+                    ( if opened then
+                        "open "
+                      else
+                        "close "
+                    )
+                    ^ Popup.reason_name reason;
+                  ];
+            }
+      | Ran value ->
+          Go { page with events = page.events @ [ "run " ^ value ] }
+    )
 
-let view (Command_menu_events_machine.At (Page, page)) =
+let view page =
   <section class_="flex flex-col gap-4">
     <p class_="text-sm text-ui-muted">"Press Ctrl+J or Cmd+J."</p>
     <div>

@@ -11,8 +11,8 @@ module home {
     | Home => Set()
   }
 
-  pure val finals: Set[State] = Set()
-  pure val movable: Set[State] = Set(Home)
+  pure val finals: Set[State] = Set(Home)
+  pure val movable: Set[State] = Set()
 
   action enter(s: State, e: Event): bool = all {
     state' = s,
@@ -26,10 +26,10 @@ module home {
     last' = OnStart,
   }
 
-  action home_to_home_on_any = all { state == Home, enter(Home, OnAny) }
-
-  action step = any {
-    home_to_home_on_any,
+  action step = all {
+    state' = state,
+    running' = running,
+    last' = last,
   }
 
   val resources_owned = running.subseteq(owned(state))

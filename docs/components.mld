@@ -2,11 +2,13 @@
 
 A component is a machine together with the view of its states:
 [Component.make machine view]. The view is a function from the snapshot to a
-tree of nodes. It has no state of its own: all state is in the snapshot. See
-{!Silica.Component} and {!Silica.Node}.
+tree of nodes. It has no state of its own: all state is in the snapshot. A
+component with props uses [Component.make_with_props machine view], and its
+view gets the props first. See {!Silica.Component} and {!Silica.Node}.
 
 Define a component once, at the top level. A host knows that a rendered
-component is the same one as before when its machine is the same value.
+component is the same one as before when it is at the same place and its
+machine has the same id (see {!section-identity}).
 
 {1:jsx Views in JSX}
 
@@ -64,8 +66,13 @@ machine. A parent puts a child in its view as a node:
 {!Silica.Component.node}. The machine of the child starts when the node is
 rendered and stops when the node is no longer rendered.
 
-- Props go down as an event. The host sends the [props] event to the child
-  right after its start, and again each time the props change.
+- Props go down as a value. The parent gives them in
+  [Component.node_with_props ~props], which matches
+  {!Silica.Machine.make_with_props}. The machine gets them at its start, and
+  again each time they change (compared with [=]); its [on_props] can react to
+  the change. The view gets them as its first argument. A component made with
+  [Machine.make] has no props: [Component.node component] renders it, with
+  nothing more to give.
 - Output goes up through function props. [output] turns each event that the
   child handled, with the snapshot after it, into events of the parent.
 - [on_final] gives events to the parent when the child reaches a final state.
@@ -74,39 +81,28 @@ rendered and stops when the node is no longer rendered.
 A component with props is a module with a [make] function. Then it works as a
 tag in mlx: [<Doc_stepper label="Adults" on_change=... />] calls
 [Doc_stepper.make ~label ~on_change ()]. This stepper gets its label as props
-and gives its count to the parent:
+and gives its count to the parent. The label is not in the snapshot: the view
+gets it from the props.
 
 {@mlx file=examples/shared/doc_stepper.mlx[
 open Silica
 
-type data = { label : string; count : int }
-type event = Props of string | Up | Down
-
-module States = struct
-  type _ t = Count : data t
-end
-
-module Stepper_machine = Machine.Make (States)
+type event = Up | Down
+type state = Count of int [@@deriving state_shape]
 
 let machine =
-  Stepper_machine.make ~id:"stepper"
-    ~init:(Stepper_machine.at Count { label = ""; count = 0 })
-    [
-      Stepper_machine.state Count "count" (fun data -> function
-        | Props label ->
-            Stepper_machine.goto Count { data with label }
-        | Up ->
-            Stepper_machine.goto Count { data with count = data.count + 1 }
-        | Down when data.count = 0 ->
-            Stepper_machine.stay []
-        | Down ->
-            Stepper_machine.goto Count { data with count = data.count - 1 }
-        );
-    ]
+  Machine.make_with_props ~id:"stepper" ~init:(Count 0) ~shape:state_shape
+    (fun _label (Count count) event ->
+      match event with
+      | Up ->
+          Go (Count (count + 1))
+      | Down when count = 0 ->
+          Stay []
+      | Down ->
+          Go (Count (count - 1))
+  )
 
-let view
-    (Stepper_machine.At (Count, { label; count }) : Stepper_machine.snapshot) :
-    event Node.t =
+let view label (Count count) : event Node.t =
   <div>
     <span>(Node.text (label ^ ": " ^ string_of_int count))</span>
     <button aria_label=("Fewer " ^ label) on_press=Down disabled=(count = 0)>
@@ -115,12 +111,11 @@ let view
     <button aria_label=("More " ^ label) on_press=Up>"+"</button>
   </div>
 
-let component = Component.make machine view
+let component = Component.make_with_props machine view
 
 let make ?key ~label ~on_change () =
-  Component.node ?key component ~props:(Props label)
-    ~output:(fun event (Stepper_machine.At (Count, { count; _ })) ->
-      match event with Up | Down -> [ on_change count ] | Props _ -> []
+  Component.node_with_props ?key component ~props:label
+    ~output:(fun _ (Count count) -> [ on_change count ]
   )
 ]}
 
@@ -131,28 +126,21 @@ open Silica
 
 type party = { adults : int; children : int }
 type event = Adults of int | Children of int
-
-module States = struct
-  type _ t = Party : party t
-end
-
-module Party_machine = Machine.Make (States)
+type state = Party of party [@@deriving state_shape]
 
 let machine =
-  Party_machine.make ~id:"party"
-    ~init:(Party_machine.at Party { adults = 0; children = 0 })
-    [
-      Party_machine.state Party "party" (fun party -> function
-        | Adults adults ->
-            Party_machine.goto Party { party with adults }
-        | Children children ->
-            Party_machine.goto Party { party with children }
-        );
-    ]
+  Machine.make ~id:"party"
+    ~init:(Party { adults = 0; children = 0 })
+    ~shape:state_shape
+    (fun (Party party) event ->
+      match event with
+      | Adults adults ->
+          Go (Party { party with adults })
+      | Children children ->
+          Go (Party { party with children })
+    )
 
-let view
-    (Party_machine.At (Party, { adults; children }) : Party_machine.snapshot) :
-    event Node.t =
+let view (Party { adults; children }) : event Node.t =
   <div>
     <Doc_stepper key="adults" label="Adults" on_change=(fun n -> Adults n) />
     <Doc_stepper
@@ -164,8 +152,8 @@ let view
 let component = Component.make machine view
 ]}
 
-A server render shows each child as its machine is after the start and the
-props event:
+A server render shows each child as its machine is after the start with its
+props:
 
 {@ocaml[
 # Silica.Render.to_string (Silica.Component.node Doc_party.component);;
@@ -177,7 +165,8 @@ props event:
 
 The instance tree of the host ({!Silica.Instance}) keeps one machine for each
 rendered component node. A child is the same child as before when it has the
-same position in the view of its parent, the same machine and the same key.
+same position in the view of its parent, a machine with the same
+{!Silica.Machine.id} and the same key.
 So a layout that is at the same place for every page keeps its state when the
 page changes. A key that goes away ends its child, and a key that comes back
 starts a new one.

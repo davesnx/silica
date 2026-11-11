@@ -1,20 +1,19 @@
 // Generated from the spec of the machine "theme". Do not edit.
 module theme {
-  type State = | Idle | Fixed | System
-  type Event = OnStart | OnAny | OnChooseHighContrast | OnChooseLight | OnChooseSystem | OnPropsOcean | OnPropsSystem | OnSystemDarkFalse | OnSystemDarkTrue
+  type State = | System | Fixed
+  type Event = OnStart | OnAny | OnChooseHighContrast | OnChooseLight | OnChooseSystem | OnProps | OnSystemDarkFalse | OnSystemDarkTrue
 
   var state: State
   var running: Set[str]
   var last: Event
 
   pure def owned(s: State): Set[str] = match s {
-    | Idle => Set()
-    | Fixed => Set()
     | System => Set("system/hold media")
+    | Fixed => Set()
   }
 
   pure val finals: Set[State] = Set()
-  pure val movable: Set[State] = Set(Idle, Fixed, System)
+  pure val movable: Set[State] = Set(System, Fixed)
 
   action enter(s: State, e: Event): bool = all {
     state' = s,
@@ -23,45 +22,35 @@ module theme {
   }
 
   action init = all {
-    state' = Idle,
-    running' = owned(Idle),
+    state' = System,
+    running' = owned(System),
     last' = OnStart,
   }
 
   action fixed_to_system_on_choose_system = all { state == Fixed, enter(System, OnChooseSystem) }
-  action fixed_to_system_on_props_system = all { state == Fixed, enter(System, OnPropsSystem) }
-  action idle_to_fixed_on_props_ocean = all { state == Idle, enter(Fixed, OnPropsOcean) }
-  action idle_to_system_on_props_system = all { state == Idle, enter(System, OnPropsSystem) }
+  action fixed_to_system_on_props = all { state == Fixed, enter(System, OnProps) }
   action system_to_fixed_on_choose_high_contrast = all { state == System, enter(Fixed, OnChooseHighContrast) }
   action system_to_fixed_on_choose_light = all { state == System, enter(Fixed, OnChooseLight) }
-  action system_to_fixed_on_props_ocean = all { state == System, enter(Fixed, OnPropsOcean) }
-  action system_to_system_on_any = all { state == System, enter(System, OnAny) }
+  action system_to_fixed_on_props = all { state == System, enter(Fixed, OnProps) }
   action fixed_stays_on_choose_high_contrast = all { state == Fixed, state' = state, running' = running, last' = OnChooseHighContrast }
   action fixed_stays_on_choose_light = all { state == Fixed, state' = state, running' = running, last' = OnChooseLight }
-  action fixed_stays_on_props_ocean = all { state == Fixed, state' = state, running' = running, last' = OnPropsOcean }
-  action fixed_stays_on_props_system = all { state == Fixed, state' = state, running' = running, last' = OnPropsSystem }
+  action fixed_stays_on_props = all { state == Fixed, state' = state, running' = running, last' = OnProps }
   action system_stays_on_choose_system = all { state == System, state' = state, running' = running, last' = OnChooseSystem }
-  action system_stays_on_props_ocean = all { state == System, state' = state, running' = running, last' = OnPropsOcean }
-  action system_stays_on_props_system = all { state == System, state' = state, running' = running, last' = OnPropsSystem }
+  action system_stays_on_props = all { state == System, state' = state, running' = running, last' = OnProps }
   action system_stays_on_system_dark_false = all { state == System, state' = state, running' = running, last' = OnSystemDarkFalse }
   action system_stays_on_system_dark_true = all { state == System, state' = state, running' = running, last' = OnSystemDarkTrue }
 
   action step = any {
     fixed_to_system_on_choose_system,
-    fixed_to_system_on_props_system,
-    idle_to_fixed_on_props_ocean,
-    idle_to_system_on_props_system,
+    fixed_to_system_on_props,
     system_to_fixed_on_choose_high_contrast,
     system_to_fixed_on_choose_light,
-    system_to_fixed_on_props_ocean,
-    system_to_system_on_any,
+    system_to_fixed_on_props,
     fixed_stays_on_choose_high_contrast,
     fixed_stays_on_choose_light,
-    fixed_stays_on_props_ocean,
-    fixed_stays_on_props_system,
+    fixed_stays_on_props,
     system_stays_on_choose_system,
-    system_stays_on_props_ocean,
-    system_stays_on_props_system,
+    system_stays_on_props,
     system_stays_on_system_dark_false,
     system_stays_on_system_dark_true,
   }

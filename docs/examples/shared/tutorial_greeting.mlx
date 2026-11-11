@@ -1,61 +1,48 @@
 open Silica
 
-type event = Ask | Answered of (string, Remote.error) result
+type event = Ask | Answered of (string, string) Remote.answer
 
-module States = struct
-  type _ t =
-    | Idle : unit t
-    | Asking : unit t
-    | Shown : string t
-    | Failed : Remote.error t
-end
-
-module Greeting_machine = Machine.Make (States)
-
-let ask = function
-  | Ask ->
-      Greeting_machine.goto Asking ()
-  | Answered _ ->
-      Greeting_machine.unhandled
+type state = Idle | Asking | Shown of string | Failed of string
+[@@deriving state_shape]
 
 let machine =
-  Greeting_machine.make ~id:"greeting"
-    ~init:(Greeting_machine.at Idle ())
-    [
-      Greeting_machine.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
-      Greeting_machine.state Asking "asking" ~to_:[ Shown; Failed ]
-        ~invoke:
+  Machine.make ~id:"greeting" ~init:Idle ~shape:state_shape
+    ~owns:(function
+      | Asking ->
           [
-            Source.call Tutorial_api.greeting
-              (fun () -> "Ada")
-              (fun result -> Answered result);
+            Remote.call Tutorial_api.greeting "Ada" (fun answer ->
+                Answered answer
+            );
           ]
-        (fun () -> function
-          | Answered (Ok text) ->
-              Greeting_machine.goto Shown text
-          | Answered (Error error) ->
-              Greeting_machine.goto Failed error
-          | Ask ->
-              Greeting_machine.unhandled
-          );
-      Greeting_machine.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
-      Greeting_machine.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
-    ]
+      | Idle | Shown _ | Failed _ ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | (Idle | Shown _ | Failed _), Ask ->
+          Go Asking
+      | Asking, Answered (Ok text) ->
+          Go (Shown text)
+      | Asking, Answered (Rejected reason) ->
+          Go (Failed reason)
+      | Asking, Answered (Failed error) ->
+          Go (Failed (Remote.error_to_string error))
+      | _ ->
+          Ignore
+    )
 
-let view (snapshot : Greeting_machine.snapshot) : event Node.t =
-  match snapshot with
-  | Greeting_machine.At (Idle, ()) ->
+let view : state -> event Node.t = function
+  | Idle ->
       <button on_press=Ask>"Say hello"</button>
-  | Greeting_machine.At (Asking, ()) ->
+  | Asking ->
       <p>"Asking the server."</p>
-  | Greeting_machine.At (Shown, text) ->
+  | Shown text ->
       <div>
         <p>(Node.text text)</p> <button on_press=Ask>"Ask again"</button>
       </div>
-  | Greeting_machine.At (Failed, _) ->
+  | Failed reason ->
       <div>
-        <p>"The server did not answer."</p>
-        <button on_press=Ask>"Try again"</button>
+        <p>(Node.text reason)</p> <button on_press=Ask>"Try again"</button>
       </div>
 
 let component = Component.make machine view

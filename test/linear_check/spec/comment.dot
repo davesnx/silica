@@ -1,16 +1,17 @@
 digraph "comment" {
 rankdir=LR;
 "comment.__init" [shape=point];
-"comment.__init" -> "comment.idle";
-"comment.idle" [label="idle" shape=box];
+"comment.__init" -> "comment.viewing";
 "comment.viewing" [label="viewing" shape=box];
+"comment.edited" [label="edited" shape=box];
 "comment.editing" [label="editing" shape=box];
 "comment.saving" [label="saving\ninvoke /api/comments/edit" shape=box];
+"comment.edited" -> "comment.editing" [label="edit"];
+"comment.edited" -> "comment.viewing" [label="props"];
 "comment.editing" -> "comment.saving" [label="save"];
-"comment.editing" -> "comment.viewing" [label="cancel, props other"];
-"comment.idle" -> "comment.viewing" [label="props other, props own"];
+"comment.editing" -> "comment.viewing" [label="cancel, props"];
+"comment.saving" -> "comment.edited" [label="saved ok"];
 "comment.saving" -> "comment.editing" [label="saved error"];
-"comment.saving" -> "comment.saving";
-"comment.saving" -> "comment.viewing" [label="props other, saved ok"];
+"comment.saving" -> "comment.viewing" [label="props"];
 "comment.viewing" -> "comment.editing" [label="edit"];
 }

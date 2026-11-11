@@ -8,8 +8,10 @@ server, and the model checker.
 {1:ideas The main ideas}
 
 - {b One machine for each component.} The states of a machine are the
-  constructors of a GADT. A state owns its timers, calls and subscriptions:
-  they start when the machine enters the state and stop when it leaves it.
+  constructors of a plain OCaml variant, and one update function gives the
+  next step for each state and event. A state owns its timers, calls and
+  subscriptions: they start when the machine enters the state and stop when it
+  leaves it.
 - {b Views in JSX.} A view is a function of the snapshot, written in mlx, the
   JSX syntax for OCaml. An event handler is an event value, not code.
 - {b Three kinds of data.} Local data is owned by the client. Remote data
@@ -34,7 +36,8 @@ Start:
 
 Concepts:
 
-- {!page-machines}: states, cases, outcomes and the spec.
+- {!page-machines}: states, the update, the next step, owned sources and
+  props.
 - {!page-components}: views in JSX, child components, props and output.
 - {!page-data}: Local, Remote and Live data, and [Status].
 - {!page-optimistic}: show a change before the server confirms it.

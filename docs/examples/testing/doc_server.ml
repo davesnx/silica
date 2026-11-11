@@ -42,8 +42,7 @@ let server =
       Server.render_page_settled
         (fun _url -> Doc_hello.component)
         ~status:(fun _ -> 200)
-        ~scripts:[] ~csrf:page.csrf ~nonce:page.nonce ~handlers
-        ~context:page.context page.url
+        ~scripts:[] page
     )
     ()
 

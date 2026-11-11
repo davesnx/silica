@@ -51,40 +51,34 @@ type props = {
 }
 
 type event =
-  | Props of props
   | Close of string
       (** The close button or Escape in the toast with this key. *)
   | Tick
   | Hover of bool  (** The pointer enters ([true]) or leaves the viewport. *)
   | Focus of bool  (** Focus enters ([true]) or leaves the viewport. *)
 
-type model = { props : props; hovered : bool; focused : bool }
+type model = { hovered : bool; focused : bool }
 
-module State : sig
-  type _ t =
-    | Idle : unit t
-    | Empty : model t  (** No toast. *)
-    | Running : (model * int) t
-        (** The time runs; the [int] is the time since it started, in ms. *)
-    | Paused : model t  (** The pointer or focus is in the viewport. *)
-    | Expired : model t
-        (** The time ran out and the component told the parent to close the
-            oldest toast. It waits for a new list. *)
-end
-
-type snapshot = At : 'data State.t * 'data -> snapshot
+type state =
+  | Empty of model  (** No toast. *)
+  | Running of model * int
+      (** The time runs; the [int] is the time since it started, in ms. *)
+  | Paused of model  (** The pointer or focus is in the viewport. *)
+  | Expired of model
+      (** The time ran out and the component told the parent to close the oldest
+          toast. It waits for a new list. *)
 
 val tick_ms : int
 (** The step of the time: 100. *)
 
-val machine : (snapshot, event) Silica.Machine.t
+val machine : (props, state, event) Silica.Machine.t
 (** The machine of the component. The checker reads it. *)
 
-val component : (snapshot, event) Silica.Component.t
+val component : (props, state, event) Silica.Component.t
 (** The machine with its view. *)
 
-val view : snapshot -> event Silica.Node.t
-(** The view of a snapshot. *)
+val view : props -> state -> event Silica.Node.t
+(** The view of a state. *)
 
 val toast :
   ?description:string -> ?priority:priority -> key:string -> string -> toast

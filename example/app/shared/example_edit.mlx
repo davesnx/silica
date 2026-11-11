@@ -2,77 +2,60 @@ open Silica
 
 type event = Draft of string | Attempt of Nav.t | Leave | Stay | Save
 
-module States = struct
-  type _ t = Clean : unit t | Dirty : string t | Asking : (string * Nav.t) t
-end
-
-module Edit_machine = Machine.Make (States)
-
-let block () = Source.block (fun nav -> Attempt nav)
+type state = Clean | Dirty of string | Asking of string * Nav.t
+[@@deriving state_shape]
 
 let machine =
-  Edit_machine.make ~id:"edit" ~init:(Edit_machine.at Clean ())
-    [
-      Edit_machine.state Clean "clean" ~to_:[ Dirty ]
-        ~entry:(fun () -> [ Action.Set_title "Edit" ])
-        (fun () -> function
-          | Draft text when text <> "" ->
-              Edit_machine.goto Dirty text
-          | _ ->
-              Edit_machine.unhandled
-          );
-      Edit_machine.state Dirty "dirty" ~to_:[ Clean; Asking ]
-        ~invoke:[ block () ]
-        (fun draft -> function
-          | Draft "" | Save ->
-              Edit_machine.goto Clean ()
-          | Draft text ->
-              Edit_machine.goto Dirty text
-          | Attempt nav ->
-              Edit_machine.goto Asking (draft, nav)
-          | Leave | Stay ->
-              Edit_machine.unhandled
-          );
-      Edit_machine.state Asking "asking" ~to_:[ Clean; Dirty ]
-        ~invoke:[ block () ]
-        (fun (draft, nav) -> function
-          | Leave ->
-              Edit_machine.goto ~actions:[ Action.Resume nav ] Clean ()
-          | Stay ->
-              Edit_machine.goto Dirty draft
-          | Attempt next ->
-              Edit_machine.goto Asking (draft, next)
-          | Draft _ | Save ->
-              Edit_machine.unhandled
-          );
-    ]
+  Machine.make ~id:"edit" ~init:Clean ~shape:state_shape
+    ~entry:(function Clean -> [ Action.Set_title "Edit" ] | _ -> [])
+    ~owns:(function
+      | Clean ->
+          []
+      | Dirty _ | Asking _ ->
+          [ Source.block (fun nav -> Attempt nav) ]
+      )
+    (fun state event ->
+      match (state, event) with
+      | Clean, Draft text when text <> "" ->
+          Go (Dirty text)
+      | Clean, Save ->
+          Stay []
+      | Dirty _, (Draft "" | Save) ->
+          Go Clean
+      | Dirty _, Draft text ->
+          Go (Dirty text)
+      | Dirty draft, Attempt nav ->
+          Go (Asking (draft, nav))
+      | Asking (_, nav), Leave ->
+          Go_with (Clean, [ Action.Resume nav ])
+      | Asking (draft, _), Stay ->
+          Go (Dirty draft)
+      | Asking (draft, _), Attempt next ->
+          Go (Asking (draft, next))
+      | Asking _, Save ->
+          Stay []
+      | _ ->
+          Ignore
+    )
 
-let text = Node.text
+let draft = function Clean -> "" | Dirty draft | Asking (draft, _) -> draft
 
-let draft : Edit_machine.snapshot -> string = function
-  | Edit_machine.At (Clean, ()) ->
-      ""
-  | Edit_machine.At (Dirty, draft) ->
-      draft
-  | Edit_machine.At (Asking, (draft, _)) ->
-      draft
-
-let view (snapshot : Edit_machine.snapshot) : event Node.t =
+let view (state : state) : event Node.t =
   <div>
     <h1>"Edit"</h1>
     (Example_nav.make ())
     <textarea
-      aria_label="Draft" value=(draft snapshot) on_input=(fun v -> Draft v)
+      aria_label="Draft" value=(draft state) on_input=(fun v -> Draft v)
     />
     <button on_press=Save>"Save"</button>
-    ( match snapshot with
-    | Edit_machine.At (Asking, _) ->
+    ( match state with
+    | Asking _ ->
         <div role=`alertdialog aria_label="Unsaved draft">
           <p>"Leave this page? The draft is not saved."</p>
           <button on_press=Leave>"Leave"</button>
           <button on_press=Stay>"Stay"</button>
         </div>
-    | _ ->
+    | Clean | Dirty _ ->
         Node.list []
     )
   </div>

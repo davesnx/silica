@@ -71,6 +71,16 @@ let call_errors () =
   Memory.network_error (only (Memory.pending t)) "offline";
   string "network" "network" (text t "answer")
 
+let call_rejected () =
+  let t = basic () in
+  press t "ask";
+  Memory.reply ~status:422 (only (Memory.pending t)) {|"too big"|};
+  string "a 422 is the rejection of the handler" "rejected too big"
+    (text t "answer");
+  press t "ask";
+  Memory.reply ~status:422 (only (Memory.pending t)) "{nope";
+  string "a 422 that does not decode" "decode" (text t "answer")
+
 let call_timeout () =
   let t = basic () in
   press t "ask-timed";
@@ -485,8 +495,7 @@ let state socket seq value =
     )
 
 let socket t n = List.nth (Memory.sockets t) n
-let watch =
-  { Component.machine = Test_apps.watch_machine; view = Test_apps.watch_view }
+let watch = Test_apps.watch_component
 let fast = { Live_client.ping_ms = 30; pong_ms = 30 }
 
 let topic_lifecycle () =
@@ -622,33 +631,27 @@ module Family = struct
   let button name event =
     el "button" [ Attr.string "id" name; Attr.on_press event ] []
 
-  type child_event = Bump | Break | Props of int
+  type child_event = Bump | Break
 
   let child name =
-    {
-      Component.machine =
-        Test_apps.simple ~id:("family-" ^ name) ~init:(0, 0)
-          (fun (bumps, props) -> function
-          | Bump ->
-              Some ((bumps + 1, props), [])
-          | Break ->
-              failwith "break"
-          | Props props ->
-              Some ((bumps, props), [])
-          );
-      view =
-        (fun (bumps, props) ->
-          seen name;
-          el "div" []
-            [
-              button (name ^ "-bump") Bump;
-              button (name ^ "-break") Break;
-              el "span"
-                [ Attr.string "id" name ]
-                [ Node.text (Printf.sprintf "%d/%d" bumps props) ];
-            ]
-        );
-    }
+    Component.make_with_props
+      (Machine.make_with_props ~id:("family-" ^ name) ~init:0
+         ~shape:(Machine.shape ~name:(fun _ -> "only") ())
+         (fun _ bumps -> function
+           | Bump -> Machine.Go (bumps + 1) | Break -> failwith "break"
+           )
+      )
+      (fun props bumps ->
+        seen name;
+        el "div" []
+          [
+            button (name ^ "-bump") Bump;
+            button (name ^ "-break") Break;
+            el "span"
+              [ Attr.string "id" name ]
+              [ Node.text (Printf.sprintf "%d/%d" bumps props) ];
+          ]
+      )
 
   let first = child "first"
   let second = child "second"
@@ -657,42 +660,39 @@ module Family = struct
   type state = { own : int; feed : int }
 
   let component =
-    {
-      Component.machine =
-        Test_apps.simple ~id:"family" ~init:{ own = 0; feed = 0 }
-          (fun s -> function
-          | Own ->
-              Some ({ s with own = s.own + 1 }, [])
-          | Feed ->
-              Some ({ s with feed = s.feed + 1 }, [])
-          | Ignore ->
-              None
-          );
-      view =
-        (fun s ->
-          seen "parent";
-          el "main" []
-            [
-              button "own" Own;
-              button "feed" Feed;
-              button "ignore" Ignore;
-              el "span"
-                [ Attr.string "id" "parent" ]
-                [ Node.text (string_of_int s.own) ];
-              Node.component ~props:(Props s.feed) first;
-              Node.boundary
-                ~fallback:(fun _ ~reset ->
-                  el "p"
-                    [ Attr.string "id" "fallback" ]
-                    [
-                      Node.text "failed";
-                      el "button" [ Attr.string "id" "reset"; reset ] [];
-                    ]
-                )
-                (Node.component ~props:(Props 0) second);
-            ]
-        );
-    }
+    Component.make
+      (Test_apps.simple ~id:"family" ~init:{ own = 0; feed = 0 }
+         (fun s -> function
+        | Own ->
+            Some ({ s with own = s.own + 1 }, [])
+        | Feed ->
+            Some ({ s with feed = s.feed + 1 }, [])
+        | Ignore ->
+            None
+        ))
+      (fun s ->
+        seen "parent";
+        el "main" []
+          [
+            button "own" Own;
+            button "feed" Feed;
+            button "ignore" Ignore;
+            el "span"
+              [ Attr.string "id" "parent" ]
+              [ Node.text (string_of_int s.own) ];
+            Node.component_with_props ~props:s.feed first;
+            Node.boundary
+              ~fallback:(fun _ ~reset ->
+                el "p"
+                  [ Attr.string "id" "fallback" ]
+                  [
+                    Node.text "failed";
+                    el "button" [ Attr.string "id" "reset"; reset ] [];
+                  ]
+              )
+              (Node.component_with_props ~props:0 second);
+          ]
+      )
 
   let mount () =
     let t = Memory.mount ~on_error:(fun _ _ -> ()) component in
@@ -780,45 +780,42 @@ module Lazy_page = struct
         Alcotest.fail "the loader did not run"
 
   let component ~shown chunk =
-    {
-      Component.machine =
-        Test_apps.simple ~id:"lazy-page" ~init:(shown, 0)
-          (fun (shown, count) -> function
-          | Show ->
-              Some ((true, count), [])
-          | Bump ->
-              Some ((shown, count + 1), [])
-          );
-      view =
-        (fun (shown, count) ->
-          el "main" []
-            [
-              el "button" [ Attr.string "id" "show"; Attr.on_press Show ] [];
-              el "button" [ Attr.string "id" "bump"; Attr.on_press Bump ] [];
-              ( if shown then
-                  Node.boundary
-                    ~fallback:(fun _ ~reset ->
-                      el "p"
-                        [ Attr.string "id" "fallback" ]
-                        [
-                          Node.text "failed";
-                          el "button" [ Attr.string "id" "reset"; reset ] [];
-                        ]
-                    )
-                    (Node.chunk chunk
-                       ~loading:
-                         (el "p"
-                            [ Attr.string "id" "loading" ]
-                            [ Node.text "loading" ]
-                         )
-                       (fun page -> page count)
-                    )
-                else
-                  Node.text ""
-              );
-            ]
-        );
-    }
+    Component.make
+      (Test_apps.simple ~id:"lazy-page" ~init:(shown, 0)
+         (fun (shown, count) -> function
+        | Show ->
+            Some ((true, count), [])
+        | Bump ->
+            Some ((shown, count + 1), [])
+        ))
+      (fun (shown, count) ->
+        el "main" []
+          [
+            el "button" [ Attr.string "id" "show"; Attr.on_press Show ] [];
+            el "button" [ Attr.string "id" "bump"; Attr.on_press Bump ] [];
+            ( if shown then
+                Node.boundary
+                  ~fallback:(fun _ ~reset ->
+                    el "p"
+                      [ Attr.string "id" "fallback" ]
+                      [
+                        Node.text "failed";
+                        el "button" [ Attr.string "id" "reset"; reset ] [];
+                      ]
+                  )
+                  (Node.chunk chunk
+                     ~loading:
+                       (el "p"
+                          [ Attr.string "id" "loading" ]
+                          [ Node.text "loading" ]
+                       )
+                     (fun page -> page count)
+                  )
+              else
+                Node.text ""
+            );
+          ]
+      )
 
   let mount ~shown chunk =
     Memory.mount ~on_error:(fun _ _ -> ()) (component ~shown chunk)
@@ -839,31 +836,25 @@ let first_paint_waits_for_a_chunk () =
 let first_paint_waits_while_a_sibling_steps () =
   let loader, chunk = Lazy_page.fresh () in
   let shows_chunk =
-    {
-      Component.machine =
-        Test_apps.simple ~id:"shows-chunk" ~init:()
-          (fun () (_ : Lazy_page.event) -> None
-        );
-      view =
-        (fun () ->
-          Node.chunk chunk ~loading:(Node.text "loading") (fun page -> page 0)
-        );
-    }
+    Component.make
+      (Test_apps.simple ~id:"shows-chunk" ~init:()
+         (fun () (_ : Lazy_page.event) -> None
+       )
+      )
+      (fun () ->
+        Node.chunk chunk ~loading:(Node.text "loading") (fun page -> page 0)
+      )
   in
   let root =
-    {
-      Component.machine =
-        Test_apps.simple ~id:"chunk-and-ticker" ~init:() (fun () () -> None);
-      view =
-        (fun () ->
-          Node.element "main" []
-            [
-              Node.component ~props:(Test_apps.Label "x")
-                Test_apps.ticker_component;
-              Node.component shows_chunk;
-            ]
-        );
-    }
+    Component.make
+      (Test_apps.simple ~id:"chunk-and-ticker" ~init:() (fun () () -> None))
+      (fun () ->
+        Node.element "main" []
+          [
+            Node.component_with_props ~props:"x" Test_apps.ticker_component;
+            Node.component shows_chunk;
+          ]
+      )
   in
   let t = Memory.mount root in
   Memory.advance t 20;
@@ -906,19 +897,7 @@ let a_failed_chunk_goes_to_the_boundary () =
   string "the page" "page 0" (text t "page")
 
 module Lazy_routes = struct
-  module State = struct
-    type _ t = Home : unit t | Far : unit t | Other : string t
-
-    let path : type data. data t -> data Route.t = function
-      | Home ->
-          Route.root
-      | Far ->
-          Route.(s "far")
-      | Other ->
-          Route.rest
-  end
-
-  module Lazy_router = Router.Make (State)
+  type route = Home | Far | Other of string
 
   let loader = { Lazy_page.calls = 0; answer = None }
 
@@ -934,23 +913,30 @@ module Lazy_routes = struct
     )
 
   let routes =
-    Lazy_router.routes ~chunked:[ State.Far ]
-      [ State.Home; State.Far; State.Other ]
+    Router.routes
+      ~chunked:(function Far -> true | Home | Other _ -> false)
+      [
+        Router.route Route.root
+          (fun () -> Home)
+          (function Home -> Some () | _ -> None);
+        Router.route
+          Route.(s "far")
+          (fun () -> Far)
+          (function Far -> Some () | _ -> None);
+        Router.route Route.rest
+          (fun path -> Other path)
+          (function Other path -> Some path | _ -> None);
+      ]
 
-  let render (snapshot : Lazy_router.snapshot) =
-    match snapshot with
-    | Lazy_router.At (State.Far, ()) ->
+  let render = function
+    | Far ->
         Node.chunk far ~loading:(Node.text "loading") (fun page -> page ())
-    | Lazy_router.At (State.Home, ()) | Lazy_router.At (State.Other, _) ->
-        Lazy_router.link routes State.Far ()
-          [ Attr.string "id" "to-far" ]
-          [ Node.text "far" ]
+    | Home | Other _ ->
+        Router.link routes Far [ Attr.string "id" "to-far" ] [ Node.text "far" ]
 
   let app url =
-    Lazy_router.make routes
-      ~chunks:(function
-        | Lazy_router.At (State.Far, ()) -> [ Chunk.Any far ] | _ -> []
-        )
+    Router.make routes
+      ~chunks:(function Far -> [ Chunk.Any far ] | _ -> [])
       ~render url
 end
 
@@ -977,6 +963,7 @@ let () =
           case "After fires later" after_fires_later;
           case "Call delivers success and sends the wire request" call_success;
           case "Call maps non-200, bad JSON and fetch failure" call_errors;
+          case "Call maps a 422 to Rejected" call_rejected;
           case
             "a call with a timeout ends with a timeout error and drops the \
              late answer"
