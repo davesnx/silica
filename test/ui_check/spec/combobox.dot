@@ -6,8 +6,8 @@ rankdir=LR;
 "combobox.inline" [label="inline" shape=box];
 "combobox.open" [label="open\nhold dismiss\nhold anchor" shape=box];
 "combobox.closed" -> "combobox.inline" [label="props"];
-"combobox.closed" -> "combobox.open" [label="next, previous, show, type"];
+"combobox.closed" -> "combobox.open" [label="move next, move previous, show, typed"];
 "combobox.inline" -> "combobox.closed" [label="props"];
-"combobox.open" -> "combobox.closed" [label="enter, escape, focus-out, outside, press"];
+"combobox.open" -> "combobox.closed" [label="choose, choose_highlighted, escape, focus_out, outside_press"];
 "combobox.open" -> "combobox.inline" [label="props"];
 }

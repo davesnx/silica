@@ -151,6 +151,13 @@ type 'r decision =
       (** Stay: the router raises {!Action.Revert_navigation}, so the URL and
           the history position go back to those of the current route. *)
 
+val state_codec : 'r routes -> 'r Codec.t
+(** A route as its printed URL, for {!Machine.register_codecs} on the machine of
+    the router component. *)
+
+val event_codec : event Codec.t
+(** [["Url_changed", url]] or [["Preload", url]]. *)
+
 val make :
   'r routes ->
   ?guard:(from:'r option -> target:'r -> 'r decision) ->
@@ -174,4 +181,5 @@ val make :
     so a page machine that sets its own title wins. A change to the same printed
     URL does nothing. [chunks] gives the code that [render] shows with
     {!Node.val-chunk} for a route: the router loads it when a link to that route
-    preloads (see {!val-routes}, [chunked]). *)
+    preloads (see {!val-routes}, [chunked]). The router names its events
+    ["url changed"] and ["preload"]. *)

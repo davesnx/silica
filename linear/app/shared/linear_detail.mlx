@@ -1,8 +1,9 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 open Linear_routes
 
-type text_field = Title_field | Description_field
+type text_field = Title_field | Description_field [@@deriving json]
 
 type editor = {
   field : text_field;
@@ -12,8 +13,9 @@ type editor = {
 }
 
 type event =
-  | Loaded of (Issues.t, string) Remote.answer
-  | Updated of Issues.t Topic.update
+  | Loaded of (Issues.t, string) Silica_jsonkit.answer
+      [@event_name_of answer_name "loaded"]
+  | Updated of Issues.t Silica_jsonkit.update
   | Retry
   | Reconnect
   | Reconnected
@@ -22,13 +24,18 @@ type event =
   | Save
   | Cancel_edit
   | Picker of Linear_pickers.picker option
+      [@event_name_of
+        function Some _ -> "picker open" | None -> "picker closed"]
   | Pick of Change.t
-  | Saved of int * (Change.answer, string) Remote.answer
+  | Saved of int * (Change.answer, string) Silica_jsonkit.answer
+      [@event_name_of saved_name]
   | Toast_closed of string
   | Menu_open of bool
+      [@event_name_of fun opened -> "menu_open " ^ string_of_bool opened]
   | Command of string
   | Create_key
   | Keep_editing
+[@@deriving json, event_shape]
 
 type view_state = {
   number : int;
@@ -265,6 +272,7 @@ let live (state : view_state) =
 
 let machine =
   Machine.make_with_props ~id:"issue-detail" ~init:Loading ~shape:state_shape
+    ~events:event_shape
     ~entry:(fun number -> function
       | Loading ->
           [ Action.Set_title ("ENG-" ^ string_of_int number) ]

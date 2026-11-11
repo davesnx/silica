@@ -28,10 +28,24 @@ Never a data kind.
 _Avoid_: node, mode, control state
 
 **Shape**:
-The value that tells a machine about its state type: the name of each state
-and the list of all names. `Machine.make` takes it as `~shape`; the
-`[@@deriving state_shape]` deriver makes it.
+The value that tells a machine about its state type or its event type: the
+name of each value and, for states, the list of all names. `Machine.make` takes
+the shape of the states as `~shape` and the shape of the events as `~events`;
+the `[@@deriving state_shape]` and `[@@deriving event_shape]` derivers make
+them.
 _Avoid_: schema, state names (as the name of the value)
+
+**Event name**:
+The name of an event, from the event shape of its machine
+(`Machine.event_name`). The checker names the edges of the spec with it.
+_Avoid_: label (as the name of the value)
+
+**Codec**:
+An encoder and a decoder between a type and JSON (`Silica.Codec.t`). Endpoints
+and topics have codecs for the wire. The codecs of the snapshots and events of
+a machine are registered apart from it (`Machine.register_codecs`), by
+development entry points only, so release bundles carry none.
+_Avoid_: serializer
 
 **Snapshot**:
 The value a machine holds at one moment: a value of its state type, one state

@@ -2,12 +2,13 @@ open Silica
 open Silica_ui
 
 type page = { checked : bool; events : string list }
-type event = Changed of bool
+type event = Changed of bool [@@deriving event_shape]
 
 let machine =
   Machine.make ~id:"switch-events"
     ~init:{ checked = false; events = [] }
     ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~events:event_shape
     (fun page event ->
       match event with
       | Changed checked ->

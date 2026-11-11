@@ -12,6 +12,15 @@ type event =
   | Decrement
   | Save
   | Answered of (unit, string) Remote.answer
+      [@event_name_of
+        function
+        | Remote.Ok _ ->
+            "answered ok"
+        | Rejected _ ->
+            "answered rejected"
+        | Failed _ ->
+            "answered error"]
+[@@deriving event_shape]
 
 let count = function
   | Counting count | Saving count | Saved count | Save_failed count ->
@@ -40,7 +49,8 @@ let owns = function
       []
 
 let machine =
-  Machine.make ~id:"counter" ~init:(Counting 0) ~shape:state_shape ~owns update
+  Machine.make ~id:"counter" ~init:(Counting 0) ~shape:state_shape
+    ~events:event_shape ~owns update
 
 let message = function
   | Counting _ ->

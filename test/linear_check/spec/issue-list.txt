@@ -9,4 +9,4 @@ state ready
 edge failed -> loading on retry
 edge loading -> failed on "loaded error"
 edge loading -> ready on "loaded ok"
-stay ready on command conflict "create key" "cursor next" "cursor previous" "filter changed" "filter open false" "filter open true" "grouping picked" "menu open false" "menu open true" "ordering picked" reconnect reconnected "row focused" "save failed" saved "toast closed" "toggle group" updated
+stay ready on command create_key cursor_next cursor_previous filter_changed "filter_open false" "filter_open true" grouping_picked "menu_open false" "menu_open true" ordering_picked reconnect reconnected row_focused "saved conflict" "saved error" "saved ok" toast_closed toggle_group updated

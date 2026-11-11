@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "create-issue-dialog". Do not edit.
 module create_issue_dialog {
   type State = | Closed | Open
-  type Event = OnStart | OnAny | OnCancel | OnCloseEscapeKey | OnCloseOutsidePress | OnProps | OnSubmit
+  type Event = OnStart | OnAny | OnCancel | OnCloseRequestEscapeKey | OnCloseRequestOutsidePress | OnProps | OnSubmit
 
   var state: State
   var running: Set[str]
@@ -28,22 +28,22 @@ module create_issue_dialog {
   }
 
   action closed_to_open_on_props = all { state == Closed, enter(Open, OnProps) }
-  action open_to_closed_on_close_escape_key = all { state == Open, enter(Closed, OnCloseEscapeKey) }
-  action open_to_closed_on_close_outside_press = all { state == Open, enter(Closed, OnCloseOutsidePress) }
+  action open_to_closed_on_close_request_escape_key = all { state == Open, enter(Closed, OnCloseRequestEscapeKey) }
+  action open_to_closed_on_close_request_outside_press = all { state == Open, enter(Closed, OnCloseRequestOutsidePress) }
   action open_to_closed_on_props = all { state == Open, enter(Closed, OnProps) }
   action open_stays_on_cancel = all { state == Open, state' = state, running' = running, last' = OnCancel }
-  action open_stays_on_close_escape_key = all { state == Open, state' = state, running' = running, last' = OnCloseEscapeKey }
-  action open_stays_on_close_outside_press = all { state == Open, state' = state, running' = running, last' = OnCloseOutsidePress }
+  action open_stays_on_close_request_escape_key = all { state == Open, state' = state, running' = running, last' = OnCloseRequestEscapeKey }
+  action open_stays_on_close_request_outside_press = all { state == Open, state' = state, running' = running, last' = OnCloseRequestOutsidePress }
   action open_stays_on_submit = all { state == Open, state' = state, running' = running, last' = OnSubmit }
 
   action step = any {
     closed_to_open_on_props,
-    open_to_closed_on_close_escape_key,
-    open_to_closed_on_close_outside_press,
+    open_to_closed_on_close_request_escape_key,
+    open_to_closed_on_close_request_outside_press,
     open_to_closed_on_props,
     open_stays_on_cancel,
-    open_stays_on_close_escape_key,
-    open_stays_on_close_outside_press,
+    open_stays_on_close_request_escape_key,
+    open_stays_on_close_request_outside_press,
     open_stays_on_submit,
   }
 

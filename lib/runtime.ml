@@ -288,17 +288,20 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
     guarded (fun () -> step None)
   and drain () =
     busy := true;
-    Fun.protect
-      ~finally:(fun () -> busy := false)
-      (fun () ->
-        while not (Queue.is_empty queue) do
-          let message = Queue.pop queue in
-          if !failed then
-            Instance.perform message
-          else
-            guarded (fun () -> step (Some message))
-        done
-      )
+    match
+      while not (Queue.is_empty queue) do
+        let message = Queue.pop queue in
+        if !failed then
+          Instance.perform message
+        else
+          guarded (fun () -> step (Some message))
+      done
+    with
+    | () ->
+        busy := false
+    | exception error ->
+        busy := false;
+        raise error
   in
   let replay_first () =
     let rec loop message pending round =
@@ -327,9 +330,7 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
   in
   let first_failure = ref None in
   busy := true;
-  Fun.protect
-    ~finally:(fun () -> busy := false)
-    (fun () ->
+  ( match
       try
         let node, actions = replay_first () in
         paint_unless_waiting node;
@@ -337,6 +338,12 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
       with exn ->
         first_failure := Some exn;
         fail exn
-    );
+    with
+  | () ->
+      busy := false
+  | exception error ->
+      busy := false;
+      raise error
+  );
   drain ();
   match !first_failure with Some exn when dev -> raise exn | _ -> ()

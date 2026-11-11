@@ -5,6 +5,7 @@ let subscribe =
     ~rejected:Codec.string
 
 type event = Typed of string | Send | Answer of (string, string) Remote.answer
+[@@deriving event_shape]
 
 type phase = Editing | Sending | Sent of string | Failed of string
 [@@deriving state_shape]
@@ -42,6 +43,7 @@ let machine =
          ~names:(Machine.shape_names phase_shape)
          ()
       )
+    ~events:event_shape
     ~owns:(fun state ->
       match state.phase with
       | Sending ->

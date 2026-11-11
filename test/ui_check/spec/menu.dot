@@ -4,6 +4,6 @@ rankdir=LR;
 "menu.__init" -> "menu.closed";
 "menu.closed" [label="closed" shape=box];
 "menu.open" [label="open\nhold dismiss\nhold anchor" shape=box];
-"menu.closed" -> "menu.open" [label="open first list-navigation, open first trigger-press, open last list-navigation, props, trigger press"];
-"menu.open" -> "menu.closed" [label="choose, close escape-key, close focus-out, close outside-press, props, trigger press"];
+"menu.closed" -> "menu.open" [label="open_key first list-navigation, open_key first trigger-press, open_key last list-navigation, props, trigger_press"];
+"menu.open" -> "menu.closed" [label="choose, close escape-key, close focus-out, close outside-press, props, trigger_press"];
 }

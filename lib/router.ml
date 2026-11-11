@@ -149,6 +149,46 @@ let routes ?(base = "") ?(not_found = never) ?(reenter = never)
 
 type 'r decision = Allow | Redirect of 'r | Cancel
 
+let url_codec : Url.t Codec.t =
+  {
+    encode = (fun url -> Codec.string.encode (Url.to_string url));
+    decode = (fun json -> Result.map Url.of_string (Codec.string.decode json));
+  }
+
+let event_codec : event Codec.t =
+  {
+    encode =
+      (function
+      | Url_changed url ->
+          Codec.constructor "Url_changed" [ url_codec.encode url ]
+      | Preload url ->
+          Codec.constructor "Preload" [ url_codec.encode url ]
+      );
+    decode =
+      (fun json ->
+        Result.bind (Codec.constructor_of json) (function
+          | "Url_changed", [ url ] ->
+              Result.map (fun url -> Url_changed url) (url_codec.decode url)
+          | "Preload", [ url ] ->
+              Result.map (fun url -> Preload url) (url_codec.decode url)
+          | name, _ ->
+              Error ("unknown constructor " ^ name)
+          )
+      );
+  }
+
+let state_codec routes : 'r Codec.t =
+  {
+    encode = (fun route -> url_codec.encode (print routes route));
+    decode = (fun json -> Result.map (parse routes) (url_codec.decode json));
+  }
+
+let event_name = function
+  | Url_changed _ ->
+      "url changed"
+  | Preload _ ->
+      "preload"
+
 let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
     ?(exit = fun _ -> ([] : event Action.t list)) ?title
     ?(chunks = fun _ -> ([] : Chunk.any list)) ~render =
@@ -209,6 +249,7 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
     Component.make
       (Machine.make ~id:"router" ~init
          ~shape:(Machine.shape ~name:(name routes) ())
+         ~events:(Machine.shape ~name:event_name ())
          ~exit ~start:(titled init start) update
       )
       render

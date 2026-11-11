@@ -6,7 +6,7 @@ module Item = struct
 end
 
 module Counter_event = struct
-  type t = Incr | Decr | Reset [@@deriving json]
+  type t = Incr | Decr | Reset [@@deriving json, event_shape]
 end
 
 let item_endpoint =

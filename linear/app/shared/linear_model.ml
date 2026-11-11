@@ -281,3 +281,17 @@ let comments_topic =
   Silica.Topic.declare ~name:"comments"
     ~state:
       (Silica_jsonkit.codec ~to_json:Comments.to_json ~of_json:Comments.of_json)
+
+let answer_name prefix : (_, _) Silica.Remote.answer -> string = function
+  | Ok _ ->
+      prefix ^ " ok"
+  | Rejected _ | Failed _ ->
+      prefix ^ " error"
+
+let saved_name _ : (Change.answer, _) Silica.Remote.answer -> string = function
+  | Ok (Change.Saved _) ->
+      "saved ok"
+  | Ok (Change.Conflict _) ->
+      "saved conflict"
+  | Rejected _ | Failed _ ->
+      "saved error"

@@ -6,9 +6,12 @@
 (test
  (name test_example_check)
  (modules test_example_check)
+ (deps
+  (glob_files %{project_root}/example/app/shared/*.{ml,mlx}))
  (libraries
   silica
   silica.check
+  silica_test_support
   example_checks
   silica_example_app_native
   alcotest))

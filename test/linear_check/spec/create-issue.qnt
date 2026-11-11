@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "create-issue". Do not edit.
 module create_issue {
   type State = | Closed | Editing | Failed | Submitting
-  type Event = OnStart | OnAny | OnCancel | OnCreatedError | OnCreatedOk | OnDescription | OnPriority | OnProps | OnStatus | OnSubmit | OnTitle
+  type Event = OnStart | OnAny | OnCancel | OnCreatedError | OnCreatedOk | OnDescription | OnPriorityPicked | OnProps | OnStatusPicked | OnSubmit | OnTitle
 
   var state: State
   var running: Set[str]
@@ -36,15 +36,15 @@ module create_issue {
   action failed_to_closed_on_cancel = all { state == Failed, enter(Closed, OnCancel) }
   action failed_to_closed_on_props = all { state == Failed, enter(Closed, OnProps) }
   action failed_to_editing_on_description = all { state == Failed, enter(Editing, OnDescription) }
-  action failed_to_editing_on_priority = all { state == Failed, enter(Editing, OnPriority) }
-  action failed_to_editing_on_status = all { state == Failed, enter(Editing, OnStatus) }
+  action failed_to_editing_on_priority_picked = all { state == Failed, enter(Editing, OnPriorityPicked) }
+  action failed_to_editing_on_status_picked = all { state == Failed, enter(Editing, OnStatusPicked) }
   action failed_to_editing_on_title = all { state == Failed, enter(Editing, OnTitle) }
   action failed_to_submitting_on_submit = all { state == Failed, enter(Submitting, OnSubmit) }
   action submitting_to_closed_on_created_ok = all { state == Submitting, enter(Closed, OnCreatedOk) }
   action submitting_to_failed_on_created_error = all { state == Submitting, enter(Failed, OnCreatedError) }
   action editing_stays_on_description = all { state == Editing, state' = state, running' = running, last' = OnDescription }
-  action editing_stays_on_priority = all { state == Editing, state' = state, running' = running, last' = OnPriority }
-  action editing_stays_on_status = all { state == Editing, state' = state, running' = running, last' = OnStatus }
+  action editing_stays_on_priority_picked = all { state == Editing, state' = state, running' = running, last' = OnPriorityPicked }
+  action editing_stays_on_status_picked = all { state == Editing, state' = state, running' = running, last' = OnStatusPicked }
   action editing_stays_on_submit = all { state == Editing, state' = state, running' = running, last' = OnSubmit }
   action editing_stays_on_title = all { state == Editing, state' = state, running' = running, last' = OnTitle }
 
@@ -56,15 +56,15 @@ module create_issue {
     failed_to_closed_on_cancel,
     failed_to_closed_on_props,
     failed_to_editing_on_description,
-    failed_to_editing_on_priority,
-    failed_to_editing_on_status,
+    failed_to_editing_on_priority_picked,
+    failed_to_editing_on_status_picked,
     failed_to_editing_on_title,
     failed_to_submitting_on_submit,
     submitting_to_closed_on_created_ok,
     submitting_to_failed_on_created_error,
     editing_stays_on_description,
-    editing_stays_on_priority,
-    editing_stays_on_status,
+    editing_stays_on_priority_picked,
+    editing_stays_on_status_picked,
     editing_stays_on_submit,
     editing_stays_on_title,
   }

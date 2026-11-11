@@ -5,6 +5,6 @@ state open
   hold focus_trap
   hold scroll_lock
   hold dismiss
-edge closed -> open on "open trigger-press" props
-edge open -> closed on "close close-press" "close escape-key" "close outside-press" props save
-stay open on "close escape-key" "close outside-press" edit
+edge closed -> open on "open_request trigger-press" props
+edge open -> closed on "close_request close-press" "close_request escape-key" "close_request outside-press" props save
+stay open on "close_request escape-key" "close_request outside-press" edit

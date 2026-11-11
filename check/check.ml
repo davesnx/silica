@@ -797,18 +797,16 @@ let owner_checks m =
     );
   ]
 
-type 'e recorder = {
+type recorder = {
   taken : (Spec.label, unit) Hashtbl.t;
-  label : 'e -> string;
   seen : (string, Spec.state) Hashtbl.t;
   passed : (string, unit) Hashtbl.t;
   mutable first : string option;
 }
 
-let recorder label =
+let recorder () =
   {
     taken = Hashtbl.create 64;
-    label;
     seen = Hashtbl.create 16;
     passed = Hashtbl.create 4;
     first = None;
@@ -876,7 +874,7 @@ let finished = function
 
 let send ?finished recorder m w e =
   let s, actions, how = Machine.step ?finished m w.props w.s e in
-  record recorder m ~from:w.s ~props:w.props s (recorder.label e) how;
+  record recorder m ~from:w.s ~props:w.props s (Machine.event_name m e) how;
   (s, actions, how)
 
 let set_props recorder m w props =
@@ -969,7 +967,7 @@ let start_props m = function
       Stdlib.Ok props
 
 let component_with ~client_only_sources ~max_states ~within ~inputs ~props
-    ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants
+    ~samples ~arrivals ~allow_unreached ~keys ~invariants
     (c : (_, _, _) Component.t) =
   let m = c.machine in
   match start_props m props with
@@ -977,7 +975,7 @@ let component_with ~client_only_sources ~max_states ~within ~inputs ~props
       Error message
   | Stdlib.Ok all_props ->
       let host = { samples; arrivals } in
-      let recorder = recorder label in
+      let recorder = recorder () in
       let exec w actions = List.fold_left (host_action host) w actions in
       let start props =
         let s, actions = Machine.start m props in
@@ -1075,17 +1073,16 @@ let component_with ~client_only_sources ~max_states ~within ~inputs ~props
 
 let component ?(max_states = 100_000) ?(within = fun _ -> true)
     ?(inputs = fun _ -> []) ?(props = []) ?(samples = []) ?(arrivals = 2)
-    ?(allow_unreached = []) ?(label = fun _ -> "") ?(keys = default_keys)
-    ?(invariants = []) c =
+    ?(allow_unreached = []) ?(keys = default_keys) ?(invariants = []) c =
   component_with ~client_only_sources:false ~max_states ~within ~inputs ~props
-    ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants c
+    ~samples ~arrivals ~allow_unreached ~keys ~invariants c
 
 let live ?(max_states = 100_000) ?(within = fun _ -> true)
     ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
-    ?(allow_unreached = []) ?(label = fun _ -> "") ?(keys = default_keys)
-    ?(invariants = []) (live : (_, _) Live.t) =
+    ?(allow_unreached = []) ?(keys = default_keys) ?(invariants = [])
+    (live : (_, _) Live.t) =
   component_with ~client_only_sources:true ~max_states ~within ~inputs ~props:[]
-    ~samples ~arrivals ~allow_unreached ~label ~keys ~invariants live.component
+    ~samples ~arrivals ~allow_unreached ~keys ~invariants live.component
 
 let rec nth l i =
   match l with
@@ -1114,8 +1111,8 @@ let canonical_link ?is_not_found ~parse ~print href =
 
 let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
     ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
-    ?(allow_unreached = []) ?(label = fun _ -> "") ?(keys = default_keys)
-    ?(invariants = []) ~routes ~parse ~print ?is_not_found ~url_event root =
+    ?(allow_unreached = []) ?(keys = default_keys) ?(invariants = []) ~routes
+    ~parse ~print ?is_not_found ~url_event root =
   match routes with
   | [] ->
       Error "no routes given"
@@ -1124,7 +1121,7 @@ let app ?(max_states = 100_000) ?(within = fun _ -> true) ?(max_history = 4)
       let component : (_, _, _) Component.t = root url0 in
       let m = component.machine in
       let host = { samples; arrivals } in
-      let recorder = recorder label in
+      let recorder = recorder () in
       let rec apply depth (w, acc) actions =
         List.fold_left
           (fun (w, acc) c ->

@@ -17,13 +17,29 @@ type props = {
 
 type nav = Next | Previous | First | Last | Letter of char
 
+let nav_name = function
+  | Next ->
+      "next"
+  | Previous ->
+      "previous"
+  | First ->
+      "first"
+  | Last ->
+      "last"
+  | Letter _ ->
+      "letter"
+
 type event =
   | Trigger_press
   | Open_key of Popup.reason
-  | Move of nav
+      [@event_name_of fun reason -> "open_key " ^ Popup.reason_name reason]
+  | Move of nav [@event_name_of fun nav -> "move " ^ nav_name nav]
   | Highlight of int
   | Select of int * Popup.reason
+      [@event_name_of fun _ reason -> "select " ^ Popup.reason_name reason]
   | Close of Popup.reason
+      [@event_name_of fun reason -> "close " ^ Popup.reason_name reason]
+[@@deriving event_shape]
 
 type state = Closed of string option | Open of string option * int option
 [@@deriving state_shape]
@@ -93,6 +109,7 @@ let close ?focus props value : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"select" ~init:(Closed None) ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun props -> function
       | Open _ ->
           Popup.layer ~escape:(Close Popup.Escape_key)

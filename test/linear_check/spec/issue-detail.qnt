@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "issue-detail". Do not edit.
 module issue_detail {
   type State = | Loading | Failed | NotFound | Ready
-  type Event = OnStart | OnAny | OnCancelEdit | OnCommand | OnConflict | OnCreateKey | OnDraft | OnEdit | OnKeepEditing | OnLoadedError | OnLoadedOk | OnMenuOpenFalse | OnMenuOpenTrue | OnPick | OnPickerClosed | OnPickerOpen | OnProps | OnReconnect | OnReconnected | OnRetry | OnSave | OnSaveFailed | OnSaved | OnToastClosed | OnUpdated
+  type Event = OnStart | OnAny | OnCancelEdit | OnCommand | OnCreateKey | OnDraftChanged | OnEdit | OnKeepEditing | OnLoadedError | OnLoadedOk | OnMenuOpenFalse | OnMenuOpenTrue | OnPick | OnPickerClosed | OnPickerOpen | OnProps | OnReconnect | OnReconnected | OnRetry | OnSave | OnSavedConflict | OnSavedError | OnSavedOk | OnToastClosed | OnUpdated
 
   var state: State
   var running: Set[str]
@@ -39,9 +39,8 @@ module issue_detail {
   action ready_to_loading_on_props = all { state == Ready, enter(Loading, OnProps) }
   action ready_stays_on_cancel_edit = all { state == Ready, state' = state, running' = running, last' = OnCancelEdit }
   action ready_stays_on_command = all { state == Ready, state' = state, running' = running, last' = OnCommand }
-  action ready_stays_on_conflict = all { state == Ready, state' = state, running' = running, last' = OnConflict }
   action ready_stays_on_create_key = all { state == Ready, state' = state, running' = running, last' = OnCreateKey }
-  action ready_stays_on_draft = all { state == Ready, state' = state, running' = running, last' = OnDraft }
+  action ready_stays_on_draft_changed = all { state == Ready, state' = state, running' = running, last' = OnDraftChanged }
   action ready_stays_on_edit = all { state == Ready, state' = state, running' = running, last' = OnEdit }
   action ready_stays_on_keep_editing = all { state == Ready, state' = state, running' = running, last' = OnKeepEditing }
   action ready_stays_on_menu_open_false = all { state == Ready, state' = state, running' = running, last' = OnMenuOpenFalse }
@@ -52,8 +51,9 @@ module issue_detail {
   action ready_stays_on_reconnect = all { state == Ready, state' = state, running' = running, last' = OnReconnect }
   action ready_stays_on_reconnected = all { state == Ready, state' = state, running' = running, last' = OnReconnected }
   action ready_stays_on_save = all { state == Ready, state' = state, running' = running, last' = OnSave }
-  action ready_stays_on_save_failed = all { state == Ready, state' = state, running' = running, last' = OnSaveFailed }
-  action ready_stays_on_saved = all { state == Ready, state' = state, running' = running, last' = OnSaved }
+  action ready_stays_on_saved_conflict = all { state == Ready, state' = state, running' = running, last' = OnSavedConflict }
+  action ready_stays_on_saved_error = all { state == Ready, state' = state, running' = running, last' = OnSavedError }
+  action ready_stays_on_saved_ok = all { state == Ready, state' = state, running' = running, last' = OnSavedOk }
   action ready_stays_on_toast_closed = all { state == Ready, state' = state, running' = running, last' = OnToastClosed }
   action ready_stays_on_updated = all { state == Ready, state' = state, running' = running, last' = OnUpdated }
 
@@ -68,9 +68,8 @@ module issue_detail {
     ready_to_loading_on_props,
     ready_stays_on_cancel_edit,
     ready_stays_on_command,
-    ready_stays_on_conflict,
     ready_stays_on_create_key,
-    ready_stays_on_draft,
+    ready_stays_on_draft_changed,
     ready_stays_on_edit,
     ready_stays_on_keep_editing,
     ready_stays_on_menu_open_false,
@@ -81,8 +80,9 @@ module issue_detail {
     ready_stays_on_reconnect,
     ready_stays_on_reconnected,
     ready_stays_on_save,
-    ready_stays_on_save_failed,
-    ready_stays_on_saved,
+    ready_stays_on_saved_conflict,
+    ready_stays_on_saved_error,
+    ready_stays_on_saved_ok,
     ready_stays_on_toast_closed,
     ready_stays_on_updated,
   }

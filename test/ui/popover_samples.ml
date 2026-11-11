@@ -24,6 +24,8 @@ let filter_view { query } =
 let filter_popover =
   Popover.component ~id:"filter-popover"
     ~closes:(function Apply -> true | Query _ -> false)
+    ~events:
+      (Machine.shape ~name:(function Query _ -> "query" | Apply -> "apply") ())
     filter_view
 
 type event =

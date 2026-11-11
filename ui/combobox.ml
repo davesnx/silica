@@ -50,6 +50,16 @@ type data = {
 type event =
   | Typed of string
   | Move of [ `Next | `Previous | `First | `Last ]
+      [@event_name_of
+        function
+        | `Next ->
+            "move next"
+        | `Previous ->
+            "move previous"
+        | `First ->
+            "move first"
+        | `Last ->
+            "move last"]
   | Show
   | Highlight of string
   | Choose_highlighted
@@ -57,6 +67,7 @@ type event =
   | Escape
   | Outside_press
   | Focus_out
+[@@deriving event_shape]
 
 type state = Closed of data | Open of data | Inline of data
 [@@deriving state_shape]
@@ -168,7 +179,7 @@ let settle (props : props) data : (state, event) Machine.next =
 let machine =
   Machine.make_with_props ~id:"combobox"
     ~init:(Closed { query = ""; highlighted = None; selected = None })
-    ~shape:state_shape
+    ~shape:state_shape ~events:event_shape
     ~owns:(fun props -> function
       | Open _ ->
           Popup.layer ~outside:Outside_press ~focus_out:Focus_out (parts props)

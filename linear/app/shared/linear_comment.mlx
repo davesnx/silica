@@ -1,4 +1,5 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 
 type props = { comment : Comment.t; own : bool }
@@ -8,16 +9,18 @@ type event =
   | Typed of string
   | Save
   | Cancel
-  | Saved of (Comment.t, string) Remote.answer
+  | Saved of (Comment.t, string) Silica_jsonkit.answer
+      [@event_name_of answer_name "saved"]
+[@@deriving json, event_shape]
 
-type editing = { draft : string; error : string option }
+type editing = { draft : string; error : string option } [@@deriving json]
 
 type state =
   | Viewing
   | Editing of editing
   | Saving of string
   | Edited of Comment.t
-[@@deriving state_shape]
+[@@deriving json, state_shape]
 
 let input_ref id = Ref.make ("comment-" ^ string_of_int id ^ "-input")
 
@@ -27,6 +30,7 @@ let editing (props : props) draft error : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"comment" ~init:Viewing ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun props -> function
       | Saving body ->
           [

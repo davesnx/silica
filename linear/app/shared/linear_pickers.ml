@@ -6,6 +6,7 @@ type picker =
   | Priority_picker
   | Assignee_picker
   | Labels_picker
+[@@deriving json]
 
 let assignee_label = function
   | Some user ->

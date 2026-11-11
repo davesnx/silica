@@ -142,6 +142,106 @@ let test_vote () =
       Alcotest.fail
         (print_report (fun f _ -> Format.pp_print_string f "vote event") r)
 
+let round_trip name codec value =
+  let text = Silica.Codec.to_string codec value in
+  Alcotest.(check bool)
+    (name ^ " " ^ text ^ " round trips")
+    true
+    (Silica.Codec.of_string codec text = Ok value)
+
+let codec name = function
+  | Ok codec ->
+      codec
+  | Error message ->
+      Alcotest.failf "%s: %s" name message
+
+let round_trips name (machine : (unit, _, _) Silica.Machine.t) report =
+  let event_codec = codec name (Silica.Machine.event_codec machine)
+  and state_codec = codec name (Silica.Machine.state_codec machine) in
+  match report with
+  | Check.Ok { paths; _ } ->
+      Alcotest.(check bool) (name ^ " has paths") true (paths <> []);
+      List.iter
+        (fun (_, steps) ->
+          let start, _ = Silica.Machine.start machine () in
+          round_trip name state_codec start;
+          ignore
+            (List.fold_left
+               (fun state (step : (unit, _) Check.input) ->
+                 match step with
+                 | Event event ->
+                     round_trip name event_codec event;
+                     let state, _, _ =
+                       Silica.Machine.step machine () state event
+                     in
+                     round_trip name state_codec state;
+                     state
+                 | Props () ->
+                     state
+               )
+               start steps
+            )
+        )
+        paths
+  | _ ->
+      Alcotest.failf "the check of %s did not pass" name
+
+let test_every_machine_registered () =
+  Example_codecs.register ();
+  let directory = "../../example/app/shared" in
+  Alcotest.(check int)
+    "machines whose events derive JSON" 4
+    (List.length (Silica_test_support.Codec_coverage.required directory));
+  Alcotest.(check (list string))
+    "each one is in Example_codecs" []
+    (Silica_test_support.Codec_coverage.missing directory)
+
+let test_codecs () =
+  Example_codecs.register ();
+  round_trips "about" Example_about.machine (about ());
+  round_trips "votes" Example_votes.machine (votes ());
+  round_trips "vote" Example_vote_button.machine (vote ());
+  round_trips "counter" Example_counter.machine (counter_bounded ());
+  let item_events =
+    codec "item" (Silica.Machine.event_codec Example_item.machine)
+  and item_states =
+    codec "item" (Silica.Machine.state_codec Example_item.machine)
+  in
+  let sample =
+    {
+      Example_model.Item.id = 1;
+      title = "Item 1";
+      price_cents = 1999;
+      tags = [ "a" ];
+    }
+  in
+  List.iter
+    (round_trip "item" item_events)
+    Example_item.
+      [
+        Settled (Ok sample);
+        Settled (Rejected "no item");
+        Settled (Failed (Http 500));
+      ];
+  List.iter
+    (round_trip "item" item_states)
+    Example_item.
+      [ Loading; Loaded sample; Missing "no item"; Failed (Network "down") ];
+  let todo_events =
+    codec "todo" (Silica.Machine.event_codec Example_todo.machine)
+  and todo_states =
+    codec "todo" (Silica.Machine.state_codec Example_todo.machine)
+  in
+  List.iter
+    (round_trip "todo" todo_events)
+    Example_todo.[ Draft "milk"; Add; Toggle 1; Delete 1 ];
+  round_trip "todo" todo_states
+    {
+      Example_todo.todos = [ { id = 1; text = "milk"; completed = true } ];
+      draft = "eggs";
+      next_id = 2;
+    }
+
 let test_counter () =
   match Check.component ~max_states:50 Example_counter.component with
   | Check.Limit { states } ->
@@ -177,6 +277,10 @@ let () =
           Alcotest.test_case "vote button alone" `Quick test_vote;
           Alcotest.test_case "counter hits the limit" `Quick test_counter;
           Alcotest.test_case "counter bounded" `Quick test_counter_bounded;
+          Alcotest.test_case "events and states round trip through the codecs"
+            `Quick test_codecs;
+          Alcotest.test_case "the codec module registers every machine" `Quick
+            test_every_machine_registered;
         ]
       );
     ]

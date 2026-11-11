@@ -102,6 +102,44 @@ let has sim needle =
 
 let url_of sim = Url.to_string (Router.print routes (Sim.snapshot sim))
 
+let test_codecs () =
+  let machine = (Router.make routes ~render (u "/")).machine in
+  let state_codec = Router.state_codec routes
+  and event_codec = Router.event_codec in
+  Alcotest.(check string)
+    "a route is its printed URL" {|"/issues?status=closed&page=2"|}
+    (Codec.to_string state_codec (Issues (Closed, 2)));
+  List.iter
+    (fun route ->
+      Alcotest.(check bool)
+        "the route round trips" true
+        (Codec.of_string state_codec (Codec.to_string state_codec route)
+        = Ok route
+        )
+    )
+    [ Home; Issues (Closed, 2); Issue 3; Not_found "/nowhere" ];
+  Alcotest.(check string)
+    "an event" {|["Url_changed","/issues/3"]|}
+    (Codec.to_string event_codec (Router.Url_changed (u "/issues/3")));
+  Alcotest.(check bool)
+    "the event round trips" true
+    ( match
+        Codec.of_string event_codec
+          (Codec.to_string event_codec (Router.Preload (u "/issues/3")))
+      with
+    | Ok (Router.Preload url) ->
+        Url.to_string url = "/issues/3"
+    | Ok (Router.Url_changed _) | Error _ ->
+        false
+    );
+  Alcotest.(check (list string))
+    "event names"
+    [ "url changed"; "preload" ]
+    (List.map
+       (Machine.event_name machine)
+       [ Router.Url_changed (u "/"); Router.Preload (u "/") ]
+    )
+
 let test_start () =
   let sim = mount "/" in
   Alcotest.(check string) "url" "/" (url_of sim);
@@ -634,6 +672,7 @@ let () =
       ( "router",
         [
           t "start" test_start;
+          t "codecs and event names" test_codecs;
           t "url changed switches the page" test_url_changed_switches_page;
           t "same route, new parameters, keeps the page"
             test_same_route_new_parameters_keeps_page;

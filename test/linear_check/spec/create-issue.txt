@@ -9,8 +9,8 @@ edge closed -> editing on props
 edge editing -> closed on cancel props
 edge editing -> submitting on submit
 edge failed -> closed on cancel props
-edge failed -> editing on description priority status title
+edge failed -> editing on description priority_picked status_picked title
 edge failed -> submitting on submit
 edge submitting -> closed on "created ok"
 edge submitting -> failed on "created error"
-stay editing on description priority status submit title
+stay editing on description priority_picked status_picked submit title

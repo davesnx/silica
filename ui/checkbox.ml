@@ -14,7 +14,7 @@ type props = {
   classes : classes;
 }
 
-type event = Toggle | Enter_key
+type event = Toggle | Enter_key [@event_name "enter"] [@@deriving event_shape]
 type state = Unchecked | Checked | Indeterminate [@@deriving state_shape]
 
 let of_props (props : props) =
@@ -31,6 +31,7 @@ let requested (previous : props) (props : props) =
 
 let machine =
   Machine.make_with_props ~id:"checkbox" ~init:Unchecked ~shape:state_shape
+    ~events:event_shape
     ~on_props:(fun previous props _ ->
       match previous with
       | Some previous when not (requested previous props) ->

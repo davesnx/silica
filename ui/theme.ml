@@ -327,7 +327,11 @@ type props = { id : string; label : string; set : set; choice : choice }
 let props ~id ?(label = "Theme") set choice = { id; label; set; choice }
 
 type current = { choice : choice; theme : t }
-type event = Choose of string | System_dark of bool
+type event =
+  | Choose of string [@event_name_of fun name -> "choose " ^ name]
+  | System_dark of bool
+      [@event_name_of fun dark -> "system_dark " ^ string_of_bool dark]
+[@@deriving event_shape]
 
 type state =
   | Fixed_theme of t [@state_name "fixed"]
@@ -368,7 +372,7 @@ let current_name = function
 
 let machine =
   Machine.make_with_props ~id:"theme" ~init:(Fixed_theme light)
-    ~shape:state_shape
+    ~shape:state_shape ~events:event_shape
     ~owns:(fun _ -> function
       | System_scheme _ ->
           [

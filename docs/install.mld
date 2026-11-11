@@ -83,7 +83,8 @@ From [docs/examples/native/dune]:
 The Melange library is the same with [(modes melange)] and the preprocessors
 [silica.ppx melange.ppx]. The ppx [silica.ppx] turns the JSX elements into
 calls of {!Silica.Node.element} (see {!page-components.jsx}), and gives the
-deriver [[@@deriving state_shape]] (see {!page-machines.states}). An app that
+derivers [[@@deriving state_shape]] and [[@@deriving event_shape]] (see
+{!page-machines.states}). An app that
 derives JSON codecs needs a different library for each side; see
 {!page-recipes.json}.
 
@@ -108,18 +109,19 @@ stanza. See [example/client/dune] in the repository for the esbuild rule, and
 
 A component is a machine and a view. This lamp has two states, [Off] and
 [On], and one event, [Toggle]. The states are a plain variant, and
-[[@@deriving state_shape]] gives their names. The view shows a text and a button
+[[@@deriving state_shape]] gives their names; [[@@deriving event_shape]] gives
+the name of the event. The view shows a text and a button
 for each state.
 
 {@mlx file=examples/shared/doc_lamp.mlx[
 open Silica
 
-type event = Toggle
+type event = Toggle [@@deriving event_shape]
 type state = Off | On [@@deriving state_shape]
 
 let machine =
-  Machine.make ~id:"lamp" ~init:Off ~shape:state_shape (fun state Toggle ->
-      match state with Off -> Go On | On -> Go Off
+  Machine.make ~id:"lamp" ~init:Off ~shape:state_shape ~events:event_shape
+    (fun state Toggle -> match state with Off -> Go On | On -> Go Off
   )
 
 let view : state -> event Node.t = function

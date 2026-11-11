@@ -4,7 +4,7 @@ rankdir=LR;
 "filter-popover.__init" -> "filter-popover.closed";
 "filter-popover.closed" [label="closed" shape=box];
 "filter-popover.open" [label="open\nhold dismiss\nhold anchor" shape=box];
-"filter-popover.closed" -> "filter-popover.open" [label="open trigger-press, props"];
-"filter-popover.open" -> "filter-popover.closed" [label="apply, close close-press, close escape-key, close outside-press, close trigger-press, props"];
+"filter-popover.closed" -> "filter-popover.open" [label="open_request trigger-press, props"];
+"filter-popover.open" -> "filter-popover.closed" [label="apply, close_request close-press, close_request escape-key, close_request outside-press, close_request trigger-press, props"];
 "filter-popover.open" -> "filter-popover.open" [label="props"];
 }

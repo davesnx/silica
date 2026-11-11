@@ -24,6 +24,8 @@ let note_view { text } =
 let note_dialog =
   Dialog.component ~id:"note-dialog"
     ~closes:(function Save -> true | Edit _ -> false)
+    ~events:
+      (Machine.shape ~name:(function Edit _ -> "edit" | Save -> "save") ())
     note_view
 
 type parent_event =

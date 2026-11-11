@@ -35,8 +35,26 @@ let open_ (props : (_, _) props) : (state, _ event) Machine.next =
 let close ?focus (props : (_, _) props) : (state, _ event) Machine.next =
   Popup.close ?focus (parts props) Closed
 
-let machine ~id ~closes =
+let event_shape content =
+  Machine.shape
+    ~name:(function
+      | Open_request reason ->
+          "open_request " ^ Popup.reason_name reason
+      | Close_request reason ->
+          "close_request " ^ Popup.reason_name reason
+      | Content event -> (
+          match content with
+          | Some content ->
+              Machine.shape_name content event
+          | None ->
+              "content"
+        )
+      )
+    ()
+
+let machine ~id ~closes ?events () =
   Machine.make_with_props ~id ~init:Closed ~shape:state_shape
+    ~events:(event_shape events)
     ~owns:(fun props -> function
       | Open ->
           Popup.layer ~escape:(Close_request Popup.Escape_key)
@@ -156,9 +174,10 @@ type ('content, 'ce) t = {
   closes : 'ce -> bool;
 }
 
-let component ~id ~closes content =
+let component ~id ~closes ?events content =
   {
-    component = Component.make_with_props (machine ~id ~closes) (view ~content);
+    component =
+      Component.make_with_props (machine ~id ~closes ?events ()) (view ~content);
     closes;
   }
 

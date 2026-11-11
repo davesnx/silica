@@ -4,6 +4,6 @@ state closed
 state open
   hold dismiss
   hold anchor
-edge closed -> open on "open first list-navigation" "open first trigger-press" "open last list-navigation" props "trigger press"
-edge open -> closed on choose "close escape-key" "close focus-out" "close outside-press" props "trigger press"
+edge closed -> open on "open_key first list-navigation" "open_key first trigger-press" "open_key last list-navigation" props trigger_press
+edge open -> closed on choose "close escape-key" "close focus-out" "close outside-press" props trigger_press
 stay open on highlight "move first" "move last" "move letter" "move next" "move previous"

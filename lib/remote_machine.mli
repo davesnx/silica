@@ -25,11 +25,20 @@ type ('i, 'o, 'x) event =
 val data : ('i, 'o, 'x) state -> 'o option
 (** The data of [Ready], or the [last] data of the other states. *)
 
+val state_codec : ('i, 'o, 'x) Remote.endpoint -> ('i, 'o, 'x) state Codec.t
+(** The states as [[@@deriving json]] writes them, with the codecs of the
+    endpoint, for {!Machine.register_codecs}. *)
+
+val event_codec : ('i, 'o, 'x) Remote.endpoint -> ('i, 'o, 'x) event Codec.t
+(** The events, with the codecs of the endpoint. *)
+
 val make :
   ?timeout_ms:int ->
   id:string ->
   ('i, 'o, 'x) Remote.endpoint ->
   (unit, ('i, 'o, 'x) state, ('i, 'o, 'x) event) Machine.t
 (** [Loading] owns a {!Remote.call} on the endpoint, with [timeout_ms] when
-    given. There is no automatic retry: a [Retrying] state that owns a
-    {!Source.after} timer and counts the attempts is a pattern for the app. *)
+    given. The events are named ["load"], ["retry"], ["settled ok"],
+    ["settled rejected"], ["settled error"] and ["reset"]. There is no automatic
+    retry: a [Retrying] state that owns a {!Source.after} timer and counts the
+    attempts is a pattern for the app. *)

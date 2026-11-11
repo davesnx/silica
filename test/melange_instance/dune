@@ -1,0 +1,14 @@
+(melange.emit
+ (target out)
+ (alias melange-instance)
+ (modules instance_test)
+ (module_systems
+  (esm mjs))
+ (libraries silica silica.json-melange))
+
+(rule
+ (alias runtest)
+ (deps
+  (alias melange-instance))
+ (action
+  (run node out/test/melange_instance/instance_test.mjs)))

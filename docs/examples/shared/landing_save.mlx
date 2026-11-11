@@ -5,11 +5,12 @@ let save =
     ~rejected:Codec.string
 
 type event = Save | Answer of (string, string) Remote.answer | Reset
+[@@deriving event_shape]
 
 type state = Idle | Saving | Saved of string | Failed [@@deriving state_shape]
 
 let machine =
-  Machine.make ~id:"save" ~init:Idle ~shape:state_shape
+  Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
     ~owns:(function
       | Saving ->
           [ Remote.call save "draft" (fun answer -> Answer answer) ]

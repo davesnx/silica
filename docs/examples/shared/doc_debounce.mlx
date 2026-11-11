@@ -1,6 +1,6 @@
 open Silica
 
-type event = Typed of string | Settle | Clear
+type event = Typed of string | Settle | Clear [@@deriving event_shape]
 
 type state = Empty | Typing of string | Settled of string
 [@@deriving state_shape]
@@ -12,7 +12,7 @@ let typed : string -> (state, event) Machine.next = function
       Reenter (Typing text)
 
 let machine =
-  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape
+  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape ~events:event_shape
     ~owns:(function
       | Typing _ -> [ Source.after 500 Settle ] | Empty | Settled _ -> []
       )

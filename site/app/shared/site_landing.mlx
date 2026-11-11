@@ -1,13 +1,14 @@
 open Silica
+open Jsonkit.Primitives
 
-type event = Moved of string
-type state = Watching of string [@@deriving state_shape]
+type event = Moved of string [@@deriving json, event_shape]
+type state = Watching of string [@@deriving json, state_shape]
 
 let spec = Site_landing_chart.spec
 
 let machine =
   Machine.make ~id:"landing" ~init:(Watching spec.init) ~shape:state_shape
-    (fun (Watching _) (Moved name) -> Go (Watching name)
+    ~events:event_shape (fun (Watching _) (Moved name) -> Go (Watching name)
   )
 
 let place = function

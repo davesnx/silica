@@ -87,12 +87,12 @@ gets it from the props.
 {@mlx file=examples/shared/doc_stepper.mlx[
 open Silica
 
-type event = Up | Down
+type event = Up | Down [@@deriving event_shape]
 type state = Count of int [@@deriving state_shape]
 
 let machine =
   Machine.make_with_props ~id:"stepper" ~init:(Count 0) ~shape:state_shape
-    (fun _label (Count count) event ->
+    ~events:event_shape (fun _label (Count count) event ->
       match event with
       | Up ->
           Go (Count (count + 1))
@@ -125,13 +125,13 @@ The parent renders two steppers and keeps the total in its own snapshot:
 open Silica
 
 type party = { adults : int; children : int }
-type event = Adults of int | Children of int
+type event = Adults of int | Children of int [@@deriving event_shape]
 type state = Party of party [@@deriving state_shape]
 
 let machine =
   Machine.make ~id:"party"
     ~init:(Party { adults = 0; children = 0 })
-    ~shape:state_shape
+    ~shape:state_shape ~events:event_shape
     (fun (Party party) event ->
       match event with
       | Adults adults ->

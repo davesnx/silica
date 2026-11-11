@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "tabs". Do not edit.
 module tabs {
   type State = | Ready
-  type Event = OnStart | OnAny | OnFirst | OnLast | OnNext | OnPrevious | OnProps | OnSelectA | OnSelectC
+  type Event = OnStart | OnAny | OnMoveFirst | OnMoveLast | OnMoveNext | OnMovePrevious | OnProps | OnSelectA | OnSelectC
 
   var state: State
   var running: Set[str]
@@ -26,19 +26,19 @@ module tabs {
     last' = OnStart,
   }
 
-  action ready_stays_on_first = all { state == Ready, state' = state, running' = running, last' = OnFirst }
-  action ready_stays_on_last = all { state == Ready, state' = state, running' = running, last' = OnLast }
-  action ready_stays_on_next = all { state == Ready, state' = state, running' = running, last' = OnNext }
-  action ready_stays_on_previous = all { state == Ready, state' = state, running' = running, last' = OnPrevious }
+  action ready_stays_on_move_first = all { state == Ready, state' = state, running' = running, last' = OnMoveFirst }
+  action ready_stays_on_move_last = all { state == Ready, state' = state, running' = running, last' = OnMoveLast }
+  action ready_stays_on_move_next = all { state == Ready, state' = state, running' = running, last' = OnMoveNext }
+  action ready_stays_on_move_previous = all { state == Ready, state' = state, running' = running, last' = OnMovePrevious }
   action ready_stays_on_props = all { state == Ready, state' = state, running' = running, last' = OnProps }
   action ready_stays_on_select_a = all { state == Ready, state' = state, running' = running, last' = OnSelectA }
   action ready_stays_on_select_c = all { state == Ready, state' = state, running' = running, last' = OnSelectC }
 
   action step = any {
-    ready_stays_on_first,
-    ready_stays_on_last,
-    ready_stays_on_next,
-    ready_stays_on_previous,
+    ready_stays_on_move_first,
+    ready_stays_on_move_last,
+    ready_stays_on_move_next,
+    ready_stays_on_move_previous,
     ready_stays_on_props,
     ready_stays_on_select_a,
     ready_stays_on_select_c,

@@ -1,11 +1,11 @@
 open Silica
 
-type event = Up | Down
+type event = Up | Down [@@deriving event_shape]
 type state = Count of int [@@deriving state_shape]
 
 let machine =
   Machine.make_with_props ~id:"stepper" ~init:(Count 0) ~shape:state_shape
-    (fun _label (Count count) event ->
+    ~events:event_shape (fun _label (Count count) event ->
       match event with
       | Up ->
           Go (Count (count + 1))

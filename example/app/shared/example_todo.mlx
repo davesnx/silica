@@ -1,8 +1,13 @@
 open Silica
+open Jsonkit.Primitives
 
-type todo = { id : int; text : string; completed : bool }
+type todo = { id : int; text : string; completed : bool } [@@deriving json]
+
 type state = { todos : todo list; draft : string; next_id : int }
+[@@deriving json]
+
 type event = Draft of string | Add | Toggle of int | Delete of int
+[@@deriving json, event_shape]
 
 let init = { todos = []; draft = ""; next_id = 1 }
 let input_ref = Ref.make "todo-input"
@@ -10,6 +15,7 @@ let input_ref = Ref.make "todo-input"
 let machine =
   Machine.make ~id:"todo" ~init
     ~shape:(Machine.shape ~name:(fun _ -> "todo") ~names:[ "todo" ] ())
+    ~events:event_shape
     (fun state event ->
       match event with
       | Draft draft ->

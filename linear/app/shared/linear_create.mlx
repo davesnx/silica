@@ -1,8 +1,9 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 open Linear_routes
 
-type form = { draft : Draft.t; error : string option }
+type form = { draft : Draft.t; error : string option } [@@deriving json]
 
 type event =
   | Title of string
@@ -11,14 +12,16 @@ type event =
   | Priority_picked of Priority.t
   | Submit
   | Cancel
-  | Created of (Issue.t, string) Remote.answer
+  | Created of (Issue.t, string) Silica_jsonkit.answer
+      [@event_name_of answer_name "created"]
+[@@deriving json, event_shape]
 
 type state =
   | Closed
   | Editing of form
   | Submitting of Draft.t
   | Failed of { draft : Draft.t; message : string }
-[@@deriving state_shape]
+[@@deriving json, state_shape]
 
 let fresh = Editing { draft = Draft.empty; error = None }
 let focus_opener = Action.Focus Linear_refs.new_issue
@@ -40,6 +43,7 @@ let edited (draft : Draft.t) = function
 
 let machine =
   Machine.make_with_props ~id:"create-issue" ~init:Closed ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun _ -> function
       | Submitting draft ->
           [ Remote.call create_endpoint draft (fun answer -> Created answer) ]
@@ -223,7 +227,7 @@ let form { draft; busy; message } : event Node.t =
 let dialog_component =
   Silica_ui.Dialog.component ~id:"create-issue-dialog"
     ~closes:(fun (_ : event) -> false)
-    form
+    ~events:event_shape form
 
 let classes : Silica_ui.Dialog.classes =
   {

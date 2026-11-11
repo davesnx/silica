@@ -60,12 +60,17 @@ type ('content, 'ce) t = {
 val component :
   id:string ->
   closes:('ce -> bool) ->
+  ?events:'ce Silica.Machine.shape ->
   ('content -> 'ce Silica.Node.t) ->
   ('content, 'ce) t
 (** [component ~id ~closes view] is a popover whose content is [view content].
     [id] is the id of the machine, as in the spec and the checker. The popover
     closes after a content event for which [closes] is [true], with reason
-    {!Popup.Close_press}. Define it once, at the top level. *)
+    {!Popup.Close_press}. [events] names the content events (see
+    {!Silica.Machine.event_name}): the popover names its own events
+    ["open_request <reason>"] and ["close_request <reason>"] (see
+    {!Popup.reason_name}), and a content event by [events], or ["content"]
+    without it. Define it once, at the top level. *)
 
 val view :
   content:('content -> 'ce Silica.Node.t) ->

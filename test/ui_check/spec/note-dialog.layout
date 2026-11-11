@@ -1,5 +1,5 @@
-machine note-dialog 494 148
+machine note-dialog 546 148
 node closed 40,70 72 36 initial
-node open 348,49 130 78
-edge closed -> open 112,83 160,48 300,48 348,76 label 230,44 open trigger-press, | props
-edge open -> closed back 348,100 300,128 160,128 112,93 label 230,124 close close-press, | close escape-key, | close outside-press, | props, save
+node open 401,49 130 78
+edge closed -> open 112,83 160,48 353,48 401,76 label 256,44 open_request trigger-press, | props
+edge open -> closed back 401,100 353,128 160,128 112,93 label 256,124 close_request close-press, | close_request escape-key, | close_request outside-press, | props, save

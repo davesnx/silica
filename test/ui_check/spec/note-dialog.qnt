@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "note-dialog". Do not edit.
 module note_dialog {
   type State = | Closed | Open
-  type Event = OnStart | OnAny | OnCloseClosePress | OnCloseEscapeKey | OnCloseOutsidePress | OnEdit | OnOpenTriggerPress | OnProps | OnSave
+  type Event = OnStart | OnAny | OnCloseRequestClosePress | OnCloseRequestEscapeKey | OnCloseRequestOutsidePress | OnEdit | OnOpenRequestTriggerPress | OnProps | OnSave
 
   var state: State
   var running: Set[str]
@@ -27,27 +27,27 @@ module note_dialog {
     last' = OnStart,
   }
 
-  action closed_to_open_on_open_trigger_press = all { state == Closed, enter(Open, OnOpenTriggerPress) }
+  action closed_to_open_on_open_request_trigger_press = all { state == Closed, enter(Open, OnOpenRequestTriggerPress) }
   action closed_to_open_on_props = all { state == Closed, enter(Open, OnProps) }
-  action open_to_closed_on_close_close_press = all { state == Open, enter(Closed, OnCloseClosePress) }
-  action open_to_closed_on_close_escape_key = all { state == Open, enter(Closed, OnCloseEscapeKey) }
-  action open_to_closed_on_close_outside_press = all { state == Open, enter(Closed, OnCloseOutsidePress) }
+  action open_to_closed_on_close_request_close_press = all { state == Open, enter(Closed, OnCloseRequestClosePress) }
+  action open_to_closed_on_close_request_escape_key = all { state == Open, enter(Closed, OnCloseRequestEscapeKey) }
+  action open_to_closed_on_close_request_outside_press = all { state == Open, enter(Closed, OnCloseRequestOutsidePress) }
   action open_to_closed_on_props = all { state == Open, enter(Closed, OnProps) }
   action open_to_closed_on_save = all { state == Open, enter(Closed, OnSave) }
-  action open_stays_on_close_escape_key = all { state == Open, state' = state, running' = running, last' = OnCloseEscapeKey }
-  action open_stays_on_close_outside_press = all { state == Open, state' = state, running' = running, last' = OnCloseOutsidePress }
+  action open_stays_on_close_request_escape_key = all { state == Open, state' = state, running' = running, last' = OnCloseRequestEscapeKey }
+  action open_stays_on_close_request_outside_press = all { state == Open, state' = state, running' = running, last' = OnCloseRequestOutsidePress }
   action open_stays_on_edit = all { state == Open, state' = state, running' = running, last' = OnEdit }
 
   action step = any {
-    closed_to_open_on_open_trigger_press,
+    closed_to_open_on_open_request_trigger_press,
     closed_to_open_on_props,
-    open_to_closed_on_close_close_press,
-    open_to_closed_on_close_escape_key,
-    open_to_closed_on_close_outside_press,
+    open_to_closed_on_close_request_close_press,
+    open_to_closed_on_close_request_escape_key,
+    open_to_closed_on_close_request_outside_press,
     open_to_closed_on_props,
     open_to_closed_on_save,
-    open_stays_on_close_escape_key,
-    open_stays_on_close_outside_press,
+    open_stays_on_close_request_escape_key,
+    open_stays_on_close_request_outside_press,
     open_stays_on_edit,
   }
 

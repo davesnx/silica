@@ -89,6 +89,7 @@ type loading = Loading | Ready of int | Failed of int [@@deriving state_shape]
 
 let loader ?(network = true) ?(decode = true) () =
   Machine.make ~id:"loader" ~init:Loading ~shape:loading_shape
+    ~events:(Machine.shape ~name:show_load ())
     ~final:(function Ready _ -> true | Loading | Failed _ -> false)
     ~owns:(function
       | Loading ->
@@ -638,7 +639,7 @@ let test_app_root_gets_answers () =
   in
   let parse url = List.assoc (Url.to_string url) !printed in
   match
-    Check.app ~label:show_load
+    Check.app
       ~samples:[ Check.answers endpoint [ 1 ] ]
       ~routes:[ start ] ~parse ~print
       ~url_event:(fun _ -> Retry)
@@ -705,9 +706,7 @@ let test_unreached_state () =
 
 let test_edges_are_labelled () =
   let c = Component.make (loader ()) loader_view in
-  match
-    Check.component ~label:show_load ~samples:[ Check.answers endpoint [ 1 ] ] c
-  with
+  match Check.component ~samples:[ Check.answers endpoint [ 1 ] ] c with
   | Check.Ok { edges; _ } ->
       Alcotest.(check (list (triple string string string)))
         "taken edges with the event names"

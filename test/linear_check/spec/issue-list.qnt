@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "issue-list". Do not edit.
 module issue_list {
   type State = | Loading | Failed | Ready
-  type Event = OnStart | OnAny | OnCommand | OnConflict | OnCreateKey | OnCursorNext | OnCursorPrevious | OnFilterChanged | OnFilterOpenFalse | OnFilterOpenTrue | OnGroupingPicked | OnLoadedError | OnLoadedOk | OnMenuOpenFalse | OnMenuOpenTrue | OnOrderingPicked | OnReconnect | OnReconnected | OnRetry | OnRowFocused | OnSaveFailed | OnSaved | OnToastClosed | OnToggleGroup | OnUpdated
+  type Event = OnStart | OnAny | OnCommand | OnCreateKey | OnCursorNext | OnCursorPrevious | OnFilterChanged | OnFilterOpenFalse | OnFilterOpenTrue | OnGroupingPicked | OnLoadedError | OnLoadedOk | OnMenuOpenFalse | OnMenuOpenTrue | OnOrderingPicked | OnReconnect | OnReconnected | OnRetry | OnRowFocused | OnSavedConflict | OnSavedError | OnSavedOk | OnToastClosed | OnToggleGroup | OnUpdated
 
   var state: State
   var running: Set[str]
@@ -32,7 +32,6 @@ module issue_list {
   action loading_to_failed_on_loaded_error = all { state == Loading, enter(Failed, OnLoadedError) }
   action loading_to_ready_on_loaded_ok = all { state == Loading, enter(Ready, OnLoadedOk) }
   action ready_stays_on_command = all { state == Ready, state' = state, running' = running, last' = OnCommand }
-  action ready_stays_on_conflict = all { state == Ready, state' = state, running' = running, last' = OnConflict }
   action ready_stays_on_create_key = all { state == Ready, state' = state, running' = running, last' = OnCreateKey }
   action ready_stays_on_cursor_next = all { state == Ready, state' = state, running' = running, last' = OnCursorNext }
   action ready_stays_on_cursor_previous = all { state == Ready, state' = state, running' = running, last' = OnCursorPrevious }
@@ -46,8 +45,9 @@ module issue_list {
   action ready_stays_on_reconnect = all { state == Ready, state' = state, running' = running, last' = OnReconnect }
   action ready_stays_on_reconnected = all { state == Ready, state' = state, running' = running, last' = OnReconnected }
   action ready_stays_on_row_focused = all { state == Ready, state' = state, running' = running, last' = OnRowFocused }
-  action ready_stays_on_save_failed = all { state == Ready, state' = state, running' = running, last' = OnSaveFailed }
-  action ready_stays_on_saved = all { state == Ready, state' = state, running' = running, last' = OnSaved }
+  action ready_stays_on_saved_conflict = all { state == Ready, state' = state, running' = running, last' = OnSavedConflict }
+  action ready_stays_on_saved_error = all { state == Ready, state' = state, running' = running, last' = OnSavedError }
+  action ready_stays_on_saved_ok = all { state == Ready, state' = state, running' = running, last' = OnSavedOk }
   action ready_stays_on_toast_closed = all { state == Ready, state' = state, running' = running, last' = OnToastClosed }
   action ready_stays_on_toggle_group = all { state == Ready, state' = state, running' = running, last' = OnToggleGroup }
   action ready_stays_on_updated = all { state == Ready, state' = state, running' = running, last' = OnUpdated }
@@ -57,7 +57,6 @@ module issue_list {
     loading_to_failed_on_loaded_error,
     loading_to_ready_on_loaded_ok,
     ready_stays_on_command,
-    ready_stays_on_conflict,
     ready_stays_on_create_key,
     ready_stays_on_cursor_next,
     ready_stays_on_cursor_previous,
@@ -71,8 +70,9 @@ module issue_list {
     ready_stays_on_reconnect,
     ready_stays_on_reconnected,
     ready_stays_on_row_focused,
-    ready_stays_on_save_failed,
-    ready_stays_on_saved,
+    ready_stays_on_saved_conflict,
+    ready_stays_on_saved_error,
+    ready_stays_on_saved_ok,
     ready_stays_on_toast_closed,
     ready_stays_on_toggle_group,
     ready_stays_on_updated,

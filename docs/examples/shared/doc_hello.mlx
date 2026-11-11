@@ -1,10 +1,11 @@
 open Silica
 
 type event = Answered of (string, string) Remote.answer | Retry
+[@@deriving event_shape]
 type state = Loading | Shown of string | Failed [@@deriving state_shape]
 
 let machine =
-  Machine.make ~id:"hello" ~init:Loading ~shape:state_shape
+  Machine.make ~id:"hello" ~init:Loading ~shape:state_shape ~events:event_shape
     ~final:(function Shown _ -> true | Loading | Failed -> false)
     ~owns:(function
       | Loading ->

@@ -30,24 +30,18 @@ let has_attr name value view =
 let print_report pp_event report =
   Format.asprintf "%a" (fun f r -> Check.pp_report ~pp_event f r) report
 
-let pp_input label f input =
-  Check.pp_input (fun f event -> Format.pp_print_string f (label event)) f input
+let pp_input (component : (_, _, _) Component.t) f input =
+  Check.pp_input
+    (fun f event ->
+      Format.pp_print_string f (Machine.event_name component.machine event)
+    )
+    f input
 
 let dialog_props ?open_ ?dismissible ?alert () =
   Dialog.props ~id:"note" ~title:"Edit note" ~trigger:"Edit" ~close:"Close"
     ?open_ ?dismissible ?alert { text = "hello" }
 
-let dialog_label : note_event Dialog.event -> string = function
-  | Dialog.Open_request reason ->
-      "open " ^ Popup.reason_name reason
-  | Dialog.Close_request reason ->
-      "close " ^ Popup.reason_name reason
-  | Dialog.Content (Edit _) ->
-      "edit"
-  | Dialog.Content Save ->
-      "save"
-
-let pp_dialog_event f input = pp_input dialog_label f input
+let pp_dialog_event f input = pp_input note_dialog.component f input
 
 let dialog_open_has_popup :
     (Dialog.state, note_event Dialog.event) Check.invariant =
@@ -69,7 +63,7 @@ let dialog_open_has_popup :
   }
 
 let dialog () =
-  Check.component ~label:dialog_label
+  Check.component
     ~props:
       [
         dialog_props ();
@@ -90,18 +84,7 @@ let popover_props ?open_ ?place () =
     ~close:"Close" ?open_ ?place
     { Popover_samples.query = "bug" }
 
-let popover_label : Popover_samples.filter_event Popover.event -> string =
-  function
-  | Popover.Open_request reason ->
-      "open " ^ Popup.reason_name reason
-  | Popover.Close_request reason ->
-      "close " ^ Popup.reason_name reason
-  | Popover.Content (Popover_samples.Query _) ->
-      "query"
-  | Popover.Content Popover_samples.Apply ->
-      "apply"
-
-let pp_popover_event f input = pp_input popover_label f input
+let pp_popover_event f input = pp_input filter_popover.component f input
 
 let popover_open_has_popup :
     (Popover.state, Popover_samples.filter_event Popover.event) Check.invariant
@@ -122,7 +105,7 @@ let popover_open_has_popup :
   }
 
 let popover () =
-  Check.component ~label:popover_label
+  Check.component
     ~props:
       [
         popover_props ();
@@ -138,23 +121,7 @@ let popover () =
       )
     ~invariants:[ popover_open_has_popup ] filter_popover.component
 
-let tooltip_label : Tooltip.event -> string = function
-  | Hover ->
-      "hover"
-  | Focus ->
-      "focus"
-  | Cancel ->
-      "cancel"
-  | Leave ->
-      "leave"
-  | Resume ->
-      "resume"
-  | Close reason ->
-      "close " ^ Popup.reason_name reason
-  | Elapsed delay ->
-      Printf.sprintf "elapsed %d" (Tooltip.delay_ms delay)
-
-let pp_tooltip_event f input = pp_input tooltip_label f input
+let pp_tooltip_event f input = pp_input Tooltip.component f input
 
 let tooltip_shown_describes : (Tooltip.state, Tooltip.event) Check.invariant =
   {
@@ -177,7 +144,7 @@ let tooltip_shown_describes : (Tooltip.state, Tooltip.event) Check.invariant =
   }
 
 let tooltip () =
-  Check.component ~label:tooltip_label
+  Check.component
     ~props:
       [
         Tooltip_samples.props ();
@@ -237,37 +204,7 @@ let list_keys =
       make "d";
     ]
 
-let reason_label prefix reason = prefix ^ " " ^ Popup.reason_name reason
-
-let nav_label : Menu.nav -> string = function
-  | Menu.Next ->
-      "next"
-  | Menu.Previous ->
-      "previous"
-  | Menu.First ->
-      "first"
-  | Menu.Last ->
-      "last"
-  | Menu.Letter _ ->
-      "letter"
-
-let menu_label : Menu.event -> string = function
-  | Menu.Trigger_press ->
-      "trigger press"
-  | Menu.Open_key (reason, Menu.Start) ->
-      reason_label "open first" reason
-  | Menu.Open_key (reason, Menu.End) ->
-      reason_label "open last" reason
-  | Menu.Move nav ->
-      "move " ^ nav_label nav
-  | Menu.Highlight _ ->
-      "highlight"
-  | Menu.Choose _ ->
-      "choose"
-  | Menu.Close reason ->
-      reason_label "close" reason
-
-let pp_menu_event f input = pp_input menu_label f input
+let pp_menu_event f input = pp_input Menu.component f input
 
 let menu_open_has_popup : (Menu.state, Menu.event) Check.invariant =
   {
@@ -298,38 +235,12 @@ let menu_open_has_popup : (Menu.state, Menu.event) Check.invariant =
 let menu_props ?open_ () = Menu_samples.props ?open_ "actions"
 
 let menu () =
-  Check.component ~label:menu_label
+  Check.component
     ~props:
       [ menu_props (); menu_props ~open_:true (); menu_props ~open_:false () ]
     ~keys:list_keys ~invariants:[ menu_open_has_popup ] Menu.component
 
-let select_nav_label : Select.nav -> string = function
-  | Select.Next ->
-      "next"
-  | Select.Previous ->
-      "previous"
-  | Select.First ->
-      "first"
-  | Select.Last ->
-      "last"
-  | Select.Letter _ ->
-      "letter"
-
-let select_label : Select.event -> string = function
-  | Select.Trigger_press ->
-      "trigger press"
-  | Select.Open_key reason ->
-      reason_label "open" reason
-  | Select.Move nav ->
-      "move " ^ select_nav_label nav
-  | Select.Highlight _ ->
-      "highlight"
-  | Select.Select (_, reason) ->
-      reason_label "select" reason
-  | Select.Close reason ->
-      reason_label "close" reason
-
-let pp_select_event f input = pp_input select_label f input
+let pp_select_event f input = pp_input Select.component f input
 
 let select_open_has_listbox : (Select.state, Select.event) Check.invariant =
   {
@@ -364,7 +275,7 @@ let select_open_has_listbox : (Select.state, Select.event) Check.invariant =
 let select_props ?value () = Select_samples.props ?value ~name:"status" "status"
 
 let select () =
-  Check.component ~label:select_label
+  Check.component
     ~props:
       [
         select_props ();
@@ -380,33 +291,7 @@ let combobox_props ?(inline = false) items =
 
 let short_fruits = List.filteri (fun i _ -> i < 2) Combobox_samples.fruits
 
-let combobox_label : Combobox.event -> string = function
-  | Combobox.Typed _ ->
-      "type"
-  | Combobox.Move `Next ->
-      "next"
-  | Combobox.Move `Previous ->
-      "previous"
-  | Combobox.Move `First ->
-      "first"
-  | Combobox.Move `Last ->
-      "last"
-  | Combobox.Show ->
-      "show"
-  | Combobox.Highlight _ ->
-      "highlight"
-  | Combobox.Choose_highlighted ->
-      "enter"
-  | Combobox.Choose _ ->
-      "press"
-  | Combobox.Escape ->
-      "escape"
-  | Combobox.Outside_press ->
-      "outside"
-  | Combobox.Focus_out ->
-      "focus-out"
-
-let pp_combobox_event f input = pp_input combobox_label f input
+let pp_combobox_event f input = pp_input Combobox.component f input
 
 let rec collect f n =
   f (Node.view n)
@@ -500,7 +385,7 @@ let combobox_auto_highlight : (Combobox.state, Combobox.event) Check.invariant =
   }
 
 let combobox () =
-  Check.component ~label:combobox_label
+  Check.component
     ~props:
       [
         combobox_props Combobox_samples.fruits;
@@ -534,15 +419,8 @@ let command_menu_props ?open_ () =
        Combobox_samples.commands
     )
 
-let command_menu_label : string Dialog.event -> string = function
-  | Dialog.Open_request reason ->
-      "open " ^ Popup.reason_name reason
-  | Dialog.Close_request reason ->
-      "close " ^ Popup.reason_name reason
-  | Dialog.Content _ ->
-      "run"
-
-let pp_command_menu_event f input = pp_input command_menu_label f input
+let pp_command_menu_event f input =
+  pp_input Command_menu.dialog.component f input
 
 let command_menu_open_has_search :
     (Dialog.state, string Dialog.event) Check.invariant =
@@ -563,7 +441,7 @@ let command_menu_open_has_search :
   }
 
 let command_menu () =
-  Check.component ~label:command_menu_label
+  Check.component
     ~props:
       [
         command_menu_props ();
@@ -577,7 +455,7 @@ let command_menu () =
     Command_menu.dialog.component
 
 let command_menu_search children =
-  Check.component ~label:combobox_label
+  Check.component
     ~props:(Check.props children Combobox.component)
     ~inputs:(fun _ -> [ Combobox.Typed ""; Combobox.Typed "sign" ])
     ~allow_unreached:[ "closed"; "open" ]
@@ -588,13 +466,7 @@ let checkbox_props ?checked ?indeterminate ?disabled () =
   Checkbox.props ~id:"terms" ~label:"Accept" ?checked ?indeterminate ?disabled
     ~name:"terms" ()
 
-let checkbox_label : Checkbox.event -> string = function
-  | Checkbox.Toggle ->
-      "toggle"
-  | Checkbox.Enter_key ->
-      "enter"
-
-let pp_checkbox_event f input = pp_input checkbox_label f input
+let pp_checkbox_event f input = pp_input Checkbox.component f input
 
 let checkbox_aria : (Checkbox.state, Checkbox.event) Check.invariant =
   {
@@ -615,7 +487,7 @@ let checkbox_aria : (Checkbox.state, Checkbox.event) Check.invariant =
   }
 
 let checkbox () =
-  Check.component ~label:checkbox_label
+  Check.component
     ~props:
       [
         checkbox_props ();
@@ -628,8 +500,7 @@ let checkbox () =
 let switch_props ?checked ?disabled () =
   Switch.props ~id:"wifi" ~label:"Wi-Fi" ?checked ?disabled ~name:"wifi" ()
 
-let switch_label : Switch.event -> string = function Switch.Toggle -> "toggle"
-let pp_switch_event f input = pp_input switch_label f input
+let pp_switch_event f input = pp_input Switch.component f input
 
 let switch_aria : (Switch.state, Switch.event) Check.invariant =
   {
@@ -648,7 +519,7 @@ let switch_aria : (Switch.state, Switch.event) Check.invariant =
   }
 
 let switch () =
-  Check.component ~label:switch_label
+  Check.component
     ~props:
       [
         switch_props ();
@@ -667,19 +538,7 @@ let tabs_list =
 let tabs_props ?orientation value =
   Tabs.props ~id:"set" ?orientation ~value tabs_list
 
-let tabs_label : Tabs.event -> string = function
-  | Tabs.Select value ->
-      "select " ^ value
-  | Tabs.Move Tabs.Next ->
-      "next"
-  | Tabs.Move Tabs.Previous ->
-      "previous"
-  | Tabs.Move Tabs.First ->
-      "first"
-  | Tabs.Move Tabs.Last ->
-      "last"
-
-let pp_tabs_event f input = pp_input tabs_label f input
+let pp_tabs_event f input = pp_input Tabs.component f input
 
 let element_has id pairs view =
   exists
@@ -715,7 +574,7 @@ let tabs_roving : (Tabs.state, Tabs.event) Check.invariant =
   }
 
 let tabs () =
-  Check.component ~label:tabs_label
+  Check.component
     ~props:
       [
         tabs_props "a";
@@ -733,17 +592,7 @@ let toast_props toasts = Toast.props ~id:"note" ~timeout_ms:200 toasts
 let first = Toast.toast ~key:"a" ~description:"Saved." "Saved"
 let urgent = Toast.toast ~key:"b" ~priority:Toast.High "Failed"
 
-let toast_label : Toast.event -> string = function
-  | Toast.Close key ->
-      "close " ^ key
-  | Toast.Tick ->
-      "tick"
-  | Toast.Hover hovered ->
-      Printf.sprintf "hover %b" hovered
-  | Toast.Focus focused ->
-      Printf.sprintf "focus %b" focused
-
-let pp_toast_event f input = pp_input toast_label f input
+let pp_toast_event f input = pp_input Toast.component f input
 
 let toast_shows_list : (Toast.state, Toast.event) Check.invariant =
   {
@@ -794,20 +643,14 @@ let toast_shows_list : (Toast.state, Toast.event) Check.invariant =
   }
 
 let toast () =
-  Check.component ~label:toast_label
+  Check.component
     ~props:
       [ toast_props []; toast_props [ first ]; toast_props [ first; urgent ] ]
     ~invariants:[ toast_shows_list ] Toast.component
 
 let theme_set = Theme.set ~light:Theme.light ~dark:Theme.dark Theme.shipped
 
-let theme_label : Theme.event -> string = function
-  | Theme.Choose name ->
-      "choose " ^ name
-  | Theme.System_dark dark ->
-      Printf.sprintf "system dark %b" dark
-
-let pp_theme_event f input = pp_input theme_label f input
+let pp_theme_event f input = pp_input Theme.provider_component f input
 let theme_props choice = Theme.props ~id:"theme" theme_set choice
 
 let theme_current : (Theme.state, Theme.event) Check.invariant =
@@ -835,7 +678,7 @@ let theme_current : (Theme.state, Theme.event) Check.invariant =
   }
 
 let theme () =
-  Check.component ~label:theme_label
+  Check.component
     ~props:[ theme_props Theme.System; theme_props (Theme.Fixed Theme.ocean) ]
     ~inputs:(fun _ ->
       List.map

@@ -15,6 +15,7 @@ type props = {
 let dialog =
   Dialog.component ~id:"command-menu"
     ~closes:(fun (_ : string) -> true)
+    ~events:(Silica.Machine.shape ~name:(fun _ -> "run") ())
     (fun props -> Combobox.make ~on_value_change:Fun.id props)
 
 let props ~id ~title ?(placeholder = "") ?(empty = "No results") ?open_

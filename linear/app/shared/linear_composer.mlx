@@ -1,18 +1,22 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 
 type event =
   | Typed of string
+      [@event_name_of function "" -> "typed empty" | _ -> "typed"]
   | Send
   | Clear
-  | Sent of (Comment.t, string) Remote.answer
+  | Sent of (Comment.t, string) Silica_jsonkit.answer
+      [@event_name_of answer_name "sent"]
+[@@deriving json, event_shape]
 
 type state =
   | Empty
   | Drafting of string
   | Sending of string
   | Failed of { body : string; message : string }
-[@@deriving state_shape]
+[@@deriving json, state_shape]
 
 let typed draft : (state, event) Machine.next =
   if String.trim draft = "" then
@@ -22,6 +26,7 @@ let typed draft : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"comment-composer" ~init:Empty ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun number -> function
       | Sending body ->
           [

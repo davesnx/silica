@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "command-menu". Do not edit.
 module command_menu {
   type State = | Closed | Open
-  type Event = OnStart | OnAny | OnCloseEscapeKey | OnCloseOutsidePress | OnProps | OnRun
+  type Event = OnStart | OnAny | OnCloseRequestEscapeKey | OnCloseRequestOutsidePress | OnProps | OnRun
 
   var state: State
   var running: Set[str]
@@ -28,15 +28,15 @@ module command_menu {
   }
 
   action closed_to_open_on_props = all { state == Closed, enter(Open, OnProps) }
-  action open_to_closed_on_close_escape_key = all { state == Open, enter(Closed, OnCloseEscapeKey) }
-  action open_to_closed_on_close_outside_press = all { state == Open, enter(Closed, OnCloseOutsidePress) }
+  action open_to_closed_on_close_request_escape_key = all { state == Open, enter(Closed, OnCloseRequestEscapeKey) }
+  action open_to_closed_on_close_request_outside_press = all { state == Open, enter(Closed, OnCloseRequestOutsidePress) }
   action open_to_closed_on_props = all { state == Open, enter(Closed, OnProps) }
   action open_to_closed_on_run = all { state == Open, enter(Closed, OnRun) }
 
   action step = any {
     closed_to_open_on_props,
-    open_to_closed_on_close_escape_key,
-    open_to_closed_on_close_outside_press,
+    open_to_closed_on_close_request_escape_key,
+    open_to_closed_on_close_request_outside_press,
     open_to_closed_on_props,
     open_to_closed_on_run,
   }

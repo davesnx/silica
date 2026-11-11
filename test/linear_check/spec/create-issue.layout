@@ -1,13 +1,13 @@
-machine create-issue 1077 182
-node closed 40,95 72 44 initial
-node editing 302,61 79 36
-node failed 989,83 72 44
-node submitting 550,82 189 50
-edge closed -> editing 112,106 160,68 254,68 302,74 label 207,64 props
-edge editing -> closed back 302,84 254,106 160,106 112,113 label 207,102 cancel, props
-edge editing -> submitting 380,84 428,91 502,91 550,100 label 465,87 submit
-edge failed -> closed back 989,115 941,162 787,162 739,158 550,158 502,154 428,154 380,150 302,150 254,148 160,148 112,128 label 864,158 cancel, props
-edge failed -> editing back 989,94 941,48 787,48 739,51 550,51 502,55 428,55 380,74 label 864,44 description, priority, | status, title
-edge failed -> submitting back 989,101 941,86 787,86 739,100 label 864,82 submit
-edge submitting -> closed back 550,114 502,129 428,129 380,128 302,128 254,128 160,128 112,120 label 465,125 created ok
-edge submitting -> failed 739,114 787,124 941,124 989,108 label 864,120 created error
+machine create-issue 1063 196
+node closed 40,109 72 44 initial
+node editing 302,75 79 36
+node failed 975,97 72 44
+node submitting 550,96 189 50
+edge closed -> editing 112,120 160,82 254,82 302,88 label 207,78 props
+edge editing -> closed back 302,98 254,120 160,120 112,127 label 207,116 cancel, props
+edge editing -> submitting 380,98 428,105 502,105 550,114 label 465,101 submit
+edge failed -> closed back 975,129 927,176 787,176 739,172 550,172 502,168 428,168 380,164 302,164 254,162 160,162 112,142 label 857,172 cancel, props
+edge failed -> editing back 975,108 927,62 787,62 739,65 550,65 502,69 428,69 380,88 label 857,58 description, | priority_picked, | status_picked, title
+edge failed -> submitting back 975,115 927,100 787,100 739,114 label 857,96 submit
+edge submitting -> closed back 550,128 502,143 428,143 380,142 302,142 254,142 160,142 112,134 label 465,139 created ok
+edge submitting -> failed 739,128 787,138 927,138 975,122 label 857,134 created error

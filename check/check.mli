@@ -64,14 +64,14 @@ type ('s, 'ev) report =
           check lists its children here instead of skipping them silently. Check
           each listed machine alone with {!component}, with the props from
           [children]. [edges] are the steps that the run took, sorted, with the
-          event names from [label]: a state entered from another state or
-          entered again, and the steps that kept the state ([kept]). [spec] is
-          the spec that the run found: the states it reached, initial state
-          first then by name, each with the timers and sources of the first
-          snapshot reached in it, and the edges it took; export it with
-          {!Silica.Spec.to_quint} and {!Silica.Spec.to_dot}. [paths] gives, for
-          each state name in the order the search reached them, a shortest list
-          of steps from the start to it. *)
+          event names from {!Silica.Machine.event_name}: a state entered from
+          another state or entered again, and the steps that kept the state
+          ([kept]). [spec] is the spec that the run found: the states it
+          reached, initial state first then by name, each with the timers and
+          sources of the first snapshot reached in it, and the edges it took;
+          export it with {!Silica.Spec.to_quint} and {!Silica.Spec.to_dot}.
+          [paths] gives, for each state name in the order the search reached
+          them, a shortest list of steps from the start to it. *)
   | Violation of { invariant : string; trace : 'ev list; state : 's }
   | Unreached of { states : string list }
       (** The search ended with no violation, but these names of the [states] of
@@ -98,7 +98,6 @@ val component :
   ?samples:sample list ->
   ?arrivals:int ->
   ?allow_unreached:string list ->
-  ?label:('e -> string) ->
   ?keys:Silica.Key.t list ->
   ?invariants:('s, 'e) invariant list ->
   ('p, 's, 'e) Silica.Component.t ->
@@ -148,7 +147,8 @@ val component :
     with [| _ -> Ignore] cannot hide a button that does nothing. When the search
     ends with no violation, each name of the [states] of the machine that the
     search never reached and that is not in [allow_unreached] is reported in
-    [Unreached]. [label] names the events of the taken [edges] (default: [""]).
+    [Unreached]. {!Silica.Machine.event_name} names the events of the taken
+    [edges]; a change of props is named ["props"].
 
     Handlers on elements with [disabled] set are not enabled. [max_states]
     defaults to 100000. [within] bounds an unbounded state space: states outside
@@ -164,7 +164,6 @@ val live :
   ?samples:sample list ->
   ?arrivals:int ->
   ?allow_unreached:string list ->
-  ?label:('e -> string) ->
   ?keys:Silica.Key.t list ->
   ?invariants:('s, 'e) invariant list ->
   ('s, 'e) Silica.Live.t ->
@@ -200,7 +199,6 @@ val app :
   ?samples:sample list ->
   ?arrivals:int ->
   ?allow_unreached:string list ->
-  ?label:('e -> string) ->
   ?keys:Silica.Key.t list ->
   ?invariants:('s app_state, 'e) invariant list ->
   routes:'s list ->

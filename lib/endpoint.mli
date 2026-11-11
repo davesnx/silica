@@ -31,3 +31,6 @@ val rejected : ('i, 'o, 'x) t -> 'x Codec.t
 val answer_id : ('i, 'o, 'x) t -> ('o * 'x) Type.Id.t
 
 type request = Request : ('i, 'o, 'x) t * 'i -> request
+
+val error_codec : error Codec.t
+val answer_codec : 'o Codec.t -> 'x Codec.t -> ('o, 'x) answer Codec.t

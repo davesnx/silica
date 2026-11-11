@@ -32,3 +32,20 @@
   (glob_files fixture/dist/*))
  (action
   (run node self_test.ts)))
+
+(rule
+ (alias runtest)
+ (deps
+  no_codecs.ts
+  codec_markers.json
+  %{project_root}/linear/client/dist
+  %{project_root}/site/client/dist)
+ (action
+  (run
+   node
+   no_codecs.ts
+   codec_markers.json
+   linear
+   %{project_root}/linear/client/dist
+   site
+   %{project_root}/site/client/dist)))

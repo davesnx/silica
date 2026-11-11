@@ -2,6 +2,16 @@ open Silica
 
 type event = Press | Leave | Timeout | Answer
 
+let label = function
+  | Press ->
+      "press"
+  | Leave ->
+      "leave"
+  | Timeout ->
+      "after 300ms"
+  | Answer ->
+      "answer"
+
 type state = Closed | Open | Gone [@@deriving state_shape]
 
 let endpoint =
@@ -12,6 +22,7 @@ let panel = Ref.make "panel"
 
 let door =
   Machine.make ~id:"door" ~init:Closed ~shape:state_shape
+    ~events:(Machine.shape ~name:label ())
     ~final:(function Gone -> true | Closed | Open -> false)
     ~owns:(function
       | Open ->
@@ -50,16 +61,6 @@ let view = function
   | Gone ->
       Node.text "gone"
 
-let label = function
-  | Press ->
-      "press"
-  | Leave ->
-      "leave"
-  | Timeout ->
-      "after 300ms"
-  | Answer ->
-      "answer"
-
 let state ?(final = false) name : Spec.state =
   { name; final; timers = []; sources = []; held = [] }
 
@@ -77,7 +78,7 @@ let write name text =
   )
 
 let () =
-  match Check.component ~label (Component.make door view) with
+  match Check.component (Component.make door view) with
   | Check.Ok { spec; edges; _ } ->
       write "door.qnt" (Spec.to_quint ~labels:edges spec);
       write "dead_end.qnt" (Spec.to_quint dead_end)

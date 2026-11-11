@@ -1,22 +1,13 @@
-let event_name : Counter.event -> string = function
-  | Increment ->
-      "increment"
-  | Decrement ->
-      "decrement"
-  | Save ->
-      "save"
-  | Answered _ ->
-      "answered"
-
 let print_event formatter event =
-  Format.pp_print_string formatter (event_name event)
+  Format.pp_print_string formatter
+    (Silica.Machine.event_name Counter.machine event)
 
 let () =
   match
     Check.component
       ~within:(fun state -> Counter.count state <= 3)
       ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
-      ~label:event_name Counter.component
+      Counter.component
   with
   | Check.Ok { states; transitions; _ } ->
       Printf.printf "counter: %d states, %d transitions\n" states transitions

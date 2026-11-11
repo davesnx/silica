@@ -22,7 +22,10 @@ counter has one state, [Count], which carries an [int]. The deriver
 names. [Machine.make ~shape:state_shape] uses it; the checker and the spec use
 the names.
 
-The machine has two events. The update function gets the state and the event,
+The machine has two events. [[@@deriving event_shape]] makes [event_shape],
+the shape of the event type, and [~events:event_shape] gives the machine the
+names of its events, for the edges of the spec (see {!page-machines.events}).
+The update function gets the state and the event,
 and gives the next step. [Increment] goes to [Count] with the number plus one.
 [Decrement] goes to [Count] with the number minus one, and stays when the
 number is 0. The view is written in mlx, the JSX syntax for OCaml.
@@ -30,12 +33,12 @@ number is 0. The view is written in mlx, the JSX syntax for OCaml.
 {@mlx file=examples/shared/tutorial_counter.mlx[
 open Silica
 
-type event = Increment | Decrement
+type event = Increment | Decrement [@@deriving event_shape]
 type state = Count of int [@@deriving state_shape]
 
 let machine =
   Machine.make ~id:"counter" ~init:(Count 0) ~shape:state_shape
-    (fun (Count n) event ->
+    ~events:event_shape (fun (Count n) event ->
       match event with
       | Increment ->
           Go (Count (n + 1))
@@ -144,12 +147,13 @@ machine ignores, so this catch-all cannot hide a mistake.
 open Silica
 
 type event = Ask | Answered of (string, string) Remote.answer
+[@@deriving event_shape]
 
 type state = Idle | Asking | Shown of string | Failed of string
 [@@deriving state_shape]
 
 let machine =
-  Machine.make ~id:"greeting" ~init:Idle ~shape:state_shape
+  Machine.make ~id:"greeting" ~init:Idle ~shape:state_shape ~events:event_shape
     ~owns:(function
       | Asking ->
           [

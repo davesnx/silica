@@ -77,6 +77,7 @@ type event =
   | Swap_rows
   | Select of int
   | Remove of int
+[@@deriving event_shape]
 
 let build next_id count =
   Array.init count (fun i ->
@@ -135,6 +136,7 @@ let step s = function
 let machine =
   Machine.make ~id:"keyed" ~init
     ~shape:(Machine.shape ~name:(fun _ -> "ready") ~names:[ "ready" ] ())
+    ~events:event_shape
     (fun state event -> Go (step state event))
 
 let button id label event =

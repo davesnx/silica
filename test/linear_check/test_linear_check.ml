@@ -172,6 +172,121 @@ let test_comment_of_another_author () =
   | r ->
       Alcotest.fail (print_component_report pp_comment_event r)
 
+let list_report = lazy (list ())
+
+let detail_report =
+  lazy (detail ~props:(Check.props (children ()) Linear_detail.component) ())
+
+let round_trip_path_events name machine report =
+  let codec =
+    match Silica.Machine.event_codec machine with
+    | Ok codec ->
+        codec
+    | Error message ->
+        Alcotest.failf "%s: %s" name message
+  in
+  match report with
+  | Check.Ok { paths; _ } ->
+      let events =
+        List.concat_map
+          (fun (_, steps) ->
+            List.filter_map
+              (fun (step : (_, _) Check.input) ->
+                match step with Event event -> Some event | Props _ -> None
+              )
+              steps
+          )
+          paths
+      in
+      Alcotest.(check bool)
+        (name ^ " has events on its paths")
+        true (events <> []);
+      List.iter
+        (fun event ->
+          let text = Silica.Codec.to_string codec event in
+          Alcotest.(check bool)
+            (name ^ " event " ^ text ^ " round trips")
+            true
+            (Silica.Codec.of_string codec text = Ok event)
+        )
+        events
+  | _ ->
+      Alcotest.failf "the check of %s did not pass" name
+
+let round_trip_states name machine states =
+  let codec =
+    match Silica.Machine.state_codec machine with
+    | Ok codec ->
+        codec
+    | Error message ->
+        Alcotest.failf "%s: %s" name message
+  in
+  List.iter
+    (fun state ->
+      let text = Silica.Codec.to_string codec state in
+      Alcotest.(check bool)
+        (name ^ " state " ^ text ^ " round trips")
+        true
+        (Silica.Codec.of_string codec text = Ok state)
+    )
+    states
+
+let test_every_machine_registered () =
+  Linear_codecs.register ();
+  let directory = "../../linear/app/shared" in
+  Alcotest.(check int)
+    "machines whose events derive JSON" 7
+    (List.length (Silica_test_support.Codec_coverage.required directory));
+  Alcotest.(check (list string))
+    "each one is in Linear_codecs" []
+    (Silica_test_support.Codec_coverage.missing directory)
+
+let test_codecs () =
+  Linear_codecs.register ();
+  round_trip_path_events "list" Linear_list.machine (Lazy.force list_report);
+  round_trip_path_events "detail" Linear_detail.machine
+    (Lazy.force detail_report);
+  round_trip_path_events "create" Linear_create.machine
+    (create ~props:(Check.props (children ()) Linear_create.component) ());
+  round_trip_path_events "me" Linear_me.machine (me ());
+  round_trip_path_events "comments" Linear_comments.machine (comments ());
+  round_trip_path_events "composer" Linear_composer.machine (composer ());
+  round_trip_path_events "comment" Linear_comment.machine (comment ());
+  round_trip_states "me" Linear_me.machine
+    Linear_me.[ Loading; Ready Linear_model.User.Ada; Failed ];
+  round_trip_states "comments" Linear_comments.machine
+    Linear_comments.
+      [
+        Loading;
+        Ready { viewer = Linear_model.User.Ben; comments = [ mine ] };
+        Failed;
+      ];
+  round_trip_states "composer" Linear_composer.machine
+    Linear_composer.
+      [
+        Empty;
+        Drafting "x";
+        Sending "x";
+        Failed { body = "x"; message = "The comment is too long" };
+      ];
+  round_trip_states "comment" Linear_comment.machine
+    Linear_comment.
+      [
+        Viewing;
+        Editing { draft = "x"; error = Some "Only the author can edit" };
+        Saving "x";
+        Edited mine;
+      ];
+  round_trip_states "create" Linear_create.machine
+    Linear_create.
+      [
+        Closed;
+        Editing { draft = Linear_model.Draft.empty; error = None };
+        Submitting Linear_model.Draft.empty;
+        Failed
+          { draft = Linear_model.Draft.empty; message = "Title is required" };
+      ]
+
 let test_lint () =
   let open Silica in
   let create_report =
@@ -188,9 +303,8 @@ let test_lint () =
     List.concat_map Spec.lint
       [
         spec "router" (Lazy.force router_report);
-        spec "list" (list ());
-        spec "detail"
-          (detail ~props:(Check.props (children ()) Linear_detail.component) ());
+        spec "list" (Lazy.force list_report);
+        spec "detail" (Lazy.force detail_report);
         spec "create" create_report;
         spec "create dialog"
           (create_dialog
@@ -239,6 +353,10 @@ let () =
           Alcotest.test_case "a comment of another author" `Quick
             test_comment_of_another_author;
           Alcotest.test_case "every machine passes lint" `Quick test_lint;
+          Alcotest.test_case "events and states round trip through the codecs"
+            `Quick test_codecs;
+          Alcotest.test_case "the codec module registers every machine" `Quick
+            test_every_machine_registered;
         ]
       );
     ]

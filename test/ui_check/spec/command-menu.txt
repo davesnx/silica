@@ -6,4 +6,4 @@ state open
   hold scroll_lock
   hold dismiss
 edge closed -> open on props
-edge open -> closed on "close escape-key" "close outside-press" props run
+edge open -> closed on "close_request escape-key" "close_request outside-press" props run

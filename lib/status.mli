@@ -23,3 +23,9 @@ val is_stale : 'a t -> bool
 
 val map : ('a -> 'b) -> 'a t -> 'b t
 (** Change the data, old data included, and keep the status. *)
+
+val codec : 'a Codec.t -> 'a t Codec.t
+(** The status as [[@@deriving json]] writes a variant, with the codec of the
+    data: [["Idle"]], [["Loading", old]], [["Ready", {"data": .., "stale": ..}]]
+    or [["Failed", {"error": .., "last": ..}]]. A missing [last] or [old] is
+    [null]. *)

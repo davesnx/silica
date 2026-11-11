@@ -4,6 +4,6 @@ rankdir=LR;
 "note-dialog.__init" -> "note-dialog.closed";
 "note-dialog.closed" [label="closed" shape=box];
 "note-dialog.open" [label="open\nhold focus_trap\nhold scroll_lock\nhold dismiss" shape=box];
-"note-dialog.closed" -> "note-dialog.open" [label="open trigger-press, props"];
-"note-dialog.open" -> "note-dialog.closed" [label="close close-press, close escape-key, close outside-press, props, save"];
+"note-dialog.closed" -> "note-dialog.open" [label="open_request trigger-press, props"];
+"note-dialog.open" -> "note-dialog.closed" [label="close_request close-press, close_request escape-key, close_request outside-press, props, save"];
 }

@@ -151,15 +151,9 @@ let pp_router_event f = function
   | Silica.Router.Preload u ->
       Format.fprintf f "preload %s" (Url.to_string u)
 
-let router_label = function
-  | Silica.Router.Url_changed _ ->
-      "url changed"
-  | Silica.Router.Preload _ ->
-      "preload"
-
 let router () =
   let open Linear_routes in
-  Check.app ~max_states:500_000 ~label:router_label
+  Check.app ~max_states:500_000
     ~inputs:(fun _ ->
       List.map
         (fun path -> Silica.Router.Url_changed (Url.of_string path))
@@ -186,50 +180,6 @@ let router () =
     ~url_event:(fun u -> Silica.Router.Url_changed u)
     Linear_app.app
 
-let list_label = function
-  | Linear_list.Loaded (Ok _) ->
-      "loaded ok"
-  | Linear_list.Loaded (Rejected _ | Failed _) ->
-      "loaded error"
-  | Linear_list.Updated _ ->
-      "updated"
-  | Linear_list.Retry ->
-      "retry"
-  | Linear_list.Reconnect ->
-      "reconnect"
-  | Linear_list.Reconnected ->
-      "reconnected"
-  | Linear_list.Filter_open b ->
-      "filter open " ^ string_of_bool b
-  | Linear_list.Filter_changed _ ->
-      "filter changed"
-  | Linear_list.Grouping_picked _ ->
-      "grouping picked"
-  | Linear_list.Ordering_picked _ ->
-      "ordering picked"
-  | Linear_list.Toggle_group _ ->
-      "toggle group"
-  | Linear_list.Cursor_next ->
-      "cursor next"
-  | Linear_list.Cursor_previous ->
-      "cursor previous"
-  | Linear_list.Row_focused _ ->
-      "row focused"
-  | Linear_list.Menu_open b ->
-      "menu open " ^ string_of_bool b
-  | Linear_list.Command _ ->
-      "command"
-  | Linear_list.Create_key ->
-      "create key"
-  | Linear_list.Saved (_, Ok (Change.Saved _)) ->
-      "saved"
-  | Linear_list.Saved (_, Ok (Change.Conflict _)) ->
-      "conflict"
-  | Linear_list.Saved (_, (Rejected _ | Failed _)) ->
-      "save failed"
-  | Linear_list.Toast_closed _ ->
-      "toast closed"
-
 let pp_list_event f = function
   | Linear_list.Loaded r ->
       Format.fprintf f "loaded %a" pp_result r
@@ -240,7 +190,7 @@ let pp_list_event f = function
   | Linear_list.Reconnect ->
       Format.fprintf f "reconnect"
   | event ->
-      Format.pp_print_string f (list_label event)
+      Format.pp_print_string f (Machine.event_name Linear_list.machine event)
 
 let shown_view view =
   let value id =
@@ -364,51 +314,7 @@ let list () =
       | Loading | Failed _ ->
           []
       )
-    ~label:list_label ~invariants Linear_list.component
-
-let detail_label = function
-  | Linear_detail.Loaded (Ok _) ->
-      "loaded ok"
-  | Linear_detail.Loaded (Rejected _ | Failed _) ->
-      "loaded error"
-  | Linear_detail.Updated _ ->
-      "updated"
-  | Linear_detail.Retry ->
-      "retry"
-  | Linear_detail.Reconnect ->
-      "reconnect"
-  | Linear_detail.Reconnected ->
-      "reconnected"
-  | Linear_detail.Edit _ ->
-      "edit"
-  | Linear_detail.Draft_changed _ ->
-      "draft"
-  | Linear_detail.Save ->
-      "save"
-  | Linear_detail.Cancel_edit ->
-      "cancel edit"
-  | Linear_detail.Picker (Some _) ->
-      "picker open"
-  | Linear_detail.Picker None ->
-      "picker closed"
-  | Linear_detail.Pick _ ->
-      "pick"
-  | Linear_detail.Saved (_, Ok (Change.Saved _)) ->
-      "saved"
-  | Linear_detail.Saved (_, Ok (Change.Conflict _)) ->
-      "conflict"
-  | Linear_detail.Saved (_, (Rejected _ | Failed _)) ->
-      "save failed"
-  | Linear_detail.Toast_closed _ ->
-      "toast closed"
-  | Linear_detail.Menu_open b ->
-      "menu open " ^ string_of_bool b
-  | Linear_detail.Command _ ->
-      "command"
-  | Linear_detail.Create_key ->
-      "create key"
-  | Linear_detail.Keep_editing ->
-      "keep editing"
+    ~invariants Linear_list.component
 
 let pp_detail_event f = function
   | Linear_detail.Loaded r ->
@@ -420,7 +326,7 @@ let pp_detail_event f = function
   | Linear_detail.Reconnect ->
       Format.fprintf f "reconnect"
   | event ->
-      Format.pp_print_string f (detail_label event)
+      Format.pp_print_string f (Machine.event_name Linear_detail.machine event)
 
 let detail_inputs (state : Linear_detail.state) : Linear_detail.event list =
   let open Linear_detail in
@@ -492,22 +398,11 @@ let detail ~props () =
     ]
   in
   Check.component ~max_states:400_000 ~props ~within:detail_within
-    ~inputs:detail_inputs ~samples:[ issues; topic; saves ] ~label:detail_label
-    ~invariants Linear_detail.component
+    ~inputs:detail_inputs ~samples:[ issues; topic; saves ] ~invariants
+    Linear_detail.component
 
-let unsaved_label = function
-  | Linear_unsaved.Attempt (Nav.Push _) ->
-      "attempt push"
-  | Linear_unsaved.Attempt (Nav.Replace _) ->
-      "attempt replace"
-  | Linear_unsaved.Attempt (Nav.Traverse _) ->
-      "attempt traverse"
-  | Linear_unsaved.Discard ->
-      "discard"
-  | Linear_unsaved.Keep ->
-      "keep"
-
-let pp_unsaved_event f event = Format.pp_print_string f (unsaved_label event)
+let pp_unsaved_event f event =
+  Format.pp_print_string f (Machine.event_name Linear_unsaved.machine event)
 
 let unsaved () =
   let open Linear_unsaved in
@@ -527,7 +422,7 @@ let unsaved () =
       };
     ]
   in
-  Check.component ~label:unsaved_label ~invariants Linear_unsaved.component
+  Check.component ~invariants Linear_unsaved.component
 
 let pp_create_props f ({ create; view } : Linear_routes.issues) =
   Format.fprintf f "props %b%s" create
@@ -552,24 +447,6 @@ let pp_create_event f = function
       Format.fprintf f "cancel"
   | Linear_create.Created r ->
       Format.fprintf f "created %a" pp_result r
-
-let create_label = function
-  | Linear_create.Title _ ->
-      "title"
-  | Linear_create.Description _ ->
-      "description"
-  | Linear_create.Status_picked _ ->
-      "status"
-  | Linear_create.Priority_picked _ ->
-      "priority"
-  | Linear_create.Submit ->
-      "submit"
-  | Linear_create.Cancel ->
-      "cancel"
-  | Linear_create.Created (Ok _) ->
-      "created ok"
-  | Linear_create.Created (Rejected _ | Failed _) ->
-      "created error"
 
 let dialog_request view =
   match children Linear_create.dialog_component.component view with
@@ -668,7 +545,7 @@ let create ?(invariants = []) ~props () =
         Check.answers ~rejected:[ "Title is too long" ] create_endpoint
           [ issue 3 ];
       ]
-    ~inputs:create_inputs ~label:create_label
+    ~inputs:create_inputs
     ~invariants:(create_invariants @ invariants)
     Linear_create.component
 
@@ -682,50 +559,27 @@ let dialog_props_label :
   | _ ->
       "props closed"
 
-let dialog_label : Linear_create.event Silica_ui.Dialog.event -> string =
-  function
-  | Open_request _ ->
-      "open"
-  | Close_request reason ->
-      "close " ^ Silica_ui.Popup.reason_name reason
-  | Content event ->
-      create_label event
-
-let pp_dialog_event f event = Format.pp_print_string f (dialog_label event)
+let pp_dialog_event f event =
+  Format.pp_print_string f
+    (Machine.event_name Linear_create.dialog_component.component.machine event)
 
 let create_dialog ~props () =
-  Check.component ~props ~label:dialog_label
-    Linear_create.dialog_component.component
+  Check.component ~props Linear_create.dialog_component.component
 
 let pp_me_event f = function
   | Linear_me.Loaded r ->
       Format.fprintf f "loaded %a" pp_result r
 
-let me_label = function
-  | Linear_me.Loaded (Ok _) ->
-      "loaded ok"
-  | Linear_me.Loaded (Rejected _ | Failed _) ->
-      "loaded error"
-
 let me () =
   Check.component
     ~samples:[ Check.answers me_endpoint [ User.Ada ] ]
-    ~label:me_label Linear_me.component
+    Linear_me.component
 
 let a_comment ?(author = User.Ada) id body : Comment.t =
   { id; number = 1; author; body; created_at = 0; edited = false }
 
-let comments_label = function
-  | Linear_comments.Loaded (Ok _) ->
-      "loaded ok"
-  | Linear_comments.Loaded (Rejected _ | Failed _) ->
-      "loaded error"
-  | Linear_comments.Updated _ ->
-      "updated"
-  | Linear_comments.Retry ->
-      "retry"
-
-let pp_comments_event f event = Format.pp_print_string f (comments_label event)
+let pp_comments_event f event =
+  Format.pp_print_string f (Machine.event_name Linear_comments.machine event)
 
 let comments () =
   let thread =
@@ -767,23 +621,10 @@ let comments () =
         Check.states comments_topic
           [ thread.comments; thread.comments @ [ a_comment 3 "New" ] ];
       ]
-    ~label:comments_label ~invariants Linear_comments.component
+    ~invariants Linear_comments.component
 
-let composer_label = function
-  | Linear_composer.Typed "" ->
-      "typed empty"
-  | Linear_composer.Typed _ ->
-      "typed"
-  | Linear_composer.Send ->
-      "send"
-  | Linear_composer.Clear ->
-      "clear"
-  | Linear_composer.Sent (Ok _) ->
-      "sent ok"
-  | Linear_composer.Sent (Rejected _ | Failed _) ->
-      "sent error"
-
-let pp_composer_event f event = Format.pp_print_string f (composer_label event)
+let pp_composer_event f event =
+  Format.pp_print_string f (Machine.event_name Linear_composer.machine event)
 
 let composer () =
   let invariants =
@@ -810,23 +651,10 @@ let composer () =
           add_comment_endpoint
           [ a_comment 3 "x" ];
       ]
-    ~label:composer_label ~invariants Linear_composer.component
+    ~invariants Linear_composer.component
 
-let comment_label = function
-  | Linear_comment.Edit ->
-      "edit"
-  | Linear_comment.Typed _ ->
-      "typed"
-  | Linear_comment.Save ->
-      "save"
-  | Linear_comment.Cancel ->
-      "cancel"
-  | Linear_comment.Saved (Ok _) ->
-      "saved ok"
-  | Linear_comment.Saved (Rejected _ | Failed _) ->
-      "saved error"
-
-let pp_comment_event f event = Format.pp_print_string f (comment_label event)
+let pp_comment_event f event =
+  Format.pp_print_string f (Machine.event_name Linear_comment.machine event)
 
 let mine = a_comment 1 "Mine"
 
@@ -844,4 +672,4 @@ let comment ?(props = [ (mine, true); (mine, false) ]) () =
           edit_comment_endpoint
           [ { mine with body = "x"; edited = true } ];
       ]
-    ~label:comment_label Linear_comment.component
+    Linear_comment.component

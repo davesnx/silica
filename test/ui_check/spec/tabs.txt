@@ -1,4 +1,4 @@
 machine tabs
 initial ready
 state ready
-stay ready on first last next previous props "select a" "select c"
+stay ready on "move first" "move last" "move next" "move previous" props "select a" "select c"

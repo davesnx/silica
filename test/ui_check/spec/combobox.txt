@@ -6,10 +6,10 @@ state open
   hold dismiss
   hold anchor
 edge closed -> inline on props
-edge closed -> open on next previous show type
+edge closed -> open on "move next" "move previous" show typed
 edge inline -> closed on props
-edge open -> closed on enter escape focus-out outside press
+edge open -> closed on choose choose_highlighted escape focus_out outside_press
 edge open -> inline on props
 stay closed on escape props
-stay inline on enter escape first highlight last next press previous type
-stay open on first highlight last next previous props type
+stay inline on choose choose_highlighted escape highlight "move first" "move last" "move next" "move previous" typed
+stay open on highlight "move first" "move last" "move next" "move previous" props typed

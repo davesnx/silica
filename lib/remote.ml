@@ -16,6 +16,8 @@ let output = Endpoint.output
 let rejected = Endpoint.rejected
 let answer_id = Endpoint.answer_id
 let call = Source.remote_call
+let error_codec = Endpoint.error_codec
+let answer_codec = Endpoint.answer_codec
 
 let error_to_string = function
   | Http code ->

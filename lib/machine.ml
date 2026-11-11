@@ -33,8 +33,8 @@ let shape_names shape = Option.value shape.shape_names ~default:[]
 type ('p, 's, 'e) t = {
   id : string;
   init : 's;
-  name : 's -> string;
-  states : string list option;
+  shape : 's shape;
+  events : 'e shape option;
   final : 's -> bool;
   owns : 'p -> 's -> 'e Source.t list;
   entry : 'p -> 's -> 'e Action.t list;
@@ -48,15 +48,80 @@ type ('p, 's, 'e) t = {
 
 let id machine = machine.id
 let init machine = machine.init
-let name machine = machine.name
-let states machine = machine.states
+let name machine = machine.shape.shape_name
+let states machine = machine.shape.shape_names
+
+let event_name machine event =
+  match machine.events with
+  | Some events ->
+      events.shape_name event
+  | None ->
+      ""
+
+type codecs =
+  | Codecs : {
+      id : string;
+      type_id : ('p * 's * 'e) Type.Id.t;
+      state : 's Codec.t option;
+      event : 'e Codec.t option;
+    }
+      -> codecs
+
+let registered : codecs list ref = ref []
+
+let codecs (type p s e) (machine : (p, s, e) t) :
+    (s Codec.t option * e Codec.t option) option =
+  let rec find : codecs list -> (s Codec.t option * e Codec.t option) option =
+    function
+    | [] ->
+        None
+    | Codecs entry :: rest -> (
+        match Type.Id.provably_equal entry.type_id machine.type_id with
+        | Some Type.Equal ->
+            Some (entry.state, entry.event)
+        | None ->
+            find rest
+      )
+  in
+  find !registered
+
+let register_codecs machine ?state ?event () =
+  registered :=
+    Codecs { id = machine.id; type_id = machine.type_id; state; event }
+    :: List.filter
+         (fun (Codecs { type_id; _ }) ->
+           Option.is_none (Type.Id.provably_equal type_id machine.type_id)
+         )
+         !registered
+
+let codec machine what = function
+  | Some (Some codec) ->
+      Ok codec
+  | Some None ->
+      Error
+        ("the machine \"" ^ machine.id ^ "\" is registered with no " ^ what
+       ^ " codec: give ~" ^ what ^ " to Machine.register_codecs"
+        )
+  | None ->
+      Error
+        ("the machine \"" ^ machine.id
+       ^ "\" has no registered codecs: call Machine.register_codecs on it in \
+          the codec module of the app (for example Linear_codecs.register), \
+          and call that module before asking for a codec"
+        )
+
+let state_codec machine = codec machine "state" (Option.map fst (codecs machine))
+
+let event_codec machine = codec machine "event" (Option.map snd (codecs machine))
+
+let registered_codecs () = List.map (fun (Codecs { id; _ }) -> id) !registered
 let is_final machine = machine.final
 let default_props machine = machine.default_props
 let type_id machine = machine.type_id
 let run actions = List.map (fun action -> Action.Run action) actions
 
 let owned machine props state =
-  let prefix = machine.id ^ "/" ^ machine.name state ^ "/" in
+  let prefix = machine.id ^ "/" ^ name machine state ^ "/" in
   let counts = Hashtbl.create 8 in
   List.map
     (fun source ->
@@ -105,7 +170,7 @@ let without others sources =
   List.filter (fun (id, _) -> not (List.mem_assoc id others)) sources
 
 let move ?finished machine ~from_props ~to_props state next ~reenter actions =
-  if reenter || machine.name next <> machine.name state then
+  if reenter || name machine next <> name machine state then
     ( next,
       exit machine from_props state @ run actions @ enter machine to_props next,
       Entered
@@ -197,14 +262,14 @@ let owns_nothing _ _ = []
 let never _ = false
 let ignore_props _ _ _ = Ignore
 
-let make_with_props ~id ~init ~shape ?(owns = owns_nothing)
+let make_with_props ~id ~init ~shape ?events ?(owns = owns_nothing)
     ?(entry = no_actions) ?(exit = no_actions) ?(final = never) ?(start = [])
     ?(on_props = ignore_props) update =
   {
     id;
     init;
-    name = shape.shape_name;
-    states = shape.shape_names;
+    shape;
+    events;
     final;
     owns;
     entry;
@@ -216,10 +281,10 @@ let make_with_props ~id ~init ~shape ?(owns = owns_nothing)
     type_id = Type.Id.make ();
   }
 
-let make ~id ~init ~shape ?owns ?entry ?exit ?final ?start update =
+let make ~id ~init ~shape ?events ?owns ?entry ?exit ?final ?start update =
   let without_props f = Option.map (fun f () state -> f state) f in
   {
-    (make_with_props ~id ~init ~shape ?owns:(without_props owns)
+    (make_with_props ~id ~init ~shape ?events ?owns:(without_props owns)
        ?entry:(without_props entry) ?exit:(without_props exit) ?final ?start
        (fun () state event -> update state event
      )

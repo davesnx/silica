@@ -1,12 +1,15 @@
 open Silica
+open Jsonkit.Primitives
 
-type event = Loaded of (Site_doc.answer, string) Remote.answer | Retry
+type event = Loaded of (Site_doc.answer, string) Silica_jsonkit.answer | Retry
+[@@deriving json, event_shape]
 
 type state = Loading | Ready of Site_doc.page | Missing | Failed of string
-[@@deriving state_shape]
+[@@deriving json, state_shape]
 
 let machine =
   Machine.make_with_props ~id:"doc-page" ~init:Loading ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun slug -> function
       | Loading ->
           [ Remote.call Site_doc.endpoint slug (fun answer -> Loaded answer) ]

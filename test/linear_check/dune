@@ -6,9 +6,12 @@
 (test
  (name test_linear_check)
  (modules test_linear_check)
+ (deps
+  (glob_files %{project_root}/linear/app/shared/*.{ml,mlx}))
  (libraries
   silica
   silica.check
+  silica_test_support
   linear_checks
   silica_linear_app_native
   alcotest))

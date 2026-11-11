@@ -1,12 +1,24 @@
 open Silica
 
-type event = Attempt of Nav.t | Discard | Keep
+type event =
+  | Attempt of Nav.t
+      [@event_name_of
+        function
+        | Nav.Push _ ->
+            "attempt push"
+        | Nav.Replace _ ->
+            "attempt replace"
+        | Nav.Traverse _ ->
+            "attempt traverse"]
+  | Discard
+  | Keep
+[@@deriving event_shape]
 type state = Held | Asking of Nav.t [@@deriving state_shape]
 
 let keep_button = Ref.make "unsaved-keep"
 
 let machine =
-  Machine.make ~id:"unsaved" ~init:Held ~shape:state_shape
+  Machine.make ~id:"unsaved" ~init:Held ~shape:state_shape ~events:event_shape
     ~owns:(fun _ -> [ Source.block (fun nav -> Attempt nav) ])
     (fun state event ->
       match (state, event) with

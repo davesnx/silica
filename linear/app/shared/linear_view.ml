@@ -1,3 +1,4 @@
+open Jsonkit.Primitives
 open Linear_model
 
 module Filter = struct
@@ -23,6 +24,14 @@ module Filter = struct
     + List.length t.labels
 end
 
+type filter = Filter.t = {
+  statuses : Issue_status.t list;
+  assignees : User.t option list;
+  priorities : Priority.t list;
+  labels : Label.t list;
+}
+[@@deriving json]
+
 type grouping = By_status | By_assignee | By_priority | No_grouping
 type ordering = Priority_order | Updated | Created
 type t = { filter : Filter.t; grouping : grouping; ordering : ordering }
@@ -34,6 +43,7 @@ type group =
   | Assignee of User.t option
   | Priority of Priority.t
   | All
+[@@deriving json]
 
 let status_names =
   Issue_status.

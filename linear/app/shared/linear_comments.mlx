@@ -1,17 +1,21 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 
-type ready = { viewer : User.t; comments : Comment.t list }
+type ready = { viewer : User.t; comments : Comment.t list } [@@deriving json]
 
 type event =
-  | Loaded of (Thread.t, string) Remote.answer
-  | Updated of Comments.t Topic.update
+  | Loaded of (Thread.t, string) Silica_jsonkit.answer
+      [@event_name_of answer_name "loaded"]
+  | Updated of Comments.t Silica_jsonkit.update
   | Retry
+[@@deriving json, event_shape]
 
-type state = Loading | Ready of ready | Failed [@@deriving state_shape]
+type state = Loading | Ready of ready | Failed [@@deriving json, state_shape]
 
 let machine =
   Machine.make_with_props ~id:"comments" ~init:Loading ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun number -> function
       | Loading ->
           [ Remote.call comments_endpoint number (fun answer -> Loaded answer) ]

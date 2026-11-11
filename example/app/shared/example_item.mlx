@@ -1,17 +1,29 @@
 open Silica
+open Jsonkit.Primitives
 open Example_model
 
-type event = Settled of (Item.t, string) Remote.answer
+type event =
+  | Settled of (Item.t, string) Silica_jsonkit.answer
+      [@event_name_of
+        function
+        | Remote.Ok _ ->
+            "settled ok"
+        | Rejected _ ->
+            "settled rejected"
+        | Failed _ ->
+            "settled error"]
+[@@deriving json, event_shape]
 
 type state =
   | Loading
   | Loaded of Item.t
   | Missing of string
-  | Failed of Remote.error
-[@@deriving state_shape]
+  | Failed of Silica_jsonkit.error
+[@@deriving json, state_shape]
 
 let machine =
   Machine.make_with_props ~id:"item" ~init:Loading ~shape:state_shape
+    ~events:event_shape
     ~entry:(fun _ -> function
       | Loaded item ->
           [ Action.Set_title item.title ]

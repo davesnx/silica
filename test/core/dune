@@ -10,7 +10,8 @@
   test_protocol
   test_place
   test_sources
-  test_accessibility)
+  test_accessibility
+  test_codecs)
  (libraries silica silica_test_support alcotest)
  (preprocess
   (pps silica.ppx)))

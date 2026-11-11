@@ -61,3 +61,33 @@
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   Error: [silica] [@@deriving state_shape] needs a state type with no parameter: a shape is one value for one type
   [1]
+  $ ../standalone.exe --impl same_event_name.ml -o out.ml
+  File "same_event_name.ml", line 1, characters 18-46:
+  1 | type event = Save | Saved [@event_name "save"] [@@deriving event_shape]
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  Error: [silica] the events Save and Saved have the same name "save"
+  [1]
+  $ ../standalone.exe --impl parameter_event.ml -o out.ml
+  File "parameter_event.ml", line 1, characters 0-59:
+  1 | type 'data event = Loaded of 'data [@@deriving event_shape]
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  Error: [silica] [@@deriving event_shape] needs an event type with no parameter: a shape is one value for one type
+  [1]
+  $ ../standalone.exe --impl name_of_record.ml -o out.ml
+  File "name_of_record.ml", line 1, characters 13-68:
+  1 | type event = Saved of { at : int } [@event_name_of fun _ -> "saved"]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  Error: [silica] [@event_name_of] needs a constructor with tuple data; Saved has a record
+  [1]
+  $ ../standalone.exe --impl name_of_constant.ml -o out.ml
+  File "name_of_constant.ml", line 1, characters 13-52:
+  1 | type event = Retry [@event_name_of fun _ -> "retry"] [@@deriving event_shape]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  Error: [silica] [@event_name_of] needs a constructor with tuple data; Retry has none
+  [1]
+  $ ../standalone.exe --impl name_of_both.ml -o out.ml
+  File "name_of_both.ml", line 1, characters 13-77:
+  1 | type event = Moved of int [@event_name "move"] [@event_name_of string_of_int]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  Error: [silica] Moved has both [@event_name] and [@event_name_of]; keep one
+  [1]

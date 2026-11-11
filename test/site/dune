@@ -13,6 +13,7 @@
   silica.server
   silica.adapter
   silica_site_app_native
+  silica_test_support
   silica_site_server
   silica_static_export
   str

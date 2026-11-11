@@ -1224,6 +1224,22 @@ module Search = struct
 
   let machine =
     Machine.make ~id:"search" ~init:Idle ~shape:state_shape
+      ~events:
+        (Machine.shape
+           ~name:(function
+             | Input _ ->
+                 "input"
+             | Clear ->
+                 "clear"
+             | Fire ->
+                 "fire"
+             | Got _ ->
+                 "got"
+             | Retry ->
+                 "retry"
+             )
+           ()
+        )
       ~owns:(function
         | Typing _ ->
             [ Source.after 300 Fire ]
@@ -1278,19 +1294,6 @@ module Search = struct
     Check.component
       ~inputs:(fun _ -> [ Input "a" ])
       ~samples:[ Check.answers endpoint [ [ "hit" ] ] ]
-      ~label:(fun event ->
-        match event with
-        | Input _ ->
-            "input"
-        | Clear ->
-            "clear"
-        | Fire ->
-            "fire"
-        | Got _ ->
-            "got"
-        | Retry ->
-            "retry"
-      )
       component
 end
 
@@ -1375,6 +1378,7 @@ type kept = Counting of int [@@deriving state_shape]
 let test_kept_steps_are_labels_not_edges () =
   let machine =
     Machine.make ~id:"kept" ~init:(Counting 0) ~shape:kept_shape
+      ~events:(Machine.shape ~name:show ())
       ~owns:(fun _ -> [ Source.after 5 (Dec : ev) ])
       (fun (Counting n) (event : ev) ->
         match event with
@@ -1388,7 +1392,7 @@ let test_kept_steps_are_labels_not_edges () =
   in
   let view _ = Node.list [ btn "+" Inc; btn "go" Go ] in
   let spec, edges =
-    match Check.component ~label:show (Component.make machine view) with
+    match Check.component (Component.make machine view) with
     | Check.Ok { spec; edges; _ } ->
         (spec, edges)
     | _ ->

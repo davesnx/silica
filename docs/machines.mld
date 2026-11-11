@@ -32,7 +32,7 @@ stayed for half a second.
 {@mlx file=examples/shared/doc_debounce.mlx[
 open Silica
 
-type event = Typed of string | Settle | Clear
+type event = Typed of string | Settle | Clear [@@deriving event_shape]
 
 type state = Empty | Typing of string | Settled of string
 [@@deriving state_shape]
@@ -44,7 +44,7 @@ let typed : string -> (state, event) Machine.next = function
       Reenter (Typing text)
 
 let machine =
-  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape
+  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape ~events:event_shape
     ~owns:(function
       | Typing _ -> [ Source.after 500 Settle ] | Empty | Settled _ -> []
       )
@@ -79,6 +79,85 @@ let view (state : state) : event Node.t =
 let component = Component.make machine view
 ]}
 
+{1:events Events and codecs}
+
+The events have a shape too, given to [Machine.make] as [~events]. The deriver
+[[@@deriving event_shape]] makes it from the event variant, with the same rules
+as [state_shape]: [event_shape] for a type [event], the constructor in lower
+case as the name, [[@event_name "x"]] for another name. It lists no names: only
+the states need the list. The checker names the edges of the spec with it, and
+{!Silica.Machine.event_name} gives the name of an event (or [""] for a machine
+with no [events]).
+
+When the data of an event matters to a reader of a spec or a trace, name the
+event by its data with [[@event_name_of f]]: the name is [f] applied to the
+data of the constructor, one argument for each item of a tuple. By convention
+the name is the constructor name, a space, and a word for the data:
+
+{@ocaml skip[
+type event =
+  | Settled of (Item.t, string) Remote.answer
+      [@event_name_of
+        function
+        | Remote.Ok _ -> "settled ok"
+        | Rejected _ -> "settled rejected"
+        | Failed _ -> "settled error"]
+  | Select of string [@event_name_of fun value -> "select " ^ value]
+  | Retry
+[@@deriving event_shape]
+]}
+
+The names are in every build, release too: production traces record them.
+
+The JSON codecs of the snapshots and the events (see {!Silica.Codec}) serve
+traces, replay and development tools. They are not part of the machine: an app
+gives them with {!Silica.Machine.register_codecs}, in one module that only the
+development entry points call (tests, the checker suite, a development client).
+A release client that does not call it carries no codec, because the bundler
+drops the code that nothing references. In an app that derives JSON with
+[[@@deriving json]], {!Silica_jsonkit.codec} makes the codecs:
+
+{@ocaml skip[
+type event = Save | Answer of (string, string) Silica_jsonkit.answer
+[@@deriving json, event_shape]
+
+type state = Idle | Saving | Saved of string [@@deriving json, state_shape]
+
+let machine =
+  Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
+    update
+]}
+
+A module [Save_codecs], which only the tests and the development tools call:
+
+{@ocaml skip[
+let register () =
+  Machine.register_codecs machine
+    ~state:(Silica_jsonkit.codec ~to_json:state_to_json ~of_json:state_of_json)
+    ~event:(Silica_jsonkit.codec ~to_json:event_to_json ~of_json:event_of_json)
+    ()
+]}
+
+Derive the JSON on top-level types: the bundler drops an unused top-level
+function, but not the functions inside a submodule that the app uses. Mini
+Linear has [Linear_codecs.register], and its budget test checks that no codec
+reaches the client bundle.
+
+[Silica_jsonkit.answer], [Silica_jsonkit.update], [Silica_jsonkit.status] and
+[Silica_jsonkit.error] are the types of {!Silica.Remote}, {!Silica.Topic} and
+{!Silica.Status} under names that [[@@deriving json]] can use. Without the
+JSON deriver, {!Silica.Remote.answer_codec}, {!Silica.Topic.update_codec} and
+{!Silica.Status.codec} build the codecs of these types;
+{!Silica.Remote_machine.state_codec} and {!Silica.Router.state_codec} give the
+codecs of the ready-made machines. Leave out a codec when the events or the
+states hold closures or other data that is not plain data.
+{!Silica.Machine.event_codec} and {!Silica.Machine.state_codec} read the
+registered codecs; for a machine that is not registered they give an [Error]
+that names the machine and says how to register it. A test of the app can
+check with {!Silica.Machine.registered_codecs} that the codec module lists
+every machine whose events derive JSON, as the tests of mini Linear, the
+example app and the site do.
+
 {1:make Make a machine}
 
 [Machine.make ~id ~init ~shape update] makes the machine. [id] names the
@@ -90,6 +169,7 @@ reached. The other options:
 {t
 | Option | Meaning |
 |--------|---------|
+| [events] | The names of the events (see {!section-events}). |
 | [owns] | The timers, calls and sources of a snapshot (see {!section-owns}). |
 | [entry], [exit] | The actions to run when the machine enters or leaves a state. They get the snapshot. |
 | [final] | The snapshots where the machine stops: a final state handles no event. |
@@ -230,6 +310,7 @@ let subscribe =
     ~rejected:Codec.string
 
 type event = Typed of string | Send | Answer of (string, string) Remote.answer
+[@@deriving event_shape]
 
 type phase = Editing | Sending | Sent of string | Failed of string
 [@@deriving state_shape]
@@ -267,6 +348,7 @@ let machine =
          ~names:(Machine.shape_names phase_shape)
          ()
       )
+    ~events:event_shape
     ~owns:(fun state ->
       match state.phase with
       | Sending ->

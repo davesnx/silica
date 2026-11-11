@@ -1,0 +1,18 @@
+(melange.emit
+ (target out)
+ (alias melange-codecs)
+ (modules codecs)
+ (module_systems
+  (esm mjs))
+ (libraries
+  silica
+  silica.json-melange
+  silica_linear_app_melange
+  silica_example_app_melange))
+
+(rule
+ (alias runtest)
+ (deps
+  (alias melange-codecs))
+ (action
+  (run node out/test/melange_codecs/codecs.mjs)))

@@ -4,6 +4,7 @@ module Counter_event = Example_model.Counter_event
 let machine : (unit, int, Counter_event.t) Machine.t =
   Machine.make ~id:"counter" ~init:0
     ~shape:(Machine.shape ~name:(fun _ -> "counter") ~names:[ "counter" ] ())
+    ~events:Counter_event.shape
     (fun count event ->
       match event with
       | Counter_event.Incr ->

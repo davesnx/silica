@@ -245,13 +245,12 @@ reached, the timers and sources of each, and the edges it took (see
   [can_move] and [inv] (both).
 
 Give the export the [edges] of the same report, and each edge gets the names of
-the events that took it. The states come in a fixed order: the initial state
-first, then by name.
+the events that took it. The names come from the [events] of the machine (see
+{!page-machines.events}); a machine with no [events] gives empty names. The
+states come in a fixed order: the initial state first, then by name.
 
 {@ocaml[
-# match
-    Check.component ~label:(fun Doc_lamp.Toggle -> "toggle") Doc_lamp.component
-  with
+# match Check.component Doc_lamp.component with
   | Check.Ok { spec; edges; _ } ->
       print_string (Silica.Spec.to_quint ~labels:edges spec)
   | _ -> print_string "problem";;

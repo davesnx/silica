@@ -56,6 +56,17 @@ val call :
     before the answer, the call ends with [Failed (Network "timeout")], and a
     later answer is dropped. *)
 
+val error_codec : error Codec.t
+(** The error as [[@@deriving json]] writes a variant: [["Http", 500]],
+    [["Decode", "reason"]] or [["Network", "reason"]]. *)
+
+val answer_codec : 'o Codec.t -> 'x Codec.t -> ('o, 'x) answer Codec.t
+(** [answer_codec output rejected]: [["Ok", output]], [["Rejected", error]] or
+    [["Failed", error]]. For an endpoint:
+    [answer_codec (Remote.output endpoint) (Remote.rejected endpoint)]. A
+    machine whose events hold answers uses it in its event codec (see
+    {!Machine.val-shape}). *)
+
 val error_to_string : error -> string
 (** A short English sentence for the error, for a view:
     ["The server answered 500"], ["The server sent data that cannot be read"] or

@@ -12,8 +12,8 @@
  (libraries silica.ppx))
 
 (test
- (name state_shape_test)
- (modules state_shape_test)
+ (name shape_test)
+ (modules shape_test)
  (libraries silica)
  (preprocess
   (pps silica.ppx)))

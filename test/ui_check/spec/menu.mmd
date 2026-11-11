@@ -3,5 +3,5 @@ stateDiagram-v2
   state "closed" as s0
   state "open (hold dismiss, hold anchor)" as s1
   [*] --> s0
-  s0 --> s1 : open first list-navigation, open first trigger-press, open last list-navigation, props, trigger press
-  s1 --> s0 : choose, close escape-key, close focus-out, close outside-press, props, trigger press
+  s0 --> s1 : open_key first list-navigation, open_key first trigger-press, open_key last list-navigation, props, trigger_press
+  s1 --> s0 : choose, close escape-key, close focus-out, close outside-press, props, trigger_press

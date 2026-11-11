@@ -14,4 +14,4 @@ edge loading -> not_found on "loaded ok"
 edge loading -> ready on "loaded ok"
 edge not_found -> loading on props
 edge ready -> loading on props
-stay ready on "cancel edit" command conflict "create key" draft edit "keep editing" "menu open false" "menu open true" pick "picker closed" "picker open" reconnect reconnected save "save failed" saved "toast closed" updated
+stay ready on cancel_edit command create_key draft_changed edit keep_editing "menu_open false" "menu_open true" pick "picker closed" "picker open" reconnect reconnected save "saved conflict" "saved error" "saved ok" toast_closed updated

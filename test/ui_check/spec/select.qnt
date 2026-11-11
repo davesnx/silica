@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "select". Do not edit.
 module select {
   type State = | Closed | Open
-  type Event = OnStart | OnAny | OnCloseEscapeKey | OnCloseFocusOut | OnCloseItemPress | OnCloseOutsidePress | OnHighlight | OnMoveFirst | OnMoveLast | OnMoveLetter | OnMoveNext | OnMovePrevious | OnOpenListNavigation | OnOpenTriggerPress | OnProps | OnSelectFocusOut | OnSelectItemPress | OnTriggerPress
+  type Event = OnStart | OnAny | OnCloseEscapeKey | OnCloseFocusOut | OnCloseItemPress | OnCloseOutsidePress | OnHighlight | OnMoveFirst | OnMoveLast | OnMoveLetter | OnMoveNext | OnMovePrevious | OnOpenKeyListNavigation | OnOpenKeyTriggerPress | OnProps | OnSelectFocusOut | OnSelectItemPress | OnTriggerPress
 
   var state: State
   var running: Set[str]
@@ -27,8 +27,8 @@ module select {
     last' = OnStart,
   }
 
-  action closed_to_open_on_open_list_navigation = all { state == Closed, enter(Open, OnOpenListNavigation) }
-  action closed_to_open_on_open_trigger_press = all { state == Closed, enter(Open, OnOpenTriggerPress) }
+  action closed_to_open_on_open_key_list_navigation = all { state == Closed, enter(Open, OnOpenKeyListNavigation) }
+  action closed_to_open_on_open_key_trigger_press = all { state == Closed, enter(Open, OnOpenKeyTriggerPress) }
   action closed_to_open_on_trigger_press = all { state == Closed, enter(Open, OnTriggerPress) }
   action open_to_closed_on_close_escape_key = all { state == Open, enter(Closed, OnCloseEscapeKey) }
   action open_to_closed_on_close_focus_out = all { state == Open, enter(Closed, OnCloseFocusOut) }
@@ -47,8 +47,8 @@ module select {
   action open_stays_on_props = all { state == Open, state' = state, running' = running, last' = OnProps }
 
   action step = any {
-    closed_to_open_on_open_list_navigation,
-    closed_to_open_on_open_trigger_press,
+    closed_to_open_on_open_key_list_navigation,
+    closed_to_open_on_open_key_trigger_press,
     closed_to_open_on_trigger_press,
     open_to_closed_on_close_escape_key,
     open_to_closed_on_close_focus_out,

@@ -3,5 +3,5 @@ stateDiagram-v2
   state "closed" as s0
   state "open (hold focus_trap, hold scroll_lock, hold dismiss)" as s1
   [*] --> s0
-  s0 --> s1 : open trigger-press, props
-  s1 --> s0 : close close-press, close escape-key, close outside-press, props, save
+  s0 --> s1 : open_request trigger-press, props
+  s1 --> s0 : close_request close-press, close_request escape-key, close_request outside-press, props, save

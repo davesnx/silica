@@ -580,9 +580,45 @@ let test_static_export () =
     Alcotest.fail "404.html is not the not-found page";
   ignore (Sys.command ("rm -rf " ^ Filename.quote out))
 
+let round_trip codec value =
+  match codec with
+  | Error message ->
+      Alcotest.fail message
+  | Ok codec ->
+      Alcotest.(check bool)
+        "round trip" true
+        (Silica.Codec.of_string codec (Silica.Codec.to_string codec value)
+        = Ok value
+        )
+
+let test_codecs () =
+  Site_codecs.register ();
+  let directory = "../../site/app/shared" in
+  Alcotest.(check int)
+    "machines whose events derive JSON" 3
+    (List.length (Silica_test_support.Codec_coverage.required directory));
+  Alcotest.(check (list string))
+    "each one is in Site_codecs" []
+    (Silica_test_support.Codec_coverage.missing directory);
+  List.iter
+    (round_trip (Silica.Machine.event_codec Site_search.machine))
+    Site_search.[ Open_search; Changed true; Ran "install" ];
+  round_trip
+    (Silica.Machine.state_codec Site_landing.machine)
+    (Site_landing.Watching "ready");
+  round_trip
+    (Silica.Machine.event_codec Site_doc_page.machine)
+    (Site_doc_page.Loaded (Failed (Network "down")))
+
 let () =
   Alcotest.run "silica site"
     [
+      ( "codecs",
+        [
+          Alcotest.test_case "the codec module registers every machine" `Quick
+            test_codecs;
+        ]
+      );
       ( "server render",
         [
           Alcotest.test_case "every route: status, title, key text" `Quick

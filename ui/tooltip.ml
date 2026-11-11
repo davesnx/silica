@@ -33,7 +33,10 @@ type event =
   | Leave
   | Resume
   | Close of Popup.reason
+      [@event_name_of fun reason -> "close " ^ Popup.reason_name reason]
   | Elapsed of delay
+      [@event_name_of fun delay -> "elapsed " ^ string_of_int (delay_ms delay)]
+[@@deriving event_shape]
 
 type state = Closed | Opening | Open | Closing [@@deriving state_shape]
 
@@ -45,6 +48,7 @@ let layer (props : props) =
 
 let machine =
   Machine.make_with_props ~id:"tooltip" ~init:Closed ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun (props : props) -> function
       | Closed ->
           []

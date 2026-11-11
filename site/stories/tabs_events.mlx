@@ -2,12 +2,13 @@ open Silica
 open Silica_ui
 
 type page = { selected : string; events : string list }
-type event = Changed of string
+type event = Changed of string [@@deriving event_shape]
 
 let machine =
   Machine.make ~id:"tabs-events"
     ~init:{ selected = "account"; events = [] }
     ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~events:event_shape
     (fun page event ->
       match event with
       | Changed selected ->

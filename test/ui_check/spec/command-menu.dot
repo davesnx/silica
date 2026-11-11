@@ -5,5 +5,5 @@ rankdir=LR;
 "command-menu.closed" [label="closed" shape=box];
 "command-menu.open" [label="open\nhold focus_trap\nhold scroll_lock\nhold dismiss" shape=box];
 "command-menu.closed" -> "command-menu.open" [label="props"];
-"command-menu.open" -> "command-menu.closed" [label="close escape-key, close outside-press, props, run"];
+"command-menu.open" -> "command-menu.closed" [label="close_request escape-key, close_request outside-press, props, run"];
 }

@@ -1,5 +1,7 @@
 type message = { run : unit -> unit }
 
+type type_id = Type_id : 'a Type.Id.t -> type_id
+
 type context = {
   queue : (unit -> unit) Queue.t;
   mutable actions : message Action.host list;
@@ -7,7 +9,7 @@ type context = {
   dev : bool;
   on_error : (exn -> Node.error -> unit) option;
   mutable waiting : int;
-  machines : (string, int) Hashtbl.t;
+  machines : (string, type_id) Hashtbl.t;
 }
 
 let error_counter = ref 0
@@ -240,16 +242,19 @@ let create : type p s e.
     context -> (p, s, e) Node.component -> p -> (p, s, e) cell =
  fun context component props ->
   let machine = component.machine in
-  let id = Machine.id machine and uid = Type.Id.uid (Machine.type_id machine) in
+  let id = Machine.id machine and type_id = Machine.type_id machine in
+  let other (Type_id known) =
+    Option.is_none (Type.Id.provably_equal known type_id)
+  in
   ( match Hashtbl.find_opt context.machines id with
-  | Some known when known <> uid ->
+  | Some known when other known ->
       invalid_arg
         ("Silica.Instance: two machines with the id \"" ^ id
        ^ "\" in one tree. Make each machine once, at the top level, and give \
           two machines two ids."
         )
   | Some _ | None ->
-      Hashtbl.replace context.machines id uid
+      Hashtbl.replace context.machines id (Type_id type_id)
   );
   let snapshot, actions = Machine.start component.machine props in
   context.next_id <- context.next_id + 1;
@@ -358,9 +363,13 @@ let rec render : type p s e. (p, s, e) cell -> message Node.t =
       cell.stale <- false;
       cell.rendering <- true;
       let node =
-        Fun.protect
-          ~finally:(fun () -> cell.rendering <- false)
-          (fun () -> render_view cell)
+        match render_view cell with
+        | node ->
+            cell.rendering <- false;
+            node
+        | exception error ->
+            cell.rendering <- false;
+            raise error
       in
       cell.last <- Some (snapshot, node);
       node

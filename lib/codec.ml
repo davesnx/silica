@@ -112,3 +112,30 @@ let to_string c v = Json.to_string (c.encode v)
 
 let of_string c s =
   match Json.of_string s with Error e -> Error e | Ok j -> c.decode j
+
+let constructor name arguments =
+  Json.declassify (`List (Json.declassify (`String name) :: arguments))
+
+let constructor_of j =
+  match Json.classify j with
+  | `List (first :: arguments) -> (
+      match Json.classify first with
+      | `String name ->
+          Ok (name, arguments)
+      | _ ->
+          mismatch "a constructor name"
+    )
+  | _ ->
+      mismatch "a constructor array"
+
+let field name c j =
+  match Json.classify j with
+  | `Assoc fields -> (
+      match List.assoc_opt name fields with
+      | Some value ->
+          c.decode value
+      | None ->
+          Error ("missing field " ^ name)
+    )
+  | _ ->
+      mismatch "object"

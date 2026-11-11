@@ -29,7 +29,14 @@ type props = {
   classes : classes;
 }
 
-type event = Close of string | Tick | Hover of bool | Focus of bool
+type event =
+  | Close of string [@event_name_of fun key -> "close " ^ key]
+  | Tick
+  | Hover of bool
+      [@event_name_of fun hovered -> "hover " ^ string_of_bool hovered]
+  | Focus of bool
+      [@event_name_of fun focused -> "focus " ^ string_of_bool focused]
+[@@deriving event_shape]
 type model = { hovered : bool; focused : bool }
 
 type state =
@@ -55,7 +62,7 @@ let shows (props : props) key =
 let machine =
   Machine.make_with_props ~id:"toast"
     ~init:(Empty { hovered = false; focused = false })
-    ~shape:state_shape
+    ~shape:state_shape ~events:event_shape
     ~owns:(fun _ -> function
       | Running _ ->
           [ Source.after tick_ms Tick ]

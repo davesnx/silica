@@ -72,17 +72,11 @@ let pp_router_event f = function
   | Silica.Router.Preload u ->
       Format.fprintf f "preload %s" (Url.to_string u)
 
-let router_label = function
-  | Silica.Router.Url_changed _ ->
-      "url changed"
-  | Silica.Router.Preload _ ->
-      "preload"
-
 let all_routes =
   [ Home; Item 1; Item 2; About; Edit; Locked; Not_found "/nowhere" ]
 
 let router () =
-  Check.app ~max_states:500_000 ~label:router_label
+  Check.app ~max_states:500_000
     ~inputs:(fun _ ->
       List.map
         (fun path -> Silica.Router.Url_changed (Url.of_string path))
@@ -129,31 +123,12 @@ let todo () =
     ]
   in
   Check.component ~max_states:500_000 ~inputs:todo_inputs ~invariants
-    ~label:(function
-      | Example_todo.Draft _ ->
-          "draft"
-      | Example_todo.Add ->
-          "add"
-      | Example_todo.Toggle _ ->
-          "toggle"
-      | Example_todo.Delete _ ->
-          "delete"
-      )
     Example_todo.component
 
 let pp_item_event f (Example_item.Settled answer) =
   Format.fprintf f "settled %a" pp_answer answer
 
 let pp_item_input f input = Check.pp_input pp_item_event f input
-
-let item_label (Example_item.Settled answer) =
-  match answer with
-  | Ok _ ->
-      "settled ok"
-  | Rejected _ ->
-      "settled rejected"
-  | Failed _ ->
-      "settled error"
 
 let item ?(invariants = []) ~props () =
   let invariants =
@@ -166,28 +141,13 @@ let item ?(invariants = []) ~props () =
   Check.component ~props
     ~samples:
       [ Check.answers item_endpoint ~rejected:[ "no item" ] [ item 1; item 2 ] ]
-    ~label:item_label ~invariants Example_item.component
+    ~invariants Example_item.component
 
-let about () =
-  Check.component
-    ~label:(fun Example_about.Go_back -> "go back")
-    Example_about.component
+let about () = Check.component Example_about.component
 
 let edit () =
   Check.component
     ~inputs:(fun _ -> [ Example_edit.Draft "note"; Example_edit.Draft "" ])
-    ~label:(function
-      | Example_edit.Draft _ ->
-          "draft"
-      | Example_edit.Attempt _ ->
-          "attempt"
-      | Example_edit.Leave ->
-          "leave"
-      | Example_edit.Stay ->
-          "stay"
-      | Example_edit.Save ->
-          "save"
-      )
     Example_edit.component
 
 let not_found () = Check.component Example_not_found.component
@@ -217,43 +177,12 @@ let pp_votes_event f = function
 let votes () =
   Check.component
     ~samples:[ Check.states votes_topic [ 3; 4 ] ]
-    ~label:(function
-      | Example_votes.Update _ ->
-          "update"
-      | Example_votes.Reconnect ->
-          "reconnect"
-      )
     Example_votes.component
 
 let vote () =
   Check.component
     ~samples:[ Check.answers vote_endpoint ~rejected:[ "closed" ] [ 1 ] ]
-    ~label:(fun (event : (unit, int, string) Remote_machine.event) ->
-      match event with
-      | Load () ->
-          "load"
-      | Retry ->
-          "retry"
-      | Settled (Ok _) ->
-          "settled ok"
-      | Settled (Rejected _) ->
-          "settled rejected"
-      | Settled (Failed _) ->
-          "settled error"
-      | Reset ->
-          "reset"
-    )
     Example_vote_button.component
 
 let counter_bounded () =
-  Check.component
-    ~within:(fun count -> count <= 5)
-    ~label:(function
-      | Counter_event.Incr ->
-          "incr"
-      | Counter_event.Decr ->
-          "decr"
-      | Counter_event.Reset ->
-          "reset"
-      )
-    Example_counter.component
+  Check.component ~within:(fun count -> count <= 5) Example_counter.component

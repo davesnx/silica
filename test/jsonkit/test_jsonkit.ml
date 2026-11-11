@@ -14,6 +14,17 @@ module Shape = struct
   type t = Dot | Line of int | Box of { w : int; h : int } [@@deriving json]
 end
 
+module Event = struct
+  type t =
+    | Loaded of (Item.t, string) Silica_jsonkit.answer
+    | Updated of int Silica_jsonkit.update
+    | Failed of Silica_jsonkit.error
+  [@@deriving json]
+end
+
+let event_codec =
+  Silica_jsonkit.codec ~to_json:Event.to_json ~of_json:Event.of_json
+
 let item_codec =
   Silica_jsonkit.codec ~to_json:Item.to_json ~of_json:Item.of_json
 
@@ -30,6 +41,48 @@ let item =
 
 let tests =
   [
+    Alcotest.test_case "derived answers and updates are Silica JSON" `Quick
+      (fun () ->
+        let answer = Silica.Remote.answer_codec item_codec Silica.Codec.string
+        and update = Silica.Topic.update_codec Silica.Codec.int in
+        let loaded : (Item.t, string) Silica.Remote.answer = Ok item
+        and updated : int Silica.Topic.update =
+          { seq = 2; status = Ready { data = 5; stale = false } }
+        in
+        Alcotest.(check (list string))
+          "text"
+          [
+            {|["Loaded",|} ^ Silica.Codec.to_string answer loaded ^ "]";
+            {|["Updated",|} ^ Silica.Codec.to_string update updated ^ "]";
+            {|["Failed",["Http",500]]|};
+          ]
+          (List.map
+             (Silica.Codec.to_string event_codec)
+             [ Event.Loaded loaded; Updated updated; Failed (Http 500) ]
+          );
+        List.iter
+          (fun event ->
+            Alcotest.(check bool)
+              "round trip" true
+              (Silica.Codec.of_string event_codec
+                 (Silica.Codec.to_string event_codec event)
+              = Ok event
+              )
+          )
+          [
+            Event.Loaded (Rejected "no");
+            Loaded (Failed (Network "down"));
+            Updated { seq = 0; status = Loading None };
+          ]
+    );
+    Alcotest.test_case "a bad derived answer is an error value" `Quick
+      (fun () ->
+        match Silica.Codec.of_string event_codec {|["Loaded",["Maybe"]]|} with
+        | Error _ ->
+            ()
+        | Ok _ ->
+            Alcotest.fail "expected an error"
+    );
     Alcotest.test_case "a record round trips through the wire text" `Quick
       (fun () ->
         let text = Silica.Codec.to_string item_codec item in

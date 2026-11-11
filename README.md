@@ -36,7 +36,7 @@ The browser, the server and the model checker are three hosts of the same machin
 
 ## Example
 
-A button that saves a draft. It calls the server, shows the time of the save for two seconds, and goes back to idle. Four states, one Remote call, one timer. `[@@deriving state_shape]` names the states for the checker:
+A button that saves a draft. It calls the server, shows the time of the save for two seconds, and goes back to idle. Four states, one Remote call, one timer. `[@@deriving state_shape]` and `[@@deriving event_shape]` name the states and the events for the checker:
 
 ```ocaml
 open Silica
@@ -46,11 +46,12 @@ let save =
     ~rejected:Codec.string
 
 type event = Save | Answer of (string, string) Remote.answer | Reset
+[@@deriving event_shape]
 
 type state = Idle | Saving | Saved of string | Failed [@@deriving state_shape]
 
 let machine =
-  Machine.make ~id:"save" ~init:Idle ~shape:state_shape
+  Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
     ~owns:(function
       | Saving ->
           [ Remote.call save "draft" (fun answer -> Answer answer) ]

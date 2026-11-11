@@ -5,5 +5,5 @@ state system
 state fixed
 edge fixed -> system on "choose system" props
 edge system -> fixed on "choose high-contrast" "choose light" props
-stay system on "choose system" props "system dark false" "system dark true"
+stay system on "choose system" props "system_dark false" "system_dark true"
 stay fixed on "choose high-contrast" "choose light" props

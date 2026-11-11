@@ -1,15 +1,18 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 open Linear_routes
 
 type event =
-  | Loaded of (Issues.t, string) Remote.answer
-  | Updated of Issues.t Topic.update
+  | Loaded of (Issues.t, string) Silica_jsonkit.answer
+      [@event_name_of answer_name "loaded"]
+  | Updated of Issues.t Silica_jsonkit.update
   | Retry
   | Reconnect
   | Reconnected
   | Filter_open of bool
-  | Filter_changed of Linear_view.Filter.t
+      [@event_name_of fun opened -> "filter_open " ^ string_of_bool opened]
+  | Filter_changed of Linear_view.filter
   | Grouping_picked of string
   | Ordering_picked of string
   | Toggle_group of Linear_view.group
@@ -17,10 +20,13 @@ type event =
   | Cursor_previous
   | Row_focused of int
   | Menu_open of bool
+      [@event_name_of fun opened -> "menu_open " ^ string_of_bool opened]
   | Command of string
   | Create_key
-  | Saved of int * (Change.answer, string) Remote.answer
+  | Saved of int * (Change.answer, string) Silica_jsonkit.answer
+      [@event_name_of saved_name]
   | Toast_closed of string
+[@@deriving json, event_shape]
 
 type ready = {
   data : Linear_data.t;
@@ -196,6 +202,7 @@ let live (r : ready) =
 
 let machine =
   Machine.make_with_props ~id:"issue-list" ~init:Loading ~shape:state_shape
+    ~events:event_shape
     ~entry:(fun _ -> function
       | Loading -> [ Action.Set_title "Issues" ] | Ready _ | Failed _ -> []
       )

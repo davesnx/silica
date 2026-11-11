@@ -23,3 +23,9 @@ type 's update = { seq : int; status : 's Status.t }
     state in [status]; it is [0] when the status holds no new state: connecting,
     offline (the old data with [stale = true]) or a failure. A client drops a
     state whose [seq] is not higher than the last one it got on the socket. *)
+
+val update_codec : 's Codec.t -> 's update Codec.t
+(** [update_codec state] writes [{"seq": n, "status": ..}], the status by
+    {!Status.codec}. A machine whose events hold updates uses it in its event
+    codec (see {!Machine.val-shape}). For a topic:
+    [update_codec (Topic.state topic)]. *)

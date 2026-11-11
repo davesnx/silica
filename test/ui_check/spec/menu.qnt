@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "menu". Do not edit.
 module menu {
   type State = | Closed | Open
-  type Event = OnStart | OnAny | OnChoose | OnCloseEscapeKey | OnCloseFocusOut | OnCloseOutsidePress | OnHighlight | OnMoveFirst | OnMoveLast | OnMoveLetter | OnMoveNext | OnMovePrevious | OnOpenFirstListNavigation | OnOpenFirstTriggerPress | OnOpenLastListNavigation | OnProps | OnTriggerPress
+  type Event = OnStart | OnAny | OnChoose | OnCloseEscapeKey | OnCloseFocusOut | OnCloseOutsidePress | OnHighlight | OnMoveFirst | OnMoveLast | OnMoveLetter | OnMoveNext | OnMovePrevious | OnOpenKeyFirstListNavigation | OnOpenKeyFirstTriggerPress | OnOpenKeyLastListNavigation | OnProps | OnTriggerPress
 
   var state: State
   var running: Set[str]
@@ -27,9 +27,9 @@ module menu {
     last' = OnStart,
   }
 
-  action closed_to_open_on_open_first_list_navigation = all { state == Closed, enter(Open, OnOpenFirstListNavigation) }
-  action closed_to_open_on_open_first_trigger_press = all { state == Closed, enter(Open, OnOpenFirstTriggerPress) }
-  action closed_to_open_on_open_last_list_navigation = all { state == Closed, enter(Open, OnOpenLastListNavigation) }
+  action closed_to_open_on_open_key_first_list_navigation = all { state == Closed, enter(Open, OnOpenKeyFirstListNavigation) }
+  action closed_to_open_on_open_key_first_trigger_press = all { state == Closed, enter(Open, OnOpenKeyFirstTriggerPress) }
+  action closed_to_open_on_open_key_last_list_navigation = all { state == Closed, enter(Open, OnOpenKeyLastListNavigation) }
   action closed_to_open_on_props = all { state == Closed, enter(Open, OnProps) }
   action closed_to_open_on_trigger_press = all { state == Closed, enter(Open, OnTriggerPress) }
   action open_to_closed_on_choose = all { state == Open, enter(Closed, OnChoose) }
@@ -46,9 +46,9 @@ module menu {
   action open_stays_on_move_previous = all { state == Open, state' = state, running' = running, last' = OnMovePrevious }
 
   action step = any {
-    closed_to_open_on_open_first_list_navigation,
-    closed_to_open_on_open_first_trigger_press,
-    closed_to_open_on_open_last_list_navigation,
+    closed_to_open_on_open_key_first_list_navigation,
+    closed_to_open_on_open_key_first_trigger_press,
+    closed_to_open_on_open_key_last_list_navigation,
     closed_to_open_on_props,
     closed_to_open_on_trigger_press,
     open_to_closed_on_choose,

@@ -16,13 +16,32 @@ type props = {
 type nav = Next | Previous | First | Last | Letter of char
 type edge = Start | End
 
+let nav_name = function
+  | Next ->
+      "next"
+  | Previous ->
+      "previous"
+  | First ->
+      "first"
+  | Last ->
+      "last"
+  | Letter _ ->
+      "letter"
+
+let edge_name = function Start -> "first" | End -> "last"
+
 type event =
   | Trigger_press
   | Open_key of Popup.reason * edge
-  | Move of nav
+      [@event_name_of
+        fun reason edge ->
+          "open_key " ^ edge_name edge ^ " " ^ Popup.reason_name reason]
+  | Move of nav [@event_name_of fun nav -> "move " ^ nav_name nav]
   | Highlight of int
   | Choose of int
   | Close of Popup.reason
+      [@event_name_of fun reason -> "close " ^ Popup.reason_name reason]
+[@@deriving event_shape]
 
 type state = Closed | Open of int option [@@deriving state_shape]
 
@@ -80,6 +99,7 @@ let close ?focus props : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"menu" ~init:Closed ~shape:state_shape
+    ~events:event_shape
     ~owns:(fun props -> function
       | Open _ ->
           Popup.layer ~escape:(Close Popup.Escape_key)

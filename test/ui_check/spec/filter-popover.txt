@@ -4,7 +4,7 @@ state closed
 state open
   hold dismiss
   hold anchor
-edge closed -> open on "open trigger-press" props
-edge open -> closed on apply "close close-press" "close escape-key" "close outside-press" "close trigger-press" props
+edge closed -> open on "open_request trigger-press" props
+edge open -> closed on apply "close_request close-press" "close_request escape-key" "close_request outside-press" "close_request trigger-press" props
 edge open -> open on props
 stay open on query
