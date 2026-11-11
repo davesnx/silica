@@ -1,0 +1,70 @@
+open Silica
+
+type state =
+  | Counting of int
+  | Saving of int
+  | Saved of int
+  | Save_failed of int
+[@@deriving state_shape]
+
+type event =
+  | Increment
+  | Decrement
+  | Save
+  | Answered of (unit, string) Remote.answer
+
+let count = function
+  | Counting count | Saving count | Saved count | Save_failed count ->
+      count
+
+let update state event : (state, event) Machine.next =
+  match (state, event) with
+  | (Counting count | Saved count | Save_failed count), Increment ->
+      Go (Counting (count + 1))
+  | (Counting count | Saved count | Save_failed count), Decrement when count > 0
+    ->
+      Go (Counting (count - 1))
+  | (Counting count | Save_failed count), Save ->
+      Go (Saving count)
+  | Saving count, Answered (Ok ()) ->
+      Go (Saved count)
+  | Saving count, Answered (Rejected _ | Failed _) ->
+      Go (Save_failed count)
+  | _ ->
+      Ignore
+
+let owns = function
+  | Saving count ->
+      [ Remote.call Api.save count (fun answer -> Answered answer) ]
+  | Counting _ | Saved _ | Save_failed _ ->
+      []
+
+let machine =
+  Machine.make ~id:"counter" ~init:(Counting 0) ~shape:state_shape ~owns update
+
+let message = function
+  | Counting _ ->
+      "Not saved"
+  | Saving _ ->
+      "Saving"
+  | Saved _ ->
+      "Saved"
+  | Save_failed _ ->
+      "The save failed. Try again."
+
+let view state =
+  let disabled event = not (Machine.can machine () state event) in
+  <main>
+    <h1>"Counter"</h1>
+    <output>(Node.text (string_of_int (count state)))</output>
+    <button on_press=Decrement disabled=(disabled Decrement)>
+      "Decrement"
+    </button>
+    <button on_press=Increment disabled=(disabled Increment)>
+      "Increment"
+    </button>
+    <button on_press=Save disabled=(disabled Save)>"Save"</button>
+    <p>(Node.text (message state))</p>
+  </main>
+
+let component = Component.make machine view

@@ -1,0 +1,17 @@
+(data_only_dirs template)
+
+(executable
+ (name silica)
+ (public_name silica)
+ (package silica)
+ (modules silica new_project template_files)
+ (libraries cmdliner unix))
+
+(rule
+ (target template_files.ml)
+ (deps
+  (source_tree template))
+ (action
+  (with-stdout-to
+   %{target}
+   (run gen/embed_template.exe template))))

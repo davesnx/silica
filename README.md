@@ -118,15 +118,29 @@ The [tutorial](docs/tutorial.mld) builds a counter and then a component like thi
 
 ## Getting started
 
-Silica isn't on opam yet. Use it from a checkout: pin it, or put the checkout inside your dune workspace.
+Silica isn't on opam yet. Pin it from GitHub; this installs the libraries and the `silica` command. Then make an app:
 
 ```sh
-git clone https://github.com/davesnx/silica
-opam pin add silica ./silica
-opam pin add silica-ui ./silica
+opam pin add silica git+https://github.com/davesnx/silica#main
+silica new myapp
 ```
 
+From a checkout of this repository, run `dune exec -- silica new ../myapp` instead.
+
+`silica new` writes a server, a client, a counter component with a Remote call, its tests and an `AGENTS.md`. Run the app:
+
+```sh
+cd myapp
+npm --prefix client install
+dune build
+dune exec server/main.exe
+```
+
+Then open <http://127.0.0.1:8080>. `dune test` steps the machine, drives the page with `Silica_memory` and runs the model checker.
+
 You need OCaml 5.1 or later, dune 3.20 or later, Melange 7 or later, [mlx](https://github.com/ocaml-mlx/mlx) (the opam packages `mlx` and `ocamlformat-mlx`), `jsonkit` and `jsonkit-melange`, and Node.js for esbuild and Tailwind in the client build.
+
+### Set up a project by hand
 
 Declare the mlx dialect in your `dune-project`, next to `(using melange 1.0)`:
 

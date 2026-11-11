@@ -1,0 +1,55 @@
+(dirs)
+
+(data_only_dirs node_modules)
+
+(melange.emit
+ (target out)
+ (alias client-js)
+ (modules client_main)
+ (module_systems
+  (esm mjs))
+ (libraries app_melange silica.browser silica.json-melange))
+
+(rule
+ (enabled_if
+  (= %{profile} release))
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  package.json
+  (source_tree node_modules))
+ (action
+  (run
+   node_modules/esbuild/bin/esbuild
+   out/client/client_main.mjs
+   --bundle
+   --format=esm
+   --outdir=dist
+   --entry-names=[name]-[hash]
+   --metafile=meta.json
+   --log-level=warning)))
+
+(rule
+ (enabled_if
+  (<> %{profile} release))
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  package.json
+  (source_tree node_modules))
+ (action
+  (run
+   node_modules/esbuild/bin/esbuild
+   out/client/client_main.mjs
+   --bundle
+   --format=esm
+   --outdir=dist
+   --entry-names=[name]-[hash]
+   --metafile=meta.json
+   --log-level=warning
+   --sourcemap
+   --sources-content=false)))

@@ -14,9 +14,34 @@ This page sets up a project and makes a first component. The
 - [tiny_httpd], for the server adapter [silica.adapter].
 - Node.js, for esbuild and Tailwind in the client build.
 
-Silica is not on opam yet. Pin a checkout of the repository with
-[opam pin add silica <path>] (and the same for [silica-ui]), or put the
-checkout inside your dune workspace.
+Silica is not on opam yet. Pin it with
+[opam pin add silica git+https://github.com/davesnx/silica#main] (and the same
+for [silica-ui]), or put a checkout inside your dune workspace. The pin also
+installs the command [silica].
+
+{1:new A new app}
+
+[silica new myapp] makes a complete app in the directory [myapp]: a counter
+component with a Remote call in [app/shared/], a server in [server/], a client
+in [client/], three tests in [test/] and an [AGENTS.md] with the commands to
+build, run, test and check it. From a checkout of the repository, run
+[dune exec -- silica new ../myapp].
+
+{@sh skip[
+cd myapp
+npm --prefix client install
+dune build
+dune exec server/main.exe
+]}
+
+[dune test] runs the tests: one steps the machine, one drives the page with
+{!Silica_memory}, one runs the checker. [silica check] runs the same tests.
+
+[silica new] never overwrites a file. A file that already has the content of
+the template is skipped. When a file differs, the command lists it and writes
+nothing.
+
+The rest of this page sets up a project by hand.
 
 {1:project The dune project}
 

@@ -259,7 +259,8 @@ let () = Silica_browser.mount ~root:"silica-root" Tutorial_greeting.component
 
 {2 The server}
 
-The server answers the endpoint and renders the page. See
+The server answers the endpoint and renders the page. [silica new] writes a
+complete server for a new app (see {!page-install.new}). See
 {!page-recipes.hosting} for the file, and {!page-server} for what the server
 does.
 

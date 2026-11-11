@@ -1,0 +1,5 @@
+{
+  "name": "{{name}}-client",
+  "private": true,
+  "devDependencies": { "esbuild": "0.25.12" }
+}

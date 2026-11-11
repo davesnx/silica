@@ -1,0 +1,9 @@
+(copy_files ../shared/*.{ml,mlx})
+
+(library
+ (name app_native)
+ (wrapped false)
+ (modes native)
+ (libraries silica)
+ (preprocess
+  (pps silica.ppx)))

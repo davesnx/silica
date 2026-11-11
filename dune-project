@@ -20,6 +20,7 @@
   jsonkit
   jsonkit-melange
   tiny_httpd
+  cmdliner
   (alcotest :with-test)
   (odoc :with-doc)
   (mdx :with-test)))

@@ -1,0 +1,3 @@
+(tests
+ (names counter_steps counter_page check_counter)
+ (libraries app_native silica silica.memory silica.check))
