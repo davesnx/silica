@@ -1,8 +1,173 @@
 {0 Performance}
 
-How fast Silica is, how it is measured, and the budgets that tests enforce.
+How fast Silica is, how it is measured, where it is slower than other
+frameworks and why, and the budgets that the tests enforce.
 
-{1:method Method}
+{1:machine Machine and method}
 
-The benchmarks are in [bench/]. [dune build @bench] runs them and checks the
-time budgets; [dune test] checks the size budgets of the production build.
+All numbers here come from one machine: 512 CPUs (AMD EPYC 9755), Linux,
+headless Chromium 156, Node 22. The machine is shared with other builds, so a
+number moves by about 10 percent from one run to the next. Compare numbers of
+the same run only. The benchmarks are in [bench/]:
+
+- [bench/browser/run.ts] measures in Chromium through Playwright. A time is from
+  just before the click (or the input event) to the end of the next frame, with
+  vsync off, so it includes style, layout and paint. Each measured run uses a
+  fresh page, after untimed warm-up rounds; the tables give the median. CPU
+  throttling (4x) is set with the DevTools protocol. Memory is the JavaScript
+  heap after a garbage collection.
+- [bench/keyed] is the keyed rows app of js-framework-benchmark written with
+  Silica; [bench/compare] has the same app in plain DOM JavaScript (the floor),
+  React 19 and Solid 1.9 (compiled JSX). All are minified by esbuild.
+- [bench/server/bench.exe] renders pages in process, through the same entry as
+  the server ([handle], session, settle, render). [bench/server/wrk.sh] runs
+  [wrk -t4 -c32] against the real servers. [bench/server/live_fanout.ts]
+  connects many Live sessions to one topic.
+
+{1:size Bundle size}
+
+The production build (see {!page-deploy.build}), in bytes after brotli 11:
+
+{table
+  {tr {th Bundle} {th Brotli} {th Raw}}
+  {tr {td Site, first load: entry and shared chunk} {td 67 910} {td 286 435}}
+  {tr {td Site, lazy chunk of the component pages} {td 19 383} {td 113 346}}
+  {tr {td Site, CSS} {td 5 663} {td 29 821}}
+  {tr {td Mini Linear, JavaScript} {td 65 347} {td 296 301}}
+  {tr {td Keyed rows app: Silica} {td 41 648} {td 166 205}}
+  {tr {td Keyed rows app: React 19} {td 60 500} {td 226 800}}
+  {tr {td Keyed rows app: Solid} {td 6 350} {td 17 200}}
+  {tr {td Keyed rows app: plain JavaScript} {td 1 130} {td 2 760}}
+}
+
+The Silica rows come from [dune test]; the three other keyed rows apps come
+from the browser driver, which reports 0.1 KiB steps, so their bytes are
+rounded.
+
+Before this work the site was one file of 1 333 609 bytes, 125 336 brotli.
+The smallest Silica app is about 41 kB brotli: the runtime, the renderer, the
+JSON codecs and the OCaml standard library parts that Melange links. Of that,
+the [Printf] machinery is about 30 kB raw: [Printexc] pulls it in.
+
+{1:keyed Keyed rows}
+
+Milliseconds, median, final tree, CPU 1x. Silica and the plain JavaScript
+version also ran back to back on the v0.12 tree ("Silica before").
+
+{table
+  {tr {th Operation} {th Silica before} {th Silica} {th Plain JS} {th React 19} {th Solid}}
+  {tr {td Create 1,000 rows} {td 45.9} {td 46.8} {td 46.1} {td 41.8} {td 47.4}}
+  {tr {td Replace all 1,000 rows} {td 58.1} {td 49.7} {td 49.7} {td 55.2} {td 54.9}}
+  {tr {td Update every 10th row} {td 27.3} {td 18.5} {td 13.6} {td 13.6} {td 14.2}}
+  {tr {td Select a row} {td 13.2} {td 5.6} {td 0.4} {td 0.9} {td 0.5}}
+  {tr {td Swap two rows} {td 53.8} {td 13.5} {td 5.7} {td 41.9} {td 6.2}}
+  {tr {td Remove a row} {td 22.8} {td 15.2} {td 9.0} {td 8.3} {td 9.3}}
+  {tr {td Create 10,000 rows} {td failed} {td 635.5} {td 418.1} {td 533.8} {td 401.1}}
+  {tr {td Append 1,000 rows} {td 66.3} {td 83.5} {td 60.3} {td 52.1} {td 55.0}}
+  {tr {td Clear 1,000 rows} {td 4.9} {td 4.0} {td 4.3} {td 7.1} {td 5.1}}
+}
+
+With the CPU 4x slower: select 56.1 ms before and 33.5 ms now (plain
+JavaScript 4.3), swap 205.8 and 55.2 (plain 26.6, React 178.1), create 10,000
+rows failed before and takes 2645 ms now (plain 1634, Solid 1733).
+
+Heap after create 1,000: Silica 4.88 MB, plain 2.13, React 4.48, Solid 2.95.
+
+A keystroke in a filtered list of 1,000 rows takes 2.9 ms (15.6 ms at 4x);
+clearing the filter, which adds back 1,000 rows, takes 9.6 ms (47.9 ms at 4x).
+
+{2:slower Where Silica is slower, and why}
+
+- Select, update, remove: Silica runs the view of the component that changed
+  and compares the whole result with the last one. Plain JavaScript and Solid
+  change only the nodes that depend on the change. So the time of a small
+  change grows with the size of the view of that component: about 5 ms for
+  1,000 rows. Split a large view into components: a component whose snapshot
+  and props did not change is not rendered again (the render skip).
+- Create 10,000 rows is about 50 percent slower than plain JavaScript and
+  about 20 percent slower than React: each row is built three times (the view,
+  the resolved view of the instance tree, the virtual DOM nodes).
+- Memory: each virtual node keeps its DOM node and each instance keeps its last
+  view, so a page holds about twice the heap of plain JavaScript.
+- Bundle: the smallest app is about 7 times the size of Solid's (see above).
+
+What changed in v0.13: each virtual node keeps its DOM node, attributes are
+compared with the last view and not read from the DOM, keyed children use a
+key table and move only the nodes outside the longest increasing run, and
+children are arrays (the list functions of Melange overflowed the stack at
+10,000 rows).
+
+{1:loads Page loads}
+
+Server render plus hydration, median ms: first contentful paint, then the
+time the root gets [data-silica-ready]. The first number of each pair is the
+v0.12 tree, run back to back.
+
+{table
+  {tr {th Page} {th CPU} {th Before} {th Now}}
+  {tr {td Site [/]} {td 1x} {td 60 / 35.1} {td 52 / 33.7}}
+  {tr {td Site [/docs/router]} {td 1x} {td 80 / 46.6} {td 60 / 39.5}}
+  {tr {td Site [/components/select], a lazy route} {td 1x} {td } {td 40 / 25.9}}
+  {tr {td Mini Linear, 1000 issues} {td 1x} {td 204 / 144.4} {td 152 / 115.3}}
+  {tr {td Site [/]} {td 4x} {td 212 / 155.0} {td 104 / 141.3}}
+  {tr {td Site [/docs/router]} {td 4x} {td 236 / 162.4} {td 148 / 229.8}}
+  {tr {td Site [/components/select], a lazy route} {td 4x} {td } {td 120 / 168.5}}
+  {tr {td Mini Linear, 1000 issues} {td 4x} {td 220 / 626.1} {td 224 / 657.1}}
+}
+
+At 4x the docs page is ready later than before (229.8 ms against 162.4): the
+entry now imports a shared chunk, one more file to fetch and run. The first
+paint is earlier on every site page. The mini Linear list with 1000 issues
+spends its time in hydration: the page is 784 kB of HTML and the answers of
+the settle step hold every issue twice (in the view and in the answer table).
+
+{1:server Server}
+
+In process, median ms per page (v0.12 in parentheses): site landing 0.191
+(0.226), largest docs page 0.747 (0.925), mini Linear with 1000 issues 7.85
+(13.4).
+
+Requests per second, [wrk -t4 -c32 -d10s], v0.12 and the final build run back
+to back:
+
+{table
+  {tr {th Target} {th Before} {th Now}}
+  {tr {td Site landing} {td 3 547} {td 5 553}}
+  {tr {td Largest docs page} {td 757} {td 1 250}}
+  {tr {td Mini Linear, 1000 issues} {td 60} {td 112}}
+  {tr {td The entry script, brotli accepted} {td 565 (1.3 MB, not compressed)} {td 18 731}}
+  {tr {td Health} {td 90 245} {td 134 557}}
+}
+
+One OCaml domain renders, so pages per second is about one over the render
+time. HTML is not compressed by the server: a proxy does it (see
+{!page-deploy.build}).
+
+{1:live Live}
+
+From the press of "Create issue" in one mini Linear page to the new row in
+another page (the call, the handler, the publish, the WebSocket message, the
+step and the paint): 3 ms with 30 issues, 19 ms with 1000 (17 and 68.5 ms at
+4x).
+
+1000 sessions on one topic, from the create call to the state at the last
+socket: 11 ms with 30 issues; 156 ms with 1000 issues, when each message is
+about 250 kB. The server holds 122 MB with 1000 sessions and 30 issues, 889 MB
+with 1000 issues. A topic sends its full state to every subscriber, so the
+cost grows with the state size times the subscribers. Before v0.13 the adapter
+accepted at most 64 connections, so 1000 sessions could not connect.
+
+{1:budgets Budgets}
+
+- Size: [dune test] fails when a production bundle grows over its brotli
+  budget ([test/budget/budgets.json]: the site first load, its lazy chunks and
+  CSS, mini Linear, the keyed rows app). The budgets are the sizes above plus
+  about 2 percent. A debug build ([SILICA_MINIFY=false]) skips the check.
+- Time: [dune build @bench --force] runs the server benchmarks, [wrk] and the
+  browser benchmarks of Silica and plain JavaScript, and fails when a number
+  is over its budget in [bench/budgets.json]. The time budgets are about three
+  times the medians above (four times for a single keystroke), and the
+  requests per second at least a third of them, because the machine is shared.
+  It writes [bench/results/latest.md]. It needs Chromium at [/usr/bin/chromium]
+  (or [CHROME]) and the comparison apps built ([npm run build] in
+  [bench/compare]).

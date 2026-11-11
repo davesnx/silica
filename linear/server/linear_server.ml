@@ -3,8 +3,16 @@ module S = Silica_example_adapter.Server
 
 let user_key = "user"
 
+let assignment = Mutex.create ()
+
 let assigned_user ~(config : Silica_server.config) ~next_user
     (session : Silica_server.Session.session) =
+  Mutex.protect assignment @@ fun () ->
+  let session =
+    Option.value
+      (config.sessions.get ~now:(config.now ()) session.id)
+      ~default:session
+  in
   match List.assoc_opt user_key session.data with
   | Some name -> (
       match List.find_opt (fun u -> User.name u = name) User.all with

@@ -1366,6 +1366,7 @@ module Make (Io : IO) = struct
                             | _ ->
                                 ()
                           in
+                          let* () = send_server (Protocol.Hello_ok { v = 1 }) in
                           let seq, value =
                             locked t (fun () ->
                                 let entry = topic_entry t name key in
@@ -1377,7 +1378,6 @@ module Make (Io : IO) = struct
                             )
                           in
                           attached := `Topic (name, key);
-                          let* () = send_server (Protocol.Hello_ok { v = 1 }) in
                           warning_send t socket.send (state_message ~seq value)
                     )
                 in

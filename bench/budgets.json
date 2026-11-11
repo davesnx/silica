@@ -1,1 +1,44 @@
-{"max":{},"min":{}}
+{
+  "max": {
+    "server render landing median ms": 0.6,
+    "server render doc median ms": 2.3,
+    "server render linear median ms": 24,
+    "keyed silica create1k 1x ms": 141,
+    "keyed silica replace1k 1x ms": 150,
+    "keyed silica update 1x ms": 56,
+    "keyed silica select 1x ms": 17,
+    "keyed silica swap 1x ms": 41,
+    "keyed silica remove 1x ms": 46,
+    "keyed silica create10k 1x ms": 1907,
+    "keyed silica append1k 1x ms": 251,
+    "keyed silica clear 1x ms": 12,
+    "keyed silica create1k 4x ms": 636,
+    "keyed silica replace1k 4x ms": 674,
+    "keyed silica update 4x ms": 305,
+    "keyed silica select 4x ms": 101,
+    "keyed silica swap 4x ms": 166,
+    "keyed silica remove 4x ms": 227,
+    "keyed silica create10k 4x ms": 7936,
+    "keyed silica append1k 4x ms": 901,
+    "keyed silica clear 4x ms": 75,
+    "heap silica after create 1000 MB": 7.4,
+    "filter keystroke 1x ms": 12,
+    "filter clear 1x ms": 29,
+    "filter keystroke 4x ms": 63,
+    "filter clear 4x ms": 144,
+    "load site / 1x ready ms": 102,
+    "load site /docs/router 1x ready ms": 119,
+    "load site /components/select (lazy route) 1x ready ms": 78,
+    "load linear / (1000) 1x ready ms": 346,
+    "load site / 4x ready ms": 424,
+    "load site /docs/router 4x ready ms": 690,
+    "load site /components/select (lazy route) 4x ready ms": 506,
+    "load linear / (1000) 4x ready ms": 1972
+  },
+  "min": {
+    "server landing requests/s": 1800,
+    "server doc (glossary) requests/s": 400,
+    "server linear 1000 requests/s": 35,
+    "server health requests/s": 40000
+  }
+}

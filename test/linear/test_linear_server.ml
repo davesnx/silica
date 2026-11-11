@@ -105,6 +105,22 @@ let test_page_is_settled () =
     "<link rel=\"stylesheet\" href=\"/static/app-BBBBBBBB.css\">";
   has "script" v.html "/static/client_main-AAAAAAAA.js"
 
+let test_first_page_user_is_the_session_user () =
+  let t = make () in
+  let user html =
+    List.find
+      (fun name -> contains html ("you are " ^ name))
+      (List.map User.name User.all)
+  in
+  let differ = ref 0 in
+  for _ = 1 to 200 do
+    let first = visit t "/issue/11" in
+    let again = visit ~cookie:first.cookie t "/issue/11" in
+    if user first.html <> user again.html then incr differ
+  done;
+  Alcotest.(check int)
+    "the settle calls of one page give its session one user" 0 !differ
+
 let test_detail_page () =
   let t = make () in
   let v = visit t "/issue/3" in
@@ -419,6 +435,8 @@ let () =
           t "detail, unknown issue and unknown path" test_detail_page;
           t "nav link, route focus and preload in the html" test_route_features;
           t "users in turn, kept by the session" test_users_in_turn;
+          t "the first page and the session agree on the user"
+            test_first_page_user_is_the_session_user;
         ]
       );
       ( "api",

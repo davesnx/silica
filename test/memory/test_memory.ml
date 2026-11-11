@@ -828,6 +828,42 @@ let first_paint_waits_for_a_chunk () =
   string "the page, not the loading view" "page 0" (text t "page");
   bool "no loading view" false (List.mem "loading" (ids t))
 
+let first_paint_waits_while_a_sibling_steps () =
+  let loader, chunk = Lazy_page.fresh () in
+  let shows_chunk =
+    {
+      Component.machine =
+        Test_apps.simple ~id:"shows-chunk" ~init:()
+          (fun () (_ : Lazy_page.event) -> None
+        );
+      view =
+        (fun () ->
+          Node.chunk chunk ~loading:(Node.text "loading") (fun page -> page 0)
+        );
+    }
+  in
+  let root =
+    {
+      Component.machine =
+        Test_apps.simple ~id:"chunk-and-ticker" ~init:() (fun () () -> None);
+      view =
+        (fun () ->
+          Node.element "main" []
+            [
+              Node.component ~props:(Test_apps.Label "x")
+                Test_apps.ticker_component;
+              Node.component shows_chunk;
+            ]
+        );
+    }
+  in
+  let t = M.mount root in
+  M.advance t 20;
+  int "a sibling stepped, the chunk still loads: no paint" 0 (M.paints t);
+  Lazy_page.finish loader (Ok Lazy_page.page);
+  bool "painted" true (M.paints t > 0);
+  string "the page" "page 0" (text t "page")
+
 let a_ready_chunk_paints_at_once () =
   let t = Lazy_page.mount ~shown:true (Chunk.ready Lazy_page.page) in
   int "one paint" 1 (M.paints t);
@@ -874,7 +910,7 @@ module Lazy_routes = struct
           Route.rest
   end
 
-  module R = Router.Make (State)
+  module Lazy_router = Router.Make (State)
 
   let loader = { Lazy_page.calls = 0; answer = None }
 
@@ -890,20 +926,23 @@ module Lazy_routes = struct
     )
 
   let routes =
-    R.routes ~chunked:[ State.Far ] [ State.Home; State.Far; State.Other ]
+    Lazy_router.routes ~chunked:[ State.Far ]
+      [ State.Home; State.Far; State.Other ]
 
-  let render (snapshot : R.snapshot) =
+  let render (snapshot : Lazy_router.snapshot) =
     match snapshot with
-    | R.At (State.Far, ()) ->
+    | Lazy_router.At (State.Far, ()) ->
         Node.chunk far ~loading:(Node.text "loading") (fun page -> page ())
-    | R.At (State.Home, ()) | R.At (State.Other, _) ->
-        R.link routes State.Far ()
+    | Lazy_router.At (State.Home, ()) | Lazy_router.At (State.Other, _) ->
+        Lazy_router.link routes State.Far ()
           [ Attr.string "id" "to-far" ]
           [ Node.text "far" ]
 
   let app url =
-    R.make routes
-      ~chunks:(function R.At (State.Far, ()) -> [ Chunk.Any far ] | _ -> [])
+    Lazy_router.make routes
+      ~chunks:(function
+        | Lazy_router.At (State.Far, ()) -> [ Chunk.Any far ] | _ -> []
+        )
       ~render url
 end
 
@@ -994,6 +1033,8 @@ let () =
       ( "chunk",
         [
           case "the first paint waits for a chunk" first_paint_waits_for_a_chunk;
+          case "the first paint waits while a sibling steps"
+            first_paint_waits_while_a_sibling_steps;
           case "a ready chunk paints at once" a_ready_chunk_paints_at_once;
           case "a chunk after the first paint shows its loading view"
             a_chunk_after_the_first_paint_shows_loading;

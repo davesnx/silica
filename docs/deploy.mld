@@ -250,8 +250,8 @@ instance finds no session (status 403, or [close_session]), and a
 the other.
 
 One instance goes far: on the test machine of {!page-performance}, the site
-server answers about 1300 docs pages a second, and 1000 Live sessions on one
-mini Linear topic cost about 130 MB of memory with 30 issues. Raise
+server answers about 1250 docs pages a second, and 1000 Live sessions on one
+mini Linear topic cost about 120 MB of memory with 30 issues. Raise
 [SILICA_MAX_CONNECTIONS] above the number of open pages with Live data, and
 give the machine the memory: a topic sends its full state to each subscriber,
 so memory and time grow with the state size times the subscribers.

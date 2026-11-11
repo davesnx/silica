@@ -1254,6 +1254,71 @@ let topic_tests =
           (shown f);
         check int "init once" 1 !init_calls
     );
+    test_case
+      "a publish while the hello is answered: no state before Hello_ok, and \
+       the newest state arrives"
+      `Quick (fun () ->
+        let t = make () in
+        let c = visit t in
+        let sent = ref [] in
+        let published = ref false in
+        let socket =
+          {
+            S.send =
+              (fun text ->
+                if not !published then (
+                  published := true;
+                  ignore (S.publish t counts_topic ~key:"k" 42)
+                );
+                sent := text :: !sent
+              );
+            close = ignore;
+          }
+        in
+        let connection =
+          match upgrade t (ws_headers (Some c)) with
+          | S.Accepted attach ->
+              attach socket
+          | S.Refused r ->
+              Alcotest.failf "refused with %d" r.status
+        in
+        connection.S.receive (hello c (sub ()));
+        let shown_list =
+          List.rev_map
+            (fun text ->
+              match Protocol.decode_server text with
+              | Ok m ->
+                  show m
+              | Error e ->
+                  Alcotest.fail e
+            )
+            !sent
+        in
+        let rec after_hello seen = function
+          | Hello_ok :: rest ->
+              after_hello true rest
+          | State (seq, _, value) :: rest ->
+              if not seen then Alcotest.fail "a state came before Hello_ok";
+              (seq, value) :: after_hello seen rest
+          | _ :: rest ->
+              after_hello seen rest
+          | [] ->
+              []
+        in
+        let accepted =
+          List.fold_left
+            (fun (last, value) (seq, v) ->
+              if seq > last then
+                (seq, Some v)
+              else
+                (last, value)
+            )
+            (0, None)
+            (after_hello false shown_list)
+        in
+        check (option int) "the client keeps the newest state" (Some 42)
+          (snd accepted)
+    );
     test_case "publish goes to every subscriber of the key only" `Quick
       (fun () ->
         let t = make () in
