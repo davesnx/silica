@@ -68,7 +68,7 @@ const open = async (slug: string): Promise<Page> => {
 };
 
 const focusedId = (page: Page) => page.evaluate(() => (document.activeElement?.id || document.activeElement?.tagName) ?? "");
-const events = (page: Page) => page.locator("#events li").allTextContents();
+const events = (page: Page) => page.locator("#event-log li").allTextContents();
 const htmlOverflow = (page: Page) =>
   page.evaluate(() => getComputedStyle(document.documentElement).overflow);
 

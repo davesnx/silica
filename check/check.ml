@@ -286,6 +286,7 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
   let rules =
     [
       ("view", fun _ view _ _ -> Check_rules.view_rules view);
+      ("view", fun _ view _ _ -> Check_accessibility.view_rules view);
       ("view", dead_end);
       ("machine", fun node view _ _ -> model.state_rules node view);
     ]

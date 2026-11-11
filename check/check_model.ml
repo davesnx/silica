@@ -823,8 +823,11 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
     event_of = (function Event event -> Some event | Props _ -> None);
     cause;
     state_rules =
-      (fun world _ ->
+      (fun world view ->
         owner_rules machine world
+        @ Check_accessibility.dialog_focus
+            ~held:(Machine.held machine world.props world.s)
+            view
         @
         if client_only then
           List.map
@@ -1085,7 +1088,11 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
     cause;
     state_rules =
       (fun world view ->
-        owner_rules machine world @ route_findings world @ link_findings view
+        owner_rules machine world
+        @ Check_accessibility.dialog_focus
+            ~held:(Machine.held machine world.props world.s)
+            view
+        @ route_findings world @ link_findings view
       );
     action_rules =
       (fun ~values view actions -> Check_rules.focus_target ~values view actions);

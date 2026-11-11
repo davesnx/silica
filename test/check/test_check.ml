@@ -253,7 +253,7 @@ let test_inputs () =
     component
       (fun n ->
         Node.element "input"
-          [ Attr.on_input (fun _ -> Inc) ]
+          [ Attr.string "aria-label" "count"; Attr.on_input (fun _ -> Inc) ]
           [ Node.text (string_of_int n) ]
       )
       ~inc:(fun n -> Some (min 1 (n + 1), []))
@@ -1868,6 +1868,125 @@ let text_finding rule report =
   if not (contains hint "hint: ") then Alcotest.fail ("no hint after " ^ message);
   (message, hint)
 
+let passes_view (view : ev Node.t) =
+  passes
+    (Check.run
+       (Check.component
+          (component
+             (fun _ -> Node.list [ btn "+" Inc; view ])
+             ~inc:(fun n -> Some (n, []))
+          )
+       )
+    )
+
+let test_accessible_views_pass () =
+  let span text = Node.element "span" [] [ Node.text text ] in
+  let link children =
+    Node.element "a" [ Attr.string "href" "/issue/2" ] children
+  in
+  passes_view (link [ span "ENG-2"; Node.text " "; span "Second" ]);
+  passes_view
+    (link
+       [
+         Node.element "div" [] [ Node.text "ENG-2" ];
+         Node.element "div" [] [ Node.text "Second" ];
+       ]
+    );
+  passes_view
+    (Node.element "a"
+       [
+         Attr.string "href" "/issue/2"; Attr.string "aria-label" "ENG-2 Second";
+       ]
+       [ span "ENG-2"; span "Second" ]
+    );
+  passes_view (link [ span "ENG-2"; span "(open)" ]);
+  passes_view
+    (Node.list
+       [
+         Node.element "label"
+           [ Attr.string "for" "title" ]
+           [ Node.text "Title" ];
+         Node.element "input"
+           [
+             Attr.string "id" "title";
+             Attr.string "aria-describedby" "title-help";
+           ]
+           [];
+         Node.element "p"
+           [ Attr.string "id" "title-help" ]
+           [ Node.text "Short" ];
+       ]
+    );
+  passes_view
+    (Node.element "div"
+       [
+         Attr.string "role" "listbox";
+         Attr.string "aria-label" "Fruit";
+         Attr.string "tabindex" "0";
+         Attr.string "aria-activedescendant" "apple";
+       ]
+       [
+         Node.element "div"
+           [
+             Attr.string "role" "option";
+             Attr.string "id" "apple";
+             Attr.string "aria-selected" "true";
+             Attr.on_press Inc;
+           ]
+           [ Node.text "Apple" ];
+       ]
+    );
+  passes_view
+    (Node.list
+       [
+         Node.element "h2" [] [ Node.text "Issues" ];
+         Node.element "h3" [] [ Node.text "Open" ];
+         Node.element "h2" [] [ Node.text "Closed" ];
+       ]
+    );
+  passes_view
+    (Node.element "img"
+       [ Attr.string "src" "/dot.png"; Attr.string "alt" "" ]
+       []
+    )
+
+let test_dialog_with_trap_passes () =
+  let panel = Ref.make "panel" in
+  let machine =
+    Machine.make ~id:"trapped" ~init:0
+      ~shape:(Machine.shape ~name:(fun _ -> "open") ())
+      ~owns:(fun _ -> [ Source.focus_trap panel ])
+      (fun _ (event : ev) ->
+        match event with Inc -> Machine.Stay [] | _ -> Machine.Ignore
+      )
+  in
+  passes
+    (Check.run
+       (Check.component
+          (Component.make machine (fun _ ->
+               Node.element "div"
+                 [
+                   Attr.ref_ panel;
+                   Attr.string "role" "dialog";
+                   Attr.string "aria-modal" "true";
+                   Attr.string "aria-label" "Edit";
+                 ]
+                 [ btn "+" Inc ]
+           )
+          )
+       )
+    )
+
+let view_breach rule (breach : ev Node.t) =
+  finding rule
+    (Check.component
+       (component
+          (fun _ -> Node.list [ btn "+" Inc; breach ])
+          ~inc:(fun n -> Some (n, []))
+          ~dec:(fun n -> Some (n, []))
+       )
+    )
+
 let test_every_rule () =
   let paged =
     Router.routes
@@ -1900,6 +2019,109 @@ let test_every_rule () =
                   (fun _ -> Node.element "button" [ Attr.on_press Inc ] [])
                   ~inc:(fun n -> Some (n, []))
                )
+            )
+      );
+      ( "field-label",
+        fun () -> view_breach "field-label" (Node.element "input" [] [])
+      );
+      ( "img-alt",
+        fun () ->
+          view_breach "img-alt"
+            (Node.element "img" [ Attr.string "src" "/logo.png" ] [])
+      );
+      ( "unique-ids",
+        fun () ->
+          view_breach "unique-ids"
+            (Node.list
+               [
+                 Node.element "p" [ Attr.string "id" "note" ] [ Node.text "a" ];
+                 Node.element "p" [ Attr.string "id" "note" ] [ Node.text "b" ];
+               ]
+            )
+      );
+      ( "aria-reference",
+        fun () ->
+          view_breach "aria-reference"
+            (Node.element "p"
+               [ Attr.string "aria-describedby" "missing" ]
+               [ Node.text "a" ]
+            )
+      );
+      ( "valid-role",
+        fun () ->
+          view_breach "valid-role"
+            (Node.element "div" [ Attr.string "role" "buton" ] [ Node.text "a" ])
+      );
+      ( "required-children",
+        fun () ->
+          view_breach "required-children"
+            (Node.element "ul"
+               [
+                 Attr.string "role" "listbox"; Attr.string "aria-label" "Fruit";
+               ]
+               [ Node.element "li" [] [ Node.text "Apple" ] ]
+            )
+      );
+      ( "nested-interactive",
+        fun () ->
+          view_breach "nested-interactive"
+            (Node.element "button"
+               [ Attr.on_press (Dec : ev) ]
+               [
+                 Node.text "Open ";
+                 Node.element "a"
+                   [ Attr.string "href" "/help" ]
+                   [ Node.text "help" ];
+               ]
+            )
+      );
+      ( "keyboard-access",
+        fun () ->
+          view_breach "keyboard-access"
+            (Node.element "div"
+               [ Attr.on_press (Dec : ev) ]
+               [ Node.text "Remove" ]
+            )
+      );
+      ( "dialog-name",
+        fun () ->
+          view_breach "dialog-name"
+            (Node.element "div"
+               [ Attr.string "role" "dialog" ]
+               [ Node.text "a" ]
+            )
+      );
+      ( "dialog-focus",
+        fun () ->
+          view_breach "dialog-focus"
+            (Node.element "div"
+               [
+                 Attr.string "role" "dialog";
+                 Attr.string "aria-modal" "true";
+                 Attr.string "aria-label" "Edit";
+               ]
+               [ Node.text "a" ]
+            )
+      );
+      ( "heading-order",
+        fun () ->
+          view_breach "heading-order"
+            (Node.list
+               [
+                 Node.element "h1" [] [ Node.text "Issues" ];
+                 Node.element "h3" [] [ Node.text "Open" ];
+               ]
+            )
+      );
+      ( "name-spacing",
+        fun () ->
+          view_breach "name-spacing"
+            (Node.element "a"
+               [ Attr.string "href" "/issue/2" ]
+               [
+                 Node.element "span" [] [ Node.text "ENG-2" ];
+                 Node.element "span" [] [ Node.text "Second" ];
+               ]
             )
       );
       ( "unique-refs",
@@ -2086,6 +2308,10 @@ let () =
           Alcotest.test_case "correct component passes" `Quick test_ok;
           Alcotest.test_case "seeded bug, shortest trace" `Quick test_seeded_bug;
           Alcotest.test_case "missing accessible name" `Quick test_no_name;
+          Alcotest.test_case "accessible views pass the rules" `Quick
+            test_accessible_views_pass;
+          Alcotest.test_case "a modal dialog with a focus trap" `Quick
+            test_dialog_with_trap_passes;
           Alcotest.test_case "aria-label is a name" `Quick
             test_aria_label_is_a_name;
           Alcotest.test_case "focus to missing ref" `Quick

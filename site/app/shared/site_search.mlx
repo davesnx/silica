@@ -138,6 +138,7 @@ let view state : event Node.t =
         />
       </svg>
       <span class_="grow text-left">"Search"</span>
+      " "
       <kbd class_="rounded-ui border border-ui-border px-1.5 font-mono text-xs">
         "Ctrl K"
       </kbd>

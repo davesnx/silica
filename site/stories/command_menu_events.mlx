@@ -69,7 +69,7 @@ let view page =
           ?open_:page.open_ ~classes:Style.command_menu commands
        )
     )
-    <ol id="events" class_="text-sm text-ui-muted">
+    <ol id="event-log" class_="text-sm text-ui-muted">
       (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
     </ol>
   </section>

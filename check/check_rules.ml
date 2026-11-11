@@ -14,11 +14,132 @@ let rules =
     {
       id = "accessible-name";
       message =
-        "In state {state}, the {role} at {element} can be pressed but has no \
-         accessible name.";
+        "In state {state}, the {role} at {element} has no accessible name, so \
+         a screen reader cannot say what it does.";
       hint =
-        "Give the element at {element} visible text, an aria-label, or an \
+        "Give the {role} at {element} visible text, an aria-label, or an \
          aria-labelledby that points to an element with text.";
+      applies_to = "view";
+    };
+    {
+      id = "field-label";
+      message = "In state {state}, the {role} field at {element} has no label.";
+      hint =
+        "Give the field at {element} a <label for> with its id, a <label> \
+         around it, an aria-label, or an aria-labelledby.";
+      applies_to = "view";
+    };
+    {
+      id = "img-alt";
+      message = "In state {state}, the image at {element} has no alt text.";
+      hint =
+        "Give the image at {element} an alt that says what it shows, or \
+         alt=\"\" when it is decoration.";
+      applies_to = "view";
+    };
+    {
+      id = "unique-ids";
+      message =
+        "In state {state}, the id {id} is on more than one element; the second \
+         one is the {role} {name} at {element}.";
+      hint =
+        "Make the id {id} unique in the view, for example with the instance \
+         key or a value of the props in it.";
+      applies_to = "view";
+    };
+    {
+      id = "aria-reference";
+      message =
+        "In state {state}, the {attribute} of the {role} {name} at {element} \
+         names the id {id}, which is not in the view.";
+      hint =
+        "Render an element with the id {id} in state {state}, or remove {id} \
+         from the {attribute} of the element at {element}.";
+      applies_to = "view";
+    };
+    {
+      id = "valid-role";
+      message =
+        "In state {state}, the element at {element} has role=\"{value}\", \
+         {problem}.";
+      hint =
+        "Use an ARIA role at {element} and give it the attributes that the \
+         role needs: aria-checked for checkbox, radio, switch, \
+         menuitemcheckbox and menuitemradio; aria-level for a heading that is \
+         not h1 to h6; aria-expanded for combobox; aria-valuenow for slider.";
+      applies_to = "view";
+    };
+    {
+      id = "required-children";
+      message =
+        "In state {state}, the {role} {name} at {element} holds {child}, but a \
+         {role} holds only {allowed} items.";
+      hint =
+        "Give each item of the {role} at {element} the role {allowed}, and \
+         move other content out of the {role}, for example next to it.";
+      applies_to = "view";
+    };
+    {
+      id = "nested-interactive";
+      message =
+        "In state {state}, the {role} {name} at {element} holds the \
+         {inner_role} {inner_name} at {inner}.";
+      hint =
+        "Move the {inner_role} at {inner} out of the {role} at {element}: a \
+         screen reader reads the {role} as one control and cannot reach the \
+         control inside it.";
+      applies_to = "view";
+    };
+    {
+      id = "keyboard-access";
+      message =
+        "In state {state}, the {role} {name} at {element} has a press handler, \
+         but {problem}, so a keyboard cannot reach it.";
+      hint =
+        "Use a <button> at {element}, or an <a href> for a link; or give it a \
+         role and tabindex=\"0\", and handle Enter and Space.";
+      applies_to = "view";
+    };
+    {
+      id = "dialog-name";
+      message =
+        "In state {state}, the {role} at {element} has no accessible name.";
+      hint =
+        "Name the {role} at {element} with an aria-labelledby that points to \
+         the id of its title, or with an aria-label.";
+      applies_to = "view";
+    };
+    {
+      id = "dialog-focus";
+      message =
+        "In state {state}, the view shows the modal {role} {name} at \
+         {element}, but the state holds no focus trap on it or on an element \
+         around it.";
+      hint =
+        "Own Source.focus_trap with the ref of the {role} at {element} in \
+         state {state}, or use Silica_ui.Dialog.";
+      applies_to = "state";
+    };
+    {
+      id = "heading-order";
+      message =
+        "In state {state}, the heading {name} at {element} has level {level}, \
+         but the heading before it has level {previous}.";
+      hint =
+        "Give the heading at {element} level {next} or lower, or add the \
+         missing levels between.";
+      applies_to = "view";
+    };
+    {
+      id = "name-spacing";
+      message =
+        "In state {state}, the {role} at {element} has the accessible name \
+         {name}: {left} and {right} come from different elements, with no \
+         space between them.";
+      hint =
+        "Put a space between the parts of the {role} at {element}, for example \
+         a text node \" \" between the elements, or give the {role} an \
+         aria-label.";
       applies_to = "view";
     };
     {
@@ -454,57 +575,6 @@ let not_explored_of_view node =
       )
     node
 
-let pressable attrs =
-  List.exists
-    (function Node.On_press _ | Node.On_double_press _ -> true | _ -> false)
-    attrs
-
-let may_need_name node =
-  let found = ref false in
-  iter
-    (function
-      | Node.Element (tag, attrs, _)
-        when tag = "button" || tag = "a" || pressable attrs ->
-          found := true
-      | _ ->
-          ()
-      )
-    node;
-  !found
-
-let accessible_name view =
-  if not (may_need_name view) then
-    []
-  else
-    List.filter_map
-      (fun element ->
-        let tag = Accessibility.tag element in
-        if
-          (tag = "button" || tag = "a"
-          || pressable (Accessibility.attributes element)
-          )
-          && (not (Accessibility.hidden element))
-          && Accessibility.name element = ""
-        then
-          Some
-            (finding "accessible-name"
-               ~element:(Accessibility.path element)
-               ~values:
-                 [
-                   ( "role",
-                     match Accessibility.role element with
-                     | Some role ->
-                         Accessibility.role_to_string role
-                     | None ->
-                         tag
-                   );
-                 ]
-            )
-        else
-          None
-      )
-      (Accessibility.elements view)
-
 let ref_names node =
   collect
     (function
@@ -586,8 +656,7 @@ let boundary_reset view =
   else
     [ finding "boundary-reset" ]
 
-let view_rules view =
-  accessible_name view @ unique_refs view @ boundary_reset view
+let view_rules view = unique_refs view @ boundary_reset view
 
 let action_name : type e. e Action.t -> string = function
   | Action.Focus _ ->

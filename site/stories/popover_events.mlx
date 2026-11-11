@@ -84,7 +84,7 @@ let view page =
          )
       )
     </div>
-    <ol id="events" class_="text-sm text-ui-muted">
+    <ol id="event-log" class_="text-sm text-ui-muted">
       (Node.list (List.map (fun line -> <li>(Node.text line)</li>) page.events))
     </ol>
   </section>

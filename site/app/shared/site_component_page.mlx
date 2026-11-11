@@ -47,12 +47,12 @@ let section_heading ~slug ~anchor text =
   <h2
     id=anchor
     class_="group mb-4 scroll-mt-24 text-xl font-semibold tracking-tight">
-    (Node.text text)
+    (Node.text (text ^ " "))
     (Site_links.component
        ~attrs:
          [
            Attr.string "class"
-             "ml-2 text-ui-muted opacity-0 group-hover:opacity-100 \
+             "ml-1 text-ui-muted opacity-0 group-hover:opacity-100 \
               focus-visible:opacity-100";
            Attr.string "aria-label" ("Link to " ^ text);
          ]

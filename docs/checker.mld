@@ -54,8 +54,6 @@ and is [complete].
 The built-in rules hold for every component. {!Check.val-rules} lists each with
 its id, its message and its hint:
 
-- [accessible-name]: each element that can be pressed has a name that a
-  screen reader can read (see {!Silica.Accessibility}).
 - [unique-refs]: refs are unique in a view.
 - [focus-target]: a [Focus], [Blur], [Scroll_into_view] or [Scroll_to] action
   names a ref of the next view.
@@ -77,6 +75,64 @@ its id, its message and its hint:
 - [live-uses-client-source], [live-uses-client-action]: see
   {{!section-live}Live components}.
 - [route-round-trip], [link-parses]: see {{!section-app}Routed apps}.
+
+{2:accessibility Accessibility rules}
+
+These rules read the view of each state as data, with the roles and names of
+{!Silica.Accessibility}. They see no browser and no CSS, and they skip hidden
+elements. A component is checked alone: they do not see the view of its parent,
+and they see a child component only as a node.
+
+- [accessible-name]: a button, link, checkbox, radio, switch, tab, menu item,
+  option or tree item, and each element with a press handler, has a name. It
+  cannot see a name that CSS paints, such as an icon font.
+- [field-label]: a field ([input], [textarea], [select], or a textbox,
+  searchbox, combobox, listbox, slider or spinbutton role) has a name: a
+  [<label for>], a [<label>] around it, [aria-label], [aria-labelledby],
+  [title] or [placeholder].
+- [img-alt]: an [img] has [alt] ([alt=""] for decoration), a name, or the role
+  [none]. It does not check that the text is useful, and does not look at
+  [svg].
+- [unique-ids]: an id is on one element of the view. It cannot see the ids of
+  the parent, nor of another instance of the same component.
+- [aria-reference]: [aria-labelledby], [aria-describedby],
+  [aria-activedescendant] and the [for] of a [label] name ids of the view. The
+  rule is off for a view that holds a child component or a chunk that is not
+  loaded, and it does not check [aria-controls] and [aria-owns], because their
+  target is often in the parent, as the panel of a tab is.
+- [valid-role]: a [role] has an ARIA 1.2 role ([doc-] and [graphics-] roles
+  count), and an explicit role has the attribute it needs: [aria-checked] for
+  checkbox, radio, switch, menuitemcheckbox and menuitemradio (a native
+  checkbox has it), [aria-level] for a heading that is not [h1] to [h6],
+  [aria-expanded] for combobox, [aria-valuenow] for slider.
+- [required-children]: a listbox holds only options, a tablist only tabs, a
+  menu or menubar only menu items, through elements with no role and groups.
+  Text in them is a finding; an empty one is not. It does not follow
+  [aria-owns].
+- [nested-interactive]: a button, link, tab, option, checkbox, radio, switch,
+  menuitemcheckbox or menuitemradio does not hold a control or an element with
+  a [tabindex] of 0 or more.
+- [keyboard-access]: an element with a press handler is a [button], a link, a
+  field or [summary], or has a [tabindex]; a press handler on an element with
+  no role, or with the role button, link, checkbox or switch, and no
+  [tabindex] is a finding. An option or a menu item with no [tabindex] is not,
+  because its widget can move focus with [aria-activedescendant]. The rule
+  does not see a key handler on an element above.
+- [dialog-name]: a dialog or alert dialog has a name.
+- [dialog-focus]: when the view shows a dialog with [aria-modal="true"], the
+  state owns a {!Silica.Source.focus_trap} on it or on an element around it.
+  It cannot see a native [<dialog>] opened with [showModal].
+- [heading-order]: a heading is at most one level below the heading before it;
+  each portal starts again. The first heading of a view can have any level,
+  because the rule cannot see the headings of the page around a component.
+- [name-spacing]: in the name that a button, link, tab, option, menu item,
+  checkbox, radio, switch, tree item or heading takes from its content, two
+  inline elements (such as [span]) or an element and a text do not join a
+  letter or digit to a letter or digit with no space, as
+  [<a><span>ENG-2</span><span>Second</span></a>] gives ["ENG-2Second"]. A block
+  element ([div], [p], [li]) counts as a space. It cannot see CSS: a [span]
+  that CSS makes a block or a flex item can show a space in a browser, but the
+  view still has none, so add a [" "] text node or an [aria-label].
 
 Each violation in the report is a record: the [rule], a [message] with the
 state, the element and the event, a [hint] that says how to fix it, the

@@ -36,7 +36,7 @@ function pointerdown(w, target) {
   target.dispatchEvent(new w.Event("pointerdown", { bubbles: true, cancelable: true }));
 }
 
-const events = () => [...document.querySelectorAll("#events li")].map((li) => li.textContent);
+const events = () => [...document.querySelectorAll("#event-log li")].map((li) => li.textContent);
 
 test("dialog: the trigger opens a popup in a portal, focus moves in, Escape closes it and focus returns", () => {
   const w = setup();

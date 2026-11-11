@@ -58,7 +58,7 @@ let view events =
         "After"
       </button>
     </div>
-    <ol id="events" class_="text-sm text-ui-muted">
+    <ol id="event-log" class_="text-sm text-ui-muted">
       (Node.list (List.map (fun line -> <li>(Node.text line)</li>) events))
     </ol>
   </section>

@@ -269,6 +269,7 @@ let row cursor (issue : Issue.t) =
            <span class_="w-16 shrink-0 text-sm text-ui-muted">
              (text (Issue.identifier issue))
            </span>;
+           text " ";
            <span
              class_=(Class.join
                        [
@@ -282,6 +283,7 @@ let row cursor (issue : Issue.t) =
                     )>
              (text issue.title)
            </span>;
+           text " ";
            <span class_="shrink-0 text-sm text-ui-muted">
              (text (Issue_status.label issue.status))
            </span>;
@@ -306,7 +308,7 @@ let section (r : ready) (group, members) =
             class_="flex w-full items-center gap-2 rounded-ui bg-ui-highlight \
                     px-2 py-1 text-left text-sm font-medium"
             on_press=(Toggle_group group)>
-            (text (Linear_view.group_label group))
+            (text (Linear_view.group_label group ^ " "))
             <span class_="text-ui-muted">
               (text (string_of_int (List.length members)))
             </span>

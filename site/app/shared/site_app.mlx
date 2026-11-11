@@ -121,6 +121,7 @@ let components_index () =
                    entry.slug
                    [
                      <span class_="font-semibold">(Node.text entry.name)</span>;
+                     Node.text " ";
                      <span class_="text-ui-muted">
                        (Node.text entry.summary)
                      </span>;

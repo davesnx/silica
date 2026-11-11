@@ -46,11 +46,12 @@ let heading ~slug { level; anchor; text } =
     [ Attr.string "id" anchor; Attr.string "class" (heading_classes level) ]
     [
       inlines text;
+      Node.text " ";
       Site_links.doc ~hash:anchor
         ~attrs:
           [
             Attr.string "class"
-              "ml-2 text-ui-muted no-underline opacity-0 \
+              "ml-1 text-ui-muted no-underline opacity-0 \
                group-hover:opacity-100 focus-visible:opacity-100";
             Attr.string "aria-label" ("Link to " ^ plain text);
           ]

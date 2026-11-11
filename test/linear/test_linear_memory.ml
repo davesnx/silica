@@ -205,6 +205,14 @@ let test_trace_of_a_visit () =
   | Error message ->
       Alcotest.fail message
 
+let test_row_names_have_spaces () =
+  let t = Memory.mount_app ~url:"/" Linear_app.app in
+  answer t;
+  let row = Memory.by_role ~name:"ENG-2 Second Todo" t Accessibility.Link in
+  Alcotest.(check (option string))
+    "the row link" (Some "issue-row-2")
+    (Memory.attribute row "id")
+
 let () =
   Alcotest.run "linear_memory"
     [
@@ -216,6 +224,8 @@ let () =
             `Quick test_create_in_flight_survives;
           Alcotest.test_case "the trace of a visit, from memory" `Quick
             test_trace_of_a_visit;
+          Alcotest.test_case "a row link reads its parts apart" `Quick
+            test_row_names_have_spaces;
         ]
       );
     ]

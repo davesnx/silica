@@ -63,6 +63,7 @@ let pager slug =
           (Option.get target)
           [
             <span class_="text-xs text-ui-muted">(Node.text caption)</span>;
+            Node.text " ";
             <span class_="font-medium">(Node.text title)</span>;
           ]
   in
