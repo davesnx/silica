@@ -12,7 +12,23 @@ type ('s, 'ev) found = {
   last : ('ev Check_model.move * string) option;
 }
 
-type ('n, 's, 'ev) result = {
+type 'e graph_start = { node : int; start_actions : 'e Action.host list }
+
+type ('ev, 'e) graph = {
+  starts : 'e graph_start list;
+  expanded : int;
+  first : int array;
+  targets : int array;
+  moves : 'ev Check_model.move array;
+}
+
+type ('ev, 'e) arrival = {
+  event : 'ev option;
+  from : string option;
+  actions : 'e Action.host list;
+}
+
+type ('n, 's, 'ev, 'e) result = {
   nodes : 'n Dynarray.t;
   parents : (int * 'ev Check_model.move) option Dynarray.t;
   transitions : int;
@@ -24,6 +40,7 @@ type ('n, 's, 'ev) result = {
   views : (string * string) list;
   not_explored : string list;
   children : Check_model.children;
+  graph : ('ev, 'e) graph option;
 }
 
 type ('n, 'e, 'ev) rule =
@@ -31,7 +48,7 @@ type ('n, 'e, 'ev) rule =
   * ('n ->
     'e Node.t ->
     'ev Check_model.move list ->
-    'ev option ->
+    ('ev, 'e) arrival ->
     Check_rules.finding list
     )
 
@@ -80,8 +97,13 @@ let path parents index =
 
 let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
     ~(rules : ('n, 'e, 'ev) rule list) ~max_states ~max_violations ~within
-    ~(allow : Check_rules.allowance list) =
+    ~(allow : Check_rules.allowance list) ~graph =
   let machine = model.machine in
+  let graph_starts = ref [] in
+  let expanded = ref 0 in
+  let first = Dynarray.create () in
+  let targets = Dynarray.create () in
+  let edge_moves = Dynarray.create () in
   let nodes = Dynarray.create () in
   let parents = Dynarray.create () in
   let seen = Hashtbl.create 1024 in
@@ -146,12 +168,12 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
   in
   let text view = lazy (View_text.to_string view) in
   let no_view = lazy "" in
-  let check_node index node view moves event =
+  let check_node index node view moves arrival =
     let state = model.snapshot node and state_name = model.name node in
     List.iter
       (fun (where, rule) ->
         let findings =
-          match guard machine (fun () -> rule node view moves event) with
+          match guard machine (fun () -> rule node view moves arrival) with
           | Ok findings ->
               findings
           | Error error ->
@@ -172,62 +194,81 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
     | exception Invalid_argument message when functional message ->
         raise (closure_error machine)
   in
-  let add parent node view =
-    if within (model.snapshot node) then
+  let add parent ~actions node view =
+    if not (within (model.snapshot node)) then
+      None
+    else
       let hash = Hashtbl.hash_param 100 200 node in
       let bucket = Option.value ~default:[] (Hashtbl.find_opt seen hash) in
       let known =
-        match List.exists (fun other -> other = node) bucket with
+        match List.find_opt (fun (other, _) -> other = node) bucket with
         | known ->
             known
         | exception Invalid_argument message when functional message ->
             raise (closure_error machine)
       in
-      if not known then
-        let () = plain node in
-        if Dynarray.length nodes >= max_states then
-          complete := false
-        else
-          let failed where error =
-            report ~state:(model.snapshot node) ~state_name:(model.name node)
-              ~view:no_view ~prefix:(Option.map fst parent)
-              ~last:
-                (Option.map (fun (_, move) -> (move, model.name node)) parent)
-              (raised ~where error)
-          in
-          match guard machine (fun () -> Lazy.force view) with
-          | Error error ->
-              failed "view" error
-          | Ok view -> (
-              match guard machine (fun () -> model.enabled node view) with
-              | Error error ->
-                  failed "handlers or inputs" error
-              | Ok moves ->
-                  let index = Dynarray.length nodes in
-                  Dynarray.add_last nodes node;
-                  Dynarray.add_last parents parent;
-                  Hashtbl.replace seen hash (node :: bucket);
-                  let name = model.name node in
-                  if not (Hashtbl.mem firsts name) then (
-                    Hashtbl.replace firsts name index;
-                    first_order := name :: !first_order;
-                    views := (name, View_text.to_string view) :: !views
-                  );
-                  not_explored :=
-                    List.rev_append
-                      (Check_rules.not_explored_of_view view)
-                      !not_explored;
-                  children :=
-                    List.rev_append
-                      (Check_model.children_of_view view)
-                      !children;
-                  Queue.add (index, moves) queue;
-                  check_node index node view moves
-                    (Option.map
-                       (fun (_, (move : _ Check_model.move)) -> move.event)
-                       parent
-                    )
-            )
+      match known with
+      | Some (_, index) ->
+          Some index
+      | None -> (
+          let () = plain node in
+          if Dynarray.length nodes >= max_states then (
+            complete := false;
+            None
+          ) else
+            let failed where error =
+              report ~state:(model.snapshot node) ~state_name:(model.name node)
+                ~view:no_view ~prefix:(Option.map fst parent)
+                ~last:
+                  (Option.map (fun (_, move) -> (move, model.name node)) parent)
+                (raised ~where error)
+            in
+            match guard machine (fun () -> Lazy.force view) with
+            | Error error ->
+                failed "view" error;
+                None
+            | Ok view -> (
+                match guard machine (fun () -> model.enabled node view) with
+                | Error error ->
+                    failed "handlers or inputs" error;
+                    None
+                | Ok moves ->
+                    let index = Dynarray.length nodes in
+                    Dynarray.add_last nodes node;
+                    Dynarray.add_last parents parent;
+                    Hashtbl.replace seen hash ((node, index) :: bucket);
+                    let name = model.name node in
+                    if not (Hashtbl.mem firsts name) then (
+                      Hashtbl.replace firsts name index;
+                      first_order := name :: !first_order;
+                      views := (name, View_text.to_string view) :: !views
+                    );
+                    not_explored :=
+                      List.rev_append
+                        (Check_rules.not_explored_of_view view)
+                        !not_explored;
+                    children :=
+                      List.rev_append
+                        (Check_model.children_of_view view)
+                        !children;
+                    Queue.add (index, moves) queue;
+                    check_node index node view moves
+                      {
+                        event =
+                          Option.map
+                            (fun (_, (move : _ Check_model.move)) -> move.event)
+                            parent;
+                        from =
+                          Option.map
+                            (fun (source, _) ->
+                              model.name (Dynarray.get nodes source)
+                            )
+                            parent;
+                        actions;
+                      };
+                    Some index
+              )
+        )
   in
   let starts =
     match guard machine model.start with
@@ -276,7 +317,12 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
       | Error _ ->
           ()
       );
-      add None node view
+      match add None ~actions node view with
+      | Some index when graph ->
+          graph_starts :=
+            { node = index; start_actions = actions } :: !graph_starts
+      | Some _ | None ->
+          ()
     )
     starts;
   let label event =
@@ -286,12 +332,20 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
     let index, moves = Queue.pop queue in
     let node = Dynarray.get nodes index in
     let from = model.name node in
+    let edges = Dynarray.length targets in
+    let edge move target =
+      if graph then (
+        Dynarray.add_last targets target;
+        Dynarray.add_last edge_moves move
+      )
+    in
     List.iter
       (fun (move : _ Check_model.move) ->
         incr transitions;
         if not !truncated then
           match guard machine (fun () -> model.step node move) with
           | Error error ->
+              edge move (-1);
               report ~state:(model.snapshot node) ~state_name:from
                 ~view:(lazy (View_text.to_string (model.view node)))
                 ~prefix:(Some index)
@@ -299,6 +353,7 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
                 (raised ~where:"update" error)
           | Ok (_, _, Machine.Unhandled)
             when not (Check_model.ignorable move.via) ->
+              edge move (-1);
               let view = model.view node in
               let cause = model.cause node view move in
               let element =
@@ -346,10 +401,22 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
               | Error _ ->
                   ()
               );
-              add (Some (index, move)) next view
+              edge move
+                (Option.value ~default:(-1)
+                   (add (Some (index, move)) ~actions next view)
+                )
       )
-      moves
+      moves;
+    if graph then
+      if !truncated then (
+        Dynarray.truncate targets edges;
+        Dynarray.truncate edge_moves edges
+      ) else (
+        Dynarray.add_last first edges;
+        expanded := index + 1
+      )
   done;
+  let freeze = Dynarray.to_array in
   {
     nodes;
     parents;
@@ -364,4 +431,23 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
     views = List.rev !views;
     not_explored = List.sort_uniq String.compare !not_explored;
     children = List.rev !children;
+    graph =
+      ( if graph then
+          Some
+            {
+              starts = List.rev !graph_starts;
+              expanded = !expanded;
+              first =
+                Array.init (!expanded + 1) (fun index ->
+                    if index < !expanded then
+                      Dynarray.get first index
+                    else
+                      Dynarray.length targets
+                );
+              targets = freeze targets;
+              moves = freeze edge_moves;
+            }
+        else
+          None
+      );
   }

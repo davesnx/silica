@@ -214,6 +214,125 @@ The search keeps the first violation of each rule, state name, element and
 message, so the list stays short. [max_violations] (50) stops the search when
 the list is full; the report is then [truncated].
 
+{1:temporal Temporal properties}
+
+{!Check.always} looks at one state at a time. Two properties look at runs:
+
+- {!Check.never_after}[ ~name ~after ~never ()]: in every run, from the first
+  point that matches [after] on, that point included, no point matches
+  [never]. "After Delete, the issue never shows again."
+- {!Check.leads_to}[ ~name ~from ~to_ ()]: every run that reaches a point that
+  matches [from] later reaches a point that matches [to_]; the same point
+  counts. "After Save, eventually Saved or Failed."
+
+A point of a run is a start, or the state that a step reaches. A condition
+reads the point as {!Check.always} does, and also the step that reached it:
+{!Check.val-event} reads its event, {!Check.action} its actions (a [Focus], a
+[Start_call]), and {!Check.entered} holds when the step came into a state from
+another one. In a temporal property these read every step, not only the step
+of a shortest path.
+
+{2:fairness Which runs count}
+
+The checker stores the graph that the search explored and checks each
+temporal property on it after the search. For [leads_to] it decides which runs
+count:
+
+- A run may stop in a state where no timer, no call and no action result
+  runs. The app then waits for the user, and the user may do nothing; a server
+  may never publish. So the view, the inputs, held sources and running
+  subscriptions do not keep a run going.
+- A run may not stop while a timer, a call or an action result runs.
+- An endless run counts only when it is weakly fair: each timer and each call
+  that runs at every step from some point on is also delivered again and
+  again. Every timer fires and every call answers in the end, even if the user
+  keeps typing. A timer that a step starts again with the same id runs all
+  along.
+
+"Eventually" in [leads_to] means: on every run that counts. Fairness is about
+timers and calls because the browser and the server deliver them without the
+user. It is weak (about what runs all along, not about what starts again and
+again) because a timer that the user keeps restarting, as in a debounce, has
+not had its time.
+
+{2:counterexamples Counterexamples}
+
+A violation of [never_after] is a [Path]: a shortest run to the first point
+that matches [never]. A violation of [leads_to] is one of two kinds, each a
+real run of the explored graph:
+
+- [Waits steps]: a shortest run to a state where nothing runs, after [from]
+  and with no [to_] since. The printed report ends with "then no timer and no
+  call runs: the app waits for the user". The usual fix is a timer or a call in
+  that state, such as a retry with a limit, or a [to_] that also accepts the
+  failure.
+- [Loop { stem; cycle }]: [stem] goes to the first state of [cycle], and
+  [cycle] comes back to it and can repeat forever. The cycle delivers each
+  timer and call that runs at all its steps, so the run is fair. The message
+  names the states of the cycle and what it delivers, such as an answer that
+  starts the same call again. The usual fix is to count the repeats, or to
+  handle that answer by going on.
+
+A set of states where the app can also wait gives a [Waits] only, which is
+shorter. Each kind is reported once for each state name, like the other
+rules. With the debounce of {{!section-component}above}, typing leads to a
+settled word or to an empty field; asking for a settled word only fails,
+because the user may type an empty word and stop:
+
+{@ocaml[
+# let settles to_ =
+    Check.run
+      (Check.component
+         ~inputs:(fun _ -> [ Doc_debounce.Typed "a"; Doc_debounce.Typed "" ])
+         ~properties:
+           [
+             Check.leads_to ~name:"typing settles"
+               ~from:(Check.state_named "typing") ~to_ ();
+           ]
+         Doc_debounce.component)
+  in
+  let holds = settles Check.(state_named "settled" ||| state_named "empty") in
+  let fails = settles (Check.state_named "settled") in
+  ( Check.passed holds,
+    List.map
+      (fun (violation : _ Check.violation) ->
+        match violation.counterexample with
+        | Check.Waits steps ->
+            "waits in " ^ violation.state_name ^ " after "
+            ^ String.concat ", "
+                (List.map (fun (step : _ Check.step) -> step.event) steps)
+        | Check.Path _ | Check.Loop _ ->
+            "other")
+      fails.violations );;
+- : bool * string list = (true, ["waits in empty after typed, clear"])
+]}
+
+{2:cut When the search was cut}
+
+A counterexample uses only explored states and steps, so it is never false. A
+step that [within] or [max_states] cut is not known, and the checker never
+takes it to be missing: a state whose timer step was cut still has a running
+timer, so it does not wait. A state that the search did not expand because
+[max_violations] stopped it gives no [Waits]. So a report that is not
+[complete] may miss counterexamples, and has no false ones.
+
+{2:not_checked What is not checked}
+
+- Real durations. Time is abstract, so a timer that another timer always
+  restarts before it can fire is taken to fire.
+- Which answer a call gets. Fairness delivers an answer, not a good one: a
+  retry on failure can fail forever, and that is a [Loop].
+- Runs outside [within] or past [max_states].
+
+{2:cost Cost}
+
+The graph is stored only when a check has a temporal property: one target and
+one step for each explored transition. Each property then visits each state
+at most twice. On mini Linear, the three temporal properties add about 8% to
+the time of its checks and 0.75 GB to their memory, most of it for the
+5 million transitions of the issue detail. A condition that reads actions
+runs the step again when it needs them, so the actions are not stored.
+
 {1:allow Allowances}
 
 A rule that does not apply to a state is turned off with an allowance and a

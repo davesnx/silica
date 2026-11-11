@@ -396,3 +396,78 @@ type rule = Check_rules.rule = {
 
 val rules : rule list
 (** Every built-in rule. *)
+
+(** {1 Temporal properties}
+
+    {!never_after} and {!leads_to} talk about runs, not single snapshots. The
+    checker stores the graph that the search explored (each snapshot, and each
+    step with its event, cause and actions) when a check has one of them, and
+    checks each one after the search, on the product of that graph with one bit
+    of memory, so a property visits at most twice the explored snapshots.
+
+    A condition is tested at each point of a run: at a start, and at the
+    snapshot that each step reaches. There, {!val-event}, {!action} and
+    {!entered} read that step, not only the step of a shortest path.
+
+    {b Runs and fairness.} A run starts at a start of the check and takes steps
+    of the graph. It may stop in a snapshot where no timer, no call and no
+    action result runs: the app waits for the user, who may do nothing, and a
+    server may never publish, so running subscriptions, held sources, inputs and
+    the view do not keep a run going. It may not stop while a timer, a call or
+    an action result runs. An infinite run counts only when it is weakly fair:
+    every timer and call that runs at every step from some point on is also
+    delivered again and again. So every timer fires and every call answers in
+    the end, even if the user keeps typing, and the checker does not report a
+    run where the user prevents that forever. "Eventually" means: on every such
+    run.
+
+    {b Not checked.} Real durations: time is abstract, so a timer that another
+    timer always restarts before it can fire is assumed to fire. Which answer a
+    call gets: fairness delivers an answer, not a good one, so a retry on
+    failure can fail forever. Runs of the parts outside [within] or after
+    [max_states]: a counterexample uses only explored snapshots and steps, so it
+    is a real run, and a step that left the explored graph is never taken to be
+    missing. A report with [complete = false] may miss counterexamples; one with
+    [truncated] may miss counterexamples past [max_violations]. *)
+
+val action : ('e Silica.Action.host -> bool) -> ('s, 'e) condition
+(** Holds on the snapshot reached by a step that ran a matching action, such as
+    [Run (Focus button)], and on a start whose start actions match. *)
+
+val entered : string -> ('s, 'e) condition
+(** Holds on the snapshot reached by a step from a state with another name into
+    the state with this name. It does not hold on a start. *)
+
+val never_after :
+  name:string ->
+  ?hint:string ->
+  after:('s, 'e) condition ->
+  never:('s, 'e) condition ->
+  unit ->
+  ('s, 'e) property
+(** [never_after ~name ~after ~never ()]: in every run, from the first point
+    that matches [after] on, that point included, no point matches [never]. A
+    violation has a [Path] counterexample: a shortest run to the first point
+    that matches [never], one for each state name. *)
+
+val leads_to :
+  name:string ->
+  ?hint:string ->
+  from:('s, 'e) condition ->
+  to_:('s, 'e) condition ->
+  unit ->
+  ('s, 'e) property
+(** [leads_to ~name ~from ~to_ ()]: every run that reaches a point that matches
+    [from] later reaches a point that matches [to_]; the same point counts. Runs
+    are the ones of the section above. Two counterexamples, both real runs of
+    the explored graph:
+    - [Waits steps]: a shortest run to a snapshot where nothing runs, after
+      [from] and with no [to_] since; one for each state name.
+    - [Loop { stem; cycle }]: [stem] is a shortest run to the first state of
+      [cycle]; [cycle] returns to it and can repeat forever, and it delivers
+      each timer and call that runs at each of its steps. One for each state
+      name where a cycle starts. A set of states where the app can also wait is
+      reported as [Waits] only, which is shorter.
+
+    The message names the cycle and what it delivers; the hint says what to
+    change. [hint] replaces the hint. *)

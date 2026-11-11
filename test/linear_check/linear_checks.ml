@@ -191,6 +191,68 @@ let shown_view view =
   | _ ->
       failwith "the list view does not show its grouping and ordering"
 
+let toast_shown key (toasts : Silica_ui.Toast.toast list) =
+  List.exists (fun (toast : Silica_ui.Toast.toast) -> toast.key = key) toasts
+
+let list_temporal =
+  let open Linear_list in
+  [
+    Check.never_after ~name:"a closed toast never shows again"
+      ~after:(Check.event (( = ) (Toast_closed "toast-0")))
+      ~never:
+        (Check.state (function
+          | Ready ready ->
+              toast_shown "toast-0" ready.toasts
+          | Loading | Failed _ ->
+              false
+          ))
+      ();
+  ]
+
+let detail_temporal =
+  let open Linear_detail in
+  [
+    Check.leads_to ~name:"a save leads to saved or failed"
+      ~from:
+        Check.(
+          event (function Save | Pick _ -> true | _ -> false)
+          &&& state (function
+            | Ready ready ->
+                Linear_data.requests ready.data <> []
+            | Loading | Not_found | Failed _ ->
+                false
+            )
+        )
+      ~to_:(Check.event (function Saved _ -> true | _ -> false))
+      ();
+  ]
+
+let detail_allowances =
+  [
+    Check.allow ~rule:"a save leads to saved or failed"
+      ~reason:
+        "Known defect that this property found: new props (the user opens \
+         another issue) re-enter Loading, which stops the call of a save in \
+         flight, so the user never sees if it was saved or failed. Remove this \
+         allowance when the detail keeps the call or reports the save."
+      ();
+  ]
+
+let create_temporal =
+  [
+    Check.leads_to
+      ~name:"closing the create dialog leads to focus on the New issue button"
+      ~from:(Check.entered "closed")
+      ~to_:
+        (Check.action (function
+          | Action.Run (Action.Focus target) ->
+              target = Linear_refs.new_issue
+          | _ ->
+              false
+          ))
+      ();
+  ]
+
 let list_check () =
   let open Linear_list in
   let properties =
@@ -274,7 +336,8 @@ let list_check () =
       | Loading | Failed _ ->
           []
       )
-    ~properties Linear_list.component
+    ~properties:(properties @ list_temporal)
+    Linear_list.component
 
 let list () = Check.run (list_check ())
 
@@ -342,7 +405,9 @@ let detail_check ~props () =
     ]
   in
   Check.component ~max_states:400_000 ~props ~within:detail_within
-    ~inputs:detail_inputs ~samples:[ issues; topic; saves ] ~properties
+    ~allow:detail_allowances ~inputs:detail_inputs
+    ~samples:[ issues; topic; saves ]
+    ~properties:(properties @ detail_temporal)
     Linear_detail.component
 
 let detail ~props () = Check.run (detail_check ~props ())
@@ -477,7 +542,7 @@ let create_check ?(properties = []) ~props () =
           [ issue 3 ];
       ]
     ~inputs:create_inputs
-    ~properties:(create_properties @ properties)
+    ~properties:(create_properties @ create_temporal @ properties)
     Linear_create.component
 
 let create ?properties ~props () = Check.run (create_check ?properties ~props ())

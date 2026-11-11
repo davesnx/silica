@@ -306,8 +306,55 @@ let test_fired_timer_runs_again () =
     Check.always ~name:"at most one tick"
       (Check.state (fun (Waiting count) -> count <= 1))
   in
-  expect_violation show_load "at most one tick" [ "retry"; "retry" ]
-    (Check.component ~properties:[ once ] (Component.make ticker view))
+  let check =
+    Check.component
+      ~within:(fun (Waiting count) -> count <= 3)
+      ~properties:[ once ]
+      (Component.make ticker view)
+  in
+  expect_violation show_load "at most one tick" [ "retry"; "retry" ] check;
+  let report = Check.run check in
+  Alcotest.(check bool) "within ends the search" true report.complete;
+  Alcotest.(check int) "waiting 0 to 3" 4 report.states
+
+let test_violation_does_not_stop_exploration () =
+  let ticker =
+    Machine.make ~id:"ticker" ~init:(Waiting 0) ~shape:ticking_shape
+      ~owns:(fun _ -> [ Source.after 100 Retry ])
+      (fun (Waiting count) -> function
+        | Retry ->
+            Machine.Go (Waiting (count + 1))
+        | Loaded _ ->
+            Machine.Stay []
+        )
+  in
+  let view _ =
+    Node.element "button"
+      [ Attr.on_press (Loaded (Remote.Ok 0)) ]
+      [ Node.text "x" ]
+  in
+  let report =
+    Check.run
+      (Check.component
+         ~within:(fun (Waiting count) -> count <= 5)
+         ~properties:
+           [
+             Check.always ~name:"never one"
+               (Check.state (fun (Waiting count) -> count <> 1));
+           ]
+         (Component.make ticker view)
+      )
+  in
+  Alcotest.(check (list string))
+    "one violation" [ "never one" ]
+    (List.map
+       (fun (violation : _ Check.violation) -> violation.rule)
+       report.violations
+    );
+  Alcotest.(check int)
+    "every state past the violation is explored" 6 report.states;
+  Alcotest.(check bool) "complete" true report.complete;
+  Alcotest.(check bool) "not truncated" false report.truncated
 
 type watch = Update of int Topic.update | Leave
 
@@ -1007,6 +1054,8 @@ let () =
             test_answered_call_runs_again;
           Alcotest.test_case "a fired timer runs again" `Quick
             test_fired_timer_runs_again;
+          Alcotest.test_case "a property violation does not stop exploration"
+            `Quick test_violation_does_not_stop_exploration;
         ]
       );
       ( "live",
