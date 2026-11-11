@@ -1,0 +1,33 @@
+state empty
+path
+  (start)
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+
+state running
+path
+  (start)
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+    dialog "Saved" [key_down]
+      text "Saved Saved."
+      button "Close" [press]
+
+state paused
+path
+  running -> paused on hover true, by the view offers pointer_enter on region "Notifications" at div
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+    dialog "Saved" [key_down]
+      text "Saved Saved."
+      button "Close" [press]
+
+state expired
+path
+  running -> running on tick, by the timer toast/running/after 100ms (100 ms)
+  running -> expired on tick, by the timer toast/running/after 100ms (100 ms)
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+    dialog "Saved" [key_down]
+      text "Saved Saved."
+      button "Close" [press]

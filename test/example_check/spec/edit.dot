@@ -1,0 +1,13 @@
+digraph "edit" {
+rankdir=LR;
+"edit.__init" [shape=point];
+"edit.__init" -> "edit.clean";
+"edit.clean" [label="clean" shape=box];
+"edit.asking" [label="asking\nhold block" shape=box];
+"edit.dirty" [label="dirty\nhold block" shape=box];
+"edit.asking" -> "edit.clean" [label="leave"];
+"edit.asking" -> "edit.dirty" [label="stay"];
+"edit.clean" -> "edit.dirty" [label="draft"];
+"edit.dirty" -> "edit.asking" [label="attempt"];
+"edit.dirty" -> "edit.clean" [label="draft, save"];
+}

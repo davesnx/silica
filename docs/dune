@@ -66,6 +66,8 @@
   %{project_root}/example/app/shared/example_home.mlx
   %{project_root}/example/client/client_main.ml
   %{project_root}/test/example_check/dune
+  %{project_root}/test/check_suite/run.t
+  %{project_root}/bin/template/check/main.ml
   %{project_root}/test/quint/check.ts
   %{project_root}/linear/app/shared/linear_model.ml
   %{project_root}/linear/app/shared/linear_theme.ml

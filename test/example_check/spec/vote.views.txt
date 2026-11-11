@@ -1,0 +1,34 @@
+state idle
+path
+  (start)
+view
+  button "Vote" [press]
+
+state loading
+path
+  idle -> loading on load, by the view offers press on button "Vote" at div > button
+view
+  button "Vote" [press]
+
+state ready
+path
+  idle -> loading on load, by the view offers press on button "Vote" at div > button
+  loading -> ready on settled ok, by the answer of the call vote/loading//api/vote null to /api/vote
+view
+  button "Vote" [press]
+
+state rejected
+path
+  idle -> loading on load, by the view offers press on button "Vote" at div > button
+  loading -> rejected on settled rejected, by the answer of the call vote/loading//api/vote null to /api/vote
+view
+  button "Vote" [press]
+  button "Vote failed. Try again" [press]
+
+state failed
+path
+  idle -> loading on load, by the view offers press on button "Vote" at div > button
+  loading -> failed on settled error, by the answer of the call vote/loading//api/vote null to /api/vote
+view
+  button "Vote" [press]
+  button "Vote failed. Try again" [press]

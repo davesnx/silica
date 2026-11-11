@@ -8,13 +8,18 @@ Make a new app.
   created app/native/dune
   created app/shared/api.ml
   created app/shared/counter.mlx
+  created check/dune
+  created check/main.ml
+  created check/spec/counter.dot
+  created check/spec/counter.qnt
+  created check/spec/counter.spec.txt
+  created check/spec/counter.views.txt
   created client/client_main.ml
   created client/dune
   created client/package.json
   created dune-project
   created server/dune
   created server/main.ml
-  created test/check_counter.ml
   created test/counter_page.ml
   created test/counter_steps.ml
   created test/dune
@@ -80,7 +85,21 @@ The app builds its server and its client bundle, and its tests pass.
   client_main-HASH.js
   client_main-HASH.js.map
   $ dune test 2>&1
-  counter: 16 states, 45 transitions
   $ silica check 2>&1
   counter: 16 states, 45 transitions
+  passed (exit 0)
+  $ silica check --json | grep -E '"(exit_code|outcome)"'
+    "exit_code": 0,
+    "outcome": "passed",
+
+A change of behaviour fails the tests: the golden spec names the changed edge.
+
+  $ sed 's/edge counting -> saving on save/edge counting -> saved on save/' check/spec/counter.spec.txt > changed.txt
+  $ mv changed.txt check/spec/counter.spec.txt
+  $ dune test 2>&1 | grep -E '^ *(golden-drift|removed|added)'
+  golden-drift: The golden file spec/counter.spec.txt differs from what the check found.
+    removed edge counting -> saved on save
+    added edge counting -> saving on save
+  $ dune exec ./check/main.exe -- golden check/spec --write > /dev/null
+  $ dune test 2>&1
   $ dune build @fmt 2>&1

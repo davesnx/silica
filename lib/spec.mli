@@ -110,3 +110,32 @@ val to_json : t -> Silica_json.Json.t
 
 val of_json : Silica_json.Json.t -> (t, string) result
 (** Reads {!to_json}. [Error] names the field it cannot read. *)
+
+(** A difference between two specs of one machine. *)
+type change =
+  | Initial_changed of { before : string; after : string }
+  | State_added of state
+  | State_removed of state
+  | State_changed of { before : state; after : state }
+      (** The same name, with another [final], timers or sources. *)
+  | Edge_added of label
+  | Edge_removed of label
+
+val diff : t -> t -> change list
+(** [diff before after]: what changed from [before] to [after], in this order:
+    the initial state, the removed states, the added and changed states (in the
+    order of [after]), the removed edges, the added edges. [[]] when the specs
+    are equal. A step that now goes to another target is one removed and one
+    added edge. *)
+
+val change_to_string : change -> string
+(** The change in words, with the names as {!to_text} writes them:
+    {v
+    changed initial state from idle to loading
+    added state archived
+    removed state draft
+    changed state saving: now final; added after 300ms; removed invoke /api/save
+    removed edge idle -> done on save
+    added edge idle -> saving on save
+    added stay running on tick
+    v} *)

@@ -225,10 +225,35 @@ input, a timer, a call answer, a subscription update, a held source, an action
 result, new props or the browser history.
 _Avoid_: origin, via
 
-**Spec drift**:
-A change of the exported Quint or Graphviz files of a machine: the checker run
-found other states or edges than before.
-_Avoid_: dead edge, stale spec
+**Suite**:
+The checks of a project in one executable, `check/main.ml`, one
+`Check_suite.entry` for each component. It prints one report, as text or
+JSON, and exits with a fixed code: 0 passed, 1 findings, 2 incomplete, 3 setup
+error.
+_Avoid_: test runner, check list
+
+**Finding**:
+What makes a suite exit with 1: a violation, an unreached state, an unchecked
+component or golden drift.
+_Avoid_: issue, problem
+
+**Unchecked component**:
+A component that a checked view renders and that no entry of the suite, no
+joint child and no `Check_suite.elsewhere` covers.
+_Avoid_: missing check
+
+**Golden files**:
+The files of a machine that review reads, in the `spec/` directory of a
+suite: the spec as text (`.spec.txt`), Quint (`.qnt`) and Graphviz (`.dot`),
+and the text view of the first snapshot of each state with its path
+(`.views.txt`).
+_Avoid_: snapshots, exports
+
+**Golden drift**:
+A difference between the golden files and what the checker run found now: a
+changed state or edge, a changed view, a missing or a stale file. The suite
+names each changed state and edge in words.
+_Avoid_: spec drift, dead edge, stale spec
 
 **Role**:
 What an element is to a screen reader, such as `button`, `link` or

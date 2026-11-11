@@ -243,6 +243,17 @@ val app :
 val id : ('s, 'ev) t -> string
 (** The id of the root machine. *)
 
+val state_json : ('s, 'ev) t -> 's -> Silica_json.Json.t option
+(** The snapshot as JSON by the state codec of the root machine (see
+    {!Silica.Machine.register_codecs}), or [None] when it has none. For an app:
+    an object with ["router"] (the snapshot of the root machine), ["history"]
+    (the URLs, oldest first) and ["index"]. *)
+
+val input_json : ('s, 'ev) t -> 'ev -> Silica_json.Json.t option
+(** The event of a step as JSON by the event codec of the root machine, or
+    [None] when it has none or the step is no event of the machine (new props, a
+    link, back, forward). *)
+
 (** {1 Reports} *)
 
 (** Where a step came from. *)
@@ -379,8 +390,8 @@ type rule = Check_rules.rule = {
           that a violation fills. *)
   hint : string;  (** How to fix it, with the same places. *)
   applies_to : string;
-      (** ["view"], ["state"], ["step"], ["machine"], ["route"] or ["search"].
-      *)
+      (** ["view"], ["state"], ["step"], ["machine"], ["route"], ["search"] or
+          ["suite"] (found by {!Check_suite}). *)
 }
 
 val rules : rule list

@@ -26,17 +26,39 @@ let new_command =
     Term.(const New_project.run $ directory)
 
 let check json graphs =
-  match (json, graphs) with
-  | false, None ->
-      Sys.command
-        (Filename.quote_command "dune"
-           [ "test"; "--force"; "--root"; "."; "test" ]
-        )
-  | _ ->
+  match graphs with
+  | Some _ ->
       prerr_endline
-        "silica check: --json and --graphs are not available yet; run 'silica \
-         check' with no options.";
-      2
+        "silica check: --graphs is not available yet; run 'silica check' \
+         without it.";
+      3
+  | None ->
+      if not (Sys.file_exists (Filename.concat "check" "main.ml")) then (
+        prerr_endline
+          "silica check: no check/main.ml here. Run the command from the root \
+           of the app, which lists its checks in check/main.ml.";
+        3
+      ) else if
+          Sys.command
+            (Filename.quote_command "dune"
+               [ "build"; "--root"; "."; "./check/main.exe" ]
+            )
+          <> 0
+        then (
+        prerr_endline "silica check: check/main.exe does not build.";
+        3
+      ) else
+        Sys.command
+          (Filename.quote_command
+             (Filename.concat "_build"
+                (Filename.concat "default" (Filename.concat "check" "main.exe"))
+             )
+             ( if json then
+                 [ "--json" ]
+               else
+                 []
+             )
+          )
 
 let check_command =
   let json =
@@ -57,9 +79,18 @@ let check_command =
          [
            `S Manpage.s_description;
            `P
-             "Runs the tests in $(b,test/) with dune, from the root of the \
-              app. The exit code is the exit code of dune.";
+             "Builds $(b,check/main.exe) of the app with dune and runs it: the \
+              model checker runs each check that $(b,check/main.ml) lists. \
+              With $(b,--json), the report is JSON (see the section Check a \
+              project of the checker documentation).";
+           `S Manpage.s_exit_status;
+           `P
+             "0: every check passed. 1: a finding (a violation, an unreached \
+              state, a component that no check covers). 2: a check stopped at \
+              its state limit, with no finding. 3: a setup error, bad \
+              arguments, or check/main.exe does not build.";
          ]
+       ~exits:[]
     )
     Term.(const check $ json $ graphs)
 

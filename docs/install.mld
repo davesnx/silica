@@ -23,8 +23,8 @@ installs the command [silica].
 
 [silica new myapp] makes a complete app in the directory [myapp]: a counter
 component with a Remote call in [app/shared/], a server in [server/], a client
-in [client/], three tests in [test/] and an [AGENTS.md] with the commands to
-build, run, test and check it. From a checkout of the repository, run
+in [client/], two tests in [test/], the checks in [check/] and an
+[AGENTS.md] with the commands to build, run, test and check it. From a checkout of the repository, run
 [dune exec -- silica new ../myapp].
 
 {@sh skip[
@@ -35,7 +35,10 @@ dune exec server/main.exe
 ]}
 
 [dune test] runs the tests: one steps the machine, one drives the page with
-{!Silica_memory}, one runs the checker. [silica check] runs the same tests.
+{!Silica_memory}, and [check/main.ml] runs the checker and compares the golden
+files in [check/spec/]. [silica check] runs the checker alone, and
+[silica check --json] prints its report as JSON (see
+{{!page-checker.suite}Check a project}).
 
 [silica new] never overwrites a file. A file that already has the content of
 the template is skipped. When a file differs, the command lists it and writes

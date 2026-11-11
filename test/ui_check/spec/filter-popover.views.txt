@@ -1,0 +1,17 @@
+state closed
+path
+  (start)
+view
+  button "Filter" expanded=false [press]
+
+state open
+path
+  (start)
+view
+  button "Filter" expanded [press]
+  dialog "Filter issues"
+    heading "Filter issues" level=2
+    form [submit]
+      textbox "Query" value="bug" [input]
+      button "Apply"
+    button "Close" [press]

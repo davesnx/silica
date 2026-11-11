@@ -1,0 +1,8 @@
+state counter
+path
+  (start)
+view
+  button "Decrement" disabled [press]
+  text "0"
+  button "Increment" [press]
+  button "Reset" [press]

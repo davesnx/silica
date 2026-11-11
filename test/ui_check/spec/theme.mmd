@@ -1,7 +1,0 @@
-stateDiagram-v2
-  direction LR
-  state "system (hold media)" as s0
-  state "fixed" as s1
-  [*] --> s0
-  s1 --> s0 : choose system, props
-  s0 --> s1 : choose high-contrast, choose light, props

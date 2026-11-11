@@ -1,0 +1,17 @@
+state loading
+path
+  (start)
+view
+  text "..."
+
+state ready
+path
+  loading -> ready on loaded ok, by the answer of the call me/loading//api/me null to /api/me
+view
+  text "you are Ada"
+
+state failed
+path
+  loading -> failed on loaded error, by the answer of the call me/loading//api/me null to /api/me
+view
+  text "you are nobody"

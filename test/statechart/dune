@@ -5,9 +5,9 @@
 (rule
  (targets golden_specs.ml)
  (deps
-  (glob_files ../example_check/spec/*.txt)
-  (glob_files ../linear_check/spec/*.txt)
-  (glob_files ../ui_check/spec/*.txt))
+  (glob_files ../example_check/spec/*.spec.txt)
+  (glob_files ../linear_check/spec/*.spec.txt)
+  (glob_files ../ui_check/spec/*.spec.txt))
  (action
   (with-stdout-to
    %{targets}
@@ -69,3 +69,8 @@
 (alias
  (name statechart-svg)
  (deps svg))
+
+(rule
+ (alias runtest)
+ (action
+  (diff layouts.expected native_layouts.txt)))

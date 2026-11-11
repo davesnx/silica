@@ -129,35 +129,36 @@ let saves =
       Change.Conflict { (issue 1) with version = 2; title = "theirs" };
     ]
 
-let router () =
+let router_check () =
   let open Linear_routes in
-  Check.run
-  @@ Check.app ~max_states:500_000
-       ~inputs:(fun _ ->
-         List.map
-           (fun path -> Silica.Router.Url_changed (Url.of_string path))
-           [
-             "/";
-             "/?new=true";
-             "/?status=done";
-             "/issue/1";
-             "/issue/2";
-             "/issue/9";
-             "/nowhere";
-           ]
-       )
-       ~routes:
-         [
-           Issues list;
-           Issues { list with create = true };
-           Issue 1;
-           Issue 2;
-           Not_found "/nowhere";
-         ]
-       ~parse:(Router.parse routes) ~print:(Router.print routes)
-       ~is_not_found:(Router.is_not_found routes)
-       ~url_event:(fun u -> Silica.Router.Url_changed u)
-       Linear_app.app
+  Check.app ~max_states:500_000
+    ~inputs:(fun _ ->
+      List.map
+        (fun path -> Silica.Router.Url_changed (Url.of_string path))
+        [
+          "/";
+          "/?new=true";
+          "/?status=done";
+          "/issue/1";
+          "/issue/2";
+          "/issue/9";
+          "/nowhere";
+        ]
+    )
+    ~routes:
+      [
+        Issues list;
+        Issues { list with create = true };
+        Issue 1;
+        Issue 2;
+        Not_found "/nowhere";
+      ]
+    ~parse:(Router.parse routes) ~print:(Router.print routes)
+    ~is_not_found:(Router.is_not_found routes)
+    ~url_event:(fun u -> Silica.Router.Url_changed u)
+    Linear_app.app
+
+let router () = Check.run (router_check ())
 
 let shown_view view =
   let value id =
@@ -190,7 +191,7 @@ let shown_view view =
   | _ ->
       failwith "the list view does not show its grouping and ordering"
 
-let list () =
+let list_check () =
   let open Linear_list in
   let properties =
     [
@@ -247,34 +248,35 @@ let list () =
       filter = { Linear_view.Filter.none with statuses = [ Issue_status.Done ] };
     }
   in
-  Check.run
-  @@ Check.component ~max_states:50_000 ~samples:[ issues; topic; saves ]
-       ~props:[ Linear_view.default; filtered ]
-       ~within:(function
-         | Ready r ->
-             r.data.next_id <= 2 && List.length r.toasts <= 1
-         | Loading | Failed _ ->
-             true
-         )
-       ~inputs:(function
-         | Ready r ->
-             [
-               Filter_open false;
-               Filter_changed filtered.filter;
-               Grouping_picked "assignee";
-               Ordering_picked "priority";
-               Menu_open false;
-               Command "create";
-               Command "open-1";
-               Command "status-done";
-             ]
-             @ List.map
-                 (fun (t : Silica_ui.Toast.toast) -> Toast_closed t.key)
-                 r.toasts
-         | Loading | Failed _ ->
-             []
-         )
-       ~properties Linear_list.component
+  Check.component ~max_states:50_000 ~samples:[ issues; topic; saves ]
+    ~props:[ Linear_view.default; filtered ]
+    ~within:(function
+      | Ready r ->
+          r.data.next_id <= 2 && List.length r.toasts <= 1
+      | Loading | Failed _ ->
+          true
+      )
+    ~inputs:(function
+      | Ready r ->
+          [
+            Filter_open false;
+            Filter_changed filtered.filter;
+            Grouping_picked "assignee";
+            Ordering_picked "priority";
+            Menu_open false;
+            Command "create";
+            Command "open-1";
+            Command "status-done";
+          ]
+          @ List.map
+              (fun (t : Silica_ui.Toast.toast) -> Toast_closed t.key)
+              r.toasts
+      | Loading | Failed _ ->
+          []
+      )
+    ~properties Linear_list.component
+
+let list () = Check.run (list_check ())
 
 let detail_inputs (state : Linear_detail.state) : Linear_detail.event list =
   let open Linear_detail in
@@ -302,7 +304,7 @@ let detail_within : Linear_detail.state -> bool = function
   | Loading | Not_found | Failed _ ->
       true
 
-let detail ~props () =
+let detail_check ~props () =
   let open Linear_detail in
   let properties =
     [
@@ -339,12 +341,13 @@ let detail ~props () =
         );
     ]
   in
-  Check.run
-  @@ Check.component ~max_states:400_000 ~props ~within:detail_within
-       ~inputs:detail_inputs ~samples:[ issues; topic; saves ] ~properties
-       Linear_detail.component
+  Check.component ~max_states:400_000 ~props ~within:detail_within
+    ~inputs:detail_inputs ~samples:[ issues; topic; saves ] ~properties
+    Linear_detail.component
 
-let unsaved () =
+let detail ~props () = Check.run (detail_check ~props ())
+
+let unsaved_check () =
   let open Linear_unsaved in
   let properties =
     [
@@ -358,7 +361,9 @@ let unsaved () =
         (Check.holds (fun state _ -> Machine.held machine () state <> []));
     ]
   in
-  Check.run (Check.component ~properties Linear_unsaved.component)
+  Check.component ~properties Linear_unsaved.component
+
+let unsaved () = Check.run (unsaved_check ())
 
 let pp_create_props f ({ create; view } : Linear_routes.issues) =
   Format.fprintf f "props %b%s" create
@@ -464,17 +469,18 @@ let create_properties =
       );
   ]
 
-let create ?(properties = []) ~props () =
-  Check.run
-  @@ Check.component ~max_states:100_000 ~props
-       ~samples:
-         [
-           Check.answers ~rejected:[ "Title is too long" ] create_endpoint
-             [ issue 3 ];
-         ]
-       ~inputs:create_inputs
-       ~properties:(create_properties @ properties)
-       Linear_create.component
+let create_check ?(properties = []) ~props () =
+  Check.component ~max_states:100_000 ~props
+    ~samples:
+      [
+        Check.answers ~rejected:[ "Title is too long" ] create_endpoint
+          [ issue 3 ];
+      ]
+    ~inputs:create_inputs
+    ~properties:(create_properties @ properties)
+    Linear_create.component
+
+let create ?properties ~props () = Check.run (create_check ?properties ~props ())
 
 let dialog_props_label :
     (Linear_create.content, Linear_create.event) Silica_ui.Dialog.props ->
@@ -486,19 +492,22 @@ let dialog_props_label :
   | _ ->
       "props closed"
 
-let create_dialog ~props () =
-  Check.run (Check.component ~props Linear_create.dialog_component.component)
+let create_dialog_check ~props () =
+  Check.component ~props Linear_create.dialog_component.component
 
-let me () =
-  Check.run
-  @@ Check.component
-       ~samples:[ Check.answers me_endpoint [ User.Ada ] ]
-       Linear_me.component
+let create_dialog ~props () = Check.run (create_dialog_check ~props ())
+
+let me_check () =
+  Check.component
+    ~samples:[ Check.answers me_endpoint [ User.Ada ] ]
+    Linear_me.component
+
+let me () = Check.run (me_check ())
 
 let a_comment ?(author = User.Ada) id body : Comment.t =
   { id; number = 1; author; body; created_at = 0; edited = false }
 
-let comments () =
+let comments_check () =
   let thread =
     {
       Thread.viewer = User.Ada;
@@ -529,17 +538,18 @@ let comments () =
         );
     ]
   in
-  Check.run
-  @@ Check.component ~props:[ 1; 2 ]
-       ~samples:
-         [
-           Check.answers comments_endpoint [ thread ];
-           Check.states comments_topic
-             [ thread.comments; thread.comments @ [ a_comment 3 "New" ] ];
-         ]
-       ~properties Linear_comments.component
+  Check.component ~props:[ 1; 2 ]
+    ~samples:
+      [
+        Check.answers comments_endpoint [ thread ];
+        Check.states comments_topic
+          [ thread.comments; thread.comments @ [ a_comment 3 "New" ] ];
+      ]
+    ~properties Linear_comments.component
 
-let composer () =
+let comments () = Check.run (comments_check ())
+
+let composer_check () =
   let properties =
     [
       Check.always ~name:"only a comment with text is ever sent"
@@ -553,39 +563,35 @@ let composer () =
         );
     ]
   in
-  Check.run
-  @@ Check.component ~props:[ 1; 2 ]
-       ~inputs:(fun _ ->
-         [ Linear_composer.Typed "x"; Linear_composer.Typed " " ]
-       )
-       ~samples:
-         [
-           Check.answers
-             ~rejected:[ "The comment is too long" ]
-             add_comment_endpoint
-             [ a_comment 3 "x" ];
-         ]
-       ~properties Linear_composer.component
+  Check.component ~props:[ 1; 2 ]
+    ~inputs:(fun _ -> [ Linear_composer.Typed "x"; Linear_composer.Typed " " ])
+    ~samples:
+      [
+        Check.answers
+          ~rejected:[ "The comment is too long" ]
+          add_comment_endpoint
+          [ a_comment 3 "x" ];
+      ]
+    ~properties Linear_composer.component
+
+let composer () = Check.run (composer_check ())
 
 let mine = a_comment 1 "Mine"
 
-let comment ?(props = [ (mine, true); (mine, false) ]) () =
-  Check.run
-  @@ Check.component
-       ~props:
-         (List.map (fun (comment, own) -> { Linear_comment.comment; own }) props)
-       ~inputs:(fun _ ->
-         [
-           Linear_comment.Edit;
-           Linear_comment.Typed "x";
-           Linear_comment.Typed "";
-         ]
-       )
-       ~samples:
-         [
-           Check.answers
-             ~rejected:[ "Only the author can edit" ]
-             edit_comment_endpoint
-             [ { mine with body = "x"; edited = true } ];
-         ]
-       Linear_comment.component
+let comment_check ?(props = [ (mine, true); (mine, false) ]) () =
+  Check.component
+    ~props:
+      (List.map (fun (comment, own) -> { Linear_comment.comment; own }) props)
+    ~inputs:(fun _ ->
+      [ Linear_comment.Edit; Linear_comment.Typed "x"; Linear_comment.Typed "" ]
+    )
+    ~samples:
+      [
+        Check.answers
+          ~rejected:[ "Only the author can edit" ]
+          edit_comment_endpoint
+          [ { mine with body = "x"; edited = true } ];
+      ]
+    Linear_comment.component
+
+let comment ?props () = Check.run (comment_check ?props ())

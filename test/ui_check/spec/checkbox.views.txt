@@ -1,0 +1,17 @@
+state unchecked
+path
+  (start)
+view
+  checkbox "Accept" checked=false [press, key_down]
+
+state checked
+path
+  (start)
+view
+  checkbox "Accept" checked [press, key_down]
+
+state indeterminate
+path
+  (start)
+view
+  checkbox "Accept" [press, key_down]

@@ -1,0 +1,38 @@
+state viewing
+path
+  (start)
+view
+  listitem
+    text "Ada on 1970-01-01 Mine"
+    button "Edit" [press]
+
+state editing
+path
+  viewing -> editing on edit, by the view offers press on button "Edit" at li > button
+view
+  listitem
+    text "Ada on 1970-01-01"
+    textbox "Edit comment" value="Mine" [input, key_down]
+    button "Save" [press]
+    button "Cancel" [press]
+
+state saving
+path
+  viewing -> editing on edit, by the view offers press on button "Edit" at li > button
+  editing -> saving on save, by the view offers press on button "Save" at li > div > div > button[1]
+view
+  listitem
+    text "Ada on 1970-01-01"
+    textbox "Edit comment" value="Mine" disabled [input, key_down]
+    button "Saving..." disabled [press]
+    button "Cancel" disabled [press]
+
+state edited
+path
+  viewing -> editing on edit, by the view offers press on button "Edit" at li > button
+  editing -> saving on save, by the view offers press on button "Save" at li > div > div > button[1]
+  saving -> edited on saved ok, by the answer of the call comment/saving//api/comments/edit {"id":1,"body":"Mine"} to /api/comments/edit
+view
+  listitem
+    text "Ada on 1970-01-01 (edited) x"
+    button "Edit" [press]

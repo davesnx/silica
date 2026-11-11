@@ -1,0 +1,12 @@
+state closed
+path
+  (start)
+view
+
+state open
+path
+  (start)
+view
+  dialog "Command menu" modal
+    heading "Command menu" level=2
+    component combobox

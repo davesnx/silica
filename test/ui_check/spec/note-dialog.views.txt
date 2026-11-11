@@ -1,0 +1,17 @@
+state closed
+path
+  (start)
+view
+  button "Edit" expanded=false [press]
+
+state open
+path
+  (start)
+view
+  button "Edit" expanded
+  dialog "Edit note" modal
+    heading "Edit note" level=2
+    form [submit]
+      textbox "Note" value="hello" [input]
+      button "Save"
+    button "Close" [press]

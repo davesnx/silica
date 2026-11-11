@@ -1,0 +1,6 @@
+state not_found
+path
+  (start)
+view
+  heading "Not found" level=1
+  link "Home" href="/"

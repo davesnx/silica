@@ -1,0 +1,59 @@
+state loading
+path
+  (start)
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "Loading item 1..."
+
+state loaded
+path
+  loading -> loaded on settled ok, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  heading "Item 1" level=2
+  text "$19.99"
+  list
+    listitem
+      text "a"
+
+state missing
+path
+  loading -> missing on settled rejected, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "no item"
+
+state failed
+path
+  loading -> failed on settled error, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "The server answered 500"

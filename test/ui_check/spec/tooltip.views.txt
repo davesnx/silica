@@ -1,0 +1,26 @@
+state closed
+path
+  (start)
+view
+  button "Save" [pointer_enter, focus]
+
+state opening
+path
+  closed -> opening on hover, by the view offers pointer_enter on button "Save" at button
+view
+  button "Save" [pointer_leave, press]
+
+state open
+path
+  closed -> open on focus, by the view offers focus on button "Save" at button
+view
+  button "Save" [pointer_leave, press, blur]
+  tooltip "Save the draft" [pointer_leave]
+
+state closing
+path
+  closed -> open on hover, by the view offers pointer_enter on button "Save" at button
+  open -> closing on leave, by the view offers pointer_leave on button "Save" at button
+view
+  button "Save" [pointer_enter, focus, press, blur]
+  tooltip "Save the draft" [pointer_enter]

@@ -1,0 +1,10 @@
+(executable
+ (name main)
+ (libraries app_native silica silica.check))
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files_rec spec/**))
+ (action
+  (run ./main.exe golden spec)))

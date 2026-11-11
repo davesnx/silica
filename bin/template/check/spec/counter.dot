@@ -1,0 +1,15 @@
+digraph "counter" {
+rankdir=LR;
+"counter.__init" [shape=point];
+"counter.__init" -> "counter.counting";
+"counter.counting" [label="counting" shape=box];
+"counter.save_failed" [label="save_failed" shape=box];
+"counter.saved" [label="saved" shape=box];
+"counter.saving" [label="saving\ninvoke /api/save" shape=box];
+"counter.counting" -> "counter.saving" [label="save"];
+"counter.save_failed" -> "counter.counting" [label="decrement, increment"];
+"counter.save_failed" -> "counter.saving" [label="save"];
+"counter.saved" -> "counter.counting" [label="decrement, increment"];
+"counter.saving" -> "counter.save_failed" [label="answered error, answered rejected"];
+"counter.saving" -> "counter.saved" [label="answered ok"];
+}

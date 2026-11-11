@@ -1,7 +1,0 @@
-machine issue-list 525 163
-node loading 40,47 143 50 initial
-node failed 401,31 72 36
-node ready 366,83 143 64
-edge failed -> loading back 401,44 366,44 318,34 231,34 183,62 label 274,30 retry
-edge loading -> failed 183,72 231,72 318,72 366,54 401,54 label 274,68 loaded error
-edge loading -> ready 183,83 231,110 318,110 366,115 label 274,106 loaded ok

@@ -1,0 +1,45 @@
+state loading
+path
+  (start)
+view
+  link "Back to issues" href="/"
+  text "Loading issue..."
+
+state ready
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  link "Back to issues" href="/"
+  text "ENG-1"
+  heading "A title" level=1
+  button "Edit title" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state failed
+path
+  loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  link "Back to issues" href="/"
+  alert
+    text "The server answered 500"
+  button "Try again" [press]
+
+state not_found
+path
+  loading -> not_found on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  link "Back to issues" href="/"
+  text "There is no issue ENG-9."

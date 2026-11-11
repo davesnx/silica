@@ -1,0 +1,8 @@
+(executable
+ (name fixtures)
+ (libraries silica silica.check)
+ (preprocess
+  (pps silica.ppx)))
+
+(cram
+ (deps fixtures.exe))

@@ -1,0 +1,29 @@
+state closed
+path
+  (start)
+view
+  combobox "Fruit" value="" expanded=false [input, key_down]
+
+state inline
+path
+  (start)
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" [press, pointer_enter]
+  status
+
+state open
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" [press, pointer_enter]
+  status

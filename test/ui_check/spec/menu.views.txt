@@ -1,0 +1,16 @@
+state closed
+path
+  (start)
+view
+  button "Actions" expanded=false [press, key_down]
+
+state open
+path
+  (start)
+view
+  button "Actions" expanded [press, key_down]
+  menu "Actions" [key_down]
+    menuitem "Edit" [press, pointer_enter]
+    menuitem "Duplicate" disabled
+    menuitem "Archive" [press, pointer_enter]
+    menuitem "Delete" [press, pointer_enter]

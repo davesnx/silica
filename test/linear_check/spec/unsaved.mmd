@@ -1,7 +1,0 @@
-stateDiagram-v2
-  direction LR
-  state "held (hold block)" as s0
-  state "asking (hold block)" as s1
-  [*] --> s0
-  s1 --> s0 : discard, keep
-  s0 --> s1 : attempt push, attempt traverse

@@ -1,0 +1,21 @@
+state closed
+path
+  (start)
+view
+  combobox "Status" expanded=false [press, key_down]
+    text "Pick a status"
+
+state open
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+view
+  span [key_down]
+    combobox "Status" expanded [press, key_down]
+      text "Pick a status"
+  listbox "Status"
+    option "Backlog" [press, pointer_enter]
+    option "Todo" [press, pointer_enter]
+    option "Blocked" disabled
+    option "In progress" [press, pointer_enter]
+    option "Done" [press, pointer_enter]
+    option "Duplicate" [press, pointer_enter]

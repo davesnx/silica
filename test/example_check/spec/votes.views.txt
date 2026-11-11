@@ -1,0 +1,6 @@
+state watching
+path
+  (start)
+view
+  heading "Votes" level=2
+  text "Votes: ..."

@@ -1,0 +1,11 @@
+state unchecked
+path
+  (start)
+view
+  switch "Wi-Fi" checked=false [press]
+
+state checked
+path
+  (start)
+view
+  switch "Wi-Fi" checked [press]

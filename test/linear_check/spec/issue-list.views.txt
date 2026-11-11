@@ -1,0 +1,32 @@
+state loading
+path
+  (start)
+view
+  heading "Issues" level=1
+  text "Loading issues..."
+
+state ready
+path
+  loading -> ready on loaded ok, by the answer of the call issue-list/loading//api/issues null to /api/issues
+view
+  heading "Issues" level=1
+  component issue-filter-content
+  component select
+  component select
+  button "Todo 2" expanded [press]
+  list
+    listitem
+      link "ENG-2 A title Todo" href="/issue/2" [focus]
+    listitem
+      link "ENG-1 A title Todo" href="/issue/1" [focus]
+  component command-menu
+  component toast
+
+state failed
+path
+  loading -> failed on loaded error, by the answer of the call issue-list/loading//api/issues null to /api/issues
+view
+  heading "Issues" level=1
+  alert
+    text "The server answered 500"
+  button "Try again" [press]

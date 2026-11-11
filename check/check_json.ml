@@ -1,0 +1,210 @@
+module Json = Silica_json.Json
+
+let null = Json.declassify `Null
+let string text = Json.declassify (`String text)
+let int value = Json.declassify (`Int value)
+let bool value = Json.declassify (`Bool value)
+let list encode items = Json.declassify (`List (List.map encode items))
+let record fields = Json.declassify (`Assoc fields)
+let option encode = function Some value -> encode value | None -> null
+
+let pretty json =
+  let buffer = Buffer.create 4096 in
+  let indent depth = Buffer.add_string buffer (String.make (2 * depth) ' ') in
+  let rec write depth json =
+    match Json.classify json with
+    | `List [] ->
+        Buffer.add_string buffer "[]"
+    | `Assoc [] ->
+        Buffer.add_string buffer "{}"
+    | `List items ->
+        Buffer.add_string buffer "[\n";
+        List.iteri
+          (fun index item ->
+            if index > 0 then Buffer.add_string buffer ",\n";
+            indent (depth + 1);
+            write (depth + 1) item
+          )
+          items;
+        Buffer.add_char buffer '\n';
+        indent depth;
+        Buffer.add_char buffer ']'
+    | `Assoc fields ->
+        Buffer.add_string buffer "{\n";
+        List.iteri
+          (fun index (name, value) ->
+            if index > 0 then Buffer.add_string buffer ",\n";
+            indent (depth + 1);
+            Buffer.add_string buffer (Json.to_string (string name));
+            Buffer.add_string buffer ": ";
+            write (depth + 1) value
+          )
+          fields;
+        Buffer.add_char buffer '\n';
+        indent depth;
+        Buffer.add_char buffer '}'
+    | `Null | `Bool _ | `Int _ | `Float _ | `String _ ->
+        Buffer.add_string buffer (Json.to_string json)
+  in
+  write 0 json;
+  Buffer.add_char buffer '\n';
+  Buffer.contents buffer
+
+let cause (cause : Check.cause) =
+  let typed name fields = record (("type", string name) :: fields) in
+  let fields =
+    match cause with
+    | View { handler; element; role; name } ->
+        typed "view"
+          [
+            ("handler", string handler);
+            ("element", string element);
+            ("role", option string role);
+            ("name", string name);
+          ]
+    | Input ->
+        typed "input" []
+    | Timer { id; ms } ->
+        typed "timer" [ ("id", string id); ("ms", int ms) ]
+    | Answer { id; path } ->
+        typed "answer" [ ("id", string id); ("path", string path) ]
+    | Live { id; topic } ->
+        typed "live" [ ("id", string id); ("topic", string topic) ]
+    | Held { id; source } ->
+        typed "held" [ ("id", string id); ("source", string source) ]
+    | Action_result action ->
+        typed "action_result" [ ("action", string action) ]
+    | Props ->
+        typed "props" []
+    | Child { instance; machine } ->
+        typed "child"
+          [ ("instance", string instance); ("machine", string machine) ]
+    | Navigation ->
+        typed "navigation" []
+  in
+  match Json.classify fields with
+  | `Assoc fields ->
+      record (fields @ [ ("text", string (Check.describe_cause cause)) ])
+  | _ ->
+      fields
+
+let step check index (step : _ Check.step) =
+  record
+    [
+      ("index", int index);
+      ("instance", string step.instance);
+      ("machine", string step.machine);
+      ("from", string step.from);
+      ("event", string step.event);
+      ("data", option Fun.id (Check.input_json check step.input));
+      ("cause", cause step.cause);
+      ("target", string step.target);
+    ]
+
+let steps check ~first items =
+  list Fun.id
+    (List.mapi (fun index item -> step check (first + index) item) items)
+
+let violation check (violation : (_, _) Check.violation) =
+  let kind, trace, loop =
+    match violation.counterexample with
+    | Path trace ->
+        ("path", trace, None)
+    | Waits trace ->
+        ("waits", trace, None)
+    | Loop { stem; cycle } ->
+        ("loop", stem, Some cycle)
+  in
+  record
+    [
+      ("rule", string violation.rule);
+      ("message", string violation.message);
+      ("hint", string violation.hint);
+      ( "state",
+        record
+          [
+            ("name", string violation.state_name);
+            ("data", option Fun.id (Check.state_json check violation.state));
+          ]
+      );
+      ("element", option string violation.element);
+      ("view", string violation.view);
+      ("kind", string kind);
+      ("trace", steps check ~first:1 trace);
+      ("loop", option (steps check ~first:(List.length trace + 1)) loop);
+      ("trace_file", null);
+    ]
+
+let finding ~rule ~values ~state =
+  let message, hint =
+    Check_rules.render (Check_rules.finding rule ~values) ~state
+  in
+  (message, hint)
+
+let report check (report : (_, _) Check.report) =
+  record
+    [
+      ("id", string report.machine);
+      ("passed", bool (Check.passed report));
+      ("complete", bool report.complete);
+      ("truncated", bool report.truncated);
+      ("states", int report.states);
+      ("transitions", int report.transitions);
+      ("violations", list (violation check) report.violations);
+      ( "unreached",
+        list
+          (fun name ->
+            let message, hint =
+              finding ~rule:"unreached-state" ~values:[] ~state:name
+            in
+            record
+              [
+                ("state", string name);
+                ("rule", string "unreached-state");
+                ("message", string message);
+                ("hint", string hint);
+              ]
+          )
+          report.unreached
+      );
+      ( "state_limit",
+        if report.complete then
+          null
+        else
+          let message, hint =
+            finding ~rule:"state-limit"
+              ~values:[ ("states", string_of_int report.states) ]
+              ~state:""
+          in
+          record
+            [
+              ("rule", string "state-limit");
+              ("message", string message);
+              ("hint", string hint);
+            ]
+      );
+      ( "allowed",
+        list
+          (fun ((allowance : Check.allowance), count) ->
+            record
+              [
+                ("rule", string allowance.rule);
+                ("state", option string allowance.state);
+                ("element", option string allowance.element);
+                ("reason", string allowance.reason);
+                ("count", int count);
+              ]
+          )
+          report.allowed
+      );
+      ("not_explored", list string report.not_explored);
+    ]
+
+let rule (rule : Check.rule) =
+  record
+    [
+      ("id", string rule.id);
+      ("message", string rule.message);
+      ("hint", string rule.hint);
+      ("applies_to", string rule.applies_to);
+    ]

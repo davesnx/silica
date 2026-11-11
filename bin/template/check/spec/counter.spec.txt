@@ -1,0 +1,14 @@
+machine counter
+initial counting
+state counting
+state save_failed
+state saved
+state saving
+  invoke /api/save
+edge counting -> saving on save
+edge save_failed -> counting on decrement increment
+edge save_failed -> saving on save
+edge saved -> counting on decrement increment
+edge saving -> save_failed on "answered error" "answered rejected"
+edge saving -> saved on "answered ok"
+stay counting on decrement increment

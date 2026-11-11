@@ -777,3 +777,117 @@ let of_json json =
       json
   in
   Ok { id; init; states; edges }
+
+type change =
+  | Initial_changed of { before : string; after : string }
+  | State_added of state
+  | State_removed of state
+  | State_changed of { before : state; after : state }
+  | Edge_added of label
+  | Edge_removed of label
+
+let diff before after =
+  let named states name = List.find_opt (fun s -> s.name = name) states in
+  let initial =
+    if before.init = after.init then
+      []
+    else
+      [ Initial_changed { before = before.init; after = after.init } ]
+  in
+  let removed =
+    List.filter_map
+      (fun s ->
+        match named after.states s.name with
+        | None ->
+            Some (State_removed s)
+        | Some _ ->
+            None
+      )
+      before.states
+  in
+  let added_or_changed =
+    List.filter_map
+      (fun s ->
+        match named before.states s.name with
+        | None ->
+            Some (State_added s)
+        | Some old when old <> s ->
+            Some (State_changed { before = old; after = s })
+        | Some _ ->
+            None
+      )
+      after.states
+  in
+  let edges_removed =
+    List.filter_map
+      (fun label ->
+        if List.mem label after.edges then
+          None
+        else
+          Some (Edge_removed label)
+      )
+      before.edges
+  in
+  let edges_added =
+    List.filter_map
+      (fun label ->
+        if List.mem label before.edges then
+          None
+        else
+          Some (Edge_added label)
+      )
+      after.edges
+  in
+  initial @ removed @ added_or_changed @ edges_removed @ edges_added
+
+let label_text label =
+  let on = match label.event with "" -> "" | event -> " on " ^ token event in
+  if label.kept then
+    "stay " ^ token label.from ^ on
+  else
+    "edge " ^ token label.from ^ " -> " ^ token label.target ^ on
+
+let state_changes before after =
+  let compare_lists items_before items_after =
+    List.filter_map
+      (fun item ->
+        if List.mem item items_before then
+          None
+        else
+          Some ("added " ^ item)
+      )
+      items_after
+    @ List.filter_map
+        (fun item ->
+          if List.mem item items_after then
+            None
+          else
+            Some ("removed " ^ item)
+        )
+        items_before
+  in
+  ( match (before.final, after.final) with
+    | false, true ->
+        [ "now final" ]
+    | true, false ->
+        [ "no longer final" ]
+    | _ ->
+        []
+    )
+  @ compare_lists (details before) (details after)
+
+let change_to_string = function
+  | Initial_changed { before; after } ->
+      Printf.sprintf "changed initial state from %s to %s" (token before)
+        (token after)
+  | State_added s ->
+      "added state " ^ token s.name
+  | State_removed s ->
+      "removed state " ^ token s.name
+  | State_changed { before; after } ->
+      Printf.sprintf "changed state %s: %s" (token after.name)
+        (String.concat "; " (state_changes before after))
+  | Edge_added label ->
+      "added " ^ label_text label
+  | Edge_removed label ->
+      "removed " ^ label_text label

@@ -1,0 +1,8 @@
+state ready
+path
+  (start)
+view
+  tablist [key_down]
+    tab "Account" selected
+    tab "Billing" disabled [press]
+    tab "Closed" [press]

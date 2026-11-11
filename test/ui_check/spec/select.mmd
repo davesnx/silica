@@ -1,7 +1,0 @@
-stateDiagram-v2
-  direction LR
-  state "closed" as s0
-  state "open (hold dismiss, hold anchor)" as s1
-  [*] --> s0
-  s0 --> s1 : open_key list-navigation, open_key trigger-press, trigger_press
-  s1 --> s0 : close escape-key, close focus-out, close item-press, close outside-press, select focus-out, select item-press, trigger_press

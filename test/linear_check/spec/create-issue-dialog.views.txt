@@ -1,0 +1,28 @@
+state closed
+path
+  (start)
+view
+
+state open
+path
+  (start)
+view
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"

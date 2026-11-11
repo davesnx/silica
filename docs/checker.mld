@@ -420,18 +420,8 @@ The model holds the edges only, not the code of the update, so it allows more
 runs than the machine. It holds only the edges that the run took: give the
 checker the samples and inputs that reach every state.
 
-The repository writes the exports of its machines in a dune rule, and keeps a
-copy in [spec/] next to the tests. A [diff] rule fails the build when a change
-of a machine changes its spec, so a change of the shape is always seen in a
-review:
-
-From [test/example_check/dune]:
-{@dune skip[
-(rule
- (alias spec)
- (action
-  (diff spec/router.qnt router.qnt)))
-]}
+The suite of a project writes these exports as golden files and fails
+[dune test] when they change (see {!section-suite}).
 
 [test/quint/check.ts] runs Quint on each module: it type checks it and runs
 random traces against the invariant [inv]. A module with a seeded bug must
@@ -442,4 +432,179 @@ From [test/quint/check.ts]:
 const runArgs = (file: string) => [
   "run", file, "--invariant=inv", "--max-steps=20", "--max-samples=500", "--seed=1", "--backend=typescript",
 ];
+]}
+
+{1:suite Check a project}
+
+A project lists its checks in one executable, [check/main.ml], with
+{!Check_suite}: one {!Check_suite.val-entry} for each component and for the
+router. [silica new] makes it:
+
+From [bin/template/check/main.ml]:
+{@ocaml skip[
+let () =
+  Check_suite.main
+    [
+      Check_suite.entry
+        (Check.component
+           ~within:(fun state -> Counter.count state <= 3)
+           ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
+           Counter.component
+        );
+    ]
+]}
+
+An entry can make more entries from its report, for a child component that
+needs the props its parent rendered:
+[Check_suite.entry router ~dependents:(fun report -> [ Check_suite.entry
+(Check.component ~props:(Check.props report.children Item.component)
+Item.component) ])]. A component of a library that another suite checks is
+listed with [Check_suite.elsewhere ~machine ~reason].
+
+The executable has three commands:
+
+{v
+dune exec ./check/main.exe -- [check] [--json] [--only ID]...
+dune exec ./check/main.exe -- golden DIR [--write] [--json]
+dune exec ./check/main.exe -- rules [--json]
+v}
+
+[silica check] builds and runs [check/main.exe]; [silica check --json] adds
+[--json]. [--only ID] runs the entries with these ids. [rules] lists
+{!Check.val-rules}.
+
+{2:exit Exit codes}
+
+The exit code alone says the outcome:
+
+- [0]: passed. Every check is complete, with no finding.
+- [1]: a finding: a violation, an unreached state, a component that a checked
+  view renders and that no entry covers ([unchecked-component]), or golden
+  drift ([golden-drift]).
+- [2]: incomplete: a check stopped at [max_states] ([state-limit]), with no
+  finding.
+- [3]: a setup error: bad arguments, {!Check.Invalid_check}, an exception
+  outside an update or a view, or an [--only] id that no entry has.
+
+When several hold, [3] wins, then [1], then [2].
+
+{2:golden Golden files}
+
+One dune rule compares the golden files in [spec/] with what the checks find:
+
+From [test/example_check/dune]:
+{@dune skip[
+(rule
+ (alias runtest)
+ (deps
+  (glob_files_rec spec/**))
+ (action
+  (run ./main.exe golden spec)))
+]}
+
+[golden DIR] runs every entry, prints the findings, and compares, for each
+machine, [<id>.spec.txt] ({!Silica.Spec.to_text}), [<id>.qnt], [<id>.dot] and
+[<id>.views.txt]: the text view of the first snapshot of each state, with the
+path that reaches it. A missing file, a changed file and a file that no entry
+makes are [golden-drift] findings. A changed spec is described in words by
+{!Silica.Spec.diff}; a changed view by its changed lines. When one edge of the
+door changes its target:
+
+From [test/check_suite/run.t]:
+{@sh skip[
+  golden-drift: The golden file spec/door.spec.txt differs from what the check found.
+    removed edge locked -> closed on unlock
+    added edge locked -> opened on unlock
+]}
+
+When the change is intended, [golden DIR --write] writes the files and removes
+the stale ones; the hint gives the command, such as
+[dune exec ./check/main.exe -- golden check/spec --write]. A [golden] run that
+passes prints nothing.
+
+{2:json The JSON report}
+
+[--json] prints one object. The fields are always there; a value that does
+not apply is [null] or [[]]. An agent reads [exit_code], then each finding:
+its [rule], [message] and [hint], the [trace] that reaches it with the
+[cause] of each step, the [state], and the [view] at the failing step.
+
+{v
+{
+  "format": "silica-check",
+  "version": 1,
+  "command": "check" | "golden",
+  "exit_code": 0 | 1 | 2 | 3,
+  "outcome": "passed" | "findings" | "incomplete" | "setup error",
+  "passed": bool,
+  "entries": [ {
+      "id": string,                  the root machine id
+      "passed": bool, "complete": bool, "truncated": bool,
+      "states": int, "transitions": int,
+      "violations": [ {
+          "rule": string, "message": string, "hint": string,
+          "state": { "name": string, "data": json | null },
+          "element": string | null,  the path of the element, for view rules
+          "view": string,            the text view at the failing step
+          "kind": "path" | "waits" | "loop",
+          "trace": [ step ],         for "loop": the steps before the cycle
+          "loop": [ step ] | null,   the cycle, which repeats forever
+          "trace_file": string | null } ],
+      "unreached": [ { "state", "rule", "message", "hint" } ],
+      "state_limit": { "rule", "message", "hint" } | null,
+      "allowed": [ { "rule", "state", "element", "reason", "count" } ],
+      "not_explored": [ string ] } ],
+  "unchecked": [ { "machine", "rule", "message", "hint" } ],
+  "elsewhere": [ { "machine", "reason" } ],
+  "golden": { "dir": string, "written": bool,
+              "changes": [ { "file": string,
+                             "change": "missing" | "changed" | "stale",
+                             "rule", "message", "hint",
+                             "lines": [ string ] } ] } | null,
+  "errors": [ { "id": string | null, "message": string } ]
+}
+
+step = {
+  "index": int,                      from 1, through the trace and the loop
+  "instance": string,                "0" for the root machine
+  "machine": string,
+  "from": string, "target": string,  state names
+  "event": string,                   the event name
+  "data": json | null,               the event by the event codec
+  "cause": { "type": "view", "handler", "element", "role", "name", "text" }
+         | { "type": "input" | "props" | "navigation", "text" }
+         | { "type": "timer", "id", "ms", "text" }
+         | { "type": "answer", "id", "path", "text" }
+         | { "type": "live", "id", "topic", "text" }
+         | { "type": "held", "id", "source", "text" }
+         | { "type": "action_result", "action", "text" }
+         | { "type": "child", "instance", "machine", "text" }
+}
+v}
+
+[data] is the snapshot or the event as JSON when the machine has codecs (see
+{!Silica.Machine.register_codecs}), else [null]. The [text] of a cause is the
+phrase that the text report prints. [version] changes only when a field
+changes its meaning or goes away; new fields can appear in the same version.
+[kind] is [path] for every violation today; [waits] and [loop] come with
+temporal properties, in the same shape. [trace_file] is [null] until the
+suite writes traces.
+
+A violation of the seeded bug in [test/check_suite/]: the saved state shows
+the Save button, and the update ignores it there.
+
+From [test/check_suite/run.t]:
+{@json skip[
+            "rule": "ignored-event",
+            "message": "In state saved, the view offers press on button \"Save\" at div > button gives the event save, and the update returns Ignore.",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "state": {
+              "name": "saved",
+              "data": [
+                "Saved"
+              ]
+            },
+            "element": "div > button",
+            "view": "text \"Saved\"\nbutton \"Save\" [press]\n",
+            "kind": "path",
 ]}

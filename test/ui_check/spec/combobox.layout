@@ -1,9 +1,0 @@
-machine combobox 709 206
-node closed 40,104 72 44 initial
-node inline 621,92 72 36
-node open 381,78 103 64
-edge closed -> inline 112,115 160,34 333,34 381,54 484,54 532,74 573,74 621,103 label 247,30 props
-edge closed -> open 112,122 160,86 333,86 381,101 label 247,82 move next, move previous, | show, typed
-edge inline -> closed back 621,117 573,148 532,148 484,168 381,168 333,188 160,188 112,137 label 553,144 props
-edge open -> closed back 381,119 333,166 160,166 112,130 label 247,162 choose, | choose_highlighted, | escape, focus_out, | outside_press
-edge open -> inline 484,110 532,110 573,110 621,110 label 553,106 props

@@ -1,0 +1,285 @@
+example_check/about
+machine about 128 68
+node about 40,16 72 36 initial
+example_check/counter
+machine counter 135 68
+node counter 40,16 79 36 initial
+example_check/edit
+machine edit 635 131
+node clean 40,53 72 36 initial
+node asking 529,47 90 50
+node dirty 289,65 90 50
+edge asking -> clean back 529,62 481,34 427,34 379,34 289,34 241,35 160,35 112,64 label 454,30 leave
+edge asking -> dirty back 529,72 481,72 427,72 379,83 label 454,68 stay
+edge clean -> dirty 112,71 160,71 241,71 289,83 label 200,67 draft
+edge dirty -> asking 379,97 427,110 481,110 529,83 label 454,106 attempt
+edge dirty -> clean back 289,97 241,109 160,109 112,78 label 200,105 draft, save
+example_check/home
+machine home 128 68
+node home 40,16 72 36 initial final
+example_check/item
+machine item 474 244
+node loading 40,98 130 62 initial
+node failed 383,35 72 36
+node loaded 383,111 72 36
+node missing 379,187 79 36
+edge failed -> loading back 383,48 379,48 331,34 218,34 170,110 label 274,30 props
+edge loaded -> loading back 383,124 379,124 331,110 218,110 170,125 label 274,106 props
+edge loading -> failed 170,117 218,72 331,72 379,58 383,58 label 274,68 settled error
+edge loading -> loaded 170,133 218,148 331,148 379,134 383,134 label 274,144 settled ok
+edge loading -> missing 170,141 218,186 331,186 379,200 label 274,182 settled rejected
+edge missing -> loading back 379,210 331,224 218,224 170,148 label 274,220 props
+example_check/not_found
+machine not_found 150 68
+node not_found 40,16 94 36 initial final
+example_check/router
+machine router 1152 366
+node / 40,181 72 80 initial
+node /* 289,124 72 62
+node /about 537,119 72 44
+node /edit 786,175 72 62
+node /item/:int 1034,163 102 80
+edge / -> /* 112,201 160,143 241,143 289,146 label 200,139 url changed
+edge / -> /about 112,193 160,105 241,105 289,99 361,99 409,94 489,94 537,130 label 200,101 url changed
+edge / -> /edit 112,225 160,239 241,239 289,243 361,243 409,248 489,248 537,249 609,249 657,250 738,250 786,217 label 200,235 url changed
+edge / -> /item/:int 112,241 160,297 241,297 289,303 361,303 409,311 489,311 537,319 609,319 657,328 738,328 786,305 858,305 906,282 986,282 1034,223 label 200,293 url changed
+edge /* -> / back 289,164 241,181 160,181 112,209 label 200,177 url changed
+edge /* -> /about 361,151 409,130 489,130 537,137 label 449,126 url changed
+edge /* -> /edit 361,143 409,72 489,72 537,94 609,94 657,116 738,116 786,187 label 449,68 url changed
+edge /* -> /item/:int 361,136 409,34 489,34 537,36 609,36 657,38 738,38 786,64 858,64 906,90 986,90 1034,175 label 449,30 url changed
+edge /about -> / back 537,151 489,206 409,206 361,204 289,204 241,203 160,203 112,217 label 449,202 url changed
+edge /about -> /* back 537,144 489,168 409,168 361,159 label 449,164 url changed
+edge /about -> /edit 609,144 657,152 738,152 786,194 label 698,148 url changed
+edge /about -> /item/:int 609,130 657,74 738,74 786,92 858,92 906,110 986,110 1034,183 label 698,70 url changed
+edge /edit -> / back 786,225 738,286 657,286 609,277 537,277 489,268 409,268 361,264 289,264 241,261 160,261 112,233 label 698,282 url changed
+edge /edit -> /* back 786,210 738,228 657,228 609,228 537,228 489,228 409,228 361,167 label 698,224 url changed
+edge /edit -> /about back 786,202 738,190 657,190 609,151 label 698,186 url changed
+edge /edit -> /item/:int 858,197 906,184 986,184 1034,199 label 946,180 url changed
+edge /item/:int -> / back 1034,231 986,318 906,318 858,333 786,333 738,348 657,348 609,339 537,339 489,332 409,332 361,325 289,325 241,319 160,319 112,249 label 946,314 url changed
+edge /item/:int -> /* back 1034,215 986,260 906,260 858,284 786,284 738,308 657,308 609,298 537,298 489,288 409,288 361,174 label 946,256 url changed
+edge /item/:int -> /about back 1034,191 986,146 906,146 858,121 786,121 738,96 657,96 609,137 label 946,142 url changed
+edge /item/:int -> /edit back 1034,207 986,222 906,222 858,215 label 946,218 url changed
+example_check/todo
+machine todo 128 68
+node todo 40,16 72 36 initial
+example_check/vote
+machine vote 684 244
+node idle 40,111 72 36 initial
+node failed 589,35 72 36
+node loading 242,98 130 62
+node ready 589,111 72 36
+node rejected 582,187 86 36
+edge failed -> loading back 589,48 582,48 534,34 420,34 372,110 label 477,30 load, retry
+edge idle -> loading 112,129 160,129 194,129 242,129 label 177,125 load
+edge loading -> failed 372,117 420,72 534,72 582,58 589,58 label 477,68 settled error
+edge loading -> loading 293,98 277,68 337,68 321,98 label 307,66 load
+edge loading -> ready 372,125 420,110 534,110 582,124 589,124 label 477,106 settled ok
+edge loading -> rejected 372,141 420,186 534,186 582,200 label 477,182 settled rejected
+edge ready -> loading back 589,134 582,134 534,148 420,148 372,133 label 477,144 load
+edge rejected -> loading back 582,210 534,224 420,224 372,148 label 477,220 load, retry
+example_check/votes
+machine votes 192 128
+node watching 40,62 136 50 initial
+edge watching -> watching 94,62 78,32 138,32 122,62 label 108,30 reconnect
+linear_check/comment-composer
+machine comment-composer 1124 168
+node empty 40,81 72 44 initial
+node drafting 341,47 86 36
+node failed 1036,69 72 44
+node sending 624,68 182 50
+edge drafting -> empty back 341,60 293,54 160,54 112,92 label 227,50 clear, props, typed
+edge drafting -> sending 428,70 476,77 576,77 624,86 label 526,73 send
+edge empty -> drafting 112,99 160,92 293,92 341,70 label 227,88 typed
+edge failed -> drafting back 1036,80 988,34 855,34 807,37 624,37 576,41 476,41 428,60 label 921,30 typed
+edge failed -> empty back 1036,101 988,148 855,148 807,144 624,144 576,140 476,140 428,136 341,136 293,134 160,134 112,114 label 921,144 clear, props, typed
+edge failed -> sending back 1036,87 988,72 855,72 807,86 label 921,68 send
+edge sending -> empty back 624,100 576,115 476,115 428,114 341,114 293,114 160,114 112,106 label 526,111 props, sent ok
+edge sending -> failed 807,100 855,110 988,110 1036,94 label 921,106 sent error
+linear_check/comment
+machine comment 997 180
+node viewing 40,75 79 44 initial
+node edited 909,55 72 36
+node editing 308,66 79 36
+node saving 564,92 189 50
+edge edited -> editing back 909,73 861,72 801,72 753,61 564,61 516,48 435,48 387,77 label 831,68 edit
+edge edited -> viewing back 909,66 861,34 801,34 753,32 564,32 516,28 435,28 387,36 308,36 260,42 167,42 119,86 label 831,30 props
+edge editing -> saving 387,84 435,84 516,84 564,106 label 475,80 save
+edge editing -> viewing back 308,80 260,78 167,78 119,93 label 214,74 cancel, props
+edge saving -> edited 753,117 801,110 861,110 909,80 label 831,106 saved ok
+edge saving -> editing back 564,117 516,122 435,122 387,91 label 475,118 saved error
+edge saving -> viewing back 564,127 516,160 435,160 387,150 308,150 260,138 167,138 119,108 label 475,156 props
+edge viewing -> editing 119,100 167,116 260,116 308,89 label 214,112 edit
+linear_check/comments
+machine comments 551 170
+node loading 40,66 156 50 initial
+node failed 421,35 72 36
+node ready 379,104 156 50
+edge failed -> loading back 421,48 379,48 331,34 244,34 196,78 label 288,30 props, retry
+edge loading -> failed 196,87 244,72 331,72 379,58 421,58 label 288,68 loaded error
+edge loading -> loading 104,66 88,36 148,36 132,66 label 118,34 props
+edge loading -> ready 196,95 244,110 331,110 379,122 label 288,106 loaded ok
+edge ready -> loading back 379,136 331,148 244,148 196,104 label 288,144 props
+linear_check/create-issue-dialog
+machine create-issue-dialog 546 122
+node closed 40,49 72 36 initial
+node open 401,28 130 78
+edge closed -> open 112,62 160,34 353,34 401,55 label 256,30 props
+edge open -> closed back 401,79 353,100 160,100 112,72 label 256,96 close_request escape-key, | close_request outside-press, | props
+linear_check/create-issue
+machine create-issue 1063 196
+node closed 40,109 72 44 initial
+node editing 302,75 79 36
+node failed 975,97 72 44
+node submitting 550,96 189 50
+edge closed -> editing 112,120 160,82 254,82 302,88 label 207,78 props
+edge editing -> closed back 302,98 254,120 160,120 112,127 label 207,116 cancel, props
+edge editing -> submitting 380,98 428,105 502,105 550,114 label 465,101 submit
+edge failed -> closed back 975,129 927,176 787,176 739,172 550,172 502,168 428,168 380,164 302,164 254,162 160,162 112,142 label 857,172 cancel, props
+edge failed -> editing back 975,108 927,62 787,62 739,65 550,65 502,69 428,69 380,88 label 857,58 description, | priority_picked, | status_picked, title
+edge failed -> submitting back 975,115 927,100 787,100 739,114 label 857,96 submit
+edge submitting -> closed back 550,128 502,143 428,143 380,142 302,142 254,142 160,142 112,134 label 465,139 created ok
+edge submitting -> failed 739,128 787,138 927,138 975,122 label 857,134 created error
+linear_check/issue-detail
+machine issue-detail 525 253
+node loading 40,98 143 62 initial
+node failed 401,35 72 36
+node not_found 390,111 94 36
+node ready 366,173 143 64
+edge failed -> loading back 401,48 366,48 318,34 231,34 183,110 label 274,30 props, retry
+edge loading -> failed 183,117 231,72 318,72 366,58 401,58 label 274,68 loaded error
+edge loading -> loading 97,98 81,68 141,68 125,98 label 111,66 props
+edge loading -> not_found 183,125 231,110 318,110 366,124 390,124 label 274,106 loaded ok
+edge loading -> ready 183,141 231,186 318,186 366,196 label 274,182 loaded ok
+edge not_found -> loading back 390,134 366,134 318,148 231,148 183,133 label 274,144 props
+edge ready -> loading back 366,214 318,224 231,224 183,148 label 274,220 props
+linear_check/issue-list
+machine issue-list 525 163
+node loading 40,47 143 50 initial
+node failed 401,31 72 36
+node ready 366,83 143 64
+edge failed -> loading back 401,44 366,44 318,34 231,34 183,62 label 274,30 retry
+edge loading -> failed 183,72 231,72 318,72 366,54 401,54 label 274,68 loaded error
+edge loading -> ready 183,83 231,110 318,110 366,115 label 274,106 loaded ok
+linear_check/me
+machine me 428 120
+node loading 40,35 116 50 initial
+node failed 340,16 72 36 final
+node ready 340,68 72 36 final
+edge loading -> failed 156,53 204,41 292,41 340,34 label 248,37 loaded error
+edge loading -> ready 156,67 204,79 292,79 340,86 label 248,75 loaded ok
+linear_check/router
+machine router 989 151
+node /?new&status&assignee&priority&label&group&order 40,69 398 44 initial
+node /* 615,35 72 36
+node /issue/:int 864,61 110 44
+edge /* -> /?new&status&assignee&priority&label&group&order back 615,48 567,34 486,34 438,80 label 527,30 url changed
+edge /* -> /issue/:int 687,48 735,35 816,35 864,72 label 775,31 url changed
+edge /?new&status&assignee&priority&label&group&order -> /* 438,87 486,72 567,72 615,58 label 527,68 url changed
+edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,95 486,110 567,110 615,102 687,102 735,95 816,95 864,87 label 527,106 url changed
+edge /issue/:int -> /* back 864,80 816,73 735,73 687,58 label 775,69 url changed
+edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 864,94 816,131 735,131 687,131 615,131 567,132 486,132 438,102 label 775,127 url changed
+linear_check/unsaved
+machine unsaved 446 106
+node held 40,35 90 50 initial
+node asking 340,35 90 50
+edge asking -> held back 340,53 292,34 178,34 130,53 label 235,30 discard, keep
+edge held -> asking 130,67 178,86 292,86 340,67 label 235,82 attempt push, | attempt traverse
+ui_check/checkbox
+machine checkbox 734 151
+node unchecked 40,62 94 44 initial
+node checked 324,35 79 36
+node indeterminate 592,68 125 44
+edge checked -> indeterminate 403,48 451,34 544,34 592,79 label 498,30 props
+edge checked -> unchecked back 324,48 276,35 182,35 134,73 label 229,31 props, toggle
+edge indeterminate -> checked back 592,86 544,72 451,72 403,58 label 498,68 props, toggle
+edge indeterminate -> unchecked back 592,94 544,110 451,110 403,102 324,102 276,95 182,95 134,88 label 498,106 props
+edge unchecked -> checked 134,81 182,73 276,73 324,58 label 229,69 props, toggle
+edge unchecked -> indeterminate 134,95 182,131 276,131 324,131 403,131 451,132 544,132 592,101 label 229,127 props
+ui_check/combobox
+machine combobox 709 206
+node closed 40,104 72 44 initial
+node inline 621,92 72 36
+node open 381,78 103 64
+edge closed -> inline 112,115 160,34 333,34 381,54 484,54 532,74 573,74 621,103 label 247,30 props
+edge closed -> open 112,122 160,86 333,86 381,101 label 247,82 move next, move previous, | show, typed
+edge inline -> closed back 621,117 573,148 532,148 484,168 381,168 333,188 160,188 112,137 label 553,144 props
+edge open -> closed back 381,119 333,166 160,166 112,130 label 247,162 choose, | choose_highlighted, | escape, focus_out, | outside_press
+edge open -> inline 484,110 532,110 573,110 621,110 label 553,106 props
+ui_check/command-menu
+machine command-menu 546 122
+node closed 40,49 72 36 initial
+node open 401,28 130 78
+edge closed -> open 112,62 160,34 353,34 401,55 label 256,30 props
+edge open -> closed back 401,79 353,100 160,100 112,72 label 256,96 close_request escape-key, | close_request outside-press, | props, run
+ui_check/filter-popover
+machine filter-popover 520 176
+node closed 40,84 72 36 initial
+node open 401,70 103 64
+edge closed -> open 112,97 160,48 353,48 401,93 label 256,44 open_request trigger-press, | props
+edge open -> closed back 401,111 353,156 160,156 112,107 label 256,152 apply, | close_request close-press, | close_request escape-key, | close_request outside-press, | close_request trigger-press, | props
+edge open -> open 438,70 422,40 482,40 466,70 label 452,38 props
+ui_check/menu
+machine menu 540 176
+node closed 40,98 72 36 initial
+node open 421,84 103 64
+edge closed -> open 112,111 160,76 373,76 421,107 label 266,72 open_key first list-navigation, | open_key first trigger-press, | open_key last list-navigation, | props, trigger_press
+edge open -> closed back 421,125 373,156 160,156 112,121 label 266,152 choose, close escape-key, | close focus-out, | close outside-press, | props, trigger_press
+ui_check/note-dialog
+machine note-dialog 546 148
+node closed 40,70 72 36 initial
+node open 401,49 130 78
+edge closed -> open 112,83 160,48 353,48 401,76 label 256,44 open_request trigger-press, | props
+edge open -> closed back 401,100 353,128 160,128 112,93 label 256,124 close_request close-press, | close_request escape-key, | close_request outside-press, | props, save
+ui_check/select
+machine select 500 204
+node closed 40,105 72 36 initial
+node open 381,91 103 64
+edge closed -> open 112,118 160,62 333,62 381,114 label 247,58 open_key list-navigation, | open_key trigger-press, | trigger_press
+edge open -> closed back 381,132 333,184 160,184 112,128 label 247,180 close escape-key, | close focus-out, | close item-press, | close outside-press, | select focus-out, | select item-press, | trigger_press
+ui_check/switch
+machine switch 419 92
+node unchecked 40,35 94 36 initial
+node checked 324,35 79 36
+edge checked -> unchecked back 324,48 276,34 182,34 134,48 label 229,30 props, toggle
+edge unchecked -> checked 134,58 182,72 276,72 324,58 label 229,68 props, toggle
+ui_check/tabs
+machine tabs 128 68
+node ready 40,16 72 36 initial
+ui_check/theme
+machine theme 461 106
+node system 40,35 90 50 initial
+node fixed 373,42 72 36
+edge fixed -> system back 373,55 325,34 178,34 130,53 label 251,30 choose system, props
+edge system -> fixed 130,67 178,86 325,86 373,65 label 251,82 choose high-contrast, | choose light, props
+ui_check/toast
+machine toast 912 204
+node empty 40,98 72 53 initial
+node expired 817,73 79 44
+node paused 249,70 72 36
+node running 583,84 97 50
+edge empty -> paused 112,117 160,86 201,86 249,83 label 181,82 props
+edge empty -> running 112,109 160,48 201,48 249,42 321,42 369,38 535,38 583,97 label 181,44 props
+edge expired -> empty back 817,106 769,155 728,155 680,169 583,169 535,186 369,186 321,175 249,175 201,166 160,166 112,139 label 749,151 props
+edge expired -> paused back 817,85 769,41 728,41 680,20 583,20 535,18 369,18 321,81 label 749,37 props
+edge expired -> running back 817,92 769,79 728,79 680,102 label 749,75 props
+edge paused -> empty back 249,93 201,124 160,124 112,124 label 181,120 props
+edge paused -> running 321,88 369,88 535,88 583,105 label 452,84 close a, close b, | focus false, hover false
+edge running -> empty back 583,122 535,164 369,164 321,154 249,154 201,146 160,146 112,132 label 452,160 props
+edge running -> expired 680,116 728,117 769,117 817,99 label 749,113 tick
+edge running -> paused back 583,113 535,126 369,126 321,95 label 452,122 focus true, hover true
+edge running -> running 618,84 602,54 662,54 646,84 label 632,52 props, tick
+ui_check/tooltip
+machine tooltip 1113 226
+node closed 40,115 72 53 initial
+node closing 993,78 103 78
+node open 641,96 103 64
+node opening 295,119 97 50
+edge closed -> open 112,134 160,104 247,104 295,98 392,98 440,90 593,90 641,114 label 204,100 focus, hover
+edge closed -> opening 112,142 160,142 247,142 295,137 label 204,138 hover
+edge closing -> closed back 993,99 945,76 792,76 744,74 641,74 593,70 440,70 392,70 295,70 247,68 160,68 112,127 label 869,72 close escape-key, | close trigger-focus, | close trigger-press, | elapsed 0, elapsed 300
+edge closing -> open back 993,117 945,114 792,114 744,119 label 869,110 resume
+edge open -> closed back 641,142 593,206 440,206 392,205 295,205 247,202 160,202 112,157 label 516,202 close escape-key, | close trigger-focus, | close trigger-press, | leave
+edge open -> closing 744,138 792,152 945,152 993,134 label 869,148 leave
+edge opening -> closed back 295,151 247,180 160,180 112,149 label 204,176 cancel
+edge opening -> open 392,144 440,126 593,126 641,128 label 516,122 elapsed 0, elapsed 600
+

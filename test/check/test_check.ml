@@ -1987,6 +1987,39 @@ let view_breach rule (breach : ev Node.t) =
        )
     )
 
+let suite_finding rule result =
+  let module Json = Silica_json.Json in
+  let text json =
+    match Json.classify json with `String text -> Some text | _ -> None
+  in
+  let rec find json =
+    match Json.classify json with
+    | `Assoc fields -> (
+        match
+          ( Option.bind (List.assoc_opt "rule" fields) text,
+            Option.bind (List.assoc_opt "message" fields) text,
+            Option.bind (List.assoc_opt "hint" fields) text
+          )
+        with
+        | Some found, Some message, Some hint when found = rule ->
+            Some (message, hint)
+        | _ ->
+            List.find_map (fun (_, value) -> find value) fields
+      )
+    | `List items ->
+        List.find_map find items
+    | _ ->
+        None
+  in
+  match find (Check_suite.to_json result) with
+  | Some texts ->
+      texts
+  | None ->
+      Alcotest.fail
+        ("expected the rule " ^ rule ^ " in the JSON, got:\n"
+        ^ Silica_json.Json.to_string (Check_suite.to_json result)
+        )
+
 let test_every_rule () =
   let paged =
     Router.routes
@@ -2269,6 +2302,38 @@ let test_every_rule () =
           text_finding "state-limit"
             (Check.run
                (Check.component ~max_states:5 (component (fun _ -> btn "+" Inc)))
+            )
+      );
+      ( "unchecked-component",
+        fun () ->
+          suite_finding "unchecked-component"
+            (Check_suite.run
+               [
+                 Check_suite.entry
+                   (Check.component
+                      ~within:(fun n -> n <= 1)
+                      (component (fun _ ->
+                           Node.list
+                             [ btn "+" Inc; Node.component child_component ]
+                       )
+                      )
+                   );
+               ]
+            )
+      );
+      ( "golden-drift",
+        fun () ->
+          suite_finding "golden-drift"
+            (Check_suite.golden "no-golden-files"
+               (Check_suite.run
+                  [
+                    Check_suite.entry
+                      (Check.component
+                         ~within:(fun n -> n <= 1)
+                         (component (fun _ -> btn "+" Inc))
+                      );
+                  ]
+               )
             )
       );
     ]

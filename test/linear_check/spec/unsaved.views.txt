@@ -1,0 +1,13 @@
+state held
+path
+  (start)
+view
+
+state asking
+path
+  held -> asking on attempt push, by the source block (unsaved/held/block)
+view
+  alertdialog "You have unsaved changes. Leave this page?"
+    text "You have unsaved changes. Leave this page?"
+    button "Discard" [press]
+    button "Keep editing" [press]

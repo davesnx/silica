@@ -1,0 +1,9 @@
+state system
+path
+  (start)
+view
+
+state fixed
+path
+  (start)
+view

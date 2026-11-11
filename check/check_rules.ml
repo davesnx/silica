@@ -271,6 +271,24 @@ let rules =
       hint = "Bound the search with ~within, or raise ~max_states.";
       applies_to = "search";
     };
+    {
+      id = "unchecked-component";
+      message =
+        "A checked view renders the component {machine}, and no entry of the \
+         suite checks it.";
+      hint =
+        "Add Check_suite.entry for {machine}, or Check_suite.elsewhere with \
+         the reason when another suite checks it.";
+      applies_to = "suite";
+    };
+    {
+      id = "golden-drift";
+      message = "The golden file {file} differs from what the check found.";
+      hint =
+        "Read the changes. When they are intended, write the files again with \
+         {command}, and commit them.";
+      applies_to = "suite";
+    };
   ]
 
 let property_message =

@@ -6,7 +6,7 @@ let () =
         Printf.printf "  (%S, %S);\n"
           (Filename.basename (Filename.dirname (Filename.dirname path))
           ^ "/"
-          ^ Filename.remove_extension (Filename.basename path)
+          ^ Filename.chop_suffix (Filename.basename path) ".spec.txt"
           )
           (In_channel.with_open_text path In_channel.input_all)
     )

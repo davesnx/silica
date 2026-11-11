@@ -70,10 +70,30 @@ type ('s, 'ev) t =
       within : 's -> bool;
       properties : ('s, 'e) property list;
       allow : allowance list;
+      state_json : 's -> Silica_json.Json.t option;
+      input_json : 'ev -> Silica_json.Json.t option;
     }
       -> ('s, 'ev) t
 
 let id (Check check) = Lazy.force check.id
+let state_json (Check check) state = check.state_json state
+let input_json (Check check) input = check.input_json input
+
+let encode codec value =
+  match codec with
+  | Ok (codec : _ Codec.t) ->
+      Some (codec.encode value)
+  | Error _ ->
+      None
+
+let component_json machine =
+  ( (fun state -> encode (Machine.state_codec machine) state),
+    function
+    | (Event event : (_, _) input) ->
+        encode (Machine.event_codec machine) event
+    | Props _ ->
+        None
+  )
 
 let component ?(max_states = 100_000) ?(max_violations = 50)
     ?(within = fun _ -> true) ?(inputs = fun _ -> []) ?(props = [])
@@ -92,6 +112,8 @@ let component ?(max_states = 100_000) ?(max_violations = 50)
       within;
       properties;
       allow;
+      state_json = fst (component_json component.machine);
+      input_json = snd (component_json component.machine);
     }
 
 let live ?(max_states = 100_000) ?(max_violations = 50)
@@ -111,7 +133,51 @@ let live ?(max_states = 100_000) ?(max_violations = 50)
       within;
       properties;
       allow;
+      state_json = fst (component_json live.component.machine);
+      input_json = snd (component_json live.component.machine);
     }
+
+let root_machine ~routes ~print root =
+  match routes with
+  | [] ->
+      None
+  | first :: _ ->
+      Some (root (print first)).Component.machine
+
+let app_state_json ~routes ~print root (state : _ app_state) =
+  Option.bind (root_machine ~routes ~print root) (fun machine ->
+      Option.map
+        (fun router ->
+          Silica_json.Json.declassify
+            (`Assoc
+               [
+                 ("router", router);
+                 ( "history",
+                   Silica_json.Json.declassify
+                     (`List
+                        (List.map
+                           (fun url ->
+                             Silica_json.Json.declassify
+                               (`String (Url.to_string url))
+                           )
+                           state.history
+                        )
+                     )
+                 );
+                 ("index", Silica_json.Json.declassify (`Int state.index));
+               ]
+            )
+        )
+        (encode (Machine.state_codec machine) state.router)
+  )
+
+let app_input_json ~routes ~print root = function
+  | (Event event : _ app_event) ->
+      Option.bind (root_machine ~routes ~print root) (fun machine ->
+          encode (Machine.event_codec machine) event
+      )
+  | Link _ | Browser_back | Browser_forward ->
+      None
 
 let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ?(max_history = 4) ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
@@ -138,6 +204,8 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
       within;
       properties;
       allow;
+      state_json = app_state_json ~routes ~print root;
+      input_json = app_input_json ~routes ~print root;
     }
 
 type cause = Check_model.cause =

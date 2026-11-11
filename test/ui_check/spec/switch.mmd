@@ -1,7 +1,0 @@
-stateDiagram-v2
-  direction LR
-  state "unchecked" as s0
-  state "checked" as s1
-  [*] --> s0
-  s1 --> s0 : props, toggle
-  s0 --> s1 : props, toggle

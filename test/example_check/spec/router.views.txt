@@ -1,0 +1,29 @@
+state /
+path
+  (start)
+view
+  component home
+
+state /item/:int
+path
+  / -> /item/:int on url changed, by an input
+view
+  component item
+
+state /about
+path
+  / -> /about on url changed, by an input
+view
+  component about
+
+state /edit
+path
+  / -> /edit on url changed, by an input
+view
+  component edit
+
+state /*
+path
+  / -> /* on url changed, by an input
+view
+  component not_found

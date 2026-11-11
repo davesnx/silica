@@ -1,0 +1,10 @@
+state todo
+path
+  (start)
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list

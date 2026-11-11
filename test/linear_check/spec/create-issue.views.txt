@@ -1,0 +1,30 @@
+state closed
+path
+  (start)
+view
+  link "New issue" href="/?new=true"
+  component create-issue-dialog
+
+state editing
+path
+  (start)
+view
+  link "New issue" href="/?new=true"
+  component create-issue-dialog
+
+state submitting
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  component create-issue-dialog
+
+state failed
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  component create-issue-dialog

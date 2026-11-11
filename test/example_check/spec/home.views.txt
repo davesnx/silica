@@ -1,0 +1,17 @@
+state home
+path
+  (start)
+view
+  heading "Silica example" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  component todo
+  component votes
+  component vote
+  heading "Live counter" level=2
+  island counter
