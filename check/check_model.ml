@@ -127,7 +127,7 @@ let intern table value =
 type 'e host = {
   samples : sample list;
   arrivals : int;
-  answer_lists : 'e list table;
+  answer_lists : ('e * Silica_json.Json.t) list table;
   feed_table : 'e feed table;
 }
 
@@ -155,21 +155,24 @@ let answers_for (type o x e) samples (endpoint : (_, o, x) Remote.endpoint)
         )
       samples
   in
-  List.concat_map
-    (fun (values, rejected, _) ->
-      List.map (fun value -> on_result (Remote.Ok value)) values
-      @ List.map (fun value -> on_result (Remote.Rejected value)) rejected
+  let codec =
+    Remote.answer_codec (Remote.output endpoint) (Remote.rejected endpoint)
+  in
+  List.map
+    (fun answer -> (on_result answer, codec.encode answer))
+    (List.concat_map
+       (fun (values, rejected, _) ->
+         List.map (fun value -> Remote.Ok value) values
+         @ List.map (fun value -> Remote.Rejected value) rejected
+       )
+       given
+    @ [ Remote.Failed (Remote.Http 500); Remote.Failed (Remote.Network "down") ]
+    @
+    if List.exists (fun (_, _, decode) -> decode) given then
+      [ Remote.Failed (Remote.Decode "sample") ]
+    else
+      []
     )
-    given
-  @ [
-      on_result (Remote.Failed (Remote.Http 500));
-      on_result (Remote.Failed (Remote.Network "down"));
-    ]
-  @
-  if List.exists (fun (_, _, decode) -> decode) given then
-    [ on_result (Remote.Failed (Remote.Decode "sample")) ]
-  else
-    []
 
 let feed_for (type s e) ~arrivals samples (topic : s Topic.t)
     (on_update : s Topic.update -> e) =
@@ -358,7 +361,7 @@ let resource_moves host world =
   @ List.concat_map
       (fun (id, answers) ->
         List.map
-          (fun event -> { event; via = By_answer id })
+          (fun (event, _) -> { event; via = By_answer id })
           (Dynarray.get host.answer_lists.values answers)
       )
       world.calls
@@ -366,6 +369,15 @@ let resource_moves host world =
   @ List.mapi
       (fun index (event, _) -> { event; via = By_result index })
       world.results
+
+let answer_json host world via event =
+  match via with
+  | By_answer id ->
+      Option.bind (List.assoc_opt id world.calls) (fun answers ->
+          List.assoc_opt event (Dynarray.get host.answer_lists.values answers)
+      )
+  | By_view | By_input | By_timer _ | By_feed _ | By_result _ ->
+      None
 
 let consume world = function
   | By_view | By_input ->
@@ -638,6 +650,8 @@ type ('n, 's, 'ev, 'e) model = {
   setup_findings : unit -> Check_rules.finding list;
   specs : unit -> Spec.t list;
   unreached : unit -> string list;
+  answer : 'n -> 'ev move -> Silica_json.Json.t option;
+  props_json : 'n -> Silica_json.Json.t option;
 }
 
 type ('p, 'e) input = Event of 'e | Props of 'p
@@ -854,6 +868,22 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
     setup_findings = (fun () -> []);
     specs = (fun () -> [ spec_of recorder machine ]);
     unreached = (fun () -> unreached_of recorder machine);
+    answer =
+      (fun world move ->
+        match (move.event : (_, _) input) with
+        | Event event ->
+            answer_json host world move.via event
+        | Props _ ->
+            None
+      );
+    props_json =
+      (fun world ->
+        Result.to_option
+          (Result.map
+             (fun (codec : _ Codec.t) -> codec.encode world.props)
+             (Machine.props_codec machine)
+          )
+      );
   }
 
 type 's app_state = { router : 's; history : Url.t list; index : int }
@@ -1112,4 +1142,13 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
       );
     specs = (fun () -> [ spec_of recorder machine ]);
     unreached = (fun () -> unreached_of recorder machine);
+    answer =
+      (fun world move ->
+        match move.event with
+        | Event event ->
+            answer_json host world move.via event
+        | Link _ | Browser_back | Browser_forward ->
+            None
+      );
+    props_json = (fun _ -> None);
   }

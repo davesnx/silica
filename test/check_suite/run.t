@@ -180,8 +180,10 @@ Bad arguments print the usage and exit 3.
   $ FIXTURE=pass ./fixtures.exe --verbose
   check: unknown argument --verbose
   Usage:
-    main.exe [check] [--json] [--only ID]...
+    main.exe [check] [--json] [--only ID]... [--traces DIR]
     main.exe golden DIR [--write] [--json]
+    main.exe replay ID TRACE_FILE [--json]
+    main.exe script ID TRACE_FILE [--component EXPR]
     main.exe rules [--json]
   Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.
   [3]
@@ -302,3 +304,63 @@ A file that no entry makes is stale.
   door.qnt
   door.spec.txt
   door.views.txt
+
+With --traces, each violation is also a trace file, and the JSON names it.
+
+  $ FIXTURE=bug ./fixtures.exe --json --traces traces | grep trace_file
+            "trace_file": "traces/save-1.jsonl"
+  $ cat traces/save-1.jsonl
+  {"root":"save","build":"check","origin":{"type":"checker","rule":"ignored-event"},"dropped":0}
+  {"seq":1,"instance":"save","number":1,"entry":0,"machine":"save","from":"","to":"editing","change":"started","event":"","snapshot":["Editing",0],"cause":{"type":"start"}}
+  {"seq":2,"instance":"save","number":1,"entry":0,"machine":"save","from":"editing","to":"saved","change":"entered","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"form > button[2]"}}
+  {"seq":3,"instance":"save","number":1,"entry":0,"machine":"save","from":"saved","to":"saved","change":"unhandled","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"div > button"}}
+
+replay runs the trace in the check again: the last step breaks the rule, so
+the exit code is 1.
+
+  $ FIXTURE=bug ./fixtures.exe replay save traces/save-1.jsonl
+  replay save: traces/save-1.jsonl
+  start: editing
+  1. editing -> saved: save, by the view offers press on button "Save" at form > button[2]
+  2. saved -> saved: save, by the view offers press on button "Save" at div > button
+    fails ignored-event: In state saved, the view offers press on button "Save" at div > button gives the event save, and the update returns Ignore.
+      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+  state: saved
+  view:
+    text "Saved"
+    button "Save" [press]
+  the last step breaks a rule (exit 1)
+  [1]
+  $ FIXTURE=bug ./fixtures.exe replay save traces/save-1.jsonl --json | grep -E '"(exit_code|not_enabled|rule)"'
+    "exit_code": 1,
+            "rule": "ignored-event",
+    "not_enabled": null,
+
+After a fix, the same trace no longer breaks a rule: exit 0.
+
+  $ FIXTURE=fixed ./fixtures.exe replay save traces/save-1.jsonl | tail -1
+  no rule fails (exit 0)
+
+A step that the check no longer offers is a mismatch: exit 1.
+
+  $ FIXTURE=disabled ./fixtures.exe replay save traces/save-1.jsonl | tail -4
+      hint: Add a button, a timer or an input that leaves saved, or mark saved final with ~final when the machine is done there.
+  step 2 of the trace is not enabled here. The state offers:
+    nothing
+  the trace does not replay (exit 1)
+
+script prints a Silica_memory test of the counterexample.
+
+  $ FIXTURE=bug ./fixtures.exe script save traces/save-1.jsonl --component Fixtures.save | grep -c Memory.press
+  2
+
+A trace that does not read, or an unknown machine, is a setup error.
+
+  $ echo '{' > bad.jsonl
+  $ FIXTURE=bug ./fixtures.exe replay save bad.jsonl
+  replay: bad.jsonl: line 1: Line 1, bytes 0-1:
+  Unexpected end of input
+  [3]
+  $ FIXTURE=bug ./fixtures.exe script door traces/save-1.jsonl
+  script: no entry checks the machine door
+  [3]

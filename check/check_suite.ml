@@ -32,6 +32,7 @@ type golden = {
 type result = {
   command : string;
   ran : ran list;
+  trace_files : (string * string list) list;
   unchecked : string list option;
   elsewhere : (string * string) list;
   errors : error list;
@@ -155,6 +156,7 @@ let run ?only entries =
   {
     command = "check";
     ran;
+    trace_files = [];
     unchecked;
     elsewhere;
     errors = List.rev !errors;
@@ -463,7 +465,11 @@ let to_json result =
       ("passed", bool (code = 0));
       ( "entries",
         list
-          (fun (Ran { check; report }) -> Check_json.report check report)
+          (fun (Ran { check; report }) ->
+            Check_json.report
+              ?trace_files:(List.assoc_opt report.machine result.trace_files)
+              check report
+          )
           result.ran
       );
       ( "unchecked",
@@ -535,7 +541,15 @@ let pp formatter result =
   if not quiet then (
     List.iter
       (fun (Ran { report; _ }) ->
-        Format.fprintf formatter "%a@." Check.pp_report report
+        Format.fprintf formatter "%a@." Check.pp_report report;
+        List.iteri
+          (fun index file ->
+            Format.fprintf formatter "trace of violation %d: %s@." (index + 1)
+              file
+          )
+          (Option.value ~default:[]
+             (List.assoc_opt report.machine result.trace_files)
+          )
       )
       result.ran;
     List.iter
@@ -586,27 +600,52 @@ let pp formatter result =
 
 let usage =
   "Usage:\n\
-  \  main.exe [check] [--json] [--only ID]...\n\
+  \  main.exe [check] [--json] [--only ID]... [--traces DIR]\n\
   \  main.exe golden DIR [--write] [--json]\n\
+  \  main.exe replay ID TRACE_FILE [--json]\n\
+  \  main.exe script ID TRACE_FILE [--component EXPR]\n\
   \  main.exe rules [--json]\n\
    Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.\n"
 
 type command =
-  | Check of { json : bool; only : string list }
+  | Check of { json : bool; only : string list; traces : string option }
   | Golden of { dir : string; write : bool; json : bool }
+  | Replay of { id : string; file : string; json : bool }
+  | Script of { id : string; file : string; component : string option }
   | Rules of { json : bool }
   | Help
 
 let parse arguments =
-  let rec check ~json ~only = function
+  let rec check ~json ~only ~traces = function
     | [] ->
-        Ok (Check { json; only = List.rev only })
+        Ok (Check { json; only = List.rev only; traces })
     | "--json" :: rest ->
-        check ~json:true ~only rest
+        check ~json:true ~only ~traces rest
     | "--only" :: id :: rest ->
-        check ~json ~only:(id :: only) rest
+        check ~json ~only:(id :: only) ~traces rest
+    | "--traces" :: dir :: rest ->
+        check ~json ~only ~traces:(Some dir) rest
     | argument :: _ ->
         Error ("check: unknown argument " ^ argument)
+  in
+  let rec replay ~json = function
+    | [ id; file ] ->
+        Ok (Replay { id; file; json })
+    | "--json" :: rest ->
+        replay ~json:true rest
+    | [ id; file; "--json" ] ->
+        Ok (Replay { id; file; json = true })
+    | _ ->
+        Error "replay: give the machine id and the trace file"
+  in
+  let script = function
+    | [ id; file ] ->
+        Ok (Script { id; file; component = None })
+    | [ id; file; "--component"; component ]
+    | [ "--component"; component; id; file ] ->
+        Ok (Script { id; file; component = Some component })
+    | _ ->
+        Error "script: give the machine id and the trace file"
   in
   let rec golden ~dir ~write ~json = function
     | [] -> (
@@ -630,9 +669,13 @@ let parse arguments =
   | ("--help" | "-help" | "help") :: _ ->
       Ok Help
   | "check" :: rest ->
-      check ~json:false ~only:[] rest
+      check ~json:false ~only:[] ~traces:None rest
   | "golden" :: rest ->
       golden ~dir:None ~write:false ~json:false rest
+  | "replay" :: rest ->
+      replay ~json:false rest
+  | "script" :: rest ->
+      script rest
   | [ "rules" ] ->
       Ok (Rules { json = false })
   | [ "rules"; "--json" ] ->
@@ -640,7 +683,238 @@ let parse arguments =
   | argument :: _ when not (String.starts_with ~prefix:"-" argument) ->
       Error ("unknown command " ^ argument)
   | rest ->
-      check ~json:false ~only:[] rest
+      check ~json:false ~only:[] ~traces:None rest
+
+let write_traces dir result =
+  match
+    if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
+    List.map
+      (fun (Ran { check; report }) ->
+        ( report.machine,
+          List.mapi
+            (fun index (violation : (_, _) Check.violation) ->
+              let file =
+                Filename.concat dir
+                  (Printf.sprintf "%s-%d.jsonl" report.machine (index + 1))
+              in
+              write_file file
+                (Silica.Trace.to_jsonl
+                   (Check.export check ~rule:violation.rule
+                      violation.counterexample
+                   )
+                );
+              file
+            )
+            report.violations
+        )
+      )
+      result.ran
+  with
+  | trace_files ->
+      { result with trace_files }
+  | exception (Sys_error message | Invalid_argument message) ->
+      {
+        result with
+        errors =
+          result.errors
+          @ [ { id = None; message = "--traces " ^ dir ^ ": " ^ message } ];
+      }
+
+type found = Found : ('s, 'ev) Check.t -> found
+
+let rec find id entries =
+  match
+    List.find_map
+      (function
+        | Entry { check; _ } when safe_id check = Ok id ->
+            Some (Found check)
+        | Entry _ | Elsewhere _ ->
+            None
+        )
+      entries
+  with
+  | Some found ->
+      Some found
+  | None ->
+      List.find_map
+        (function
+          | Entry { check; dependents = Some make } -> (
+              match make (Check.run check) with
+              | children ->
+                  find id children
+              | exception _ ->
+                  None
+            )
+          | Entry { dependents = None; _ } | Elsewhere _ ->
+              None
+          )
+        entries
+
+let load entries ~id ~file =
+  match find id entries with
+  | None ->
+      Error ("no entry checks the machine " ^ id)
+  | Some found -> (
+      match read_file file with
+      | exception Sys_error message ->
+          Error message
+      | text -> (
+          match Silica.Trace.of_jsonl text with
+          | Ok trace ->
+              Ok (found, trace)
+          | Error message ->
+              Error (file ^ ": " ^ message)
+        )
+    )
+
+let setup_error ~json ~command message =
+  if json then
+    print_string
+      (Check_json.pretty
+         (Check_json.record
+            [
+              ("format", Check_json.string "silica-check");
+              ("version", Check_json.int 1);
+              ("command", Check_json.string command);
+              ("exit_code", Check_json.int 3);
+              ("outcome", Check_json.string (outcome 3));
+              ("error", Check_json.string message);
+            ]
+         )
+      )
+  else
+    prerr_endline (command ^ ": " ^ message);
+  3
+
+let replay_text (Found check) ~id ~file replay =
+  let buffer = Buffer.create 1024 in
+  let add format = Printf.bprintf buffer format in
+  add "replay %s: %s\n" id file;
+  let points, stuck =
+    match replay with
+    | Check.Replayed points ->
+        (points, None)
+    | Not_enabled { at; steps; enabled } ->
+        (steps, Some (at, enabled))
+  in
+  List.iteri
+    (fun index (point : (_, _) Check.replayed_step) ->
+      ( match point.step with
+      | None ->
+          add "start: %s\n" point.state_name
+      | Some step ->
+          add "%d. %s -> %s: %s, by %s\n" index step.from step.target
+            (match step.event with "" -> "(unnamed event)" | event -> event)
+            (Check.describe_cause step.cause)
+      );
+      List.iter
+        (fun (failure : Check.failure) ->
+          add "  fails %s: %s\n    hint: %s\n" failure.rule failure.message
+            failure.hint
+        )
+        point.failing
+    )
+    points;
+  ignore check;
+  ( match stuck with
+  | Some (at, enabled) ->
+      add "step %d of the trace is not enabled here. The state offers:\n" at;
+      if enabled = [] then add "  nothing\n";
+      List.iter (fun step -> add "%s" (step_line step)) enabled
+  | None -> (
+      match List.rev points with
+      | last :: _ ->
+          add "state: %s\nview:\n%s" last.state_name (indented last.view)
+      | [] ->
+          ()
+    )
+  );
+  Buffer.contents buffer
+
+let replay_code = function
+  | Check.Not_enabled _ ->
+      1
+  | Replayed points -> (
+      match List.rev points with
+      | (last : (_, _) Check.replayed_step) :: _ when last.failing <> [] ->
+          1
+      | _ ->
+          0
+    )
+
+let replay_command entries ~id ~file ~json =
+  match load entries ~id ~file with
+  | Error message ->
+      setup_error ~json ~command:"replay" message
+  | Ok ((Found check as found), trace) -> (
+      match Check.replay_trace check trace with
+      | Error message ->
+          setup_error ~json ~command:"replay" message
+      | Ok replay ->
+          let code = replay_code replay in
+          if json then
+            let points, at, enabled =
+              match replay with
+              | Replayed points ->
+                  (points, None, [])
+              | Not_enabled { at; steps; enabled } ->
+                  (steps, Some at, enabled)
+            in
+            print_string
+              (Check_json.pretty
+                 (Check_json.record
+                    [
+                      ("format", Check_json.string "silica-check");
+                      ("version", Check_json.int 1);
+                      ("command", Check_json.string "replay");
+                      ("exit_code", Check_json.int code);
+                      ("outcome", Check_json.string (outcome code));
+                      ("id", Check_json.string id);
+                      ("trace_file", Check_json.string file);
+                      ( "steps",
+                        Check_json.list Fun.id
+                          (List.mapi (Check_json.replayed check) points)
+                      );
+                      ("not_enabled", Check_json.option Check_json.int at);
+                      ("enabled", Check_json.steps check ~first:1 enabled);
+                    ]
+                 )
+              )
+          else (
+            print_string (replay_text found ~id ~file replay);
+            Printf.printf "%s (exit %d)\n"
+              ( match replay with
+              | Not_enabled _ ->
+                  "the trace does not replay"
+              | Replayed _ when code = 1 ->
+                  "the last step breaks a rule"
+              | Replayed _ ->
+                  "no rule fails"
+              )
+              code
+          );
+          code
+    )
+
+let script_command entries ~id ~file ~component =
+  match load entries ~id ~file with
+  | Error message ->
+      setup_error ~json:false ~command:"script" message
+  | Ok (Found check, trace) -> (
+      match Check.script ?component check trace with
+      | Ok text ->
+          print_string text;
+          0
+      | Error message ->
+          prerr_endline
+            ("script: " ^ message
+           ^ ". No Silica_memory test is written; the command 'replay " ^ id
+           ^ " " ^ file
+           ^ "' replays the trace in the checker, and exits 1 while the rule \
+              fails and 0 after the fix."
+            );
+          1
+    )
 
 let print ~json result =
   if json then
@@ -678,11 +952,22 @@ let main ?(argv = Sys.argv) entries =
             )
             Check.rules;
         0
-    | Ok (Check { json; only }) ->
+    | Ok (Check { json; only; traces }) ->
         let only = match only with [] -> None | ids -> Some ids in
         let result = run ?only entries in
+        let result =
+          match traces with
+          | Some dir ->
+              write_traces dir result
+          | None ->
+              result
+        in
         print ~json result;
         exit_code result
+    | Ok (Replay { id; file; json }) ->
+        replay_command entries ~id ~file ~json
+    | Ok (Script { id; file; component }) ->
+        script_command entries ~id ~file ~component
     | Ok (Golden { dir; write; json }) ->
         let result = golden_with ~program:argv.(0) ~write dir (run entries) in
         print ~json result;

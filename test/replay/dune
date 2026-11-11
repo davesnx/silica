@@ -1,0 +1,160 @@
+(library
+ (name replay_fixtures)
+ (wrapped false)
+ (modules save nameless crash upload clock labelled lost sync pages search)
+ (libraries silica silica.check silica.jsonkit jsonkit)
+ (preprocess
+  (pps jsonkit.ppx silica.ppx)))
+
+(test
+ (name test_replay)
+ (modules test_replay)
+ (libraries
+  replay_fixtures
+  silica
+  silica.check
+  silica.memory
+  silica.json
+  alcotest))
+
+(executable
+ (name gen_script)
+ (modules gen_script)
+ (libraries replay_fixtures silica silica.check))
+
+(rule
+ (with-stdout-to
+  save_script.ml
+  (run ./gen_script.exe save ignored-event)))
+
+(rule
+ (with-stdout-to
+  save_fixed_script.ml
+  (run ./gen_script.exe save ignored-event Save.fixed)))
+
+(rule
+ (with-stdout-to
+  save_disabled_script.ml
+  (run ./gen_script.exe save ignored-event Save.disabled)))
+
+(rule
+ (with-stdout-to
+  nameless_script.ml
+  (run ./gen_script.exe nameless accessible-name)))
+
+(rule
+ (with-stdout-to
+  nameless_fixed_script.ml
+  (run ./gen_script.exe nameless accessible-name Nameless.fixed)))
+
+(rule
+ (with-stdout-to
+  crash_script.ml
+  (run ./gen_script.exe crash raised)))
+
+(rule
+ (with-stdout-to
+  upload_retry_script.ml
+  (run ./gen_script.exe upload ignored-event)))
+
+(rule
+ (with-stdout-to
+  upload_error_script.ml
+  (run ./gen_script.exe upload short-error)))
+
+(rule
+ (with-stdout-to
+  labelled_script.ml
+  (run ./gen_script.exe labelled accessible-name)))
+
+(rule
+ (with-stdout-to
+  clock_script.ml
+  (run ./gen_script.exe clock ignored-event)))
+
+(rule
+ (with-stdout-to
+  lost_script.ml
+  (run ./gen_script.exe lost "save leads to saved or failed")))
+
+(rule
+ (with-stdout-to
+  sync_script.ml
+  (run ./gen_script.exe sync "sync leads to synced")))
+
+(rule
+ (with-stdout-to
+  pages_link_script.ml
+  (run ./gen_script.exe pages img-alt)))
+
+(rule
+ (with-stdout-to
+  pages_back_script.ml
+  (run ./gen_script.exe pages "home stays behind")))
+
+(rule
+ (with-stdout-to
+  search_script.ml
+  (run ./gen_script.exe search ignored-event)))
+
+(executables
+ (names
+  save_script
+  save_fixed_script
+  save_disabled_script
+  nameless_script
+  nameless_fixed_script
+  crash_script
+  upload_retry_script
+  upload_error_script
+  clock_script
+  labelled_script
+  lost_script
+  sync_script
+  pages_link_script
+  pages_back_script
+  search_script)
+ (modules
+  save_script
+  save_fixed_script
+  save_disabled_script
+  nameless_script
+  nameless_fixed_script
+  crash_script
+  upload_retry_script
+  upload_error_script
+  clock_script
+  labelled_script
+  lost_script
+  sync_script
+  pages_link_script
+  pages_back_script
+  search_script)
+ (libraries replay_fixtures silica silica.check silica.memory))
+
+(cram
+ (deps
+  gen_script.exe
+  save_script.ml
+  save_script.exe
+  save_fixed_script.exe
+  save_disabled_script.exe
+  nameless_script.exe
+  nameless_fixed_script.exe
+  crash_script.exe
+  upload_retry_script.ml
+  upload_retry_script.exe
+  upload_error_script.exe
+  clock_script.exe
+  labelled_script.ml
+  labelled_script.exe
+  lost_script.ml
+  lost_script.exe
+  sync_script.ml
+  sync_script.exe
+  pages_link_script.ml
+  pages_link_script.exe
+  pages_back_script.ml
+  pages_back_script.exe
+  search_script.ml
+  search_script.exe))

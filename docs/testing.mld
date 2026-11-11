@@ -182,6 +182,11 @@ props and the snapshot only for machines whose codecs are registered with
 {!Silica.Machine.register_codecs}; names, causes, answers and Live updates are
 always there. The {!Silica.Trace} page says what a trace does not hold.
 
+{!Silica_memory.val-replay} gives a fresh mount the inputs of a trace, such as a
+counterexample of the checker or a recorded run, and says at which step the
+state names differ, or why a step cannot run in memory (see
+{!page-checker.replay}).
+
 The role, name and path of the element of a handler are computed when the
 trace is read, not when the input happens: the record keeps the element and
 the elements above it, which are immutable data, so a press on a large page

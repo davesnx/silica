@@ -55,7 +55,24 @@ Run every command from this directory.
 - Give each new component a test in `test/`: step its machine, drive it with
   `Silica_memory`, and add a `Check_suite.entry` for it in `check/main.ml`.
 - When the checker reports a finding, read its rule, hint, trace and view, and
-  fix the machine or the view. Do not loosen the check.
+  fix the machine or the view. Do not loosen the check. To drive the fix with
+  a red test:
+  1. `silica check --traces traces` writes each violation as
+     `traces/<id>-<n>.jsonl`; the JSON gives the file in `trace_file`.
+  2. `silica script <id> traces/<id>-<n>.jsonl > test/<id>_replay.ml`
+     prints a `Silica_memory` test of the same steps (press the button by role
+     and name, answer the call, move the clock). Its last line is one
+     `Check_expect` assertion that fails with the rule and its hint while the
+     bug is there. Do not edit that line to make the test pass. Add `<id>_replay` to the names in `test/dune`, run `dune fmt`
+     and `dune test`, and see it fail. Keep it as a regression test after the
+     fix.
+  3. When `silica script` says a step cannot run in `Silica_memory` (a timer
+     that real time fires later, a Live update, a held source, an event from
+     the inputs of the check), use `silica replay <id> traces/<id>-<n>.jsonl`:
+     it prints each step and the rules that fail there. Exit 0: the steps
+     replay and no rule fails at the end; 1: a rule fails, or a step is no
+     longer offered (read which).
+  4. After the fix, `silica check` must pass.
 - When `dune test` reports golden drift, read the changed states and edges. If
   the change is intended, write the golden files again; if not, fix the code.
 - Before you finish, run `dune build`, `dune test` and `dune fmt`. All three

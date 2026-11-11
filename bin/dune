@@ -4,7 +4,13 @@
  (name silica)
  (public_name silica)
  (package silica)
- (modules silica new_project template_files)
+ (modules
+  silica
+  new_project
+  template_files
+  check_executable
+  replay_command
+  script_command)
  (libraries cmdliner unix silica_dev))
 
 (rule

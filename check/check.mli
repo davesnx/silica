@@ -471,3 +471,100 @@ val leads_to :
 
     The message names the cycle and what it delivers; the hint says what to
     change. [hint] replaces the hint. *)
+
+(** {1 Replay}
+
+    Run a counterexample or a trace again, without a search, through the same
+    step function as {!run}. *)
+
+type failure = {
+  rule : string;  (** A built-in rule id of {!val-rules}, or a property name. *)
+  message : string;
+  hint : string;
+  element : string option;
+}
+(** A rule that fails at a point of a replay. Allowances apply as in {!run}. *)
+
+type ('s, 'ev) replayed_step = {
+  step : 'ev step option;  (** [None] for the start. *)
+  state : 's;  (** The snapshot after the step. *)
+  state_name : string;
+  view : string;  (** {!Silica.View_text} of its view, [""] when it raised. *)
+  actions : string list;
+      (** The actions of the step, as {!Silica.Transition.describe} writes them.
+      *)
+  failing : failure list;
+      (** The rules that fail at this point: the rules of the view and the
+          state, the properties, and the rules of the step ([ignored-event],
+          [raised], [focus-target] and the other action rules). At the start:
+          also the rules of the setup, such as [route-round-trip]. *)
+}
+
+type ('s, 'ev) replay =
+  | Replayed of ('s, 'ev) replayed_step list
+      (** The start, then one point for each step, in order. *)
+  | Not_enabled of {
+      at : int;  (** The number of the step, from 1, that is not enabled. *)
+      steps : ('s, 'ev) replayed_step list;  (** The points before it. *)
+      enabled : 'ev step list;  (** What the check offers there instead. *)
+    }
+
+val replay : ('s, 'ev) t -> 'ev list -> ('s, 'ev) replay
+(** [replay check inputs] starts the check and takes each input as the next
+    step, when the state offers it. A check with several [props] tries each
+    start in order and keeps the first one where every input is enabled. When an
+    input comes from more than one source (a button and a timer give the same
+    event), the first source in the order of {!component} is taken. After a step
+    that raised, nothing is enabled. *)
+
+val replay_trace :
+  ('s, 'ev) t -> Silica.Trace.t -> (('s, 'ev) replay, string) result
+(** Replays the steps of the root instance of a trace, such as one that
+    {!export} wrote. Each step is matched by its event data, decoded with the
+    event and props codecs of the root machine (see
+    {!Silica.Machine.register_codecs}), and by its cause: the same element,
+    timer, call or source when the check offers it. A step with no data is
+    matched by its event name and cause. [Error] when the trace is of another
+    machine, has no start of its root, or holds data that does not decode. *)
+
+val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
+(** A counterexample as a trace file (see {!Silica.Trace}): the start, then one
+    transition for each step, with the cause of each step, the answer of each
+    call by the codecs of its endpoint, the actions, and the event, props and
+    snapshot data when the machine registered codecs. The header has the origin
+    [Checker { rule }], the build ["check"], no time, and for a [Loop] the [seq]
+    where the cycle starts; the cycle is written once. A step from [inputs] has
+    the cause [Message]; a back or forward has the cause [Url] with the URL it
+    reached. A check with several [props] starts with the props where the last
+    step breaks [rule]. Raises [Invalid_argument] when a step of the
+    counterexample is not enabled in the check. *)
+
+val script :
+  ?component:string -> ('s, 'ev) t -> Silica.Trace.t -> (string, string) result
+(** [script check trace] is the OCaml text of a test that drives the component
+    in [Silica_memory] through the steps of a counterexample that {!export}
+    wrote, with the queries a person uses: an element by its role and name, an
+    answer to the pending call of a path, the clock moved to the timer. It ends
+    with a check of the rule of the trace, and it fails while the bug is there:
+    - [ignored-event]: the last input is given when the view still offers its
+      element, and the update must handle it;
+    - [raised]: no error reached [on_error];
+    - a rule of the view: {!view_violations} of that rule is empty;
+    - any other rule or a property: the view is not the view that broke it.
+
+    [component] is the OCaml expression of the component (default: the module
+    named after the machine id, as [Issue_list.component] for [issue-list], or
+    [.app] for an app). [Error] says why the steps cannot run in
+    [Silica_memory]: a timer that fires before another timer that real time
+    fires first (the checker lets running timers fire in any order), an event
+    from [inputs], a Live update, a held source, the result of an action, an
+    element with no role and no text; also when the replay in the check no
+    longer breaks the rule. Replay such a trace in the check with
+    {!replay_trace}. *)
+
+val view_violations :
+  ?rule:string -> state:string -> 'e Silica.Node.t -> string list
+(** The messages of the built-in rules of a view (the rules of {!val-rules} that
+    apply to ["view"], but [dead-end] and [link-parses]) that fail on the view,
+    or of the one [rule]. [state] names the state in the messages. A test reads
+    it on the view of [Silica_memory.view]. *)

@@ -298,6 +298,13 @@ line, then one record per line. The memory platform, the browser recorder, the
 Live runner of the server and the checker write the same format.
 _Avoid_: log file, recording
 
+**Replay**:
+Running the steps of a trace again, with no search: in the checker
+(`Check.replay_trace`, the same step function as the search) or in the memory
+platform (`Silica_memory.replay`). A script is the OCaml text of a memory test
+that replays a counterexample (`Check.script`).
+_Avoid_: rerun, playback
+
 ## Navigation
 
 **Page**:

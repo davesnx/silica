@@ -580,17 +580,21 @@ needs the props its parent rendered:
 Item.component) ])]. A component of a library that another suite checks is
 listed with [Check_suite.elsewhere ~machine ~reason].
 
-The executable has three commands:
+The executable has five commands:
 
 {v
-dune exec ./check/main.exe -- [check] [--json] [--only ID]...
+dune exec ./check/main.exe -- [check] [--json] [--only ID]... [--traces DIR]
 dune exec ./check/main.exe -- golden DIR [--write] [--json]
+dune exec ./check/main.exe -- replay ID TRACE_FILE [--json]
+dune exec ./check/main.exe -- script ID TRACE_FILE [--component EXPR]
 dune exec ./check/main.exe -- rules [--json]
 v}
 
 [silica check] builds and runs [check/main.exe]; [silica check --json] adds
-[--json]. [--only ID] runs the entries with these ids. [rules] lists
-{!Check.val-rules}.
+[--json], and [silica check --traces DIR] adds [--traces DIR].
+[silica replay] and [silica script] run the commands of the same names.
+[--only ID] runs the entries with these ids. [rules] lists
+{!Check.val-rules}. [replay] and [script] are in {!section-replay}.
 
 {2:exit Exit codes}
 
@@ -706,8 +710,8 @@ v}
 phrase that the text report prints. [version] changes only when a field
 changes its meaning or goes away; new fields can appear in the same version.
 [kind] is [path] for every violation today; [waits] and [loop] come with
-temporal properties, in the same shape. [trace_file] is [null] until the
-suite writes traces.
+temporal properties, in the same shape. [trace_file] is the trace file of
+the violation with [--traces DIR], else [null].
 
 A violation of the seeded bug in [test/check_suite/]: the saved state shows
 the Save button, and the update ignores it there.
@@ -727,3 +731,86 @@ From [test/check_suite/run.t]:
             "view": "text \"Saved\"\nbutton \"Save\" [press]\n",
             "kind": "path",
 ]}
+
+{2:replay Replay a finding}
+
+A violation can run again, without a search. [check --traces DIR] writes each
+violation as a trace file [DIR/<id>-<n>.jsonl], by {!Check.export}: the start,
+then each step with its cause, the answer of each call, the actions, and the
+event and snapshot data when the machine has codecs (see {!Silica.Trace}).
+
+[replay ID TRACE_FILE] runs the steps through the check of [ID], by
+{!Check.replay_trace}, and prints each step with the rules that fail there:
+
+From [test/check_suite/run.t]:
+{v
+replay save: traces/save-1.jsonl
+start: editing
+1. editing -> saved: save, by the view offers press on button "Save" at form > button[2]
+2. saved -> saved: save, by the view offers press on button "Save" at div > button
+  fails ignored-event: In state saved, the view offers press on button "Save" at div > button gives the event save, and the update returns Ignore.
+    hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+state: saved
+view:
+  text "Saved"
+  button "Save" [press]
+the last step breaks a rule (exit 1)
+v}
+
+It exits [0] when the steps replay and no rule fails at the last one, [1] when
+a rule fails there or a step is no longer offered, and [3] when the trace does
+not read. In OCaml, {!Check.val-replay} takes a list of inputs and
+{!Check.replay_trace} a trace; both give the state, the view, the actions and
+the failing rules of each step.
+
+[script ID TRACE_FILE] prints a test of the same steps for
+{!Silica_memory}, by {!Check.script}: it finds each element by its role and
+name, answers each pending call, moves the clock to each timer, and ends with
+a check of the rule, which fails while the bug is there. The generated test of
+the seeded bug of [silica new]:
+
+From [test/new/run.t]:
+{@ocaml skip[
+  let () =
+    let page = Memory.mount Counter.component in
+    Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
+]}
+
+[broken] is [Check_expect.rule] with the rule, the state, the message and the
+hint of the checker. The last line is one assertion of {!Check_expect}, chosen
+by the rule:
+
+- [ignored-event]: {!Check_expect.handles} gives the last input again while
+  the view shows a reachable element of that role and name, and fails when the
+  update ignores it. A fix that disables the element passes: the memory
+  platform refuses a press on a disabled element, as a browser does (see
+  {!Silica_memory.Not_reachable});
+- [raised]: the mount gets [~on_error:(Check_expect.on_error broken)], which
+  fails at the first error;
+- a rule of the view: {!Check_expect.view_passes}, by
+  {!Check.view_violations};
+- a [leads_to] property with a [Waits] counterexample:
+  {!Check_expect.does_not_wait} fails while the page waits for the user, with
+  no request and no timer, in the view where the property broke;
+- a [leads_to] property with a [Loop] counterexample: the script runs the stem
+  and the cycle once, and {!Check_expect.leaves_cycle} fails while the page is
+  back at the view where the cycle starts;
+- any other rule, or an [always] or [never_after] property:
+  {!Check_expect.not_view} fails while the view is the view that broke it.
+
+Some steps have no input in the memory platform, and then [script] prints why
+on standard error, writes no test and exits [1]:
+
+- a timer that fires before another running timer that is due earlier. The
+  checker keeps abstract time: any running timer can fire next, so it finds
+  races that slow devices and throttled tabs can make. The memory clock keeps
+  real time, so it cannot make that order;
+- an event from [~inputs], which no element of the view gives;
+- a Live update, a held source, or the result of an action, which the memory
+  platform gives at once.
+
+Use [replay] for those. {!Silica_memory.val-replay} runs a trace, of the checker
+or recorded in a runtime, in the memory platform and says at which step it
+differs, or why a step cannot run there.
+

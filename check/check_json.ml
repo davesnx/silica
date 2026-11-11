@@ -105,7 +105,7 @@ let steps check ~first items =
   list Fun.id
     (List.mapi (fun index item -> step check (first + index) item) items)
 
-let violation check (violation : (_, _) Check.violation) =
+let violation check ?trace_file (violation : (_, _) Check.violation) =
   let kind, trace, loop =
     match violation.counterexample with
     | Path trace ->
@@ -132,7 +132,7 @@ let violation check (violation : (_, _) Check.violation) =
       ("kind", string kind);
       ("trace", steps check ~first:1 trace);
       ("loop", option (steps check ~first:(List.length trace + 1)) loop);
-      ("trace_file", null);
+      ("trace_file", option string trace_file);
     ]
 
 let finding ~rule ~values ~state =
@@ -141,7 +141,7 @@ let finding ~rule ~values ~state =
   in
   (message, hint)
 
-let report check (report : (_, _) Check.report) =
+let report ?(trace_files = []) check (report : (_, _) Check.report) =
   record
     [
       ("id", string report.machine);
@@ -150,7 +150,15 @@ let report check (report : (_, _) Check.report) =
       ("truncated", bool report.truncated);
       ("states", int report.states);
       ("transitions", int report.transitions);
-      ("violations", list (violation check) report.violations);
+      ( "violations",
+        list Fun.id
+          (List.mapi
+             (fun index item ->
+               violation check ?trace_file:(List.nth_opt trace_files index) item
+             )
+             report.violations
+          )
+      );
       ( "unreached",
         list
           (fun name ->
@@ -207,4 +215,30 @@ let rule (rule : Check.rule) =
       ("message", string rule.message);
       ("hint", string rule.hint);
       ("applies_to", string rule.applies_to);
+    ]
+
+let failure (failure : Check.failure) =
+  record
+    [
+      ("rule", string failure.rule);
+      ("message", string failure.message);
+      ("hint", string failure.hint);
+      ("element", option string failure.element);
+    ]
+
+let replayed check index (point : (_, _) Check.replayed_step) =
+  record
+    [
+      ("index", int index);
+      ("step", option (step check index) point.step);
+      ( "state",
+        record
+          [
+            ("name", string point.state_name);
+            ("data", option Fun.id (Check.state_json check point.state));
+          ]
+      );
+      ("view", string point.view);
+      ("actions", list string point.actions);
+      ("failing", list failure point.failing);
     ]

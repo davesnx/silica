@@ -615,28 +615,140 @@ let click t chain =
       deliver t "press"
         (first chain (function Node.On_press e -> Some e | _ -> None))
 
+let accessible memory =
+  match memory.accessible with
+  | Some pairs ->
+      pairs
+  | None ->
+      let found = elements memory in
+      let computed = Accessibility.elements memory.view in
+      if
+        List.compare_lengths found computed <> 0
+        || not
+             (List.for_all2
+                (fun (found : found) element ->
+                  found.tag = Accessibility.tag element
+                )
+                found computed
+             )
+      then
+        failwith
+          "Silica_memory: the accessibility tree does not match the painted \
+           view";
+      let pairs = List.combine found computed in
+      memory.accessible <- Some pairs;
+      pairs
+
+let accessible_element (element : element) =
+  ignore (chain element);
+  snd
+    (List.find
+       (fun ((found : found), _) ->
+         found.el.root = element.root && found.el.path = element.path
+       )
+       (accessible element.owner)
+    )
+
+exception Not_reachable of string
+
+let describe_element (element : element) =
+  let item = accessible_element element in
+  let name = Accessibility.name item in
+  Printf.sprintf "%s%s at %s"
+    ( match Accessibility.role item with
+    | Some role ->
+        Accessibility.role_to_string role
+    | None ->
+        Accessibility.tag item
+    )
+    ( if name = "" then
+        ""
+      else
+        Printf.sprintf " %S" name
+    )
+    (Accessibility.path item)
+
+let natively_disabled (found : found) =
+  List.mem found.tag
+    [
+      "button"; "input"; "select"; "textarea"; "option"; "optgroup"; "fieldset";
+    ]
+  && attr_value found.attrs "disabled" <> None
+
+let reachable action (element : element) =
+  let chain = chain element in
+  let refuse reason =
+    raise
+      (Not_reachable
+         (Printf.sprintf
+            "Silica_memory: the %s %s, so a browser does not deliver %s to it."
+            (describe_element element) reason action
+         )
+      )
+  in
+  ( match
+      List.find_opt
+        (fun (found : found) ->
+          attr_value found.attrs "hidden" <> None
+          || attr_value found.attrs "inert" <> None
+        )
+        chain
+    with
+  | Some found when found.el.path = element.path ->
+      refuse
+        ( if attr_value found.attrs "inert" <> None then
+            "is inert"
+          else
+            "is hidden"
+        )
+  | Some found ->
+      refuse
+        (Printf.sprintf "is inside the %s %s" found.tag
+           ( if attr_value found.attrs "inert" <> None then
+               "that is inert"
+             else
+               "that is hidden"
+           )
+        )
+  | None ->
+      ()
+  );
+  match List.find_opt natively_disabled chain with
+  | Some found when found.el.path = element.path ->
+      refuse "is disabled"
+  | Some found ->
+      refuse (Printf.sprintf "is inside the disabled %s" found.tag)
+  | None ->
+      ()
+
 let hover e = preload_link e.owner (chain e)
 
 let press e =
+  reachable "a press" e;
   let t = e.owner in
   let chain = chain e in
   pointer_down t chain;
   click t chain
 
 let double_press e =
+  reachable "a double press" e;
   deliver e.owner "dblclick"
     (first (chain e) (function Node.On_double_press e -> Some e | _ -> None))
 
 let input e value =
+  reachable "input" e;
   Option.iter
     (fun (el, f, rate) -> emit e.owner el "input" rate (f value))
     (first (chain e) (function Node.On_input f -> Some f | _ -> None))
 
 let submit e =
+  reachable "a submit" e;
   deliver e.owner "submit"
     (first (chain e) (function Node.On_submit e -> Some e | _ -> None))
 
-let focus e = set_focus e.owner (Some e)
+let focus e =
+  reachable "focus" e;
+  set_focus e.owner (Some e)
 let blur t = set_focus t None
 let focused t = t.focused
 
@@ -976,40 +1088,6 @@ let leave_asks t =
 
 let announcements t = List.rev t.announced
 
-let accessible memory =
-  match memory.accessible with
-  | Some pairs ->
-      pairs
-  | None ->
-      let found = elements memory in
-      let computed = Accessibility.elements memory.view in
-      if
-        List.compare_lengths found computed <> 0
-        || not
-             (List.for_all2
-                (fun (found : found) element ->
-                  found.tag = Accessibility.tag element
-                )
-                found computed
-             )
-      then
-        failwith
-          "Silica_memory: the accessibility tree does not match the painted \
-           view";
-      let pairs = List.combine found computed in
-      memory.accessible <- Some pairs;
-      pairs
-
-let accessible_element (element : element) =
-  ignore (chain element);
-  snd
-    (List.find
-       (fun ((found : found), _) ->
-         found.el.root = element.root && found.el.path = element.path
-       )
-       (accessible element.owner)
-    )
-
 let role element = Accessibility.role (accessible_element element)
 let accessible_name element = Accessibility.name (accessible_element element)
 
@@ -1124,13 +1202,20 @@ let all_by_role ?within ?name memory role =
 
 let view_text memory = View_text.to_string memory.view
 
-type 'p t = { memory : memory; props : 'p -> unit }
+type 'p t = {
+  memory : memory;
+  props : 'p -> unit;
+  props_of_json : Silica_json.Json.t -> ('p, string) result;
+}
+
+let no_props _ = Ok ()
 
 let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
   {
     memory =
       mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component;
     props = ignore;
+    props_of_json = no_props;
   }
 
 let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
@@ -1138,6 +1223,7 @@ let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
     memory =
       mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app;
     props = ignore;
+    props_of_json = no_props;
   }
 
 let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
@@ -1164,7 +1250,12 @@ let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
        )
       )
   in
-  { memory; props }
+  let props_of_json json =
+    Result.bind (Machine.props_codec component.Component.machine)
+      (fun (codec : _ Codec.t) -> codec.decode json
+    )
+  in
+  { memory; props; props_of_json }
 
 let set_props handle props = handle.props props
 let view handle = view handle.memory
@@ -1200,6 +1291,27 @@ let advance handle ms = advance handle.memory ms
 let timers handle = timers handle.memory
 let requests handle = requests handle.memory
 let pending handle = pending handle.memory
+
+let pending_request handle path =
+  match
+    List.find_opt
+      (fun (request : request) -> request.path = path)
+      (pending handle)
+  with
+  | Some request ->
+      request
+  | None ->
+      failwith
+        (Printf.sprintf "Silica_memory: no pending request to %s; pending: %s"
+           path
+           ( match pending handle with
+           | [] ->
+               "none"
+           | requests ->
+               String.concat ", "
+                 (List.map (fun (request : request) -> request.path) requests)
+           )
+        )
 let sockets handle = sockets handle.memory
 let url handle = url handle.memory
 let history handle = history handle.memory
@@ -1214,3 +1326,426 @@ let logs handle = logs handle.memory
 let leave_asks handle = leave_asks handle.memory
 let announcements handle = announcements handle.memory
 let session_gone handle = session_gone handle.memory
+
+type replay_result =
+  | Replayed
+  | Different of { seq : int; expected : string; got : string }
+  | Not_realisable of { seq : int; reason : string }
+  | Not_found of { seq : int; error : string }
+
+let without_number id =
+  match String.index_opt id '/' with
+  | Some slash
+    when slash > 0
+         && String.for_all
+              (fun character ->
+                character = '.' || ('0' <= character && character <= '9')
+              )
+              (String.sub id 0 slash) ->
+      String.sub id (slash + 1) (String.length id - slash - 1)
+  | _ ->
+      id
+
+let drop_prefix ~prefix text =
+  if String.starts_with ~prefix text then
+    Some
+      (String.sub text (String.length prefix)
+         (String.length text - String.length prefix)
+      )
+  else
+    None
+
+let started_timer action =
+  Option.bind (drop_prefix ~prefix:"start timer " action) (fun rest ->
+      match String.rindex_opt rest ' ' with
+      | Some space -> (
+          let id = String.sub rest 0 space in
+          match
+            drop_prefix ~prefix:""
+              (String.sub rest (space + 1) (String.length rest - space - 1))
+          with
+          | Some delay when String.ends_with ~suffix:"ms" delay ->
+              Option.map
+                (fun ms -> (id, ms))
+                (int_of_string_opt
+                   (String.sub delay 0 (String.length delay - 2))
+                )
+          | _ ->
+              None
+        )
+      | None ->
+          None
+  )
+
+let running_timers (records : Transition.t list) =
+  List.fold_left
+    (fun (running, order) (record : Transition.t) ->
+      let running =
+        match record.cause with
+        | Timer { id; _ } ->
+            List.filter (fun (other, _) -> other <> id) running
+        | _ ->
+            running
+      in
+      List.fold_left
+        (fun (running, order) action ->
+          match started_timer action with
+          | Some (id, ms) ->
+              let start =
+                int_of_float (Option.value record.time_ms ~default:0.)
+              in
+              ( (id, (start + ms, order))
+                :: List.filter (fun (other, _) -> other <> id) running,
+                order + 1
+              )
+          | None -> (
+              match drop_prefix ~prefix:"stop " action with
+              | Some id ->
+                  (List.filter (fun (other, _) -> other <> id) running, order)
+              | None ->
+                  (running, order)
+            )
+        )
+        (running, order) record.actions
+    )
+    ([], 0) records
+  |> fst
+
+let describe_record (record : Transition.t) =
+  Printf.sprintf "%s: %s -> %s (%s)" record.machine record.from record.target
+    ( match record.change with
+    | Started ->
+        "started"
+    | Resumed ->
+        "resumed"
+    | Unhandled ->
+        "unhandled"
+    | Kept ->
+        "kept"
+    | Entered ->
+        "entered"
+    | Ended ->
+        "ended"
+    )
+
+let find_element memory ~role ~name ~path =
+  let visible =
+    List.filter
+      (fun (_, element) -> not (Accessibility.hidden element))
+      (accessible memory)
+  in
+  let role_matches element =
+    match role with
+    | Some role ->
+        Option.map Accessibility.role_to_string (Accessibility.role element)
+        = Some role
+    | None ->
+        true
+  in
+  let named =
+    List.filter
+      (fun (_, element) ->
+        role_matches element && Accessibility.name element = name
+      )
+      visible
+  in
+  let at_path pairs =
+    List.filter (fun (_, element) -> Accessibility.path element = path) pairs
+  in
+  match named with
+  | [ ((found : found), _) ] ->
+      Ok found.el
+  | _ -> (
+      match at_path named with
+      | [ ((found : found), _) ] ->
+          Ok found.el
+      | _ ->
+          Error
+            (Printf.sprintf "no single %s %S at %s; the view is:\n%s"
+               (Option.value role ~default:"element")
+               name path
+               (View_text.to_string memory.view)
+            )
+    )
+
+let has_focus handle (element : element) =
+  match focused handle with
+  | Some (other : element) ->
+      other.root = element.root && other.path = element.path
+  | None ->
+      false
+
+let drive handle (record : Transition.t) =
+  let memory = handle.memory in
+  let not_realisable reason =
+    Error (Not_realisable { seq = record.seq; reason })
+  in
+  match record.cause with
+  | Element { handler; role; name; element; value } -> (
+      match find_element memory ~role ~name ~path:element with
+      | Error error ->
+          Error (Not_found { seq = record.seq; error })
+      | Ok found -> (
+          match (handler, value) with
+          | "press", _ ->
+              Ok (press found)
+          | "double_press", _ ->
+              Ok (double_press found)
+          | "submit", _ ->
+              Ok (submit found)
+          | "focus", _ ->
+              Ok (focus found)
+          | "blur", _ ->
+              Ok (blur handle)
+          | "pointer_enter", _ ->
+              Ok (hover found)
+          | "input", Some text ->
+              Ok (input found text)
+          | "key_down", Some key_name ->
+              if not (has_focus handle found) then focus found;
+              Ok (key handle (Key.make key_name))
+          | "key_up", Some key_name ->
+              if not (has_focus handle found) then focus found;
+              Ok (key_up handle (Key.make key_name))
+          | _ ->
+              not_realisable
+                ("the handler " ^ handler ^ " has no input in Silica_memory")
+        )
+    )
+  | Timer { id; ms } -> (
+      let running =
+        running_timers
+          ( match memory.recorder with
+          | Some recorder ->
+              Trace.Recorder.transitions recorder
+          | None ->
+              []
+          )
+      in
+      let matching =
+        match List.assoc_opt id running with
+        | Some timing ->
+            Some (id, timing)
+        | None ->
+            List.find_opt
+              (fun (other, _) -> without_number other = without_number id)
+              running
+      in
+      match matching with
+      | None ->
+          not_realisable ("the timer " ^ id ^ " is not running")
+      | Some (found, (due, order)) -> (
+          match
+            List.find_opt
+              (fun (other, (other_due, other_order)) ->
+                other <> found
+                && (other_due < due || (other_due = due && other_order < order))
+              )
+              running
+          with
+          | Some (other, (other_due, _)) ->
+              not_realisable
+                (Printf.sprintf
+                   "the trace fires the timer %s (%d ms) first, but the timer \
+                    %s is due %d ms earlier in real time"
+                   id ms other (due - other_due)
+                )
+          | None ->
+              Ok (advance handle (max 0 (due - memory.now)))
+        )
+    )
+  | Answer { path; answer; _ } -> (
+      match
+        ( List.find_opt
+            (fun (request : request) -> request.path = path)
+            (pending handle),
+          answer
+        )
+      with
+      | None, _ ->
+          Error
+            (Not_found
+               { seq = record.seq; error = "no pending request to " ^ path }
+            )
+      | Some _, None ->
+          not_realisable ("the trace has no answer data for " ^ path)
+      | Some request, Some answer -> (
+          let text json = Silica_json.Json.to_string json in
+          match Codec.constructor_of answer with
+          | Ok ("Ok", [ value ]) ->
+              Ok (reply request (text value))
+          | Ok ("Rejected", [ value ]) ->
+              Ok (reply ~status:422 request (text value))
+          | Ok ("Failed", [ error ]) -> (
+              match Codec.constructor_of error with
+              | Ok ("Http", [ status ]) -> (
+                  match int_of_string_opt (text status) with
+                  | Some status ->
+                      Ok (reply ~status request "")
+                  | None ->
+                      not_realisable ("the status " ^ text status)
+                )
+              | Ok ("Network", [ reason ]) ->
+                  Ok
+                    (network_error request
+                       ( match Silica_json.Json.classify reason with
+                       | `String reason ->
+                           reason
+                       | _ ->
+                           text reason
+                       )
+                    )
+              | _ ->
+                  Ok (reply request "not json")
+            )
+          | _ ->
+              not_realisable ("the answer " ^ text answer ^ " is not an answer")
+        )
+    )
+  | Props -> (
+      match record.props with
+      | None ->
+          not_realisable "the trace has no props data"
+      | Some json -> (
+          match handle.props_of_json json with
+          | Ok props ->
+              Ok (handle.props props)
+          | Error error ->
+              not_realisable ("the props do not decode: " ^ error)
+        )
+    )
+  | Url url -> (
+      let entries = List.map Url.to_string memory.entries in
+      if memory.index > 0 && List.nth_opt entries (memory.index - 1) = Some url
+      then
+        Ok (back handle)
+      else if List.nth_opt entries (memory.index + 1) = Some url then
+        Ok (forward handle)
+      else
+        match select handle "href" url with
+        | link :: _ ->
+            Ok (press link)
+        | [] ->
+            not_realisable ("no link in the view goes to " ^ url)
+    )
+  | Live { topic; _ } ->
+      not_realisable
+        ("an update of the Live topic " ^ topic
+       ^ ": Silica_memory does not replay Live updates"
+        )
+  | Held { source; _ } ->
+      not_realisable
+        ("the held source " ^ source
+       ^ ": Silica_memory does not replay held sources"
+        )
+  | Action_result { action } ->
+      not_realisable
+        ("the result of the action " ^ action
+       ^ ", which Silica_memory gives at once"
+        )
+  | Message ->
+      not_realisable
+        "an event that the host or the inputs of the check gave, not an element"
+  | Preload url ->
+      not_realisable ("a preload of " ^ url)
+  | Start | Child _ | Ended ->
+      Ok ()
+
+let is_input (record : Transition.t) ~root =
+  match record.cause with
+  | Element _
+  | Timer _
+  | Answer _
+  | Live _
+  | Held _
+  | Action_result _
+  | Url _
+  | Preload _
+  | Message ->
+      true
+  | Props ->
+      record.instance = root
+  | Start | Child _ | Ended ->
+      false
+
+let replay handle (expected : Trace.t) =
+  let records () = (trace handle).transitions in
+  let root_of transitions =
+    List.find_opt
+      (fun (record : Transition.t) ->
+        record.change = Started && record.machine = expected.header.root
+      )
+      transitions
+  in
+  let compare (wanted : Transition.t) (got : Transition.t option) =
+    match got with
+    | Some got
+      when got.target = wanted.target
+           && got.change = Unhandled = (wanted.change = Unhandled) ->
+        None
+    | Some got ->
+        Some
+          (Different
+             {
+               seq = wanted.seq;
+               expected = describe_record wanted;
+               got = describe_record got;
+             }
+          )
+    | None ->
+        Some
+          (Different
+             {
+               seq = wanted.seq;
+               expected = describe_record wanted;
+               got = "no transition of " ^ wanted.instance;
+             }
+          )
+  in
+  match root_of expected.transitions with
+  | None ->
+      Different
+        {
+          seq = 0;
+          expected = "a start of " ^ expected.header.root;
+          got = "a trace with no start of its root";
+        }
+  | Some start -> (
+      match compare start (root_of (records ())) with
+      | Some different ->
+          different
+      | None ->
+          let rec go = function
+            | [] ->
+                Replayed
+            | (wanted : Transition.t) :: rest -> (
+                if not (is_input wanted ~root:start.instance) then
+                  go rest
+                else
+                  let before = List.length (records ()) in
+                  match drive handle wanted with
+                  | Error result ->
+                      result
+                  | Ok () -> (
+                      let added =
+                        List.filteri
+                          (fun index _ -> index >= before)
+                          (records ())
+                      in
+                      let mine =
+                        List.filter
+                          (fun (record : Transition.t) ->
+                            record.instance = wanted.instance
+                          )
+                          added
+                      in
+                      match compare wanted (List.nth_opt (List.rev mine) 0) with
+                      | Some different ->
+                          different
+                      | None ->
+                          go rest
+                    )
+              )
+          in
+          go expected.transitions
+    )

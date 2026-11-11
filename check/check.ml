@@ -101,8 +101,14 @@ type ('s, 'ev) t =
       allow : allowance list;
       state_json : 's -> Silica_json.Json.t option;
       input_json : 'ev -> Silica_json.Json.t option;
+      machine_json : 's -> Silica_json.Json.t option;
+      input_of : Transition.t -> ('ev option, string) result;
+      url : 's -> string option;
+      subject : subject;
     }
       -> ('s, 'ev) t
+
+and subject = Plain | With_props | Routed
 
 let id (Check check) = Lazy.force check.id
 let state_json (Check check) state = check.state_json state
@@ -124,6 +130,41 @@ let component_json machine =
         None
   )
 
+let missing ~what (record : Transition.t) machine =
+  Printf.sprintf
+    "transition %d (%s): the trace has no %s; register the codecs of the \
+     machine %s with Silica.Machine.register_codecs"
+    record.seq
+    (match record.event with "" -> "no event" | name -> name)
+    what machine
+
+let decode_at (record : Transition.t) codec json =
+  Result.map_error
+    (fun error -> Printf.sprintf "transition %d: %s" record.seq error)
+    (Result.bind codec (fun (codec : _ Codec.t) -> codec.decode json))
+
+let component_input_of machine (record : Transition.t) =
+  match (record.cause, record.props, record.data) with
+  | Props, Some json, _ ->
+      Result.map
+        (fun props -> Some (Props props : (_, _) input))
+        (decode_at record (Machine.props_codec machine) json)
+  | Props, None, _ ->
+      Error (missing ~what:"props" record (Machine.id machine))
+  | _, _, Some json ->
+      Result.map
+        (fun event -> Some (Event event : (_, _) input))
+        (decode_at record (Machine.event_codec machine) json)
+  | _, _, None ->
+      Ok None
+
+let subject_of machine =
+  match Machine.default_props machine with
+  | Some _ ->
+      Plain
+  | None ->
+      With_props
+
 let component ?(max_states = 100_000) ?(max_violations = 50)
     ?(within = fun _ -> true) ?(inputs = fun _ -> []) ?(props = [])
     ?(samples = []) ?(arrivals = 2) ?(keys = Check_rules.default_keys)
@@ -143,6 +184,10 @@ let component ?(max_states = 100_000) ?(max_violations = 50)
       allow;
       state_json = fst (component_json component.machine);
       input_json = snd (component_json component.machine);
+      machine_json = fst (component_json component.machine);
+      input_of = component_input_of component.machine;
+      url = (fun _ -> None);
+      subject = subject_of component.machine;
     }
 
 let live ?(max_states = 100_000) ?(max_violations = 50)
@@ -164,6 +209,10 @@ let live ?(max_states = 100_000) ?(max_violations = 50)
       allow;
       state_json = fst (component_json live.component.machine);
       input_json = snd (component_json live.component.machine);
+      machine_json = fst (component_json live.component.machine);
+      input_of = component_input_of live.component.machine;
+      url = (fun _ -> None);
+      subject = Plain;
     }
 
 let root_machine ~routes ~print root =
@@ -208,6 +257,34 @@ let app_input_json ~routes ~print root = function
   | Link _ | Browser_back | Browser_forward ->
       None
 
+let app_input_of ~routes ~print root (record : Transition.t) =
+  match record.data with
+  | Some json -> (
+      match root_machine ~routes ~print root with
+      | Some machine ->
+          Result.map
+            (fun event -> Some (Event event : _ app_event))
+            (decode_at record (Machine.event_codec machine) json)
+      | None ->
+          Ok None
+    )
+  | None -> (
+      match record.event with
+      | "back" ->
+          Ok (Some (Browser_back : _ app_event))
+      | "forward" ->
+          Ok (Some Browser_forward)
+      | event when String.starts_with ~prefix:"link " event ->
+          Ok
+            (Some
+               (Link
+                  (Url.of_string (String.sub event 5 (String.length event - 5)))
+               )
+            )
+      | _ ->
+          Ok None
+    )
+
 let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ?(max_history = 4) ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
     ?(keys = Check_rules.default_keys) ?(properties = []) ?(allow = []) ~routes
@@ -235,6 +312,18 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
       allow;
       state_json = app_state_json ~routes ~print root;
       input_json = app_input_json ~routes ~print root;
+      machine_json =
+        (fun (state : _ app_state) ->
+          Option.bind (root_machine ~routes ~print root) (fun machine ->
+              encode (Machine.state_codec machine) state.router
+          )
+        );
+      input_of = app_input_of ~routes ~print root;
+      url =
+        (fun (state : _ app_state) ->
+          Option.map Url.to_string (List.nth_opt state.history state.index)
+        );
+      subject = Routed;
     }
 
 type cause = Check_model.cause =
@@ -656,9 +745,8 @@ let temporal_violations (type n s ev e)
     !truncated
   )
 
-let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
-  validate ~properties:check.properties check.allow;
-  let model = check.build () in
+let rules_of (type n e ev) (model : (n, _, ev, e) Check_model.model) properties
+    : (n, e, ev) Check_search.rule list =
   let dead_end node view moves _ =
     if
       model.final node
@@ -669,22 +757,25 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
     else
       [ Check_rules.finding "dead-end" ]
   in
-  let rules =
-    [
-      ("view", fun _ view _ _ -> Check_rules.view_rules view);
-      ("view", fun _ view _ _ -> Check_accessibility.view_rules view);
-      ("view", dead_end);
-      ("machine", fun node view _ _ -> model.state_rules node view);
-    ]
-    @ List.filter_map
-        (function
-          | Always { name; hint; condition } ->
-              Some (property_rule model ~name ~hint ~condition)
-          | Never_after _ | Leads_to _ ->
-              None
-          )
-        check.properties
-  in
+  [
+    ("view", fun _ view _ _ -> Check_rules.view_rules view);
+    ("view", fun _ view _ _ -> Check_accessibility.view_rules view);
+    ("view", dead_end);
+    ("machine", fun node view _ _ -> model.state_rules node view);
+  ]
+  @ List.filter_map
+      (function
+        | Always { name; hint; condition } ->
+            Some (property_rule model ~name ~hint ~condition)
+        | Never_after _ | Leads_to _ ->
+            None
+        )
+      properties
+
+let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
+  validate ~properties:check.properties check.allow;
+  let model = check.build () in
+  let rules = rules_of model check.properties in
   let temporal =
     List.filter
       (function Always _ -> false | Never_after _ | Leads_to _ -> true)
@@ -879,3 +970,1180 @@ let pp_report formatter report =
     (fun entry -> Format.fprintf formatter "@,not explored: %s" entry)
     report.not_explored;
   Format.fprintf formatter "@]"
+
+type failure = {
+  rule : string;
+  message : string;
+  hint : string;
+  element : string option;
+}
+
+type ('s, 'ev) replayed_step = {
+  step : 'ev step option;
+  state : 's;
+  state_name : string;
+  view : string;
+  actions : string list;
+  failing : failure list;
+}
+
+type ('s, 'ev) replay =
+  | Replayed of ('s, 'ev) replayed_step list
+  | Not_enabled of {
+      at : int;
+      steps : ('s, 'ev) replayed_step list;
+      enabled : 'ev step list;
+    }
+
+type 'ev wanted = { input : 'ev option; event : string; cause : cause option }
+
+type ('n, 's, 'ev, 'e) point = {
+  replayed : ('s, 'ev) replayed_step;
+  node : 'n;
+  before : ('n * 'e Node.t * 'ev Check_model.move) option;
+  host : 'e Action.host list;
+  how : Machine.how;
+  next : ('e Node.t * 'ev Check_model.move list) option;
+}
+
+type ('n, 's, 'ev, 'e) walked =
+  | Walked of ('n, 's, 'ev, 'e) point list
+  | Stuck of {
+      at : int;
+      points : ('n, 's, 'ev, 'e) point list;
+      enabled : 'ev step list;
+    }
+
+let without_number id =
+  match String.index_opt id '/' with
+  | Some slash
+    when slash > 0
+         && String.for_all
+              (fun character ->
+                character = '.' || ('0' <= character && character <= '9')
+              )
+              (String.sub id 0 slash) ->
+      String.sub id (slash + 1) (String.length id - slash - 1)
+  | _ ->
+      id
+
+let similar (first : cause) (second : cause) =
+  match (first, second) with
+  | View first, View second ->
+      first.handler = second.handler
+      && first.role = second.role && first.name = second.name
+  | Timer first, Timer second ->
+      without_number first.id = without_number second.id
+  | Answer first, Answer second ->
+      first.path = second.path
+  | Live first, Live second ->
+      first.topic = second.topic
+  | Held first, Held second ->
+      first.source = second.source
+  | Action_result first, Action_result second ->
+      first = second
+  | Input, Input | Props, Props | Navigation, Navigation ->
+      true
+  | Child first, Child second ->
+      first.instance = second.instance
+  | _ ->
+      false
+
+type ('s, 'ev, 'r) consumer = {
+  consume :
+    'n 'e. ('n, 's, 'ev, 'e) Check_model.model -> ('n, 's, 'ev, 'e) walked -> 'r;
+}
+
+let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
+    ~(prefer : _ -> bool) (inputs : ev wanted list)
+    (consumer : (s, ev, r) consumer) : (r, exn) result =
+  validate ~properties:check.properties check.allow;
+  let model = check.build () in
+  let rules = rules_of model check.properties in
+  let failures ~state (findings : Check_rules.finding list) =
+    List.fold_left
+      (fun acc (finding : Check_rules.finding) ->
+        if
+          List.exists
+            (fun allowance ->
+              Check_rules.allows allowance ~rule:finding.rule ~state
+                ~element:finding.element
+            )
+            check.allow
+        then
+          acc
+        else
+          let message, hint = Check_rules.render finding ~state in
+          if
+            List.exists
+              (fun (other : failure) ->
+                other.rule = finding.rule && other.message = message
+              )
+              acc
+          then
+            acc
+          else
+            acc
+            @ [
+                {
+                  rule = finding.rule;
+                  message;
+                  hint;
+                  element = finding.element;
+                };
+              ]
+      )
+      [] findings
+  in
+  let guard f = Check_search.guard model.machine f in
+  let point ~step ~before ~host ~how ~extra node =
+    let state = model.snapshot node and state_name = model.name node in
+    let arrival : (ev, _) Check_search.arrival =
+      {
+        event =
+          Option.map
+            (fun (_, _, (move : _ Check_model.move)) -> move.event)
+            before;
+        from = Option.map (fun (previous, _, _) -> model.name previous) before;
+        actions = host;
+      }
+    in
+    let view_text, findings, next =
+      match guard (fun () -> model.view node) with
+      | Error error ->
+          ("", [ Check_search.raised ~where:"view" error ], None)
+      | Ok view -> (
+          match guard (fun () -> model.enabled node view) with
+          | Error error ->
+              ( View_text.to_string view,
+                [ Check_search.raised ~where:"handlers or inputs" error ],
+                None
+              )
+          | Ok moves ->
+              ( View_text.to_string view,
+                List.concat_map
+                  (fun (where, rule) ->
+                    match guard (fun () -> rule node view moves arrival) with
+                    | Ok findings ->
+                        findings
+                    | Error error ->
+                        [ Check_search.raised ~where error ]
+                  )
+                  rules,
+                Some (view, moves)
+              )
+        )
+    in
+    {
+      replayed =
+        {
+          step;
+          state;
+          state_name;
+          view = view_text;
+          actions = List.map Transition.describe host;
+          failing = failures ~state:state_name (extra @ findings);
+        };
+      node;
+      before;
+      host;
+      how;
+      next;
+    }
+  in
+  let step_of node view (move : _ Check_model.move) target =
+    {
+      input = move.event;
+      event = model.event_name move.event;
+      cause = model.cause node view move;
+      instance = "0";
+      machine = model.machine;
+      from = model.name node;
+      target;
+    }
+  in
+  let choose node view moves (wanted : ev wanted) =
+    let candidates =
+      List.filter
+        (fun (move : _ Check_model.move) ->
+          match wanted.input with
+          | Some input ->
+              move.event = input
+          | None ->
+              model.event_name move.event = wanted.event
+        )
+        moves
+    in
+    let cause_of move = model.cause node view move in
+    let find test =
+      List.find_opt (fun move -> test (cause_of move)) candidates
+    in
+    match wanted.cause with
+    | None ->
+        List.nth_opt candidates 0
+    | Some cause -> (
+        match find (fun other -> other = cause) with
+        | Some move ->
+            Some move
+        | None -> (
+            match find (similar cause) with
+            | Some move ->
+                Some move
+            | None ->
+                if wanted.input = None then
+                  None
+                else
+                  List.nth_opt candidates 0
+          )
+      )
+  in
+  let rec go points last at = function
+    | [] ->
+        Walked (List.rev points)
+    | wanted :: rest -> (
+        match last.next with
+        | None ->
+            Stuck { at; points = List.rev points; enabled = [] }
+        | Some (view, moves) -> (
+            let node = last.node in
+            match choose node view moves wanted with
+            | None ->
+                Stuck
+                  {
+                    at;
+                    points = List.rev points;
+                    enabled =
+                      List.map
+                        (fun move -> step_of node view move (model.name node))
+                        moves;
+                  }
+            | Some move -> (
+                let from = model.name node in
+                let values =
+                  [
+                    ( "event",
+                      match model.event_name move.event with
+                      | "" ->
+                          "(unnamed)"
+                      | name ->
+                          name
+                    );
+                    ("from", from);
+                  ]
+                in
+                match guard (fun () -> model.step node move) with
+                | Error error ->
+                    let failed =
+                      {
+                        replayed =
+                          {
+                            step = Some (step_of node view move from);
+                            state = model.snapshot node;
+                            state_name = from;
+                            view = View_text.to_string view;
+                            actions = [];
+                            failing =
+                              failures ~state:from
+                                [ Check_search.raised ~where:"update" error ];
+                          };
+                        node;
+                        before = Some (node, view, move);
+                        host = [];
+                        how = Machine.Unhandled;
+                        next = None;
+                      }
+                    in
+                    go (failed :: points) failed (at + 1) rest
+                | Ok (next, host, how) ->
+                    let ignored =
+                      match how with
+                      | Machine.Unhandled
+                        when not (Check_model.ignorable move.via) ->
+                          let cause = model.cause node view move in
+                          let element =
+                            match cause with
+                            | Check_model.View { element; _ } ->
+                                Some element
+                            | _ ->
+                                None
+                          in
+                          [
+                            Check_rules.finding "ignored-event" ?element
+                              ~values:
+                                [
+                                  List.hd values;
+                                  ("cause", Check_model.describe_cause cause);
+                                ];
+                          ]
+                      | _ ->
+                          []
+                    in
+                    let actions =
+                      match
+                        guard (fun () ->
+                            model.action_rules ~values
+                              (lazy (model.view next))
+                              host
+                        )
+                      with
+                      | Ok findings ->
+                          findings
+                      | Error _ ->
+                          []
+                    in
+                    let reached =
+                      point
+                        ~step:(Some (step_of node view move (model.name next)))
+                        ~before:(Some (node, view, move))
+                        ~host ~how ~extra:(ignored @ actions) next
+                    in
+                    go (reached :: points) reached (at + 1) rest
+              )
+          )
+      )
+  in
+  let context point =
+    {
+      snapshot = model.snapshot point.node;
+      view =
+        lazy
+          ( match point.next with
+          | Some (view, _) ->
+              view
+          | None ->
+              model.view point.node
+          );
+      event =
+        Option.bind point.before (fun (_, _, (move : _ Check_model.move)) ->
+            model.event_of move.event
+        );
+      name = model.name point.node;
+      from =
+        Option.map (fun (previous, _, _) -> model.name previous) point.before;
+      actions = Lazy.from_val point.host;
+    }
+  in
+  let waits point =
+    match point.next with
+    | Some (_, moves) ->
+        List.for_all
+          (fun (move : _ Check_model.move) ->
+            Check_temporal.resource move.via = None
+          )
+          moves
+    | None ->
+        false
+  in
+  let holds condition point =
+    match guard (fun () -> condition (context point)) with
+    | Ok holds ->
+        holds
+    | Error _ ->
+        false
+  in
+  let temporal points =
+    let points = Array.of_list points in
+    let count = Array.length points in
+    let extra = Array.make count [] in
+    let add index rule ~values ~texts:(message, hint) =
+      extra.(index) <-
+        extra.(index)
+        @ [
+            {
+              Check_rules.rule;
+              element = None;
+              values = ("property", rule) :: values;
+              custom = Some (message, hint);
+            };
+          ]
+    in
+    List.iter
+      (function
+        | Always _ ->
+            ()
+        | Never_after { name; hint; after; never } ->
+            let seen = ref false in
+            Array.iteri
+              (fun index point ->
+                if holds after point then seen := true;
+                if !seen && holds never point then
+                  add index name ~values:[]
+                    ~texts:
+                      ( Check_temporal.never_after_message,
+                        Option.value hint
+                          ~default:Check_temporal.never_after_hint
+                      )
+              )
+              points
+        | Leads_to { name; hint; from; to_ } -> (
+            let pending = Array.make count false in
+            let waiting = ref false in
+            Array.iteri
+              (fun index point ->
+                if holds from point then waiting := true;
+                if holds to_ point then waiting := false;
+                pending.(index) <- !waiting;
+                if !waiting && waits point then
+                  add index name ~values:[]
+                    ~texts:
+                      ( Check_temporal.waits_message,
+                        Option.value hint ~default:Check_temporal.waits_hint
+                      )
+              )
+              points;
+            match loop_from with
+            | Some start when start < count - 1 ->
+                let last = count - 1 in
+                let cycle = Array.sub points (start + 1) (last - start) in
+                if
+                  points.(start).node = points.(last).node
+                  && Array.for_all Fun.id
+                       (Array.sub pending start (last - start + 1))
+                then
+                  let delivered =
+                    List.sort_uniq String.compare
+                      (List.filter_map
+                         (fun point ->
+                           Option.bind point.before
+                             (fun (_, _, (move : _ Check_model.move)) ->
+                               Check_temporal.resource move.via
+                           )
+                         )
+                         (Array.to_list cycle)
+                      )
+                  in
+                  add last name
+                    ~values:
+                      [
+                        ( "cycle",
+                          String.concat " -> "
+                            (model.name points.(start).node
+                            :: List.map
+                                 (fun point -> model.name point.node)
+                                 (Array.to_list cycle)
+                            )
+                        );
+                        ( "delivered",
+                          match delivered with
+                          | [] ->
+                              "nothing"
+                          | delivered ->
+                              String.concat ", " delivered
+                        );
+                      ]
+                    ~texts:
+                      ( Check_temporal.loop_message,
+                        Option.value hint ~default:Check_temporal.loop_hint
+                      )
+            | Some _ | None ->
+                ()
+          )
+        )
+      check.properties;
+    Array.to_list
+      (Array.mapi
+         (fun index point ->
+           match extra.(index) with
+           | [] ->
+               point
+           | findings ->
+               {
+                 point with
+                 replayed =
+                   {
+                     point.replayed with
+                     failing =
+                       point.replayed.failing
+                       @ failures ~state:point.replayed.state_name findings;
+                   };
+               }
+         )
+         points
+      )
+  in
+  let attempt (node, host) =
+    let values = [ ("event", "start"); ("from", model.name node) ] in
+    let start_findings =
+      match
+        guard (fun () ->
+            model.action_rules ~values (lazy (model.view node)) host
+        )
+      with
+      | Ok findings ->
+          findings
+      | Error _ ->
+          []
+    in
+    let first =
+      point ~step:None ~before:None ~host ~how:Machine.Entered
+        ~extra:(model.setup_findings () @ start_findings)
+        node
+    in
+    match go [ first ] first 1 inputs with
+    | Walked points ->
+        Walked (temporal points)
+    | Stuck stuck ->
+        Stuck { stuck with points = temporal stuck.points }
+  in
+  let complete = function Walked _ -> true | Stuck _ -> false in
+  let breaks = function
+    | Walked points -> (
+        match (ends_with, List.rev points) with
+        | Some rule, last :: _ ->
+            List.exists
+              (fun (failure : failure) -> failure.rule = rule)
+              last.replayed.failing
+        | _ ->
+            false
+      )
+    | Stuck _ ->
+        false
+  in
+  match guard model.start with
+  | Error error ->
+      Error error
+  | Ok starts -> (
+      let preferred, others =
+        List.partition (fun (node, _) -> prefer (model.props_json node)) starts
+      in
+      let attempts = List.map attempt (preferred @ others) in
+      match
+        match List.find_opt breaks attempts with
+        | Some walked ->
+            Some walked
+        | None ->
+            List.find_opt complete attempts
+      with
+      | Some walked ->
+          Ok (consumer.consume model walked)
+      | None -> (
+          match attempts with
+          | first :: _ ->
+              Ok (consumer.consume model first)
+          | [] ->
+              Error (Invalid_check "the check has no start")
+        )
+    )
+
+let public_replay = function
+  | Walked points ->
+      Replayed (List.map (fun point -> point.replayed) points)
+  | Stuck { at; points; enabled } ->
+      Not_enabled
+        { at; steps = List.map (fun point -> point.replayed) points; enabled }
+
+let start_failure (type s ev) (Check check : (s, ev) t) error : (s, ev) replay =
+  let model = check.build () in
+  Replayed
+    [
+      {
+        step = None;
+        state = model.initial;
+        state_name = model.initial_name;
+        view = "";
+        actions = [];
+        failing =
+          [
+            (let message, hint =
+               Check_rules.render
+                 (Check_search.raised ~where:"start" error)
+                 ~state:model.initial_name
+             in
+             { rule = "raised"; message; hint; element = None }
+            );
+          ];
+      };
+    ]
+
+let replay check inputs =
+  match
+    walk check
+      ~prefer:(fun _ -> true)
+      (List.map
+         (fun input -> { input = Some input; event = ""; cause = None })
+         inputs
+      )
+      { consume = (fun _ walked -> public_replay walked) }
+  with
+  | Ok replay ->
+      replay
+  | Error error ->
+      start_failure check error
+
+let check_cause : Transition.cause -> cause option = function
+  | Element { handler; role; name; element; value } ->
+      let handler =
+        match (handler, value) with
+        | ("key_down" | "key_up"), Some key ->
+            handler ^ " " ^ key
+        | _ ->
+            handler
+      in
+      Some (View { handler; element; role; name })
+  | Timer { id; ms } ->
+      Some (Timer { id; ms })
+  | Answer { id; path; _ } ->
+      Some (Answer { id; path })
+  | Live { id; topic; _ } ->
+      Some (Live { id; topic })
+  | Held { id; source } ->
+      Some (Held { id; source })
+  | Action_result { action } ->
+      Some (Action_result action)
+  | Props ->
+      Some Props
+  | Message ->
+      Some Input
+  | Start | Child _ | Url _ | Preload _ | Ended ->
+      None
+
+let root_steps (trace : Trace.t) =
+  let root =
+    List.find_map
+      (fun (record : Transition.t) ->
+        if record.change = Started && record.machine = trace.header.root then
+          Some record
+        else
+          None
+      )
+      trace.transitions
+  in
+  match root with
+  | None ->
+      Error
+        ("the trace has no start of the machine " ^ trace.header.root
+       ^ ", the root of its header"
+        )
+  | Some start ->
+      Ok
+        ( start,
+          List.filter
+            (fun (record : Transition.t) ->
+              record.instance = start.instance
+              &&
+              match record.change with
+              | Started | Resumed | Ended ->
+                  false
+              | Unhandled | Kept | Entered ->
+                  true
+            )
+            trace.transitions
+        )
+
+let wanted_of (Check check) records =
+  List.fold_left
+    (fun acc (record : Transition.t) ->
+      Result.bind acc (fun wanted ->
+          Result.map
+            (fun input ->
+              { input; event = record.event; cause = check_cause record.cause }
+              :: wanted
+            )
+            (check.input_of record)
+      )
+    )
+    (Ok []) records
+  |> Result.map List.rev
+
+let loop_start (trace : Trace.t) records =
+  Option.bind trace.header.loop_from (fun seq ->
+      List.find_index (fun (record : Transition.t) -> record.seq = seq) records
+  )
+
+let replay_trace check (trace : Trace.t) =
+  if trace.header.root <> id check then
+    Error
+      (Printf.sprintf "the trace is a run of %s, and the check is of %s"
+         trace.header.root (id check)
+      )
+  else
+    Result.bind (root_steps trace) (fun ((start : Transition.t), records) ->
+        Result.map
+          (fun wanted ->
+            match
+              walk check ?loop_from:(loop_start trace records)
+                ~prefer:(fun props -> props = start.props)
+                wanted
+                { consume = (fun _ walked -> public_replay walked) }
+            with
+            | Ok replay ->
+                replay
+            | Error error ->
+                start_failure check error
+          )
+          (wanted_of check records)
+    )
+
+let transition_cause ~answer ~url : cause -> Transition.cause = function
+  | View { handler; element; role; name } ->
+      let handler, value =
+        match String.index_opt handler ' ' with
+        | Some space ->
+            ( String.sub handler 0 space,
+              Some
+                (String.sub handler (space + 1)
+                   (String.length handler - space - 1)
+                )
+            )
+        | None ->
+            (handler, None)
+      in
+      Element { handler; role; name; element; value }
+  | Input ->
+      Message
+  | Timer { id; ms } ->
+      Timer { id; ms }
+  | Answer { id; path } ->
+      Answer { id; path; answer }
+  | Live { id; topic } ->
+      Live { id; topic; update = None }
+  | Held { id; source } ->
+      Held { id; source }
+  | Action_result action ->
+      Action_result { action }
+  | Props ->
+      Props
+  | Child { instance; _ } ->
+      Child { instance }
+  | Navigation ->
+      Url (Option.value url ~default:"")
+
+let export (type s ev) (Check check as subject : (s, ev) t) ~rule
+    (counterexample : ev counterexample) =
+  let items = steps counterexample in
+  let wanted =
+    List.map
+      (fun (step : ev step) ->
+        { input = Some step.input; event = step.event; cause = Some step.cause }
+      )
+      items
+  in
+  let trace (type n e) (model : (n, s, ev, e) Check_model.model) = function
+    | Stuck { at; _ } ->
+        invalid_arg
+          (Printf.sprintf
+             "Check.export: step %d of the counterexample is not enabled in \
+              the check"
+             at
+          )
+    | Walked (points : (n, s, ev, e) point list) ->
+        let machine = model.machine in
+        let record seq point =
+          let state = model.snapshot point.node in
+          let common : Transition.t =
+            {
+              seq;
+              time_ms = None;
+              instance = machine;
+              number = 1;
+              entry = 0;
+              machine;
+              from = "";
+              target = model.name point.node;
+              change = Started;
+              event = "";
+              data = None;
+              props = model.props_json point.node;
+              snapshot = check.machine_json state;
+              actions = point.replayed.actions;
+              cause = Start;
+            }
+          in
+          match (point.replayed.step, point.before) with
+          | Some step, Some (node, _, move) ->
+              {
+                common with
+                from = step.from;
+                change =
+                  ( match point.how with
+                  | Machine.Unhandled ->
+                      Unhandled
+                  | Machine.Kept ->
+                      Kept
+                  | Machine.Entered ->
+                      Entered
+                  );
+                event = step.event;
+                data = check.input_json step.input;
+                props =
+                  (match step.cause with Props -> common.props | _ -> None);
+                cause =
+                  transition_cause ~answer:(model.answer node move)
+                    ~url:(check.url state) step.cause;
+              }
+          | _ ->
+              common
+        in
+        let transitions =
+          List.mapi (fun index point -> record (index + 1) point) points
+        in
+        {
+          Trace.header =
+            {
+              root = machine;
+              url =
+                ( match points with
+                | first :: _ ->
+                    check.url (model.snapshot first.node)
+                | [] ->
+                    None
+                );
+              build = "check";
+              origin = Checker { rule };
+              dropped = 0;
+              loop_from =
+                ( match counterexample with
+                | Loop { stem; _ } ->
+                    Some (List.length stem + 2)
+                | Path _ | Waits _ ->
+                    None
+                );
+            };
+          transitions;
+        }
+  in
+  let loop_from =
+    match counterexample with
+    | Loop { stem; _ } ->
+        Some (List.length stem)
+    | Path _ | Waits _ ->
+        None
+  in
+  match
+    walk ~ends_with:rule ?loop_from subject
+      ~prefer:(fun _ -> true)
+      wanted { consume = trace }
+  with
+  | Ok trace ->
+      trace
+  | Error error ->
+      invalid_arg
+        ("Check.export: the start of the check raised "
+       ^ Printexc.to_string error
+        )
+
+let view_violations ?rule ~state view =
+  List.filter_map
+    (fun (finding : Check_rules.finding) ->
+      match rule with
+      | Some rule when rule <> finding.rule ->
+          None
+      | _ ->
+          Some (fst (Check_rules.render finding ~state))
+    )
+    (Check_rules.view_rules view @ Check_accessibility.view_rules view)
+
+let not_replayable index text = Error (Printf.sprintf "step %d %s" index text)
+
+let script_action (type n s ev e) (model : (n, s, ev, e) Check_model.model)
+    ~index ~clock (point : (n, s, ev, e) point) =
+  match (point.replayed.step, point.before) with
+  | Some step, Some (node, view, move) -> (
+      let target role name element =
+        let matching =
+          List.filter
+            (fun item ->
+              (not (Accessibility.hidden item))
+              && Option.map Accessibility.role_to_string
+                   (Accessibility.role item)
+                 = role
+              && Accessibility.name item = name
+            )
+            (Accessibility.elements view)
+        in
+        let position =
+          match matching with
+          | [] | [ _ ] ->
+              None
+          | several ->
+              List.find_index
+                (fun item -> Accessibility.path item = element)
+                several
+        in
+        { Check_script.role; name; position }
+      in
+      match step.cause with
+      | View { handler; element; role; name } -> (
+          if role = None && name = "" then
+            not_replayable index
+              ("presses the element at " ^ element
+             ^ ", which has no role and no text, so a role query cannot find it"
+              )
+          else
+            let target = target role name element in
+            match String.split_on_char ' ' handler with
+            | [ "press" ] ->
+                Ok (Check_script.Press target)
+            | [ "double_press" ] ->
+                Ok (Double_press target)
+            | [ "submit" ] ->
+                Ok (Submit target)
+            | [ "focus" ] ->
+                Ok (Focus target)
+            | [ "blur" ] ->
+                Ok Blur
+            | [ "pointer_enter" ] ->
+                Ok (Hover target)
+            | [ "key_down"; key ] ->
+                Ok (Key_down (target, key))
+            | [ "key_up"; key ] ->
+                Ok (Key_up (target, key))
+            | _ ->
+                not_replayable index
+                  ("is the handler " ^ handler
+                 ^ ", which Silica_memory has no input for"
+                  )
+        )
+      | Timer { id; ms } -> (
+          let now, running = !clock in
+          match List.assoc_opt id running with
+          | None ->
+              not_replayable index
+                ("fires the timer " ^ id ^ ", which is not running")
+          | Some (due, order) -> (
+              match
+                List.find_opt
+                  (fun (other, (other_due, other_order)) ->
+                    other <> id
+                    && (other_due < due
+                       || (other_due = due && other_order < order)
+                       )
+                  )
+                  running
+              with
+              | Some (other, (other_due, _)) ->
+                  not_replayable index
+                    (Printf.sprintf
+                       "fires the timer %s (%d ms) before the timer %s, which \
+                        is due %d ms earlier in real time. The checker lets \
+                        running timers fire in any order; Silica_memory keeps \
+                        real time, so it cannot replay this order"
+                       id ms other (due - other_due)
+                    )
+              | None ->
+                  clock := (due, List.remove_assoc id running);
+                  Ok (Advance (due - now))
+            )
+        )
+      | Answer { path; _ } -> (
+          match model.answer node move with
+          | Some answer ->
+              Ok (Reply { path; answer })
+          | None ->
+              not_replayable index ("answers " ^ path ^ " with no answer data")
+        )
+      | Props -> (
+          match model.props_json point.node with
+          | Some json ->
+              Ok (Set_props json)
+          | None ->
+              not_replayable index
+                "gives new props with no props codec: register it with \
+                 Silica.Machine.register_codecs"
+        )
+      | Navigation -> (
+          match step.event with
+          | "back" ->
+              Ok Back
+          | "forward" ->
+              Ok Forward
+          | event ->
+              not_replayable index ("is the navigation " ^ event)
+        )
+      | Input ->
+          not_replayable index
+            ("is the event " ^ step.event
+           ^ " from ~inputs of the check; no element of the view gives it, so \
+              Silica_memory cannot replay it"
+            )
+      | Live { topic; _ } ->
+          not_replayable index
+            ("is an update of the Live topic " ^ topic
+           ^ "; Silica_memory does not replay Live updates from a trace"
+            )
+      | Held { source; _ } ->
+          not_replayable index
+            ("comes from the held source " ^ source
+           ^ "; Silica_memory does not replay held sources from a trace"
+            )
+      | Action_result action ->
+          not_replayable index
+            ("is the result of the action " ^ action
+           ^ ", which Silica_memory gives at once, not as a step of its own"
+            )
+      | Child { machine; _ } ->
+          not_replayable index ("comes from the child " ^ machine)
+    )
+  | _ ->
+      not_replayable index "is the start"
+
+let track_timers clock ~index (point : (_, _, _, _) point) =
+  let now, running = !clock in
+  let running =
+    List.fold_left
+      (fun running (action : _ Action.host) ->
+        match action with
+        | Start_timer { id; ms; _ } ->
+            (id, (now + ms, index)) :: List.remove_assoc id running
+        | Stop id ->
+            List.remove_assoc id running
+        | Run _ | Start_source _ | Start_call _ | Start_live _ ->
+            running
+      )
+      running point.host
+  in
+  clock := (now, running)
+
+let script (type s ev) ?component (Check check as subject : (s, ev) t)
+    (trace : Trace.t) =
+  let ( let* ) = Result.bind in
+  let* rule =
+    match trace.header.origin with
+    | Checker { rule } ->
+        Ok rule
+    | Runtime { platform } ->
+        Error
+          ("the trace is a run of the runtime (" ^ platform
+         ^ "), not a counterexample of the checker; a script needs the rule \
+            that a counterexample breaks"
+          )
+  in
+  let* () =
+    if trace.header.root = id subject then
+      Ok ()
+    else
+      Error
+        (Printf.sprintf "the trace is a run of %s, and the check is of %s"
+           trace.header.root (id subject)
+        )
+  in
+  let* start, records = root_steps trace in
+  let* wanted = wanted_of subject records in
+  let component =
+    match component with
+    | Some component ->
+        component
+    | None -> (
+        Check_script.module_of_id (id subject)
+        ^
+        match check.subject with
+        | Routed ->
+            ".app"
+        | Plain | With_props ->
+            ".component"
+      )
+  in
+  let* mount =
+    match check.subject with
+    | Plain ->
+        Ok Check_script.Plain
+    | With_props -> (
+        match start.props with
+        | Some json ->
+            Ok (Check_script.With_props json)
+        | None ->
+            Error
+              ("the trace has no props of " ^ id subject
+             ^ ": register its props codec with Silica.Machine.register_codecs"
+              )
+      )
+    | Routed ->
+        Ok (Routed (Option.value trace.header.url ~default:"/"))
+  in
+  let build (type n e) (model : (n, s, ev, e) Check_model.model) = function
+    | Stuck { at; _ } ->
+        Error
+          (Printf.sprintf
+             "step %d of the trace is not enabled in the check; run the replay \
+              command to see the steps that are"
+             at
+          )
+    | Walked (points : (n, s, ev, e) point list) -> (
+        let clock = ref (0, []) in
+        let rec actions index acc = function
+          | [] ->
+              Ok (List.rev acc)
+          | point :: rest ->
+              let* action =
+                if index = 0 then
+                  Ok None
+                else
+                  Result.map Option.some
+                    (script_action model ~index ~clock point)
+              in
+              track_timers clock ~index point;
+              actions (index + 1)
+                (match action with Some action -> action :: acc | None -> acc)
+                rest
+        in
+        let* actions = actions 0 [] points in
+        let last = List.nth points (List.length points - 1) in
+        match
+          List.find_opt
+            (fun (failure : failure) -> failure.rule = rule)
+            last.replayed.failing
+        with
+        | None ->
+            Error
+              ("the replay of the trace in the check no longer breaks " ^ rule
+             ^ "; run the replay command to see each step"
+              )
+        | Some failure ->
+            let view_rule =
+              List.exists
+                (fun (known : rule) ->
+                  known.id = rule && known.applies_to = "view"
+                  && rule <> "dead-end" && rule <> "link-parses"
+                )
+                rules
+            in
+            let actions, ending =
+              match (rule, List.rev actions) with
+              | "ignored-event", last_action :: earlier ->
+                  (List.rev earlier, Check_script.Handled last_action)
+              | "raised", _ ->
+                  (actions, No_error)
+              | _ ->
+                  let leads_to =
+                    List.exists
+                      (function
+                        | Leads_to { name; _ } ->
+                            name = rule
+                        | Always _ | Never_after _ ->
+                            false
+                        )
+                      check.properties
+                  in
+                  if view_rule then
+                    (actions, View_rule)
+                  else if leads_to && trace.header.loop_from <> None then
+                    (actions, Loop last.replayed.view)
+                  else if leads_to then
+                    (actions, Waits last.replayed.view)
+                  else
+                    (actions, Not_this_view last.replayed.view)
+            in
+            Ok
+              (Check_script.to_string
+                 {
+                   component;
+                   mount;
+                   actions;
+                   rule;
+                   state = last.replayed.state_name;
+                   message = failure.message;
+                   hint = failure.hint;
+                   ending;
+                 }
+              )
+      )
+  in
+  match
+    walk ~ends_with:rule ?loop_from:(loop_start trace records) subject
+      ~prefer:(fun props -> props = start.props)
+      wanted { consume = build }
+  with
+  | Ok result ->
+      result
+  | Error error ->
+      Error ("the start of the check raised " ^ Printexc.to_string error)

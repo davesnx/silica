@@ -35,7 +35,7 @@ let door ~unlock_to =
 type save_event = Edit | Save [@@deriving event_shape]
 type save_state = Editing of int | Saved [@@deriving state_shape]
 
-let save =
+let make_save ~handled ~offered =
   let machine =
     Machine.make ~id:"save" ~init:(Editing 0) ~shape:save_state_shape
       ~events:save_event_shape (fun state event ->
@@ -44,6 +44,8 @@ let save =
             Machine.Go (Editing ((count + 1) mod 2))
         | Editing _, Save ->
             Machine.Go Saved
+        | Saved, Save when handled ->
+            Machine.Go (Editing 0)
         | _ ->
             Machine.Ignore
     )
@@ -57,7 +59,15 @@ let save =
            | Saved ->
                Codec.constructor "Saved" []
            )
-         ~decode:(fun _ -> Error "not read in this test")
+         ~decode:(fun json ->
+           match Codec.constructor_of json with
+           | Ok ("Editing", [ count ]) ->
+               Result.map (fun count -> Editing count) (Codec.int.decode count)
+           | Ok ("Saved", []) ->
+               Ok Saved
+           | _ ->
+               Error "not a state of save"
+         )
       )
     ~event:
       (Codec.make
@@ -67,7 +77,15 @@ let save =
            | Save ->
                Codec.constructor "Save" []
            )
-         ~decode:(fun _ -> Error "not read in this test")
+         ~decode:(fun json ->
+           match Codec.constructor_of json with
+           | Ok ("Edit", []) ->
+               Ok Edit
+           | Ok ("Save", []) ->
+               Ok Save
+           | _ ->
+               Error "not an event of save"
+         )
       )
     ();
   Component.make machine (function
@@ -80,8 +98,17 @@ let save =
           ]
     | Saved ->
         Node.element "div" []
-          [ Node.element "p" [] [ Node.text "Saved" ]; button "Save" Save ]
+          (Node.element "p" [] [ Node.text "Saved" ]
+          ::
+          ( if offered then
+              [ button "Save" Save ]
+            else
+              []
+          )
+          )
     )
+
+let save = make_save ~handled:false ~offered:true
 
 type count_event = Increment [@@deriving event_shape]
 type count_state = Counting of int [@@deriving state_shape]
@@ -127,6 +154,18 @@ let sets =
     ("pass", [ Check_suite.entry (Check.component (door ~unlock_to:Closed)) ]);
     ("changed", [ Check_suite.entry (Check.component (door ~unlock_to:Opened)) ]);
     ("bug", [ Check_suite.entry (Check.component save) ]);
+    ( "fixed",
+      [
+        Check_suite.entry
+          (Check.component (make_save ~handled:true ~offered:true));
+      ]
+    );
+    ( "disabled",
+      [
+        Check_suite.entry
+          (Check.component (make_save ~handled:false ~offered:false));
+      ]
+    );
     ("limit", [ Check_suite.entry (Check.component ~max_states:5 counter) ]);
     ("broken", [ Check_suite.entry broken ]);
     ( "limit-and-bug",

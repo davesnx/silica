@@ -101,3 +101,51 @@ A change of behaviour fails the tests: the golden spec names the changed edge.
   $ dune exec ./check/main.exe -- golden check/spec --write > /dev/null
   $ dune test 2>&1
   $ dune build @fmt 2>&1
+
+A seeded bug: the Save button stays enabled while the save runs, and the
+update ignores it there. The checker writes the violation as a trace, and the
+script of that trace is a test that fails for the same reason.
+
+  $ sed 's/<button on_press=Save disabled=(disabled Save)>/<button on_press=Save>/' app/shared/counter.mlx > changed.mlx
+  $ cp app/shared/counter.mlx counter.mlx.orig
+  $ mv changed.mlx app/shared/counter.mlx
+  $ silica check --traces traces > /dev/null 2>&1
+  [1]
+  $ ls traces
+  counter-1.jsonl
+  counter-2.jsonl
+  $ silica replay counter traces/counter-1.jsonl 2>&1 | tail -1
+  the last step breaks a rule (exit 1)
+  $ silica script counter traces/counter-1.jsonl > test/counter_replay.ml
+  $ sed 's/(names counter_steps counter_page)/(names counter_steps counter_page counter_replay)/' test/dune > test/dune.new
+  $ mv test/dune.new test/dune
+  $ cat test/counter_replay.ml
+  open Silica
+  module Memory = Silica_memory
+  
+  let broken =
+    Check_expect.rule "ignored-event" ~state:"saving"
+      ~message:"In state saving, the view offers press on button \"Save\" at main \
+                > button[3] gives the event save, and the update returns Ignore."
+      ~hint:"Handle save in state saving, or do not offer it there: disable the \
+             element with Machine.can, or leave its timer or call out of owns \
+             of saving."
+  
+  let () =
+    let page = Memory.mount Counter.component in
+    Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
+  $ dune fmt > /dev/null 2>&1
+  [1]
+  $ dune build @fmt 2>&1
+  $ dune test 2>&1 | grep -E '^(ignored-event|hint)'
+  ignored-event: In state saving, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
+  hint: Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.
+
+The fix disables the button again; the test passes and stays as a regression
+test.
+
+  $ mv counter.mlx.orig app/shared/counter.mlx
+  $ dune test 2>&1
+  $ silica check 2>&1 | tail -1
+  passed (exit 0)

@@ -176,7 +176,20 @@ val role : element -> Accessibility.role option
 val accessible_name : element -> string
 (** The accessible name of the element. *)
 
-(** {1 Input} *)
+(** {1 Input}
+
+    As in a browser, {!press}, {!double_press}, {!val-input}, {!submit} and
+    {!focus} reach only an element that a user can reach: they raise
+    {!Not_reachable} when the element, or an element around it, is a disabled
+    [button], [input], [select], [textarea], [option], [optgroup] or [fieldset],
+    or has [hidden] or [inert]. [aria-disabled] and [aria-hidden] do not stop
+    input, as in a browser. *)
+
+exception Not_reachable of string
+(** The input cannot reach the element. The text names the element by role,
+    accessible name and path, and says why, such as
+    ["Silica_memory: the button \"Save\" at main > button[3] is disabled, so a
+     browser does not deliver a press to it."]. *)
 
 val press : element -> unit
 (** A press: the outside-press sources and dismiss layers see the press start,
@@ -271,6 +284,10 @@ val requests : _ t -> request list
 val pending : _ t -> request list
 (** The requests with no answer yet, oldest first. *)
 
+val pending_request : _ t -> string -> request
+(** The oldest request to the path that has no answer yet. Raises [Failure] when
+    there is none; the text lists the paths of the pending requests. *)
+
 val reply : ?status:int -> request -> string -> unit
 (** Answer the request with the status (default [200]) and the body. Raises
     [Invalid_argument] when it already has an answer. *)
@@ -351,3 +368,38 @@ val announcements : _ t -> string list
 val session_gone : _ t -> int
 (** How many times the runtime said that the server no longer knows the session.
 *)
+
+(** {1 Replay} *)
+
+(** The outcome of {!val-replay}. [seq] is the transition of the trace. *)
+type replay_result =
+  | Replayed  (** Every step gave the same state names. *)
+  | Different of { seq : int; expected : string; got : string }
+      (** The runtime reached another state, or no transition. *)
+  | Not_realisable of { seq : int; reason : string }
+      (** The step has no input in this platform: a timer that real time does
+          not fire first, a Live update, a held source, the result of an action,
+          an event of the host or of the inputs of a check, a preload, or a step
+          whose data the trace does not hold. *)
+  | Not_found of { seq : int; error : string }
+      (** The element or the pending request of the step is not there. *)
+
+val replay : _ t -> Trace.t -> replay_result
+(** [replay t trace] gives the runtime of [t], just mounted, the input of each
+    step of [trace], such as a counterexample of the checker ([Check.export]) or
+    a recorded run, and compares each step with the state names of the trace:
+    - an element handler: the element of that role and accessible name (by its
+      path when several match), then {!press}, {!double_press}, {!submit},
+      {!focus}, {!blur}, {!hover}, {!val-input} with the text, or {!focus} and
+      {!val-key} (or {!key_up}) with the key;
+    - a timer: {!advance} by the time left on it, when no other running timer is
+      due before it;
+    - an answer: the pending request of that path gets the answer: [Ok] as a 200
+      reply, [Rejected] as a 422 reply, [Http] with its status, [Network] as
+      {!network_error};
+    - props: {!set_props} with the props decoded by the props codec of the
+      machine;
+    - a URL: {!back}, {!forward}, or a press on the link to it.
+
+    Steps caused by other steps (the start of a child, its output, its end) are
+    not inputs. The replay stops at the first step that is not the same. *)

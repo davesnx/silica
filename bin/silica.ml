@@ -25,7 +25,7 @@ let new_command =
     )
     Term.(const New_project.run $ directory)
 
-let check json graphs =
+let check json graphs traces =
   match graphs with
   | Some _ ->
       prerr_endline
@@ -53,10 +53,12 @@ let check json graphs =
              (Filename.concat "_build"
                 (Filename.concat "default" (Filename.concat "check" "main.exe"))
              )
-             ( if json then
-                 [ "--json" ]
-               else
-                 []
+             (( if json then
+                  [ "--json" ]
+                else
+                  []
+              )
+             @ match traces with Some dir -> [ "--traces"; dir ] | None -> []
              )
           )
 
@@ -70,6 +72,16 @@ let check_command =
       & opt (some string) None
       & info [ "graphs" ] ~docv:"DIR"
           ~doc:"Write a graph of each checked machine into $(docv)."
+    )
+  in
+  let traces =
+    Arg.(
+      value
+      & opt (some string) None
+      & info [ "traces" ] ~docv:"DIR"
+          ~doc:
+            "Write each violation as a trace file $(docv)/<id>-<n>.jsonl, for \
+             $(b,silica replay) and $(b,silica script)."
     )
   in
   Cmd.v
@@ -92,13 +104,19 @@ let check_command =
          ]
        ~exits:[]
     )
-    Term.(const check $ json $ graphs)
+    Term.(const check $ json $ graphs $ traces)
 
 let () =
   exit
     (Cmd.eval'
        (Cmd.group
           (Cmd.info "silica" ~doc:"Make, test and check Silica apps.")
-          [ new_command; check_command; Silica_dev.Dev_command.command ]
+          [
+            new_command;
+            check_command;
+            Replay_command.command;
+            Script_command.command;
+            Silica_dev.Dev_command.command;
+          ]
        )
     )

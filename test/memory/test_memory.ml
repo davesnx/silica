@@ -1200,6 +1200,73 @@ let try_again_uses_the_last_props () =
   string "the root starts again with the last props" "-2 -2 1"
     (text memory "props")
 
+module Reach = struct
+  let component =
+    Component.make
+      (Test_apps.simple ~id:"reach" ~init:0 (fun count () ->
+           Some (count + 1, [])
+       )
+      )
+      (fun count ->
+        let button attrs label =
+          Node.element "button" (Attr.on_press () :: attrs) [ Node.text label ]
+        in
+        Node.element "main" []
+          [
+            Node.element "p"
+              [ Attr.string "id" "count" ]
+              [ Node.text (string_of_int count) ];
+            button [ Attr.bool "disabled" true ] "Off";
+            Node.element "fieldset"
+              [ Attr.bool "disabled" true ]
+              [ button [] "In set" ];
+            Node.element "div" [ Attr.bool "inert" true ] [ button [] "Inert" ];
+            button [ Attr.bool "hidden" true ] "Gone";
+            button [ Attr.string "aria-disabled" "true" ] "Aria";
+            Node.element "input"
+              [ Attr.bool "disabled" true; Attr.on_input (fun _ -> ()) ]
+              [];
+          ]
+      )
+end
+
+let unreachable_elements_refuse_input () =
+  let memory = Memory.mount Reach.component in
+  let refused label run =
+    match run () with
+    | () ->
+        Alcotest.fail (label ^ ": the input was delivered")
+    | exception Memory.Not_reachable message ->
+        string label message message;
+        message
+  in
+  string "a disabled button"
+    "Silica_memory: the button \"Off\" at main > button[1] is disabled, so a \
+     browser does not deliver a press to it."
+    (refused "press" (fun () -> Memory.press (Memory.by_text memory "Off")));
+  string "inside a disabled fieldset"
+    "Silica_memory: the button \"In set\" at main > fieldset > button is \
+     inside the disabled fieldset, so a browser does not deliver a press to \
+     it."
+    (refused "fieldset" (fun () -> Memory.press (Memory.by_text memory "In set"))
+    );
+  string "inside an inert element"
+    "Silica_memory: the button \"Inert\" at main > div > button is inside the \
+     div that is inert, so a browser does not deliver focus to it."
+    (refused "inert" (fun () -> Memory.focus (Memory.by_text memory "Inert")));
+  string "a hidden button"
+    "Silica_memory: the button \"Gone\" at main > button[2] is hidden, so a \
+     browser does not deliver a press to it."
+    (refused "hidden" (fun () -> Memory.press (Memory.by_text memory "Gone")));
+  ignore
+    (refused "input" (fun () ->
+         Memory.input (Memory.by_role memory Accessibility.Textbox) "x"
+     )
+    );
+  string "nothing reached the machine" "0" (text memory "count");
+  Memory.press (Memory.by_role memory Accessibility.Button ~name:"Aria");
+  string "aria-disabled does not stop a press" "1" (text memory "count")
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "memory"
@@ -1298,6 +1365,8 @@ let () =
             role_and_name_of_an_element;
           case "by_role in a portal" by_role_in_a_portal;
           case "view_text" view_text_of_the_page;
+          case "a disabled, inert or hidden element refuses input"
+            unreachable_elements_refuse_input;
         ]
       );
       ( "props",

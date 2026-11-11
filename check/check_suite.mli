@@ -75,10 +75,21 @@ val main : ?argv:string array -> entry list -> unit
 (** Reads the command from [argv] (default [Sys.argv]), runs it, prints the
     result on standard output, and exits with {!exit_code}:
     {v
-    main.exe [check] [--json] [--only ID]...
+    main.exe [check] [--json] [--only ID]... [--traces DIR]
     main.exe golden DIR [--write] [--json]
+    main.exe replay ID TRACE_FILE [--json]
+    main.exe script ID TRACE_FILE [--component EXPR]
     main.exe rules [--json]
     v}
-    [check] is the default. [golden DIR] runs every entry and compares the
-    golden files in [DIR] (see {!golden}). [rules] lists {!Check.val-rules}. Bad
-    arguments print the usage on standard error and exit with [3]. *)
+    [check] is the default. With [--traces DIR], each violation is also written
+    as a trace file [DIR/<id>-<n>.jsonl] ({!Check.export}), and the JSON gives
+    its path in [trace_file]. [golden DIR] runs every entry and compares the
+    golden files in [DIR] (see {!golden}). [replay ID TRACE_FILE] replays the
+    trace in the check of the machine [ID] ({!Check.replay_trace}) and prints
+    each step with the rules that fail there: exit [0] when no rule fails at the
+    last step, [1] when one does or a step is not enabled, [3] when the trace
+    does not read. [script ID TRACE_FILE] prints a [Silica_memory] test that
+    reproduces the counterexample ({!Check.script}); when the steps cannot run
+    in [Silica_memory], it prints why on standard error and exits with [1].
+    [rules] lists {!Check.val-rules}. Bad arguments print the usage on standard
+    error and exit with [3]. *)
