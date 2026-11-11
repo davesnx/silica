@@ -8,15 +8,15 @@ module States = struct
   type _ t = Page : page t
 end
 
-module M = Machine.Make (States)
+module Tabs_events_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"tabs-events"
-    ~init:(M.at Page { selected = "account"; events = [] })
+  Tabs_events_machine.make ~id:"tabs-events"
+    ~init:(Tabs_events_machine.at Page { selected = "account"; events = [] })
     [
-      M.state Page "page" (fun page -> function
+      Tabs_events_machine.state Page "page" (fun page -> function
         | Changed selected ->
-            M.goto Page
+            Tabs_events_machine.goto Page
               { selected; events = page.events @ [ "value " ^ selected ] }
         );
     ]
@@ -29,7 +29,7 @@ let tabs =
     Tabs.tab ~value:"danger" "Danger";
   ]
 
-let view (M.At (Page, page)) =
+let view (Tabs_events_machine.At (Page, page)) =
   let panel value text =
     Tabs.panel ~class_:Style.tab_panel ~id:"settings" ~value
       ~selected:page.selected

@@ -22,9 +22,9 @@ module State = struct
   type _ t = Idle : unit t | Ready : model t
 end
 
-module M = Machine.Make (State)
+module Tabs_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Tabs_machine.snapshot = At : 'data State.t * 'data -> snapshot
 
 let tab_id id value = id ^ "-tab-" ^ value
 let panel_id id value = id ^ "-panel-" ^ value
@@ -84,32 +84,33 @@ let target model move =
       Some (List.nth values i)
 
 let machine =
-  M.make ~id:"tabs" ~init:(M.at Idle ())
+  Tabs_machine.make ~id:"tabs" ~init:(Tabs_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Ready ] (fun () -> function
+      Tabs_machine.state Idle "idle" ~to_:[ Ready ] (fun () -> function
         | Props props ->
-            M.goto Ready (take props)
+            Tabs_machine.goto Ready (take props)
         | _ ->
-            M.unhandled
+            Tabs_machine.unhandled
         );
-      M.state Ready "ready" (fun model -> function
+      Tabs_machine.state Ready "ready" (fun model -> function
         | Props props when props.value <> model.props.value ->
-            M.goto Ready (take props)
+            Tabs_machine.goto Ready (take props)
         | Props props ->
-            M.goto Ready { model with props }
+            Tabs_machine.goto Ready { model with props }
         | Select value
           when value <> model.selected && selectable model.props value ->
-            M.goto Ready { model with selected = value; focused = value }
+            Tabs_machine.goto Ready
+              { model with selected = value; focused = value }
         | Select _ ->
-            M.unhandled
+            Tabs_machine.unhandled
         | Move move -> (
             match target model move with
             | Some value ->
-                M.goto Ready
+                Tabs_machine.goto Ready
                   { model with focused = value }
                   ~cmds:[ Cmd.Focus (Ref.make (tab_id model.props.id value)) ]
             | None ->
-                M.unhandled
+                Tabs_machine.unhandled
           )
         );
     ]

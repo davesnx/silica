@@ -1,6 +1,6 @@
 open Silica
 open Linear_model
-module M = Silica_memory
+module Memory = Silica_memory
 
 let issue number title : Issue.t =
   {
@@ -22,9 +22,9 @@ let answer t =
   List.iter
     (fun request ->
       let reply endpoint value =
-        M.reply request (Codec.to_string (Remote.output endpoint) value)
+        Memory.reply request (Codec.to_string (Remote.output endpoint) value)
       in
-      match M.path request with
+      match Memory.path request with
       | "/api/me" ->
           reply me_endpoint User.Ada
       | "/api/issues" ->
@@ -36,28 +36,28 @@ let answer t =
       | path ->
           Alcotest.failf "unexpected call %s" path
     )
-    (M.pending t)
+    (Memory.pending t)
 
 let calls t path =
-  List.length (List.filter (fun r -> M.path r = path) (M.requests t))
+  List.length (List.filter (fun r -> Memory.path r = path) (Memory.requests t))
 
 let has msg t needle =
-  let html = M.html t in
+  let html = Memory.html t in
   let n = String.length needle and h = String.length html in
   let rec go i = i + n <= h && (String.sub html i n = needle || go (i + 1)) in
   if not (go 0) then Alcotest.failf "%s: %S not found in %s" msg needle html
 
 let to_detail_and_back t =
-  M.press (M.by_id t "issue-row-2");
+  Memory.press (Memory.by_id t "issue-row-2");
   answer t;
-  Alcotest.(check string) "on the detail" "/issue/2" (M.url t);
+  Alcotest.(check string) "on the detail" "/issue/2" (Memory.url t);
   has "the detail shows" t "Second</h1>";
-  M.back t;
+  Memory.back t;
   answer t;
-  Alcotest.(check string) "back on the list" "/" (M.url t)
+  Alcotest.(check string) "back on the list" "/" (Memory.url t)
 
 let test_user_call_runs_once () =
-  let t = M.mount_app ~url:"/" Linear_app.app in
+  let t = Memory.mount_app ~url:"/" Linear_app.app in
   answer t;
   has "the user shows" t "you are Ada";
   to_detail_and_back t;
@@ -67,27 +67,31 @@ let test_user_call_runs_once () =
     "the pages load again: list, detail, list" 3 (calls t "/api/issues")
 
 let test_create_in_flight_survives () =
-  let t = M.mount_app ~url:"/" Linear_app.app in
+  let t = Memory.mount_app ~url:"/" Linear_app.app in
   answer t;
-  M.press (M.by_id t "new-issue");
-  Alcotest.(check string) "the modal is open" "/?new=true" (M.url t);
-  M.input (M.by_id t "new-issue-title") "Made during a visit";
-  M.submit (M.by_id t "new-issue-title");
+  Memory.press (Memory.by_id t "new-issue");
+  Alcotest.(check string) "the modal is open" "/?new=true" (Memory.url t);
+  Memory.input (Memory.by_id t "new-issue-title") "Made during a visit";
+  Memory.submit (Memory.by_id t "new-issue-title");
   let create =
     match
-      List.filter (fun r -> M.path r = "/api/issues/create") (M.pending t)
+      List.filter
+        (fun r -> Memory.path r = "/api/issues/create")
+        (Memory.pending t)
     with
     | [ request ] ->
         request
     | requests ->
         Alcotest.failf "%d create calls" (List.length requests)
   in
-  M.back t;
+  Memory.back t;
   answer t;
   to_detail_and_back t;
-  let focused () = List.mem (Cmd.Focus Linear_refs.new_issue) (M.commands t) in
+  let focused () =
+    List.mem (Cmd.Focus Linear_refs.new_issue) (Memory.commands t)
+  in
   Alcotest.(check bool) "no answer yet" false (focused ());
-  M.reply create
+  Memory.reply create
     (Codec.to_string
        (Remote.output create_endpoint)
        (issue 3 "Made during a visit")

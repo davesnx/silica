@@ -9,7 +9,7 @@ module States = struct
 end
 
 open States
-module M = Machine.Make (States)
+module Component_page_machine = Machine.Make (States)
 
 let fresh slug =
   {
@@ -26,21 +26,23 @@ let fresh slug =
   }
 
 let machine =
-  M.make ~id:"component-page" ~init:(M.at Idle ())
+  Component_page_machine.make ~id:"component-page"
+    ~init:(Component_page_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Shown ] (fun () -> function
+      Component_page_machine.state Idle "idle" ~to_:[ Shown ]
+        (fun () -> function
         | Props slug ->
-            M.goto Shown (fresh slug)
+            Component_page_machine.goto Shown (fresh slug)
         | Set _ ->
-            M.unhandled
+            Component_page_machine.unhandled
         );
-      M.state Shown "shown" (fun page -> function
+      Component_page_machine.state Shown "shown" (fun page -> function
         | Props slug when slug <> page.slug ->
-            M.goto Shown (fresh slug)
+            Component_page_machine.goto Shown (fresh slug)
         | Props _ ->
-            M.stay []
+            Component_page_machine.stay []
         | Set (story, values) when List.mem_assoc story page.values ->
-            M.goto Shown
+            Component_page_machine.goto Shown
               {
                 page with
                 values =
@@ -54,7 +56,7 @@ let machine =
                     page.values;
               }
         | Set _ ->
-            M.stay []
+            Component_page_machine.stay []
         );
     ]
 
@@ -250,11 +252,11 @@ let themes_view (entry : Site_catalog.entry) =
         </div>
       </section>
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Component_page_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Idle, ()) ->
+  | Component_page_machine.At (Idle, ()) ->
       <div />
-  | M.At (Shown, page) -> (
+  | Component_page_machine.At (Shown, page) -> (
       match Site_catalog.find page.slug with
       | None ->
           <div>

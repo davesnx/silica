@@ -19,38 +19,41 @@ module State = struct
   type _ t = Idle : unit t | Unchecked : props t | Checked : props t
 end
 
-module M = Machine.Make (State)
+module Switch_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Switch_machine.snapshot =
+  | At : 'data State.t * 'data -> snapshot
 
 let take (props : props) =
   if props.checked then
-    M.goto Checked props
+    Switch_machine.goto Checked props
   else
-    M.goto Unchecked props
+    Switch_machine.goto Unchecked props
 
 let handle current ~toggled (previous : props) = function
   | Props props when props.checked <> previous.checked ->
       take props
   | Props props ->
-      M.goto current props
+      Switch_machine.goto current props
   | Toggle when previous.disabled ->
-      M.unhandled
+      Switch_machine.unhandled
   | Toggle ->
-      M.goto toggled previous
+      Switch_machine.goto toggled previous
 
 let machine =
-  M.make ~id:"switch" ~init:(M.at Idle ())
+  Switch_machine.make ~id:"switch"
+    ~init:(Switch_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Unchecked; Checked ] (fun () -> function
+      Switch_machine.state Idle "idle" ~to_:[ Unchecked; Checked ]
+        (fun () -> function
         | Props props ->
             take props
         | Toggle ->
-            M.unhandled
+            Switch_machine.unhandled
         );
-      M.state Unchecked "unchecked" ~to_:[ Checked ]
+      Switch_machine.state Unchecked "unchecked" ~to_:[ Checked ]
         (handle Unchecked ~toggled:Checked);
-      M.state Checked "checked" ~to_:[ Unchecked ]
+      Switch_machine.state Checked "checked" ~to_:[ Unchecked ]
         (handle Checked ~toggled:Unchecked);
     ]
 

@@ -8,7 +8,7 @@ module States = struct
 end
 
 open States
-module M = Machine.Make (States)
+module Search_machine = Machine.Make (States)
 
 let doc_value ?anchor slug =
   "doc:" ^ slug ^ match anchor with Some a -> "#" ^ a | None -> ""
@@ -79,22 +79,23 @@ let shortcut =
     ]
 
 let machine =
-  M.make ~id:"search" ~init:(M.at Closed ())
+  Search_machine.make ~id:"search"
+    ~init:(Search_machine.at Closed ())
     [
-      M.state Closed "closed" ~to_:[ Open ] ~invoke:[ shortcut ]
+      Search_machine.state Closed "closed" ~to_:[ Open ] ~invoke:[ shortcut ]
         (fun () -> function
         | Open_search | Changed true ->
-            M.goto Open ()
+            Search_machine.goto Open ()
         | Changed false | Ran _ ->
-            M.unhandled
+            Search_machine.unhandled
         );
-      M.state Open "open" ~to_:[ Closed ] (fun () -> function
+      Search_machine.state Open "open" ~to_:[ Closed ] (fun () -> function
         | Changed false ->
-            M.goto Closed ()
+            Search_machine.goto Closed ()
         | Ran value ->
-            M.goto Closed () ~cmds:(Option.to_list (target value))
+            Search_machine.goto Closed () ~cmds:(Option.to_list (target value))
         | Open_search | Changed true ->
-            M.unhandled
+            Search_machine.unhandled
         );
     ]
 
@@ -111,9 +112,13 @@ let classes : Command_menu.classes =
       };
   }
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Search_machine.snapshot) : event Node.t =
   let open_ =
-    match snapshot with M.At (Open, ()) -> true | M.At (Closed, ()) -> false
+    match snapshot with
+    | Search_machine.At (Open, ()) ->
+        true
+    | Search_machine.At (Closed, ()) ->
+        false
   in
   <div>
     <button

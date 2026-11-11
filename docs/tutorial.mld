@@ -33,22 +33,24 @@ module States = struct
   type _ t = Count : int t
 end
 
-module M = Machine.Make (States)
+module Counter_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"counter" ~init:(M.at Count 0)
+  Counter_machine.make ~id:"counter"
+    ~init:(Counter_machine.at Count 0)
     [
-      M.state Count "count" (fun n -> function
+      Counter_machine.state Count "count" (fun n -> function
         | Increment ->
-            M.goto Count (n + 1)
+            Counter_machine.goto Count (n + 1)
         | Decrement when n = 0 ->
-            M.stay []
+            Counter_machine.stay []
         | Decrement ->
-            M.goto Count (n - 1)
+            Counter_machine.goto Count (n - 1)
         );
     ]
 
-let view (M.At (Count, n) : M.snapshot) : event Node.t =
+let view (Counter_machine.At (Count, n) : Counter_machine.snapshot) :
+    event Node.t =
   <div>
     <button on_press=Decrement disabled=(n = 0)>"Decrement"</button>
     <span>(Node.text (string_of_int n))</span>
@@ -67,15 +69,15 @@ next snapshot and the commands that the host must run.
 {@ocaml[
 # let counter = Tutorial_counter.machine;;
 val counter :
-  (Tutorial_counter.M.snapshot, Tutorial_counter.event) Silica.Machine.t =
-  <abstr>
+  (Tutorial_counter.Counter_machine.snapshot, Tutorial_counter.event)
+  Silica.Machine.t = <abstr>
 # let snapshot, _ = Silica.Machine.start counter;;
-val snapshot : Tutorial_counter.M.snapshot =
-  Tutorial_counter.M.At (Tutorial_counter.States.Count, <poly>)
+val snapshot : Tutorial_counter.Counter_machine.snapshot =
+  Tutorial_counter.Counter_machine.At (Tutorial_counter.States.Count, <poly>)
 # let snapshot, _, _ =
     Silica.Machine.send counter snapshot Tutorial_counter.Increment;;
-val snapshot : Tutorial_counter.M.snapshot =
-  Tutorial_counter.M.At (Tutorial_counter.States.Count, <poly>)
+val snapshot : Tutorial_counter.Counter_machine.snapshot =
+  Tutorial_counter.Counter_machine.At (Tutorial_counter.States.Count, <poly>)
 ]}
 
 [Render.to_string] makes the HTML of a view. The server uses it for the first
@@ -95,9 +97,11 @@ a name that a screen reader can read. The counter can count forever, so
 [within] limits the search to the numbers 0 to 3.
 
 {@ocaml[
-# let within (Tutorial_counter.M.At (Count, n) : Tutorial_counter.M.snapshot) =
+# let within
+      (Tutorial_counter.Counter_machine.At (Count, n) :
+        Tutorial_counter.Counter_machine.snapshot) =
     n <= 3;;
-val within : Tutorial_counter.M.snapshot -> bool = <fun>
+val within : Tutorial_counter.Counter_machine.snapshot -> bool = <fun>
 # match Check.component ~within Tutorial_counter.component with
   | Check.Ok { states; _ } -> Printf.sprintf "%d states, no problem" states
   | _ -> "problem";;
@@ -147,15 +151,20 @@ module States = struct
     | Failed : Remote.error t
 end
 
-module M = Machine.Make (States)
+module Greeting_machine = Machine.Make (States)
 
-let ask = function Ask -> M.goto Asking () | Answered _ -> M.unhandled
+let ask = function
+  | Ask ->
+      Greeting_machine.goto Asking ()
+  | Answered _ ->
+      Greeting_machine.unhandled
 
 let machine =
-  M.make ~id:"greeting" ~init:(M.at Idle ())
+  Greeting_machine.make ~id:"greeting"
+    ~init:(Greeting_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
-      M.state Asking "asking" ~to_:[ Shown; Failed ]
+      Greeting_machine.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
+      Greeting_machine.state Asking "asking" ~to_:[ Shown; Failed ]
         ~invoke:
           [
             Source.call Tutorial_api.greeting
@@ -164,27 +173,27 @@ let machine =
           ]
         (fun () -> function
           | Answered (Ok text) ->
-              M.goto Shown text
+              Greeting_machine.goto Shown text
           | Answered (Error error) ->
-              M.goto Failed error
+              Greeting_machine.goto Failed error
           | Ask ->
-              M.unhandled
+              Greeting_machine.unhandled
           );
-      M.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
-      M.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
+      Greeting_machine.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
+      Greeting_machine.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Greeting_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Idle, ()) ->
+  | Greeting_machine.At (Idle, ()) ->
       <button on_press=Ask>"Say hello"</button>
-  | M.At (Asking, ()) ->
+  | Greeting_machine.At (Asking, ()) ->
       <p>"Asking the server."</p>
-  | M.At (Shown, text) ->
+  | Greeting_machine.At (Shown, text) ->
       <div>
         <p>(Node.text text)</p> <button on_press=Ask>"Ask again"</button>
       </div>
-  | M.At (Failed, _) ->
+  | Greeting_machine.At (Failed, _) ->
       <div>
         <p>"The server did not answer."</p>
         <button on_press=Ask>"Try again"</button>
@@ -202,15 +211,17 @@ The host runs the call. The test below does not run it, so the machine stays in
 {@ocaml[
 # let greeting = Tutorial_greeting.machine;;
 val greeting :
-  (Tutorial_greeting.M.snapshot, Tutorial_greeting.event) Silica.Machine.t =
-  <abstr>
+  (Tutorial_greeting.Greeting_machine.snapshot, Tutorial_greeting.event)
+  Silica.Machine.t = <abstr>
 # let snapshot, _ = Silica.Machine.start greeting;;
-val snapshot : Tutorial_greeting.M.snapshot =
-  Tutorial_greeting.M.At (Tutorial_greeting.States.Idle, <poly>)
+val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
+  Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Idle,
+   <poly>)
 # let snapshot, commands, _ =
     Silica.Machine.send greeting snapshot Tutorial_greeting.Ask;;
-val snapshot : Tutorial_greeting.M.snapshot =
-  Tutorial_greeting.M.At (Tutorial_greeting.States.Asking, <poly>)
+val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
+  Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Asking,
+   <poly>)
 val commands : Tutorial_greeting.event Silica.Cmd.host list =
   [Silica.Cmd.Start_call
     {Silica.Cmd.id = "greeting/asking/invoke0"; endpoint = <abstr>;
@@ -225,8 +236,9 @@ The machine gets the answer as an event, as any other event:
 # let snapshot, _, _ =
     Silica.Machine.send greeting snapshot
       (Tutorial_greeting.Answered (Ok "Hello, Ada"));;
-val snapshot : Tutorial_greeting.M.snapshot =
-  Tutorial_greeting.M.At (Tutorial_greeting.States.Shown, <poly>)
+val snapshot : Tutorial_greeting.Greeting_machine.snapshot =
+  Tutorial_greeting.Greeting_machine.At (Tutorial_greeting.States.Shown,
+   <poly>)
 # Silica.Render.to_string (Tutorial_greeting.view snapshot);;
 - : string = "<div><p>Hello, Ada</p><button>Ask again</button></div>"
 ]}

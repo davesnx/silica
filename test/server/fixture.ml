@@ -100,36 +100,36 @@ module Phase = struct
     | Slowing : int t
 end
 
-module M = Machine.Make (Phase)
+module Phase_machine = Machine.Make (Phase)
 
 let machine =
   let handler self n = function
     | Inc ->
-        M.goto self (n + 1)
+        Phase_machine.goto self (n + 1)
     | Focus_me ->
-        M.stay [ Cmd.Focus x ]
+        Phase_machine.stay [ Cmd.Focus x ]
     | Mixed ->
-        M.goto Phase.Mixing n
+        Phase_machine.goto Phase.Mixing n
           ~cmds:[ Cmd.Focus x; Cmd.Navigate (Url.of_string "/a?b=c") ]
     | Double ->
-        M.goto Phase.Doubling n
+        Phase_machine.goto Phase.Doubling n
     | Boom ->
-        M.goto Phase.Booming n
+        Phase_machine.goto Phase.Booming n
     | Ghost ->
-        M.goto Phase.Ghosting n
+        Phase_machine.goto Phase.Ghosting n
     | Slow ->
-        M.goto Phase.Slowing n
+        Phase_machine.goto Phase.Slowing n
     | Later ->
-        M.reenter Phase.Waiting n
+        Phase_machine.reenter Phase.Waiting n
     | Cancel_later | Cancel_double ->
-        M.goto Phase.Resting n
+        Phase_machine.goto Phase.Resting n
     | Set v ->
-        M.goto Phase.Resting v
+        Phase_machine.goto Phase.Resting v
     | Failed ->
-        M.goto Phase.Resting (-1)
+        Phase_machine.goto Phase.Resting (-1)
   in
   let to_ =
-    M.
+    Phase_machine.
       [
         Phase.Resting;
         Phase.Mixing;
@@ -140,44 +140,45 @@ let machine =
         Phase.Slowing;
       ]
   in
-  M.make ~id:"counter" ~init:(M.at Phase.Resting 0)
+  Phase_machine.make ~id:"counter"
+    ~init:(Phase_machine.at Phase.Resting 0)
     [
-      M.state Phase.Resting "resting" ~to_ (handler Phase.Resting);
-      M.state Phase.Mixing "mixing" ~to_
+      Phase_machine.state Phase.Resting "resting" ~to_ (handler Phase.Resting);
+      Phase_machine.state Phase.Mixing "mixing" ~to_
         ~after:[ (10, Inc) ]
         ~invoke:[ Source.call double Fun.id settle ]
         (handler Phase.Mixing);
-      M.state Phase.Doubling "doubling" ~to_
+      Phase_machine.state Phase.Doubling "doubling" ~to_
         ~invoke:[ Source.call double Fun.id settle ]
         (handler Phase.Doubling);
-      M.state Phase.Booming "booming" ~to_
+      Phase_machine.state Phase.Booming "booming" ~to_
         ~invoke:[ Source.call boom Fun.id settle ]
         (handler Phase.Booming);
-      M.state Phase.Ghosting "ghosting" ~to_
+      Phase_machine.state Phase.Ghosting "ghosting" ~to_
         ~invoke:[ Source.call ghost Fun.id settle ]
         (handler Phase.Ghosting);
-      M.state Phase.Waiting "waiting" ~to_
+      Phase_machine.state Phase.Waiting "waiting" ~to_
         ~after:[ (50, Inc) ]
         (handler Phase.Waiting);
-      M.state Phase.Slowing "slowing" ~to_
+      Phase_machine.state Phase.Slowing "slowing" ~to_
         ~invoke:[ Source.call ~timeout_ms:20 double Fun.id settle ]
         (handler Phase.Slowing);
     ]
 
-let count : M.snapshot -> int = function
-  | M.At (Phase.Resting, n) ->
+let count : Phase_machine.snapshot -> int = function
+  | Phase_machine.At (Phase.Resting, n) ->
       n
-  | M.At (Phase.Mixing, n) ->
+  | Phase_machine.At (Phase.Mixing, n) ->
       n
-  | M.At (Phase.Doubling, n) ->
+  | Phase_machine.At (Phase.Doubling, n) ->
       n
-  | M.At (Phase.Booming, n) ->
+  | Phase_machine.At (Phase.Booming, n) ->
       n
-  | M.At (Phase.Ghosting, n) ->
+  | Phase_machine.At (Phase.Ghosting, n) ->
       n
-  | M.At (Phase.Waiting, n) ->
+  | Phase_machine.At (Phase.Waiting, n) ->
       n
-  | M.At (Phase.Slowing, n) ->
+  | Phase_machine.At (Phase.Slowing, n) ->
       n
 
 let counter_view n =
@@ -186,7 +187,7 @@ let counter_view n =
 let component =
   { Component.machine; view = (fun snapshot -> counter_view (count snapshot)) }
 
-let state_codec : M.snapshot Codec.t =
+let state_codec : Phase_machine.snapshot Codec.t =
   Codec.make
     ~encode:(fun snapshot -> Codec.int.encode (count snapshot))
     ~decode:(fun _ -> Error "server state only")

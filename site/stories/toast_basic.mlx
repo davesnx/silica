@@ -9,34 +9,35 @@ module States = struct
   type _ t = Idle : unit t | Page : page t
 end
 
-module M = Machine.Make (States)
+module Toast_basic_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"toast-basic" ~init:(M.at Idle ())
+  Toast_basic_machine.make ~id:"toast-basic"
+    ~init:(Toast_basic_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Page ] (fun () -> function
+      Toast_basic_machine.state Idle "idle" ~to_:[ Page ] (fun () -> function
         | Props props ->
-            M.goto Page { props; toasts = []; next = 1 }
+            Toast_basic_machine.goto Page { props; toasts = []; next = 1 }
         | Add | Closed _ ->
-            M.unhandled
+            Toast_basic_machine.unhandled
         );
-      M.state Page "page" (fun page -> function
+      Toast_basic_machine.state Page "page" (fun page -> function
         | Props props ->
-            M.goto Page { page with props }
+            Toast_basic_machine.goto Page { page with props }
         | Add ->
             let toast =
               Toast.toast ~key:(string_of_int page.next)
                 ~priority:page.props.priority ~description:"The file is ready."
                 "Export done"
             in
-            M.goto Page
+            Toast_basic_machine.goto Page
               {
                 page with
                 toasts = page.toasts @ [ toast ];
                 next = page.next + 1;
               }
         | Closed key ->
-            M.goto Page
+            Toast_basic_machine.goto Page
               {
                 page with
                 toasts =
@@ -48,9 +49,9 @@ let machine =
     ]
 
 let view = function
-  | M.At (Idle, ()) ->
+  | Toast_basic_machine.At (Idle, ()) ->
       <div />
-  | M.At (Page, page) ->
+  | Toast_basic_machine.At (Page, page) ->
       <div>
         <button type_=`button class_=Style.button on_press=Add>
           "Show a toast"

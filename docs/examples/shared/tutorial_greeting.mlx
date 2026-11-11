@@ -10,15 +10,20 @@ module States = struct
     | Failed : Remote.error t
 end
 
-module M = Machine.Make (States)
+module Greeting_machine = Machine.Make (States)
 
-let ask = function Ask -> M.goto Asking () | Answered _ -> M.unhandled
+let ask = function
+  | Ask ->
+      Greeting_machine.goto Asking ()
+  | Answered _ ->
+      Greeting_machine.unhandled
 
 let machine =
-  M.make ~id:"greeting" ~init:(M.at Idle ())
+  Greeting_machine.make ~id:"greeting"
+    ~init:(Greeting_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
-      M.state Asking "asking" ~to_:[ Shown; Failed ]
+      Greeting_machine.state Idle "idle" ~to_:[ Asking ] (fun () -> ask);
+      Greeting_machine.state Asking "asking" ~to_:[ Shown; Failed ]
         ~invoke:
           [
             Source.call Tutorial_api.greeting
@@ -27,27 +32,27 @@ let machine =
           ]
         (fun () -> function
           | Answered (Ok text) ->
-              M.goto Shown text
+              Greeting_machine.goto Shown text
           | Answered (Error error) ->
-              M.goto Failed error
+              Greeting_machine.goto Failed error
           | Ask ->
-              M.unhandled
+              Greeting_machine.unhandled
           );
-      M.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
-      M.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
+      Greeting_machine.state Shown "shown" ~to_:[ Asking ] (fun _ -> ask);
+      Greeting_machine.state Failed "failed" ~to_:[ Asking ] (fun _ -> ask);
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Greeting_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Idle, ()) ->
+  | Greeting_machine.At (Idle, ()) ->
       <button on_press=Ask>"Say hello"</button>
-  | M.At (Asking, ()) ->
+  | Greeting_machine.At (Asking, ()) ->
       <p>"Asking the server."</p>
-  | M.At (Shown, text) ->
+  | Greeting_machine.At (Shown, text) ->
       <div>
         <p>(Node.text text)</p> <button on_press=Ask>"Ask again"</button>
       </div>
-  | M.At (Failed, _) ->
+  | Greeting_machine.At (Failed, _) ->
       <div>
         <p>"The server did not answer."</p>
         <button on_press=Ask>"Try again"</button>

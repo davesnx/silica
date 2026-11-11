@@ -76,33 +76,34 @@ module Load = struct
   type _ t = Loading : unit t | Ready : int t | Failed : int t
 end
 
-module L = Machine.Make (Load)
+module Load_machine = Machine.Make (Load)
 
 let loader ?(network = true) () =
-  L.make ~id:"loader" ~init:(L.at Loading ())
+  Load_machine.make ~id:"loader"
+    ~init:(Load_machine.at Loading ())
     [
-      L.state Loading "loading" ~to_:[ Ready; Failed ]
+      Load_machine.state Loading "loading" ~to_:[ Ready; Failed ]
         ~invoke:[ Source.call endpoint Fun.id (fun r -> Loaded r) ]
         (fun () -> function
           | Loaded (Ok n) ->
-              L.goto Ready n
+              Load_machine.goto Ready n
           | Loaded (Error (Http code)) ->
-              L.goto Failed code
+              Load_machine.goto Failed code
           | Loaded (Error (Network _)) when network ->
-              L.goto Failed 0
+              Load_machine.goto Failed 0
           | Loaded (Error _) | Retry ->
-              L.unhandled
+              Load_machine.unhandled
           );
-      L.state Ready "ready" ~final:true L.ignore;
-      L.state Failed "failed" ~to_:[ Loading ] (fun _ -> function
+      Load_machine.state Ready "ready" ~final:true Load_machine.ignore;
+      Load_machine.state Failed "failed" ~to_:[ Loading ] (fun _ -> function
         | Retry ->
-            L.goto Loading ()
+            Load_machine.goto Loading ()
         | Loaded _ ->
-            L.unhandled
+            Load_machine.unhandled
         );
     ]
 
-let loader_view (L.At (state, _) : L.snapshot) =
+let loader_view (Load_machine.At (state, _) : Load_machine.snapshot) =
   match state with
   | Load.Failed ->
       Node.element "button" [ Attr.on_press Retry ] [ Node.text "retry" ]
@@ -116,7 +117,7 @@ let test_answers_are_delivered () =
     {
       Check.name = "record";
       holds =
-        (fun (L.At (state, data) : L.snapshot) _ ->
+        (fun (Load_machine.At (state, data) : Load_machine.snapshot) _ ->
           ( match state with
           | Load.Ready ->
               readies := data :: !readies
@@ -152,33 +153,34 @@ let test_decode_only_on_request () =
     {
       Check.name = "record";
       holds =
-        (fun (L.At (state, data) : L.snapshot) _ ->
+        (fun (Load_machine.At (state, data) : Load_machine.snapshot) _ ->
           (match state with Load.Failed -> errors := data :: !errors | _ -> ());
           true
         );
     }
   in
   let decode_dead =
-    L.make ~id:"loader" ~init:(L.at Loading ())
+    Load_machine.make ~id:"loader"
+      ~init:(Load_machine.at Loading ())
       [
-        L.state Loading "loading" ~to_:[ Ready; Failed ]
+        Load_machine.state Loading "loading" ~to_:[ Ready; Failed ]
           ~invoke:[ Source.call endpoint Fun.id (fun r -> Loaded r) ]
           (fun () -> function
             | Loaded (Ok n) ->
-                L.goto Ready n
+                Load_machine.goto Ready n
             | Loaded (Error (Http code)) ->
-                L.goto Failed code
+                Load_machine.goto Failed code
             | Loaded (Error (Network _)) ->
-                L.goto Failed 0
+                Load_machine.goto Failed 0
             | Loaded (Error (Decode _)) | Retry ->
-                L.unhandled
+                Load_machine.unhandled
             );
-        L.state Ready "ready" ~final:true L.ignore;
-        L.state Failed "failed" ~to_:[ Loading ] (fun _ -> function
+        Load_machine.state Ready "ready" ~final:true Load_machine.ignore;
+        Load_machine.state Failed "failed" ~to_:[ Loading ] (fun _ -> function
           | Retry ->
-              L.goto Loading ()
+              Load_machine.goto Loading ()
           | Loaded _ ->
-              L.unhandled
+              Load_machine.unhandled
           );
       ]
   in
@@ -216,18 +218,19 @@ let test_answers_of_another_endpoint_are_not_used () =
 let test_one_answer_per_call () =
   let answers = ref 0 in
   let counting =
-    L.make ~id:"loader" ~init:(L.at Loading ())
+    Load_machine.make ~id:"loader"
+      ~init:(Load_machine.at Loading ())
       [
-        L.state Loading "loading" ~to_:[ Ready ]
+        Load_machine.state Loading "loading" ~to_:[ Ready ]
           ~invoke:[ Source.call endpoint Fun.id (fun r -> Loaded r) ]
           (fun () -> function
             | Loaded _ ->
                 incr answers;
-                L.stay []
+                Load_machine.stay []
             | Retry ->
-                L.goto Ready 0
+                Load_machine.goto Ready 0
             );
-        L.state Ready "ready" ~final:true L.ignore;
+        Load_machine.state Ready "ready" ~final:true Load_machine.ignore;
       ]
   in
   let view _ =
@@ -255,16 +258,20 @@ module Tick = struct
   type _ t = Waiting : int t
 end
 
-module K = Machine.Make (Tick)
+module Tick_machine = Machine.Make (Tick)
 
 let test_a_timer_fires_once () =
   let ticker =
-    K.make ~id:"ticker" ~init:(K.at Waiting 0)
+    Tick_machine.make ~id:"ticker"
+      ~init:(Tick_machine.at Waiting 0)
       [
-        K.state Waiting "waiting"
+        Tick_machine.state Waiting "waiting"
           ~after:[ (100, Retry) ]
           (fun count -> function
-            | Retry -> K.goto Waiting (count + 1) | Loaded _ -> K.unhandled
+            | Retry ->
+                Tick_machine.goto Waiting (count + 1)
+            | Loaded _ ->
+                Tick_machine.unhandled
             );
       ]
   in
@@ -274,7 +281,10 @@ let test_a_timer_fires_once () =
   let once =
     {
       Check.name = "at most one tick";
-      holds = (fun (K.At (Waiting, count) : K.snapshot) _ -> count <= 1);
+      holds =
+        (fun (Tick_machine.At (Waiting, count) : Tick_machine.snapshot) _ ->
+          count <= 1
+        );
     }
   in
   match Check.component ~invariants:[ once ] (Component.make ticker view) with
@@ -297,28 +307,29 @@ module Watch = struct
   type _ t = Watching : int t | Broken : unit t | Away : unit t
 end
 
-module W = Machine.Make (Watch)
+module Watch_machine = Machine.Make (Watch)
 
 let watcher ~on_stale =
-  W.make ~id:"watcher" ~init:(W.at Watching 0)
+  Watch_machine.make ~id:"watcher"
+    ~init:(Watch_machine.at Watching 0)
     [
-      W.state Watching "watching" ~to_:[ Broken; Away ]
+      Watch_machine.state Watching "watching" ~to_:[ Broken; Away ]
         ~invoke:[ Source.live topic (fun _ -> "all") (fun u -> Update u) ]
         (fun count -> function
           | Update { status = Ready { stale = true; _ }; _ } ->
               on_stale count
           | Update { status = Ready { stale = false; _ }; _ } ->
-              W.goto Watching (count + 1)
+              Watch_machine.goto Watching (count + 1)
           | Update _ ->
-              W.stay []
+              Watch_machine.stay []
           | Leave ->
-              W.goto Away ()
+              Watch_machine.goto Away ()
           );
-      W.state Broken "broken" ~final:true W.ignore;
-      W.state Away "away" ~final:true W.ignore;
+      Watch_machine.state Broken "broken" ~final:true Watch_machine.ignore;
+      Watch_machine.state Away "away" ~final:true Watch_machine.ignore;
     ]
 
-let watcher_view (W.At (state, _) : W.snapshot) =
+let watcher_view (Watch_machine.At (state, _) : Watch_machine.snapshot) =
   match state with
   | Watch.Watching ->
       Node.element "button" [ Attr.on_press Leave ] [ Node.text "leave" ]
@@ -329,14 +340,16 @@ let not_broken =
   {
     Check.name = "not broken";
     holds =
-      (fun (W.At (state, _) : W.snapshot) _ ->
+      (fun (Watch_machine.At (state, _) : Watch_machine.snapshot) _ ->
         match state with Watch.Broken -> false | _ -> true
       );
   }
 
 let test_stale_update_is_delivered () =
   let c =
-    Component.make (watcher ~on_stale:(fun _ -> W.goto Broken ())) watcher_view
+    Component.make
+      (watcher ~on_stale:(fun _ -> Watch_machine.goto Broken ()))
+      watcher_view
   in
   expect_violation show_watch "not broken"
     [ "0 loading"; "1 ready 4"; "0 stale 4" ]
@@ -349,12 +362,13 @@ let below n =
   {
     Check.name = Printf.sprintf "fewer than %d states" n;
     holds =
-      (fun (W.At (state, count) : W.snapshot) _ ->
+      (fun (Watch_machine.At (state, count) : Watch_machine.snapshot) _ ->
         match state with Watch.Watching -> count < n | _ -> true
       );
   }
 
-let ok_watcher = watcher ~on_stale:(fun count -> W.goto Watching count)
+let ok_watcher =
+  watcher ~on_stale:(fun count -> Watch_machine.goto Watching count)
 
 let test_arrivals_are_bounded () =
   let c = Component.make ok_watcher watcher_view in
@@ -388,32 +402,33 @@ let test_arrivals_are_bounded () =
 let test_failure_ends_the_subscription () =
   let failed : int option list ref = ref [] in
   let after_failure =
-    W.make ~id:"watcher" ~init:(W.at Watching 0)
+    Watch_machine.make ~id:"watcher"
+      ~init:(Watch_machine.at Watching 0)
       [
-        W.state Watching "watching" ~to_:[ Away ]
+        Watch_machine.state Watching "watching" ~to_:[ Away ]
           ~invoke:[ Source.live topic (fun _ -> "all") (fun u -> Update u) ]
           (fun count -> function
             | Update { status = Failed { last; _ }; _ } ->
                 failed := last :: !failed;
-                W.goto Watching (count + 100)
+                Watch_machine.goto Watching (count + 100)
             | Update { status = Ready { stale = false; _ }; _ }
               when count >= 100 ->
-                W.goto Watching (count + 1000)
+                Watch_machine.goto Watching (count + 1000)
             | Update { status = Ready { stale = false; _ }; _ } ->
-                W.goto Watching (count + 1)
+                Watch_machine.goto Watching (count + 1)
             | Update _ ->
-                W.stay []
+                Watch_machine.stay []
             | Leave ->
-                W.goto Away ()
+                Watch_machine.goto Away ()
             );
-        W.state Away "away" ~final:true W.ignore;
+        Watch_machine.state Away "away" ~final:true Watch_machine.ignore;
       ]
   in
   let nothing_after_failure =
     {
       Check.name = "nothing arrives after a failure";
       holds =
-        (fun (W.At (state, count) : W.snapshot) _ ->
+        (fun (Watch_machine.At (state, count) : Watch_machine.snapshot) _ ->
           match state with Watch.Watching -> count < 1000 | _ -> true
         );
     }
@@ -442,34 +457,34 @@ module Three = struct
   type _ t = A : unit t | B : unit t | C : unit t
 end
 
-module T = Machine.Make (Three)
+module Three_machine = Machine.Make (Three)
 
 let wrong ~b ~c =
   let table =
-    T.make ~id:"wrong" ~init:(T.at A ())
+    Three_machine.make ~id:"wrong" ~init:(Three_machine.at A ())
       [
-        T.state A "a" ~to_:[ B ] (fun () -> function
+        Three_machine.state A "a" ~to_:[ B ] (fun () -> function
           | Go ->
-              T.goto B ()
+              Three_machine.goto B ()
           | Wait ->
-              T.unhandled
+              Three_machine.unhandled
           );
         b;
         c;
       ]
   in
   Machine.map_snapshot table
-    ~get:(fun (T.At (state, _) : T.snapshot) ->
+    ~get:(fun (Three_machine.At (state, _) : Three_machine.snapshot) ->
       match state with Three.A -> 0 | Three.B -> 1 | Three.C -> 2
     )
-    ~set:(function 0 -> T.at A () | _ -> T.at C ())
+    ~set:(function 0 -> Three_machine.at A () | _ -> Three_machine.at C ())
 
 let idle_c =
-  T.state C "c" ~to_:[ A ] (fun () -> function
+  Three_machine.state C "c" ~to_:[ A ] (fun () -> function
     | Wait ->
-        T.goto A ()
+        Three_machine.goto A ()
     | Go ->
-        T.unhandled
+        Three_machine.unhandled
     )
 
 let go_view _ =
@@ -481,30 +496,36 @@ let go_view _ =
 
 let test_timer_outside_its_state () =
   let b =
-    T.state B "b"
+    Three_machine.state B "b"
       ~after:[ (100, Wait) ]
       ~to_:[ A ]
-      (fun () -> function Wait -> T.goto A () | Go -> T.unhandled)
+      (fun () -> function
+        | Wait -> Three_machine.goto A () | Go -> Three_machine.unhandled
+        )
   in
   expect_violation show_go "timer-owner" [ "go" ]
     (Check.component (Component.make (wrong ~b ~c:idle_c) go_view))
 
 let test_call_outside_its_state () =
   let b =
-    T.state B "b"
+    Three_machine.state B "b"
       ~invoke:[ Source.call endpoint Fun.id (fun _ -> Wait) ]
       ~to_:[ A ]
-      (fun () -> function Wait -> T.goto A () | Go -> T.unhandled)
+      (fun () -> function
+        | Wait -> Three_machine.goto A () | Go -> Three_machine.unhandled
+        )
   in
   expect_violation show_go "call-owner" [ "go" ]
     (Check.component (Component.make (wrong ~b ~c:idle_c) go_view))
 
 let test_subscription_outside_its_state () =
   let b =
-    T.state B "b"
+    Three_machine.state B "b"
       ~invoke:[ Source.live topic (fun _ -> "all") (fun _ -> Wait) ]
       ~to_:[ A ]
-      (fun () -> function Wait -> T.goto A () | Go -> T.unhandled)
+      (fun () -> function
+        | Wait -> Three_machine.goto A () | Go -> Three_machine.unhandled
+        )
   in
   expect_violation show_go "call-owner" [ "go" ]
     (Check.component (Component.make (wrong ~b ~c:idle_c) go_view))
@@ -513,32 +534,32 @@ module Two = struct
   type _ t = A : unit t | B : unit t | C : unit t
 end
 
-module U = Machine.Make (Two)
+module Two_machine = Machine.Make (Two)
 
 let test_missing_case_at_run_time () =
   let table =
-    U.make ~id:"uncovered" ~init:(U.at A ())
+    Two_machine.make ~id:"uncovered" ~init:(Two_machine.at A ())
       [
-        U.state A "a" ~to_:[ B ] (fun () -> function
+        Two_machine.state A "a" ~to_:[ B ] (fun () -> function
           | Go ->
-              U.goto B ()
+              Two_machine.goto B ()
           | Wait ->
-              U.unhandled
+              Two_machine.unhandled
           );
-        U.state B "b" ~to_:[ A ] (fun () -> function
+        Two_machine.state B "b" ~to_:[ A ] (fun () -> function
           | Wait ->
-              U.goto A ()
+              Two_machine.goto A ()
           | Go ->
-              U.unhandled
+              Two_machine.unhandled
           );
       ]
   in
   let machine =
     Machine.map_snapshot table
-      ~get:(fun (U.At (state, _) : U.snapshot) ->
+      ~get:(fun (Two_machine.At (state, _) : Two_machine.snapshot) ->
         match state with Two.A -> 0 | Two.B -> 1 | Two.C -> 2
       )
-      ~set:(function 0 -> U.at A () | _ -> U.at C ())
+      ~set:(function 0 -> Two_machine.at A () | _ -> Two_machine.at C ())
   in
   expect_violation show_go "missing-case" [ "go" ]
     (Check.component (Component.make machine go_view))
@@ -583,10 +604,12 @@ let test_app_root_gets_answers () =
 
 let test_app_root_timer_owner () =
   let b =
-    T.state B "b"
+    Three_machine.state B "b"
       ~after:[ (100, Wait) ]
       ~to_:[ A ]
-      (fun () -> function Wait -> T.goto A () | Go -> T.unhandled)
+      (fun () -> function
+        | Wait -> Three_machine.goto A () | Go -> Three_machine.unhandled
+        )
   in
   let machine = wrong ~b ~c:idle_c in
   Alcotest.(check (pair string (list string)))
@@ -606,19 +629,20 @@ module Drift = struct
   type _ t = Start : unit t | Done : unit t | Never : unit t
 end
 
-module D = Machine.Make (Drift)
+module Drift_machine = Machine.Make (Drift)
 
 let drifting =
-  D.make ~id:"drift" ~init:(D.at Start ())
+  Drift_machine.make ~id:"drift"
+    ~init:(Drift_machine.at Start ())
     [
-      D.state Start "start" ~to_:[ Done; Never ] (fun () -> function
+      Drift_machine.state Start "start" ~to_:[ Done; Never ] (fun () -> function
         | Go ->
-            D.goto Done ()
+            Drift_machine.goto Done ()
         | Wait ->
-            D.unhandled
+            Drift_machine.unhandled
         );
-      D.state Done "done" ~final:true D.ignore;
-      D.state Never "never" ~final:true D.ignore;
+      Drift_machine.state Done "done" ~final:true Drift_machine.ignore;
+      Drift_machine.state Never "never" ~final:true Drift_machine.ignore;
     ]
 
 let test_unreached_edge () =

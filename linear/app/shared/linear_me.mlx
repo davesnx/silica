@@ -7,34 +7,34 @@ module States = struct
   type _ t = Loading : unit t | Ready : User.t t | Failed : unit t
 end
 
-module M = Machine.Make (States)
+module Me_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"me" ~init:(M.at Loading ())
+  Me_machine.make ~id:"me" ~init:(Me_machine.at Loading ())
     [
-      M.state Loading "loading" ~to_:[ Ready; Failed ]
+      Me_machine.state Loading "loading" ~to_:[ Ready; Failed ]
         ~invoke:[ Source.call me_endpoint Fun.id (fun r -> Loaded r) ]
         (fun () -> function
           | Loaded (Ok user) ->
-              M.goto Ready user
+              Me_machine.goto Ready user
           | Loaded (Error _) ->
-              M.goto Failed ()
+              Me_machine.goto Failed ()
           );
-      M.state Ready "ready" ~final:true M.ignore;
-      M.state Failed "failed" ~final:true M.ignore;
+      Me_machine.state Ready "ready" ~final:true Me_machine.ignore;
+      Me_machine.state Failed "failed" ~final:true Me_machine.ignore;
     ]
 
 let text = Node.text
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Me_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Loading, ()) ->
+  | Me_machine.At (Loading, ()) ->
       <p id="me" class_="text-sm text-ui-muted">"..."</p>
-  | M.At (Ready, user) ->
+  | Me_machine.At (Ready, user) ->
       <p id="me" class_="text-sm text-ui-muted">
         (text ("you are " ^ User.name user))
       </p>
-  | M.At (Failed, ()) ->
+  | Me_machine.At (Failed, ()) ->
       <p id="me" class_="text-sm text-ui-muted">"you are nobody"</p>
 
 let component = Component.make machine view

@@ -17,30 +17,31 @@ module States = struct
     | Failed : (int * Remote.error) t
 end
 
-module M = Machine.Make (States)
+module Comments_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"comments" ~init:(M.at Idle ())
+  Comments_machine.make ~id:"comments"
+    ~init:(Comments_machine.at Idle ())
     [
-      M.always ~to_:[ Loading ] (function
+      Comments_machine.always ~to_:[ Loading ] (function
         | Props number ->
-            M.reenter Loading number
+            Comments_machine.reenter Loading number
         | _ ->
-            M.unhandled
+            Comments_machine.unhandled
         );
-      M.state Idle "idle" M.ignore;
-      M.state Loading "loading" ~to_:[ Ready; Failed ]
+      Comments_machine.state Idle "idle" Comments_machine.ignore;
+      Comments_machine.state Loading "loading" ~to_:[ Ready; Failed ]
         ~invoke:[ Source.call comments_endpoint Fun.id (fun r -> Loaded r) ]
         (fun number -> function
           | Loaded (Ok thread) ->
-              M.goto Ready
+              Comments_machine.goto Ready
                 { number; viewer = thread.viewer; comments = thread.comments }
           | Loaded (Error error) ->
-              M.goto Failed (number, error)
+              Comments_machine.goto Failed (number, error)
           | _ ->
-              M.unhandled
+              Comments_machine.unhandled
           );
-      M.state Ready "ready"
+      Comments_machine.state Ready "ready"
         ~invoke:
           [
             Source.live comments_topic
@@ -49,29 +50,30 @@ let machine =
           ]
         (fun r -> function
           | Updated { seq; status = Status.Ready { data; _ } } when seq > 0 ->
-              M.goto Ready { r with comments = data }
+              Comments_machine.goto Ready { r with comments = data }
           | Updated _ ->
-              M.goto Ready r
+              Comments_machine.goto Ready r
           | _ ->
-              M.unhandled
+              Comments_machine.unhandled
           );
-      M.state Failed "failed" ~to_:[ Loading ] (fun (number, _) -> function
+      Comments_machine.state Failed "failed" ~to_:[ Loading ]
+        (fun (number, _) -> function
         | Retry ->
-            M.goto Loading number
+            Comments_machine.goto Loading number
         | _ ->
-            M.unhandled
+            Comments_machine.unhandled
         );
     ]
 
 let text = Node.text
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Comments_machine.snapshot) : event Node.t =
   <section id="comments" class_="mt-8">
     <h2 class_="mb-2 font-semibold">"Comments"</h2>
     ( match snapshot with
-    | M.At (Idle, ()) | M.At (Loading, _) ->
+    | Comments_machine.At (Idle, ()) | Comments_machine.At (Loading, _) ->
         <p class_="text-ui-muted">"Loading comments..."</p>
-    | M.At (Failed, _) ->
+    | Comments_machine.At (Failed, _) ->
         <div>
           <p role=`alert class_="text-ui-danger">
             "Could not load the comments."
@@ -80,7 +82,7 @@ let view (snapshot : M.snapshot) : event Node.t =
             "Try again"
           </button>
         </div>
-    | M.At (Ready, r) ->
+    | Comments_machine.At (Ready, r) ->
         <div>
           ( match r.comments with
           | [] ->

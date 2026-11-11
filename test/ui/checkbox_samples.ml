@@ -18,18 +18,18 @@ module Page_state = struct
   type _ t = Page : page t
 end
 
-module P = Machine.Make (Page_state)
+module Page_machine = Machine.Make (Page_state)
 
 let machine =
-  P.make ~id:"checkbox-page"
+  Page_machine.make ~id:"checkbox-page"
     ~init:
-      (P.at Page
+      (Page_machine.at Page
          { checked = false; indeterminate = false; disabled = false; log = [] }
       )
     [
-      P.state Page "page" (fun page -> function
+      Page_machine.state Page "page" (fun page -> function
         | Changed checked ->
-            P.goto Page
+            Page_machine.goto Page
               {
                 page with
                 checked;
@@ -37,15 +37,15 @@ let machine =
                 log = page.log @ [ Printf.sprintf "checked %b" checked ];
               }
         | Set_checked checked ->
-            P.goto Page { page with checked }
+            Page_machine.goto Page { page with checked }
         | Set_indeterminate indeterminate ->
-            P.goto Page { page with indeterminate }
+            Page_machine.goto Page { page with indeterminate }
         | Set_disabled disabled ->
-            P.goto Page { page with disabled }
+            Page_machine.goto Page { page with disabled }
         );
     ]
 
-let view (P.At (Page, page)) =
+let view (Page_machine.At (Page, page)) =
   Node.element "form" []
     [
       Node.element "p"

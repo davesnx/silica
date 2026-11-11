@@ -28,7 +28,7 @@ module Io = struct
     !p
 end
 
-module S = Silica_server.Make (Io)
+module Server = Silica_server.Make (Io)
 
 let flush () =
   while not (Queue.is_empty pending) do
@@ -146,7 +146,7 @@ let protocol_tests =
   ]
 
 let page url =
-  S.render_page app ~status ~scripts:[ "/a.js"; "/b\"c.js" ]
+  Server.render_page app ~status ~scripts:[ "/a.js"; "/b\"c.js" ]
     ~head:"<meta name=\"x\">" url
 
 let page_tests =
@@ -186,7 +186,7 @@ let page_tests =
           }
         in
         let render ?islands () =
-          (S.render_page
+          (Server.render_page
              (fun _ -> shell)
              ~status:(fun _ -> 200)
              ~scripts:[] ?islands (Url.of_string "/")
@@ -194,7 +194,7 @@ let page_tests =
             .body
         in
         check_contains "filled"
-          (render ~islands:[ S.Island live ] ())
+          (render ~islands:[ Server.Island live ] ())
           {|<main><div data-silica-live="counter"><p>count &lt;0&gt;</p></div></main>|};
         check_contains "empty without the island" (render ())
           {|<main><div data-silica-live="counter"></div></main>|};
@@ -202,7 +202,7 @@ let page_tests =
           (render
              ~islands:
                [
-                 S.Island
+                 Server.Island
                    (Live.declare ~channel:"other" ~state:live.state
                       ~event:live.event live.component
                    );
@@ -211,26 +211,27 @@ let page_tests =
           )
           {|<div data-silica-live="counter"></div>|};
         let r =
-          S.render_component shell ~title:"t" ~scripts:[]
-            ~islands:[ S.Island live ] ()
+          Server.render_component shell ~title:"t" ~scripts:[]
+            ~islands:[ Server.Island live ] ()
         in
         check_contains "component page" r.body "count &lt;0&gt;"
     );
     test_case "the CSRF token goes into the head as a meta tag" `Quick
       (fun () ->
         let r =
-          S.render_page app ~status ~scripts:[] ~csrf:"tok\"en"
+          Server.render_page app ~status ~scripts:[] ~csrf:"tok\"en"
             (Url.of_string "/")
         in
         check_contains "meta" r.body
           {|<meta name="silica-csrf" content="tok&quot;en">|};
         check_absent "none without a token"
-          (S.render_page app ~status ~scripts:[] (Url.of_string "/")).body
+          (Server.render_page app ~status ~scripts:[] (Url.of_string "/")).body
           "silica-csrf"
     );
     test_case "component page" `Quick (fun () ->
         let r =
-          S.render_component component ~title:"T <1>" ~scripts:[ "/m.js" ] ()
+          Server.render_component component ~title:"T <1>" ~scripts:[ "/m.js" ]
+            ()
         in
         check int "status" 200 r.status;
         check_contains "title" r.body "<title>T &lt;1&gt;</title>";
@@ -243,7 +244,7 @@ let session_record =
 
 let context =
   {
-    S.request =
+    Server.request =
       {
         Silica_server.meth = "GET";
         path = "/";
@@ -256,18 +257,22 @@ let context =
 
 let handlers =
   [
-    S.implement double (fun _ n -> Ok (n * 2));
-    S.implement boom (fun _ _ -> Error "kaput");
+    Server.implement double (fun _ n -> Ok (n * 2));
+    Server.implement boom (fun _ _ -> Error "kaput");
   ]
 
-type run = { session : S.runner; sent : string list ref; mutable next_id : int }
+type run = {
+  session : Server.runner;
+  sent : string list ref;
+  mutable next_id : int;
+}
 
 let start ?(handlers = handlers) () =
   Queue.clear pending;
   sleeps := [];
   let sent = ref [] in
   let session =
-    S.live live ~handlers ~context ~send:(fun s -> sent := s :: !sent)
+    Server.live live ~handlers ~context ~send:(fun s -> sent := s :: !sent)
   in
   { session; sent; next_id = 0 }
 
@@ -312,7 +317,7 @@ let states r = List.map (fun (v, cmds, _, _) -> (v, cmds)) (state_messages r)
 
 let send r e =
   r.next_id <- r.next_id + 1;
-  S.receive r.session (Protocol.encode_event ev_codec ~id:r.next_id e)
+  Server.receive r.session (Protocol.encode_event ev_codec ~id:r.next_id e)
 
 let host =
   Alcotest.testable
@@ -446,15 +451,15 @@ let live_tests =
         let r = start () in
         send r Later;
         send r Double;
-        S.close r.session;
+        Server.close r.session;
         flush ();
         send r Inc;
         check states_t "no new state" [ (0, []); (0, []); (0, []) ] (states r)
     );
     test_case "messages that do not decode are dropped" `Quick (fun () ->
         let r = start () in
-        S.receive r.session "garbage";
-        S.receive r.session {|{"t":"event","id":9,"event":"nope"}|};
+        Server.receive r.session "garbage";
+        Server.receive r.session {|{"t":"event","id":9,"event":"nope"}|};
         send r Inc;
         check states_t "ignored" [ (0, []); (1, []) ] (states r)
     );
@@ -466,18 +471,18 @@ let live_tests =
           incr sent;
           if !sent = 2 then failwith "send failed"
         in
-        let session = S.live live ~handlers ~context ~send:boom_send in
+        let session = Server.live live ~handlers ~context ~send:boom_send in
         check unit "no escape" ()
-          (S.receive session (Protocol.encode_event ev_codec ~id:1 Inc));
-        S.receive session (Protocol.encode_event ev_codec ~id:2 Inc);
+          (Server.receive session (Protocol.encode_event ev_codec ~id:1 Inc));
+        Server.receive session (Protocol.encode_event ev_codec ~id:2 Inc);
         check int "nothing sent after the failure" 2 !sent
     );
     test_case "a bad message does not stop the session" `Quick (fun () ->
         let r = start () in
         let err =
           capture_stderr (fun () ->
-              S.receive r.session "garbage";
-              S.receive r.session {|{"t":"event","id":9,"event":"nope"}|}
+              Server.receive r.session "garbage";
+              Server.receive r.session {|{"t":"event","id":9,"event":"nope"}|}
           )
         in
         check_contains "logged" err "counter";
@@ -489,8 +494,8 @@ let live_tests =
     test_case "each state has a higher seq and the ack of the last event" `Quick
       (fun () ->
         let r = start () in
-        S.receive r.session (Protocol.encode_event ev_codec ~id:4 Inc);
-        S.receive r.session (Protocol.encode_event ev_codec ~id:9 Inc);
+        Server.receive r.session (Protocol.encode_event ev_codec ~id:4 Inc);
+        Server.receive r.session (Protocol.encode_event ev_codec ~id:9 Inc);
         check
           (list (pair int int))
           "seq and ack"
@@ -499,20 +504,20 @@ let live_tests =
     );
     test_case "an event id that is not higher is dropped" `Quick (fun () ->
         let r = start () in
-        S.receive r.session (Protocol.encode_event ev_codec ~id:2 Inc);
-        S.receive r.session (Protocol.encode_event ev_codec ~id:2 Inc);
-        S.receive r.session (Protocol.encode_event ev_codec ~id:1 Inc);
+        Server.receive r.session (Protocol.encode_event ev_codec ~id:2 Inc);
+        Server.receive r.session (Protocol.encode_event ev_codec ~id:2 Inc);
+        Server.receive r.session (Protocol.encode_event ev_codec ~id:1 Inc);
         check states_t "one step" [ (0, []); (1, []) ] (states r)
     );
     test_case "no state is sent while no socket is attached; resend sends it"
       `Quick (fun () ->
         let r = start () in
-        S.set_send r.session None;
+        Server.set_send r.session None;
         send r Inc;
         send r Inc;
         check int "nothing sent" 1 (List.length !(r.sent));
-        S.set_send r.session (Some (fun s -> r.sent := s :: !(r.sent)));
-        S.resend r.session;
+        Server.set_send r.session (Some (fun s -> r.sent := s :: !(r.sent)));
+        Server.resend r.session;
         check
           (list (pair int int))
           "the state the machine reached, with a new seq"

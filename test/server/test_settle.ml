@@ -28,7 +28,7 @@ module Io = struct
     !p
 end
 
-module S = Silica_server.Make (Io)
+module Server = Silica_server.Make (Io)
 
 let contains s sub =
   let n = String.length sub in
@@ -55,14 +55,14 @@ module Lookup = struct
     type _ t = Loading : int t | Ready : int t | Failed : string t
   end
 
-  module M = Machine.Make (States)
+  module Lookup_machine = Machine.Make (States)
 
   let machine ~id ~endpoint ~input =
-    let to_ = M.[ States.Ready; States.Failed ] in
-    M.make ~id
-      ~init:(M.at States.Loading input)
+    let to_ = Lookup_machine.[ States.Ready; States.Failed ] in
+    Lookup_machine.make ~id
+      ~init:(Lookup_machine.at States.Loading input)
       [
-        M.state States.Loading "loading" ~to_
+        Lookup_machine.state States.Loading "loading" ~to_
           ~entry:(fun _ -> [ Cmd.Set_title "loading" ])
           ~invoke:
             [
@@ -70,17 +70,18 @@ module Lookup = struct
             ]
           (fun _ -> function
             | Answered (Ok n) ->
-                M.goto States.Ready n
+                Lookup_machine.goto States.Ready n
             | Answered (Error _) ->
-                M.goto States.Failed "failed"
+                Lookup_machine.goto States.Failed "failed"
             );
-        M.state States.Ready "ready"
+        Lookup_machine.state States.Ready "ready"
           ~entry:(fun n -> [ Cmd.Set_title (Printf.sprintf "ready %d" n) ])
-          M.ignore;
-        M.state States.Failed "failed" M.ignore;
+          Lookup_machine.ignore;
+        Lookup_machine.state States.Failed "failed" Lookup_machine.ignore;
       ]
 
-  let view id (M.At (state, data) : M.snapshot) : event Node.t =
+  let view id (Lookup_machine.At (state, data) : Lookup_machine.snapshot) :
+      event Node.t =
     match state with
     | States.Loading ->
         Node.element "p" []
@@ -101,11 +102,12 @@ module Page = struct
     type _ t = Page : unit t
   end
 
-  module M = Machine.Make (States)
+  module Page_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"page" ~init:(M.at States.Page ())
-      [ M.state States.Page "page" M.ignore ]
+    Page_machine.make ~id:"page"
+      ~init:(Page_machine.at States.Page ())
+      [ Page_machine.state States.Page "page" Page_machine.ignore ]
 
   let first = Lookup.component ~id:"first" ~endpoint:double ~input:4
   let second = Lookup.component ~id:"second" ~endpoint:triple ~input:5
@@ -124,7 +126,7 @@ end
 
 let context =
   {
-    S.request =
+    Server.request =
       {
         Silica_server.meth = "GET";
         path = "/";
@@ -143,18 +145,18 @@ let context =
 
 let handlers ~calls =
   [
-    S.implement double (fun _ n ->
+    Server.implement double (fun _ n ->
         incr calls;
         Ok (n * 2)
     );
-    S.implement triple (fun _ n ->
+    Server.implement triple (fun _ n ->
         incr calls;
         Ok (n * 3)
     );
   ]
 
 let render ?(timeout = 1000) handlers =
-  S.render_page_settled
+  Server.render_page_settled
     (fun (_ : Url.t) -> Page.component)
     ~status:(fun _ -> 200)
     ~scripts:[ "/app.js" ] ~settle_timeout_ms:timeout ~handlers ~context
@@ -210,7 +212,7 @@ let test_settle_nonce () =
   reset ();
   let calls = ref 0 in
   let response =
-    S.render_page_settled
+    Server.render_page_settled
       (fun (_ : Url.t) -> Page.component)
       ~status:(fun _ -> 200)
       ~scripts:[] ~nonce:"abc" ~handlers:(handlers ~calls) ~context
@@ -223,11 +225,11 @@ let test_failed_call_stays_loading () =
   let calls = ref 0 in
   let handlers =
     [
-      S.implement double (fun _ _ ->
+      Server.implement double (fun _ _ ->
           incr calls;
           Error "down"
       );
-      S.implement triple (fun _ n ->
+      Server.implement triple (fun _ n ->
           incr calls;
           Ok (n * 3)
       );
@@ -274,7 +276,7 @@ let test_no_polling () =
 let test_no_calls_no_script () =
   reset ();
   let response =
-    S.render_page_settled
+    Server.render_page_settled
       (fun (_ : Url.t) ->
         Component.make Page.machine (fun _ -> Node.text "static")
       )
@@ -293,27 +295,34 @@ module Chain = struct
     type _ t = First : int t | Second : int t | Done : int t
   end
 
-  module M = Machine.Make (States)
+  module Chain_machine = Machine.Make (States)
 
   let machine =
-    let to_ = M.[ States.Second; States.Done ] in
-    M.make ~id:"chain" ~init:(M.at States.First 1)
+    let to_ = Chain_machine.[ States.Second; States.Done ] in
+    Chain_machine.make ~id:"chain"
+      ~init:(Chain_machine.at States.First 1)
       [
-        M.state States.First "first" ~to_
+        Chain_machine.state States.First "first" ~to_
           ~invoke:[ Source.call double (fun n -> n) (fun r -> Got_a r) ]
           (fun _ -> function
-            | Got_a (Ok a) -> M.goto States.Second a | _ -> M.unhandled
+            | Got_a (Ok a) ->
+                Chain_machine.goto States.Second a
+            | _ ->
+                Chain_machine.unhandled
             );
-        M.state States.Second "second" ~to_
+        Chain_machine.state States.Second "second" ~to_
           ~invoke:[ Source.call triple (fun n -> n) (fun r -> Got_b r) ]
           (fun _ -> function
-            | Got_b (Ok b) -> M.goto States.Done b | _ -> M.unhandled
+            | Got_b (Ok b) ->
+                Chain_machine.goto States.Done b
+            | _ ->
+                Chain_machine.unhandled
             );
-        M.state States.Done "done" M.ignore;
+        Chain_machine.state States.Done "done" Chain_machine.ignore;
       ]
 
   let component =
-    Component.make machine (fun (M.At (state, data)) ->
+    Component.make machine (fun (Chain_machine.At (state, data)) ->
         Node.text
           ( match state with
           | States.First ->
@@ -330,7 +339,7 @@ let test_chained_calls_settle () =
   reset ();
   let calls = ref 0 in
   let response =
-    S.render_page_settled
+    Server.render_page_settled
       (fun (_ : Url.t) -> Chain.component)
       ~status:(fun _ -> 200)
       ~scripts:[] ~handlers:(handlers ~calls) ~context (Url.of_string "/")
@@ -349,11 +358,12 @@ module Bad = struct
     type _ t = Only : unit t
   end
 
-  module M = Machine.Make (States)
+  module Bad_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"bad" ~init:(M.at States.Only ())
-      [ M.state States.Only "only" M.ignore ]
+    Bad_machine.make ~id:"bad"
+      ~init:(Bad_machine.at States.Only ())
+      [ Bad_machine.state States.Only "only" Bad_machine.ignore ]
 
   let component =
     Component.make machine (fun _ -> failwith "secret detail of the view")
@@ -377,7 +387,7 @@ let test_render_error_gives_500_and_calls_on_error () =
     seen := (Printexc.to_string exn, error.id) :: !seen
   in
   let response =
-    S.render_page
+    Server.render_page
       (fun (_ : Url.t) -> Bad.component)
       ~status:(fun _ -> 200)
       ~scripts:[] ~on_error (Url.of_string "/")
@@ -394,7 +404,7 @@ let test_render_error_gives_500_and_calls_on_error () =
   check_absent "prod hides the exception" response.body "secret detail";
   check_contains "short message" response.body "Something went wrong";
   let dev =
-    S.render_page
+    Server.render_page
       (fun (_ : Url.t) -> Bad.component)
       ~status:(fun _ -> 200)
       ~scripts:[] ~dev:true ~on_error (Url.of_string "/")
@@ -407,7 +417,7 @@ let test_render_error_in_settled_page () =
   reset ();
   let seen = ref 0 in
   let response =
-    S.render_page_settled
+    Server.render_page_settled
       (fun (_ : Url.t) -> Bad.component)
       ~status:(fun _ -> 200)
       ~scripts:[]
@@ -420,7 +430,7 @@ let test_render_error_in_settled_page () =
 let test_boundary_error_keeps_the_page () =
   let seen = ref 0 in
   let response =
-    S.render_page
+    Server.render_page
       (fun (_ : Url.t) -> Bad.guarded)
       ~status:(fun _ -> 200)
       ~scripts:[]
@@ -435,7 +445,7 @@ let test_boundary_error_keeps_the_page () =
 
 let test_render_component_error () =
   let response =
-    S.render_component Bad.component ~title:"t" ~scripts:[]
+    Server.render_component Bad.component ~title:"t" ~scripts:[]
       ~on_error:(fun _ _ -> ())
       ()
   in
@@ -499,7 +509,7 @@ let starting ~id commands : (Only_machine.snapshot, unit) Component.t =
 
 let test_guard_redirect_at_first_url () =
   let r =
-    S.render_page gate_app
+    Server.render_page gate_app
       ~status:(fun _ -> 200)
       ~scripts:[] (Url.of_string "/secret")
   in
@@ -508,14 +518,16 @@ let test_guard_redirect_at_first_url () =
     "location" (Some "/login") (header "location" r);
   Alcotest.(check string) "no body" "" r.body;
   let r =
-    S.render_page gate_app ~status:(fun _ -> 200) ~scripts:[] (Url.of_string "/")
+    Server.render_page gate_app
+      ~status:(fun _ -> 200)
+      ~scripts:[] (Url.of_string "/")
   in
   Alcotest.(check int) "allowed" 200 r.status;
   Alcotest.(check (option string)) "no location" None (header "location" r)
 
 let test_navigate_during_render_redirects () =
   let r =
-    S.render_component
+    Server.render_component
       (starting ~id:"go" [ Cmd.Navigate (Url.of_string "/login?next=%2Fa") ])
       ~title:"t" ~scripts:[] ()
   in
@@ -525,7 +537,7 @@ let test_navigate_during_render_redirects () =
 
 let test_set_status_last_wins () =
   let r =
-    S.render_page
+    Server.render_page
       (fun _ -> starting ~id:"st" [ Cmd.Set_status 404; Cmd.Set_status 410 ])
       ~status:(fun _ -> 200)
       ~scripts:[] (Url.of_string "/")
@@ -533,14 +545,14 @@ let test_set_status_last_wins () =
   Alcotest.(check int) "the last Set_status" 410 r.status;
   check_contains "the page renders" r.body "body";
   let r =
-    S.render_page
+    Server.render_page
       (fun _ -> starting ~id:"st" [])
       ~status:(fun _ -> 201)
       ~scripts:[] (Url.of_string "/")
   in
   Alcotest.(check int) "the status function without one" 201 r.status;
   let r =
-    S.render_component
+    Server.render_component
       (starting ~id:"st" [ Cmd.Set_status 404 ])
       ~title:"t" ~scripts:[] ()
   in
@@ -549,7 +561,7 @@ let test_set_status_last_wins () =
 let test_document_attributes_on_html () =
   let attr name value = Cmd.Set_document_attribute { name; value } in
   let r =
-    S.render_page
+    Server.render_page
       (fun _ ->
         starting ~id:"da"
           [
@@ -571,7 +583,7 @@ let test_document_attributes_on_html () =
     "a cookie command sets no header" true
     (List.for_all (fun (name, _) -> name <> "set-cookie") r.headers);
   let r =
-    S.render_component
+    Server.render_component
       (starting ~id:"da" [ attr "data-theme" (Some "light") ])
       ~title:"t" ~scripts:[] ()
   in
@@ -579,7 +591,7 @@ let test_document_attributes_on_html () =
   List.iter
     (fun name ->
       match
-        S.render_page
+        Server.render_page
           (fun _ -> starting ~id:"da" [ attr name (Some "x") ])
           ~status:(fun _ -> 200)
           ~scripts:[] (Url.of_string "/")
@@ -617,19 +629,20 @@ module After = struct
     type _ t = Loading : unit t | Done : unit t
   end
 
-  module M = Machine.Make (States)
+  module After_machine = Machine.Make (States)
 
   let component on_answer =
     Component.make
-      (M.make ~id:"after" ~init:(M.at States.Loading ())
+      (After_machine.make ~id:"after"
+         ~init:(After_machine.at States.Loading ())
          [
-           M.state States.Loading "loading"
-             ~to_:M.[ States.Done ]
+           After_machine.state States.Loading "loading"
+             ~to_:After_machine.[ States.Done ]
              ~invoke:[ Source.call double (fun () -> 1) (fun r -> Answered r) ]
              (fun () -> function
-               | Answered _ -> M.goto ~cmds:on_answer States.Done ()
+               | Answered _ -> After_machine.goto ~cmds:on_answer States.Done ()
                );
-           M.state States.Done "done" M.ignore;
+           After_machine.state States.Done "done" After_machine.ignore;
          ]
       )
       (fun _ -> Node.text "after")
@@ -639,7 +652,7 @@ let test_settled_status_and_redirect () =
   reset ();
   let calls = ref 0 in
   let settled commands =
-    S.render_page_settled
+    Server.render_page_settled
       (fun (_ : Url.t) -> After.component commands)
       ~status:(fun _ -> 200)
       ~scripts:[] ~handlers:(handlers ~calls) ~context (Url.of_string "/")

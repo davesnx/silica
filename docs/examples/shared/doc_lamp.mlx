@@ -6,22 +6,26 @@ module States = struct
   type _ t = Off : unit t | On : unit t
 end
 
-module M = Machine.Make (States)
+module Lamp_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"lamp" ~init:(M.at Off ())
+  Lamp_machine.make ~id:"lamp" ~init:(Lamp_machine.at Off ())
     [
-      M.state Off "off" ~to_:[ On ] (fun () Toggle -> M.goto On ());
-      M.state On "on" ~to_:[ Off ] (fun () Toggle -> M.goto Off ());
+      Lamp_machine.state Off "off" ~to_:[ On ] (fun () Toggle ->
+          Lamp_machine.goto On ()
+      );
+      Lamp_machine.state On "on" ~to_:[ Off ] (fun () Toggle ->
+          Lamp_machine.goto Off ()
+      );
     ]
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Lamp_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Off, ()) ->
+  | Lamp_machine.At (Off, ()) ->
       <div>
         <p>"The lamp is off."</p> <button on_press=Toggle>"Turn on"</button>
       </div>
-  | M.At (On, ()) ->
+  | Lamp_machine.At (On, ()) ->
       <div>
         <p>"The lamp is on."</p> <button on_press=Toggle>"Turn off"</button>
       </div>

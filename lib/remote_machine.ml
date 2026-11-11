@@ -15,71 +15,72 @@ let make (type i o) ?timeout_ms ~id (endpoint : (i, o) Remote.endpoint) :
       | Ready : (i * o) t
       | Failed : (i * Remote.error * o option) t
   end in
-  let module M = Machine.Make (Chart) in
+  let module Chart_machine = Machine.Make (Chart) in
   let machine =
-    M.make ~id ~init:(M.at Idle ())
+    Chart_machine.make ~id ~init:(Chart_machine.at Idle ())
       [
-        M.always ~to_:[ Loading; Idle ] (function
+        Chart_machine.always ~to_:[ Loading; Idle ] (function
           | Load input ->
-              M.reenter Loading (input, None)
+              Chart_machine.reenter Loading (input, None)
           | Reset ->
-              M.goto Idle ()
+              Chart_machine.goto Idle ()
           | Retry | Settled _ ->
-              M.unhandled
+              Chart_machine.unhandled
           );
-        M.state Idle "idle" M.ignore;
-        M.state Loading "loading" ~to_:[ Ready; Failed ]
+        Chart_machine.state Idle "idle" Chart_machine.ignore;
+        Chart_machine.state Loading "loading" ~to_:[ Ready; Failed ]
           ~invoke:
             [
               Source.call ?timeout_ms endpoint fst (fun result -> Settled result);
             ]
           (fun (input, last) -> function
             | Settled (Ok output) ->
-                M.goto Ready (input, output)
+                Chart_machine.goto Ready (input, output)
             | Settled (Error error) ->
-                M.goto Failed (input, error, last)
+                Chart_machine.goto Failed (input, error, last)
             | Load next ->
-                M.reenter Loading (next, last)
+                Chart_machine.reenter Loading (next, last)
             | Retry | Reset ->
-                M.unhandled
+                Chart_machine.unhandled
             );
-        M.state Ready "ready" ~to_:[ Loading ] (fun (_, output) -> function
+        Chart_machine.state Ready "ready" ~to_:[ Loading ]
+          (fun (_, output) -> function
           | Load next ->
-              M.reenter Loading (next, Some output)
+              Chart_machine.reenter Loading (next, Some output)
           | Retry | Settled _ | Reset ->
-              M.unhandled
+              Chart_machine.unhandled
           );
-        M.state Failed "failed" ~to_:[ Loading ]
+        Chart_machine.state Failed "failed" ~to_:[ Loading ]
           (fun (input, _, last) -> function
           | Retry ->
-              M.reenter Loading (input, last)
+              Chart_machine.reenter Loading (input, last)
           | Load next ->
-              M.reenter Loading (next, last)
+              Chart_machine.reenter Loading (next, last)
           | Settled _ | Reset ->
-              M.unhandled
+              Chart_machine.unhandled
           );
       ]
   in
   Machine.map_snapshot machine
-    ~get:(fun (snapshot : M.snapshot) : (i, o) state ->
+    ~get:(fun (snapshot : Chart_machine.snapshot) : (i, o) state ->
       match snapshot with
-      | M.At (Chart.Idle, ()) ->
+      | Chart_machine.At (Chart.Idle, ()) ->
           { input = None; status = Status.Idle }
-      | M.At (Chart.Loading, (input, last)) ->
+      | Chart_machine.At (Chart.Loading, (input, last)) ->
           { input = Some input; status = Status.Loading last }
-      | M.At (Chart.Ready, (input, data)) ->
+      | Chart_machine.At (Chart.Ready, (input, data)) ->
           { input = Some input; status = Status.Ready { data; stale = false } }
-      | M.At (Chart.Failed, (input, error, last)) ->
+      | Chart_machine.At (Chart.Failed, (input, error, last)) ->
           { input = Some input; status = Status.Failed { error; last } }
     )
-    ~set:(fun (state : (i, o) state) : M.snapshot ->
+    ~set:(fun (state : (i, o) state) : Chart_machine.snapshot ->
       match (state.input, state.status) with
       | None, _ | _, Status.Idle ->
-          M.at Chart.Idle ()
+          Chart_machine.at Chart.Idle ()
       | Some input, Status.Loading last ->
-          M.at Chart.Loading (input, last)
+          Chart_machine.at Chart.Loading (input, last)
       | Some input, Status.Ready { data; _ } ->
-          M.at Chart.Ready (input, data)
+          Chart_machine.at Chart.Ready (input, data)
       | Some input, Status.Failed { error; last } ->
-          M.at Chart.Failed (input, error, last)
+          Chart_machine.at Chart.Failed (input, error, last)
     )

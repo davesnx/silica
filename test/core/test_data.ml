@@ -178,36 +178,36 @@ module Watch = struct
     type _ t = Idle : unit t | Watching : (string * int Status.t) t
   end
 
-  module M = Machine.Make (States)
+  module Watch_machine = Machine.Make (States)
 
   let topic = Topic.declare ~name:"counts" ~state:Codec.int
 
   let machine =
-    M.make ~id:"watch" ~init:(M.at Idle ())
+    Watch_machine.make ~id:"watch" ~init:(Watch_machine.at Idle ())
       [
-        M.always ~to_:[ Watching; Idle ] (function
+        Watch_machine.always ~to_:[ Watching; Idle ] (function
           | Watch key ->
-              M.reenter Watching (key, Status.Idle)
+              Watch_machine.reenter Watching (key, Status.Idle)
           | Stop ->
-              M.goto Idle ()
+              Watch_machine.goto Idle ()
           | Update _ ->
-              M.unhandled
+              Watch_machine.unhandled
           );
-        M.state Idle "idle" M.ignore;
-        M.state Watching "watching"
+        Watch_machine.state Idle "idle" Watch_machine.ignore;
+        Watch_machine.state Watching "watching"
           ~invoke:[ Source.live topic fst (fun update -> Update update) ]
           (fun (key, _) -> function
             | Update { status; _ } ->
-                M.goto Watching (key, status)
+                Watch_machine.goto Watching (key, status)
             | _ ->
-                M.unhandled
+                Watch_machine.unhandled
             );
       ]
 
   let view = function
-    | M.At (Idle, ()) ->
+    | Watch_machine.At (Idle, ()) ->
         Node.text "idle"
-    | M.At (Watching, (key, status)) ->
+    | Watch_machine.At (Watching, (key, status)) ->
         Node.text
           (key ^ ":"
           ^
@@ -300,7 +300,8 @@ let source_tests =
         Alcotest.(check (list string))
           "sources" [ "live:counts" ] watching.Spec.sources;
         match
-          Machine.active Watch.machine (Watch.M.at Watching ("k", Status.Idle))
+          Machine.active Watch.machine
+            (Watch.Watch_machine.at Watching ("k", Status.Idle))
         with
         | [ Machine.Subscription { topic = "counts"; _ } ] ->
             ()

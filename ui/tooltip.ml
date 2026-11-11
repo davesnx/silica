@@ -45,9 +45,10 @@ module State = struct
     | Closing : props t
 end
 
-module M = Machine.Make (State)
+module Tooltip_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Tooltip_machine.snapshot =
+  | At : 'data State.t * 'data -> snapshot
 
 let timers =
   List.map
@@ -65,70 +66,72 @@ let sources =
     ]
 
 let machine =
-  M.make ~id:"tooltip" ~init:(M.at Idle ())
+  Tooltip_machine.make ~id:"tooltip"
+    ~init:(Tooltip_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Closed ] (fun () -> function
+      Tooltip_machine.state Idle "idle" ~to_:[ Closed ] (fun () -> function
         | Props props ->
-            M.goto Closed props
+            Tooltip_machine.goto Closed props
         | _ ->
-            M.unhandled
+            Tooltip_machine.unhandled
         );
-      M.state Closed "closed" ~to_:[ Opening; Open ] (fun previous -> function
-        | Props props ->
-            M.goto Closed props
-        | Hover when previous.delay = Instant ->
-            M.goto Open previous
-        | Hover ->
-            M.goto Opening previous
-        | Focus ->
-            M.goto Open previous
-        | _ ->
-            M.unhandled
-        );
-      M.state Opening "opening" ~to_:[ Open; Closed ] ~after:timers
+      Tooltip_machine.state Closed "closed" ~to_:[ Opening; Open ]
         (fun previous -> function
-        | Props props when props.delay <> previous.delay ->
-            M.reenter Opening props
         | Props props ->
-            M.goto Opening props
-        | Elapsed delay when delay = previous.delay ->
-            M.goto Open previous
-        | Cancel ->
-            M.goto Closed previous
+            Tooltip_machine.goto Closed props
+        | Hover when previous.delay = Instant ->
+            Tooltip_machine.goto Open previous
+        | Hover ->
+            Tooltip_machine.goto Opening previous
+        | Focus ->
+            Tooltip_machine.goto Open previous
         | _ ->
-            M.unhandled
+            Tooltip_machine.unhandled
         );
-      M.state Open "open" ~to_:[ Closing; Closed ] ~invoke:sources
+      Tooltip_machine.state Opening "opening" ~to_:[ Open; Closed ]
+        ~after:timers (fun previous -> function
+        | Props props when props.delay <> previous.delay ->
+            Tooltip_machine.reenter Opening props
+        | Props props ->
+            Tooltip_machine.goto Opening props
+        | Elapsed delay when delay = previous.delay ->
+            Tooltip_machine.goto Open previous
+        | Cancel ->
+            Tooltip_machine.goto Closed previous
+        | _ ->
+            Tooltip_machine.unhandled
+        );
+      Tooltip_machine.state Open "open" ~to_:[ Closing; Closed ] ~invoke:sources
         (fun previous -> function
         | Props props when props.place <> previous.place ->
-            M.reenter Open props
+            Tooltip_machine.reenter Open props
         | Props props ->
-            M.goto Open props
+            Tooltip_machine.goto Open props
         | Leave when previous.close_delay = Instant ->
-            M.goto Closed previous
+            Tooltip_machine.goto Closed previous
         | Leave ->
-            M.goto Closing previous
+            Tooltip_machine.goto Closing previous
         | Close _ ->
-            M.goto Closed previous
+            Tooltip_machine.goto Closed previous
         | _ ->
-            M.unhandled
+            Tooltip_machine.unhandled
         );
-      M.state Closing "closing" ~to_:[ Open; Closed ] ~after:timers
-        ~invoke:sources (fun previous -> function
+      Tooltip_machine.state Closing "closing" ~to_:[ Open; Closed ]
+        ~after:timers ~invoke:sources (fun previous -> function
         | Props props
           when props.close_delay <> previous.close_delay
                || props.place <> previous.place ->
-            M.reenter Closing props
+            Tooltip_machine.reenter Closing props
         | Props props ->
-            M.goto Closing props
+            Tooltip_machine.goto Closing props
         | Elapsed delay when delay = previous.close_delay ->
-            M.goto Closed previous
+            Tooltip_machine.goto Closed previous
         | Resume ->
-            M.goto Open previous
+            Tooltip_machine.goto Open previous
         | Close _ ->
-            M.goto Closed previous
+            Tooltip_machine.goto Closed previous
         | _ ->
-            M.unhandled
+            Tooltip_machine.unhandled
         );
     ]
 

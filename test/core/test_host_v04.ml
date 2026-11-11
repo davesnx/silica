@@ -273,24 +273,24 @@ module Held = struct
     type _ t = Shut : data t | Popup : data t
   end
 
-  module M = Machine.Make (States)
+  module Held_machine = Machine.Make (States)
 
   let panel = Ref.make "panel"
   let box = Ref.make "box"
 
   let machine =
-    let to_ = M.[ States.Shut; States.Popup ] in
+    let to_ = Held_machine.[ States.Shut; States.Popup ] in
     let note data text = { data with log = text :: data.log } in
-    M.make ~id:"held"
-      ~init:(M.at States.Shut { opened = false; log = [] })
+    Held_machine.make ~id:"held"
+      ~init:(Held_machine.at States.Shut { opened = false; log = [] })
       [
-        M.state States.Shut "shut" ~to_ (fun data -> function
+        Held_machine.state States.Shut "shut" ~to_ (fun data -> function
           | Open ->
-              M.goto States.Popup { data with opened = true }
+              Held_machine.goto States.Popup { data with opened = true }
           | _ ->
-              M.unhandled
+              Held_machine.unhandled
           );
-        M.state States.Popup "popup" ~to_
+        Held_machine.state States.Popup "popup" ~to_
           ~invoke:
             [
               Source.focus_trap panel;
@@ -303,12 +303,12 @@ module Held = struct
             ]
           (fun data -> function
             | Close | Escape | Outside ->
-                M.goto States.Shut { data with opened = false }
+                Held_machine.goto States.Shut { data with opened = false }
             | Resized rect ->
-                M.goto States.Popup
+                Held_machine.goto States.Popup
                   (note data (Printf.sprintf "resized %.0f" rect.width))
             | Seen visible ->
-                M.goto States.Popup
+                Held_machine.goto States.Popup
                   (note data
                      ( if visible then
                          "seen"
@@ -317,11 +317,12 @@ module Held = struct
                      )
                   )
             | Open ->
-                M.unhandled
+                Held_machine.unhandled
             );
       ]
 
-  let view (M.At (state, data) : M.snapshot) : event Node.t =
+  let view (Held_machine.At (state, data) : Held_machine.snapshot) :
+      event Node.t =
     ignore data;
     match state with
     | States.Shut ->
@@ -332,7 +333,7 @@ module Held = struct
           [ Node.element "span" [ Attr.ref_ box ] [ Node.text "popup" ] ]
 
   let component = Component.make machine view
-  let data (M.At (state, data) : M.snapshot) : data =
+  let data (Held_machine.At (state, data) : Held_machine.snapshot) : data =
     match state with States.Shut -> data | States.Popup -> data
 
   let opened sim = (data (Sim.snapshot sim)).opened
@@ -428,27 +429,28 @@ module Bomb = struct
     type _ t = Live : data t
   end
 
-  module M = Machine.Make (States)
+  module Bomb_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"bomb"
-      ~init:(M.at Live { count = 0; ticks = 0; broken = false })
+    Bomb_machine.make ~id:"bomb"
+      ~init:(Bomb_machine.at Live { count = 0; ticks = 0; broken = false })
       [
-        M.state Live "live"
+        Bomb_machine.state Live "live"
           ~after:[ (10, Tick) ]
           (fun data -> function
             | Inc ->
-                M.goto Live { data with count = data.count + 1 }
+                Bomb_machine.goto Live { data with count = data.count + 1 }
             | Tick ->
-                M.reenter Live { data with ticks = data.ticks + 1 }
+                Bomb_machine.reenter Live { data with ticks = data.ticks + 1 }
             | Boom ->
                 failwith "boom"
             | Break_view ->
-                M.goto Live { data with broken = true }
+                Bomb_machine.goto Live { data with broken = true }
             );
       ]
 
-  let view (M.At (States.Live, data) : M.snapshot) : event Node.t =
+  let view (Bomb_machine.At (States.Live, data) : Bomb_machine.snapshot) :
+      event Node.t =
     if data.broken then failwith "view broke";
     Node.element "div" []
       [
@@ -473,17 +475,17 @@ module Shell = struct
     type _ t = Shell : data t
   end
 
-  module M = Machine.Make (States)
+  module Shell_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"shell"
-      ~init:(M.at Shell { bumps = 0 })
+    Shell_machine.make ~id:"shell"
+      ~init:(Shell_machine.at Shell { bumps = 0 })
       [
-        M.state Shell "shell" (fun data -> function
+        Shell_machine.state Shell "shell" (fun data -> function
           | Bump ->
-              M.goto Shell { bumps = data.bumps + 1 }
+              Shell_machine.goto Shell { bumps = data.bumps + 1 }
           | Child _ ->
-              M.unhandled
+              Shell_machine.unhandled
           );
       ]
 
@@ -504,8 +506,8 @@ module Shell = struct
     Component.node ~output:(fun event _ -> [ Child event ]) Bomb.component
     |> Node.map (fun event -> event)
 
-  let guarded : (M.snapshot, event) Component.t =
-    Component.make machine (fun (M.At (States.Shell, data)) ->
+  let guarded : (Shell_machine.snapshot, event) Component.t =
+    Component.make machine (fun (Shell_machine.At (States.Shell, data)) ->
         Node.element "main" []
           [
             Node.element "button"
@@ -515,11 +517,12 @@ module Shell = struct
           ]
     )
 
-  let unguarded : (M.snapshot, event) Component.t =
+  let unguarded : (Shell_machine.snapshot, event) Component.t =
     Component.make machine (fun _ -> Node.element "main" [] [ bomb () ])
 
   let bumps sim =
-    (fun (M.At (States.Shell, data)) -> data.bumps) (Sim.snapshot sim)
+    (fun (Shell_machine.At (States.Shell, data)) -> data.bumps)
+      (Sim.snapshot sim)
 end
 
 let test_boundary_catches_step_exception () =
@@ -646,17 +649,19 @@ module Nested = struct
     type _ t = Only : unit t
   end
 
-  module M = Machine.Make (States)
+  module Nested_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"nested" ~init:(M.at Only ()) [ M.state Only "only" M.ignore ]
+    Nested_machine.make ~id:"nested"
+      ~init:(Nested_machine.at Only ())
+      [ Nested_machine.state Only "only" Nested_machine.ignore ]
 
   let bad_fallback _ ~reset:_ : event Node.t = failwith "fallback broke"
 
   let ok_fallback _ ~reset : event Node.t =
     Node.element "p" [ reset ] [ Node.text "outer fallback" ]
 
-  let component : (M.snapshot, event) Component.t =
+  let component : (Nested_machine.snapshot, event) Component.t =
     Component.make machine (fun _ ->
         Node.boundary ~fallback:ok_fallback
           (Node.element "div" []

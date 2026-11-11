@@ -35,9 +35,10 @@ module State = struct
     | Open : (selection * int option) t
 end
 
-module M = Machine.Make (State)
+module Select_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Select_machine.snapshot =
+  | At : 'data State.t * 'data -> snapshot
 
 let option_id id i = id ^ "-option-" ^ string_of_int i
 let parts (props : props) = Popup.parts props.id
@@ -106,10 +107,10 @@ let show sel =
     | _ ->
         navigate sel.props None First
   in
-  M.goto Open (sel, highlighted) ~cmds:(scroll sel highlighted)
+  Select_machine.goto Open (sel, highlighted) ~cmds:(scroll sel highlighted)
 
 let close ?(focus = true) sel =
-  M.goto Closed sel
+  Select_machine.goto Closed sel
     ~cmds:
       ( if focus then
           [ Cmd.Focus (parts sel.props).trigger ]
@@ -129,23 +130,24 @@ let update (sel : selection) (props : props) =
   }
 
 let machine =
-  M.make ~id:"select" ~init:(M.at Idle ())
+  Select_machine.make ~id:"select"
+    ~init:(Select_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Closed ] (fun () -> function
+      Select_machine.state Idle "idle" ~to_:[ Closed ] (fun () -> function
         | Props props ->
-            M.goto Closed { props; value = props.value }
+            Select_machine.goto Closed { props; value = props.value }
         | _ ->
-            M.unhandled
+            Select_machine.unhandled
         );
-      M.state Closed "closed" ~to_:[ Open ] (fun sel -> function
+      Select_machine.state Closed "closed" ~to_:[ Open ] (fun sel -> function
         | Props props ->
-            M.goto Closed (update sel props)
+            Select_machine.goto Closed (update sel props)
         | Trigger_press | Open_key _ ->
             show sel
         | Move _ | Highlight _ | Select _ | Close _ ->
-            M.unhandled
+            Select_machine.unhandled
         );
-      M.state Open "open" ~to_:[ Closed ] ~invoke:sources
+      Select_machine.state Open "open" ~to_:[ Closed ] ~invoke:sources
         (fun (sel, highlighted) -> function
         | Props props ->
             let sel = update sel props in
@@ -157,21 +159,21 @@ let machine =
                     None
               )
             in
-            M.goto Open (sel, highlighted)
+            Select_machine.goto Open (sel, highlighted)
         | Trigger_press ->
             close sel
         | Move nav -> (
             match navigate sel.props highlighted nav with
             | next when next = highlighted ->
-                M.stay []
+                Select_machine.stay []
             | next ->
-                M.goto Open (sel, next) ~cmds:(scroll sel next)
+                Select_machine.goto Open (sel, next) ~cmds:(scroll sel next)
           )
         | Highlight i when enabled sel.props i ->
             if highlighted = Some i then
-              M.stay []
+              Select_machine.stay []
             else
-              M.goto Open (sel, Some i)
+              Select_machine.goto Open (sel, Some i)
         | Select (i, _) when enabled sel.props i ->
             close { sel with value = Some (List.nth sel.props.items i).value }
         | Close Popup.Outside_press ->
@@ -179,7 +181,7 @@ let machine =
         | Close _ ->
             close sel
         | Highlight _ | Select _ | Open_key _ ->
-            M.unhandled
+            Select_machine.unhandled
         );
     ]
 

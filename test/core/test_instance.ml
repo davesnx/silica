@@ -13,13 +13,16 @@ module Ticker = struct
     type _ t = Running : data t
   end
 
-  module M = Machine.Make (States)
+  module Ticker_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"ticker"
-      ~init:(M.at Running { label = ""; ticks = 0; bumps = 0; last = None })
+    Ticker_machine.make ~id:"ticker"
+      ~init:
+        (Ticker_machine.at Running
+           { label = ""; ticks = 0; bumps = 0; last = None }
+        )
       [
-        M.state Running "running"
+        Ticker_machine.state Running "running"
           ~after:[ (10, Tick) ]
           ~invoke:
             [
@@ -31,17 +34,19 @@ module Ticker = struct
             ]
           (fun data -> function
             | Props label ->
-                M.goto Running { data with label }
+                Ticker_machine.goto Running { data with label }
             | Tick ->
-                M.reenter Running { data with ticks = data.ticks + 1 }
+                Ticker_machine.reenter Running
+                  { data with ticks = data.ticks + 1 }
             | Bump ->
-                M.goto Running { data with bumps = data.bumps + 1 }
+                Ticker_machine.goto Running { data with bumps = data.bumps + 1 }
             | Settled n ->
-                M.goto Running { data with last = Some n }
+                Ticker_machine.goto Running { data with last = Some n }
             );
       ]
 
-  let view (M.At (States.Running, data) : M.snapshot) : event Node.t =
+  let view (Ticker_machine.At (States.Running, data) : Ticker_machine.snapshot)
+      : event Node.t =
     Node.element "button"
       [ Attr.on_press Bump ]
       [
@@ -60,7 +65,7 @@ module Ticker = struct
 
   let make ?key ~label ~on_bump () =
     Component.node ?key ~props:(Props label)
-      ~output:(fun event (M.At (States.Running, data)) ->
+      ~output:(fun event (Ticker_machine.At (States.Running, data)) ->
         match event with Bump -> [ on_bump data.bumps ] | _ -> []
       )
       component
@@ -79,23 +84,25 @@ module Parent = struct
     type _ t = Parent : data t
   end
 
-  module M = Machine.Make (States)
+  module Parent_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"parent"
-      ~init:(M.at Parent { keys = []; heard = []; label = "x" })
+    Parent_machine.make ~id:"parent"
+      ~init:(Parent_machine.at Parent { keys = []; heard = []; label = "x" })
       [
-        M.state Parent "parent" (fun data -> function
+        Parent_machine.state Parent "parent" (fun data -> function
           | Show keys ->
-              M.goto Parent { data with keys }
+              Parent_machine.goto Parent { data with keys }
           | Bumped (key, n) ->
-              M.goto Parent { data with heard = (key, n) :: data.heard }
+              Parent_machine.goto Parent
+                { data with heard = (key, n) :: data.heard }
           | Label label ->
-              M.goto Parent { data with label }
+              Parent_machine.goto Parent { data with label }
           );
       ]
 
-  let view (M.At (States.Parent, data) : M.snapshot) : event Node.t =
+  let view (Parent_machine.At (States.Parent, data) : Parent_machine.snapshot) :
+      event Node.t =
     Node.element "div" []
       (List.map
          (fun key ->
@@ -108,7 +115,8 @@ module Parent = struct
 
   let component = Component.make machine view
   let heard sim =
-    (fun (M.At (States.Parent, data)) -> data.heard) (Sim.snapshot sim)
+    (fun (Parent_machine.At (States.Parent, data)) -> data.heard)
+      (Sim.snapshot sim)
 end
 
 module Unkeyed = struct
@@ -118,12 +126,14 @@ module Unkeyed = struct
     type _ t = Two : unit t
   end
 
-  module M = Machine.Make (States)
+  module Unkeyed_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"two" ~init:(M.at Two ()) [ M.state Two "two" M.ignore ]
+    Unkeyed_machine.make ~id:"two"
+      ~init:(Unkeyed_machine.at Two ())
+      [ Unkeyed_machine.state Two "two" Unkeyed_machine.ignore ]
 
-  let view (_ : M.snapshot) : event Node.t =
+  let view (_ : Unkeyed_machine.snapshot) : event Node.t =
     Node.element "div" []
       [
         Ticker.make ~label:"a" ~on_bump:(fun _ -> Nothing) ();
@@ -152,24 +162,25 @@ module Task = struct
     type _ t = Working : unit t | Done : unit t
   end
 
-  module M = Machine.Make (States)
+  module Task_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"task" ~init:(M.at Working ())
+    Task_machine.make ~id:"task"
+      ~init:(Task_machine.at Working ())
       [
-        M.state Working "working" ~to_:[ Done ] (fun () -> function
+        Task_machine.state Working "working" ~to_:[ Done ] (fun () -> function
           | Props true | Finish ->
-              M.goto Done ()
+              Task_machine.goto Done ()
           | Props false ->
-              M.unhandled
+              Task_machine.unhandled
           );
-        M.state Done "done" ~final:true M.ignore;
+        Task_machine.state Done "done" ~final:true Task_machine.ignore;
       ]
 
-  let view : M.snapshot -> event Node.t = function
-    | M.At (States.Working, ()) ->
+  let view : Task_machine.snapshot -> event Node.t = function
+    | Task_machine.At (States.Working, ()) ->
         Node.element "button" [ Attr.on_press Finish ] [ Node.text "finish" ]
-    | M.At (States.Done, ()) ->
+    | Task_machine.At (States.Done, ()) ->
         Node.text "finished"
 
   let component = Component.make machine view
@@ -189,21 +200,23 @@ module Boss = struct
     type _ t = Boss : data t
   end
 
-  module M = Machine.Make (States)
+  module Boss_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"boss"
-      ~init:(M.at Boss { tasks = []; finished = [] })
+    Boss_machine.make ~id:"boss"
+      ~init:(Boss_machine.at Boss { tasks = []; finished = [] })
       [
-        M.state Boss "boss" (fun data -> function
+        Boss_machine.state Boss "boss" (fun data -> function
           | Add id ->
-              M.goto Boss { data with tasks = data.tasks @ [ id ] }
+              Boss_machine.goto Boss { data with tasks = data.tasks @ [ id ] }
           | Finished id ->
-              M.goto Boss { data with finished = data.finished @ [ id ] }
+              Boss_machine.goto Boss
+                { data with finished = data.finished @ [ id ] }
           );
       ]
 
-  let view (M.At (States.Boss, data) : M.snapshot) : event Node.t =
+  let view (Boss_machine.At (States.Boss, data) : Boss_machine.snapshot) :
+      event Node.t =
     Node.element "div" []
       (List.map
          (fun id ->
@@ -215,7 +228,8 @@ module Boss = struct
 
   let component = Component.make machine view
   let finished sim =
-    (fun (M.At (States.Boss, data)) -> data.finished) (Sim.snapshot sim)
+    (fun (Boss_machine.At (States.Boss, data)) -> data.finished)
+      (Sim.snapshot sim)
 end
 
 module Patient = struct
@@ -225,34 +239,35 @@ module Patient = struct
     type _ t = Asking : unit t | Answered : int t | Gave_up : string t
   end
 
-  module M = Machine.Make (States)
+  module Patient_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"patient" ~init:(M.at Asking ())
+    Patient_machine.make ~id:"patient"
+      ~init:(Patient_machine.at Asking ())
       [
-        M.state Asking "asking" ~to_:[ Answered; Gave_up ]
+        Patient_machine.state Asking "asking" ~to_:[ Answered; Gave_up ]
           ~invoke:
             [
               Source.call ~timeout_ms:30 echo (fun () -> 1) (fun r -> Settled r);
             ]
           (fun () -> function
             | Settled (Ok n) ->
-                M.goto Answered n
+                Patient_machine.goto Answered n
             | Settled (Error (Remote.Network why)) ->
-                M.goto Gave_up why
+                Patient_machine.goto Gave_up why
             | Settled (Error _) ->
-                M.goto Gave_up "other"
+                Patient_machine.goto Gave_up "other"
             );
-        M.state Answered "answered" M.ignore;
-        M.state Gave_up "gave_up" M.ignore;
+        Patient_machine.state Answered "answered" Patient_machine.ignore;
+        Patient_machine.state Gave_up "gave_up" Patient_machine.ignore;
       ]
 
-  let view : M.snapshot -> event Node.t = function
-    | M.At (States.Asking, ()) ->
+  let view : Patient_machine.snapshot -> event Node.t = function
+    | Patient_machine.At (States.Asking, ()) ->
         Node.text "asking"
-    | M.At (States.Answered, n) ->
+    | Patient_machine.At (States.Answered, n) ->
         Node.text ("answered " ^ string_of_int n)
-    | M.At (States.Gave_up, why) ->
+    | Patient_machine.At (States.Gave_up, why) ->
         Node.text ("gave up: " ^ why)
 
   let component = Component.make machine view
@@ -354,13 +369,18 @@ let test_unmount_orders_children_before_parent () =
       type _ t = Owner : unit t
     end
 
-    module M = Machine.Make (States)
+    module Owner_machine = Machine.Make (States)
 
     let machine =
-      M.make ~id:"owner" ~init:(M.at Owner ())
-        [ M.state Owner "owner" ~after:[ (5, Tick) ] M.ignore ]
+      Owner_machine.make ~id:"owner"
+        ~init:(Owner_machine.at Owner ())
+        [
+          Owner_machine.state Owner "owner"
+            ~after:[ (5, Tick) ]
+            Owner_machine.ignore;
+        ]
 
-    let view (_ : M.snapshot) : event Node.t =
+    let view (_ : Owner_machine.snapshot) : event Node.t =
       Node.element "div" []
         [ Ticker.make ~label:"k" ~on_bump:(fun _ -> Tick) () ]
   end in
@@ -509,35 +529,36 @@ module Clip = struct
     type _ t = Copying : unit t | Elsewhere : bool option t
   end
 
-  module M = Machine.Make (States)
+  module Clip_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"clip" ~init:(M.at Copying ())
+    Clip_machine.make ~id:"clip"
+      ~init:(Clip_machine.at Copying ())
       [
-        M.state Copying "copying" ~to_:[ Elsewhere ]
+        Clip_machine.state Copying "copying" ~to_:[ Elsewhere ]
           ~entry:(fun () ->
             [ Cmd.Copy { text = "hi"; on_result = Some (fun ok -> Copied ok) } ]
           )
           (fun () -> function
             | Moved ->
-                M.goto Elsewhere None
+                Clip_machine.goto Elsewhere None
             | Copied ok ->
-                M.goto Elsewhere (Some ok)
+                Clip_machine.goto Elsewhere (Some ok)
             );
-        M.state Elsewhere "elsewhere" (fun _ -> function
+        Clip_machine.state Elsewhere "elsewhere" (fun _ -> function
           | Copied ok ->
-              M.goto Elsewhere (Some ok)
+              Clip_machine.goto Elsewhere (Some ok)
           | Moved ->
-              M.unhandled
+              Clip_machine.unhandled
           );
       ]
 
-  let view : M.snapshot -> event Node.t = function
-    | M.At (States.Copying, ()) ->
+  let view : Clip_machine.snapshot -> event Node.t = function
+    | Clip_machine.At (States.Copying, ()) ->
         Node.text "copying"
-    | M.At (States.Elsewhere, None) ->
+    | Clip_machine.At (States.Elsewhere, None) ->
         Node.text "waiting"
-    | M.At (States.Elsewhere, Some ok) ->
+    | Clip_machine.At (States.Elsewhere, Some ok) ->
         Node.text (Printf.sprintf "copied=%b" ok)
 
   let component = Component.make machine view
@@ -550,15 +571,21 @@ module Clip_host = struct
     type _ t = Host : bool t
   end
 
-  module M = Machine.Make (States)
+  module Clip_host_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"clip-host" ~init:(M.at Host true)
+    Clip_host_machine.make ~id:"clip-host"
+      ~init:(Clip_host_machine.at Host true)
       [
-        M.state Host "host" (fun _ -> function Show shown -> M.goto Host shown);
+        Clip_host_machine.state Host "host" (fun _ -> function
+          | Show shown ->
+              Clip_host_machine.goto Host shown
+          );
       ]
 
-  let view (M.At (States.Host, shown) : M.snapshot) : event Node.t =
+  let view
+      (Clip_host_machine.At (States.Host, shown) : Clip_host_machine.snapshot) :
+      event Node.t =
     if shown then
       Component.node ~props:Clip.Moved Clip.component
     else

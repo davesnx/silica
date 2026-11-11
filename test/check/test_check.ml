@@ -712,7 +712,7 @@ module Dialog = struct
     type _ t = Closed : unit t | Opened : unit t
   end
 
-  module M = Machine.Make (States)
+  module Dialog_machine = Machine.Make (States)
 
   let panel = Ref.make "panel"
 
@@ -738,27 +738,32 @@ module Dialog = struct
       else
         []
     in
-    M.make ~id:"dialog" ~init:(M.at States.Closed ())
+    Dialog_machine.make ~id:"dialog"
+      ~init:(Dialog_machine.at States.Closed ())
       [
-        M.state States.Closed "closed"
-          ~to_:M.[ States.Opened ]
+        Dialog_machine.state States.Closed "closed"
+          ~to_:Dialog_machine.[ States.Opened ]
           (fun () -> function
-            | Open -> M.goto States.Opened () | _ -> M.unhandled
+            | Open ->
+                Dialog_machine.goto States.Opened ()
+            | _ ->
+                Dialog_machine.unhandled
             );
-        M.state States.Opened "opened"
-          ~to_:M.[ States.Closed ]
+        Dialog_machine.state States.Opened "opened"
+          ~to_:Dialog_machine.[ States.Closed ]
           ~invoke:sources
           (fun () -> function
             | Close ->
-                M.goto States.Closed ()
+                Dialog_machine.goto States.Closed ()
             | Resized | Seen _ ->
-                M.stay []
+                Dialog_machine.stay []
             | Open ->
-                M.unhandled
+                Dialog_machine.unhandled
             );
       ]
 
-  let view (M.At (state, _) : M.snapshot) : event Node.t =
+  let view (Dialog_machine.At (state, _) : Dialog_machine.snapshot) :
+      event Node.t =
     match state with
     | States.Closed ->
         Node.element "button" [ Attr.on_press Open ] [ Node.text "open" ]
@@ -892,14 +897,14 @@ let test_live_rejects_client_only_source () =
   let machine =
     Machine.map_snapshot
       (Dialog.machine ~escape:true ~outside:true ~observers:true)
-      ~get:(fun (Dialog.M.At (state, _)) ->
+      ~get:(fun (Dialog.Dialog_machine.At (state, _)) ->
         match state with Dialog.States.Closed -> 0 | Dialog.States.Opened -> 1
       )
       ~set:(fun n ->
         if n = 0 then
-          Dialog.M.at Dialog.States.Closed ()
+          Dialog.Dialog_machine.at Dialog.States.Closed ()
         else
-          Dialog.M.at Dialog.States.Opened ()
+          Dialog.Dialog_machine.at Dialog.States.Opened ()
       )
   in
   let live =
@@ -915,9 +920,9 @@ let test_live_rejects_client_only_source () =
           (fun n ->
             Dialog.view
               ( if n = 0 then
-                  Dialog.M.at Dialog.States.Closed ()
+                  Dialog.Dialog_machine.at Dialog.States.Closed ()
                 else
-                  Dialog.M.at Dialog.States.Opened ()
+                  Dialog.Dialog_machine.at Dialog.States.Opened ()
               )
           );
       }
@@ -1027,12 +1032,13 @@ module Watcher = struct
     type _ t = Watching : string list t
   end
 
-  module M = Machine.Make (States)
+  module Watcher_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"watcher" ~init:(M.at States.Watching [])
+    Watcher_machine.make ~id:"watcher"
+      ~init:(Watcher_machine.at States.Watching [])
       [
-        M.state States.Watching "watching"
+        Watcher_machine.state States.Watching "watching"
           ~invoke:
             [
               Source.scroll (fun (s : Scroll.t) ->
@@ -1042,7 +1048,8 @@ module Watcher = struct
               Source.online (fun v -> Got (Printf.sprintf "online:%b" v));
             ]
           (fun got (Got line) ->
-            M.goto States.Watching (List.sort_uniq compare (line :: got))
+            Watcher_machine.goto States.Watching
+              (List.sort_uniq compare (line :: got))
           );
       ]
 
@@ -1055,13 +1062,14 @@ let test_new_sources_give_events () =
     {
       Check.name = "not-all";
       holds =
-        (fun (Watcher.M.At (Watcher.States.Watching, got)) _ ->
+        (fun (Watcher.Watcher_machine.At (Watcher.States.Watching, got)) _ ->
           List.length got < 5
         );
     }
   in
   match Check.component ~invariants:[ all ] Watcher.component with
-  | Check.Violation { state = Watcher.M.At (Watcher.States.Watching, got); _ }
+  | Check.Violation
+      { state = Watcher.Watcher_machine.At (Watcher.States.Watching, got); _ }
     ->
       Alcotest.(check (list string))
         "scroll gives a zero position; visibility and online give both values"

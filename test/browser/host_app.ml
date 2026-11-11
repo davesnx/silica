@@ -27,7 +27,7 @@ module Dialog = struct
     type _ t = Closed : data t | Opened : data t
   end
 
-  module M = Machine.Make (States)
+  module Dialog_machine = Machine.Make (States)
 
   let opener = Ref.make "opener"
   let dialog = Ref.make "dialog"
@@ -36,32 +36,35 @@ module Dialog = struct
   let initial = { outsides = 0; leaks = 0; escapes = 0; width = 0.; seen = "-" }
 
   let machine ~id ~sources =
-    let to_ = M.[ States.Closed; States.Opened ] in
-    M.make ~id
-      ~init:(M.at States.Closed initial)
+    let to_ = Dialog_machine.[ States.Closed; States.Opened ] in
+    Dialog_machine.make ~id
+      ~init:(Dialog_machine.at States.Closed initial)
       [
-        M.state States.Closed "closed" ~to_ (fun data -> function
+        Dialog_machine.state States.Closed "closed" ~to_ (fun data -> function
           | Open | Toggle_k ->
-              M.goto States.Opened data
+              Dialog_machine.goto States.Opened data
           | Outside | Escape ->
-              M.goto States.Closed { data with leaks = data.leaks + 1 }
+              Dialog_machine.goto States.Closed
+                { data with leaks = data.leaks + 1 }
           | Close | Resized _ | Seen _ ->
-              M.unhandled
+              Dialog_machine.unhandled
           );
-        M.state States.Opened "opened" ~to_ ~invoke:sources
+        Dialog_machine.state States.Opened "opened" ~to_ ~invoke:sources
           (fun data -> function
           | Close ->
-              M.goto States.Closed data
+              Dialog_machine.goto States.Closed data
           | Toggle_k ->
-              M.goto States.Closed data
+              Dialog_machine.goto States.Closed data
           | Outside ->
-              M.goto States.Closed { data with outsides = data.outsides + 1 }
+              Dialog_machine.goto States.Closed
+                { data with outsides = data.outsides + 1 }
           | Escape ->
-              M.goto States.Closed { data with escapes = data.escapes + 1 }
+              Dialog_machine.goto States.Closed
+                { data with escapes = data.escapes + 1 }
           | Resized width ->
-              M.goto States.Opened { data with width }
+              Dialog_machine.goto States.Opened { data with width }
           | Seen visible ->
-              M.goto States.Opened
+              Dialog_machine.goto States.Opened
                 {
                   data with
                   seen =
@@ -72,11 +75,11 @@ module Dialog = struct
                     );
                 }
           | Open ->
-              M.unhandled
+              Dialog_machine.unhandled
           );
       ]
 
-  let data (M.At (state, data) : M.snapshot) : data =
+  let data (Dialog_machine.At (state, data) : Dialog_machine.snapshot) : data =
     match state with States.Closed -> data | States.Opened -> data
 
   let info snapshot =
@@ -90,7 +93,8 @@ module Dialog = struct
           );
       ]
 
-  let view (M.At (state, _) as snapshot : M.snapshot) : event Node.t =
+  let view (Dialog_machine.At (state, _) as snapshot : Dialog_machine.snapshot)
+      : event Node.t =
     match state with
     | States.Closed ->
         el "main" []
@@ -405,7 +409,7 @@ module Gadgets = struct
     type _ t = Idle : string list t | Watching : string list t
   end
 
-  module M = Machine.Make (States)
+  module Gadgets_machine = Machine.Make (States)
 
   let box = Ref.make "gadget-box"
 
@@ -473,20 +477,21 @@ module Gadgets = struct
   let handle state log event =
     match event with
     | Got line ->
-        M.goto state (line :: log)
+        Gadgets_machine.goto state (line :: log)
     | Watch ->
-        M.goto States.Watching log
+        Gadgets_machine.goto States.Watching log
     | Unwatch ->
-        M.goto States.Idle log
+        Gadgets_machine.goto States.Idle log
     | other ->
-        M.stay (command other)
+        Gadgets_machine.stay (command other)
 
   let machine =
-    let to_ = M.[ States.Idle; States.Watching ] in
-    M.make ~id:"gadgets" ~init:(M.at States.Idle [])
+    let to_ = Gadgets_machine.[ States.Idle; States.Watching ] in
+    Gadgets_machine.make ~id:"gadgets"
+      ~init:(Gadgets_machine.at States.Idle [])
       [
-        M.state States.Idle "idle" ~to_ (handle States.Idle);
-        M.state States.Watching "watching" ~to_
+        Gadgets_machine.state States.Idle "idle" ~to_ (handle States.Idle);
+        Gadgets_machine.state States.Watching "watching" ~to_
           ~invoke:
             [
               Source.scroll (fun s -> Got (scroll "page" s));
@@ -500,7 +505,8 @@ module Gadgets = struct
   let button name event =
     el "button" [ id name; Attr.on_press event ] [ txt name ]
 
-  let view (M.At (state, data) : M.snapshot) : event Node.t =
+  let view (Gadgets_machine.At (state, data) : Gadgets_machine.snapshot) :
+      event Node.t =
     let log : string list =
       match state with States.Idle -> data | States.Watching -> data
     in
@@ -538,29 +544,32 @@ module Document = struct
     type _ t = Idle : string list t | Watching : string list t
   end
 
-  module M = Machine.Make (States)
+  module Document_machine = Machine.Make (States)
 
   let handle state log = function
     | Attr value ->
-        M.stay [ Cmd.Set_document_attribute { name = "data-theme"; value } ]
+        Document_machine.stay
+          [ Cmd.Set_document_attribute { name = "data-theme"; value } ]
     | Bad_attr ->
-        M.stay
+        Document_machine.stay
           [ Cmd.Set_document_attribute { name = "on click"; value = None } ]
     | Cookie value ->
-        M.stay [ Cmd.Set_cookie { name = "silica-theme"; value; max_age = 60 } ]
+        Document_machine.stay
+          [ Cmd.Set_cookie { name = "silica-theme"; value; max_age = 60 } ]
     | Watch ->
-        M.goto States.Watching log
+        Document_machine.goto States.Watching log
     | Unwatch ->
-        M.goto States.Idle log
+        Document_machine.goto States.Idle log
     | Dark dark ->
-        M.goto state (Printf.sprintf "dark:%b" dark :: log)
+        Document_machine.goto state (Printf.sprintf "dark:%b" dark :: log)
 
   let machine =
-    let to_ = M.[ States.Idle; States.Watching ] in
-    M.make ~id:"document" ~init:(M.at States.Idle [])
+    let to_ = Document_machine.[ States.Idle; States.Watching ] in
+    Document_machine.make ~id:"document"
+      ~init:(Document_machine.at States.Idle [])
       [
-        M.state States.Idle "idle" ~to_ (handle States.Idle);
-        M.state States.Watching "watching" ~to_
+        Document_machine.state States.Idle "idle" ~to_ (handle States.Idle);
+        Document_machine.state States.Watching "watching" ~to_
           ~invoke:
             [ Source.media "(prefers-color-scheme: dark)" (fun d -> Dark d) ]
           (handle States.Watching);
@@ -569,7 +578,8 @@ module Document = struct
   let button name event =
     el "button" [ id name; Attr.on_press event ] [ txt name ]
 
-  let view (M.At (state, data) : M.snapshot) : event Node.t =
+  let view (Document_machine.At (state, data) : Document_machine.snapshot) :
+      event Node.t =
     let log : string list =
       match state with States.Idle -> data | States.Watching -> data
     in

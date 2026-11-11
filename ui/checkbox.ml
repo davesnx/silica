@@ -24,17 +24,18 @@ module State = struct
     | Indeterminate : props t
 end
 
-module M = Machine.Make (State)
+module Checkbox_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Checkbox_machine.snapshot =
+  | At : 'data State.t * 'data -> snapshot
 
 let take (props : props) =
   if props.indeterminate then
-    M.goto Indeterminate props
+    Checkbox_machine.goto Indeterminate props
   else if props.checked then
-    M.goto Checked props
+    Checkbox_machine.goto Checked props
   else
-    M.goto Unchecked props
+    Checkbox_machine.goto Unchecked props
 
 let requested (previous : props) (props : props) =
   props.checked <> previous.checked
@@ -44,31 +45,34 @@ let handle current ~toggle (previous : props) = function
   | Props props when requested previous props ->
       take props
   | Props props ->
-      M.goto current props
+      Checkbox_machine.goto current props
   | Toggle when previous.disabled ->
-      M.unhandled
+      Checkbox_machine.unhandled
   | Toggle ->
       toggle previous
   | Enter_key ->
-      M.stay []
+      Checkbox_machine.stay []
 
 let machine =
-  M.make ~id:"checkbox" ~init:(M.at Idle ())
+  Checkbox_machine.make ~id:"checkbox"
+    ~init:(Checkbox_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Unchecked; Checked; Indeterminate ]
-        (fun () -> function
+      Checkbox_machine.state Idle "idle"
+        ~to_:[ Unchecked; Checked; Indeterminate ] (fun () -> function
         | Props props ->
             take props
         | _ ->
-            M.unhandled
+            Checkbox_machine.unhandled
         );
-      M.state Unchecked "unchecked" ~to_:[ Checked; Indeterminate ]
-        (handle Unchecked ~toggle:(M.goto Checked));
-      M.state Checked "checked"
+      Checkbox_machine.state Unchecked "unchecked"
+        ~to_:[ Checked; Indeterminate ]
+        (handle Unchecked ~toggle:(Checkbox_machine.goto Checked));
+      Checkbox_machine.state Checked "checked"
         ~to_:[ Unchecked; Indeterminate ]
-        (handle Checked ~toggle:(M.goto Unchecked));
-      M.state Indeterminate "indeterminate" ~to_:[ Unchecked; Checked ]
-        (handle Indeterminate ~toggle:(M.goto Checked));
+        (handle Checked ~toggle:(Checkbox_machine.goto Unchecked));
+      Checkbox_machine.state Indeterminate "indeterminate"
+        ~to_:[ Unchecked; Checked ]
+        (handle Indeterminate ~toggle:(Checkbox_machine.goto Checked));
     ]
 
 let el = Node.element

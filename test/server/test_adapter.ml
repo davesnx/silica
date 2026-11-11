@@ -1,7 +1,7 @@
 open Silica
 open Fixture
-module A = Silica_example_adapter
-module S = A.Server
+module Adapter = Silica_example_adapter
+module Server = Adapter.Server
 module Kit = Silica_server_kit
 
 let contains s sub =
@@ -295,15 +295,15 @@ let with_server f =
   let server = ref None in
   let handlers =
     [
-      S.implement double (fun _ n -> Ok (n * 2));
-      S.implement boom (fun _ _ -> Error "kaput");
-      S.implement bump (fun _ n ->
-          ignore (S.publish (Option.get !server) counts_topic ~key:"k" n);
+      Server.implement double (fun _ n -> Ok (n * 2));
+      Server.implement boom (fun _ _ -> Error "kaput");
+      Server.implement bump (fun _ n ->
+          ignore (Server.publish (Option.get !server) counts_topic ~key:"k" n);
           Ok n
       );
     ]
   in
-  let islands = [ S.Island live; S.Island append ] in
+  let islands = [ Server.Island live; Server.Island append ] in
   let config =
     {
       (Silica_server.default_config ~origins:Silica_server.Localhost ~secret) with
@@ -319,11 +319,14 @@ let with_server f =
         Alcotest.fail e
   in
   let t =
-    S.create config ~assets ~read:(A.read_dir dir) ~handlers ~islands
+    Server.create config ~assets ~read:(Adapter.read_dir dir) ~handlers ~islands
       ~topics:
-        [ S.Topic_def { topic = counts_topic; init = (fun _ ~key:_ -> Ok 1) } ]
-      ~page:(fun (page : S.page) ->
-        S.render_page_settled app ~status
+        [
+          Server.Topic_def
+            { topic = counts_topic; init = (fun _ ~key:_ -> Ok 1) };
+        ]
+      ~page:(fun (page : Server.page) ->
+        Server.render_page_settled app ~status
           ~scripts:[ page.asset "app.js" ]
           ~csrf:page.csrf ~nonce:page.nonce ~islands ~handlers
           ~context:page.context page.url
@@ -331,8 +334,10 @@ let with_server f =
       ()
   in
   server := Some t;
-  let adapter = A.start t in
-  Fun.protect ~finally:(fun () -> A.stop adapter) (fun () -> f (A.port adapter))
+  let adapter = Adapter.start t in
+  Fun.protect
+    ~finally:(fun () -> Adapter.stop adapter)
+    (fun () -> f (Adapter.port adapter))
 
 let io_tests =
   let open Alcotest in
@@ -344,34 +349,38 @@ let io_tests =
   [
     test_case "await gives the value as soon as another thread resolves it"
       `Quick (fun () ->
-        let p = A.Io.promise () in
+        let p = Adapter.Io.promise () in
         ignore
           (Thread.create
              (fun () ->
                Thread.delay 0.05;
-               A.Io.resolve p 7
+               Adapter.Io.resolve p 7
              )
              ()
           );
-        let value, seconds = elapsed (fun () -> A.Io.await p ~timeout:5.) in
+        let value, seconds =
+          elapsed (fun () -> Adapter.Io.await p ~timeout:5.)
+        in
         check (option int) "value" (Some 7) value;
         check bool "long before the timeout" true (seconds < 1.)
     );
     test_case "await ends with None at its own deadline, not at a later one"
       `Quick (fun () ->
-        let late = A.Io.promise () and early = A.Io.promise () in
+        let late = Adapter.Io.promise () and early = Adapter.Io.promise () in
         let late_result = ref (Some 0, 0.) in
         let waiter =
           Thread.create
             (fun () ->
               late_result :=
-                elapsed (fun () -> (A.Io.await late ~timeout:0.6 : int option))
+                elapsed (fun () ->
+                    (Adapter.Io.await late ~timeout:0.6 : int option)
+                )
             )
             ()
         in
         Thread.delay 0.05;
         let value, seconds =
-          elapsed (fun () -> (A.Io.await early ~timeout:0.1 : int option))
+          elapsed (fun () -> (Adapter.Io.await early ~timeout:0.1 : int option))
         in
         check (option int) "no value" None value;
         check bool "after its timeout" true (seconds >= 0.09);
@@ -396,9 +405,9 @@ let io_tests =
         in
         let before = threads () in
         for _ = 1 to 50 do
-          let p = A.Io.promise () in
-          A.Io.resolve p ();
-          ignore (A.Io.await p ~timeout:30.)
+          let p = Adapter.Io.promise () in
+          Adapter.Io.resolve p ();
+          ignore (Adapter.Io.await p ~timeout:30.)
         done;
         check bool "at most one more thread" true (threads () <= before + 1)
     );

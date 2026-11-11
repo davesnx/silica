@@ -39,24 +39,25 @@ module Page = struct
     type _ t = Page : (int * int) t
   end
 
-  module M = Machine.Make (States)
+  module Page_machine = Machine.Make (States)
 
   let machine =
-    M.make ~id:"issue"
-      ~init:(M.at Page (0, 0))
+    Page_machine.make ~id:"issue"
+      ~init:(Page_machine.at Page (0, 0))
       [
-        M.state Page "page"
+        Page_machine.state Page "page"
           ~entry:(fun _ -> [ Cmd.Set_title "issue" ])
           ~after:[ (5, Bump) ]
           (fun (id, bumps) -> function
             | Props id ->
-                M.goto Page (id, bumps)
+                Page_machine.goto Page (id, bumps)
             | Bump ->
-                M.goto Page (id, bumps + 1)
+                Page_machine.goto Page (id, bumps + 1)
             );
       ]
 
-  let view (M.At (States.Page, (id, bumps)) : M.snapshot) : event Node.t =
+  let view (Page_machine.At (States.Page, (id, bumps)) : Page_machine.snapshot)
+      : event Node.t =
     Node.element "button"
       [ Attr.on_press Bump ]
       [ Node.text (Printf.sprintf "issue %d:%d" id bumps) ]
@@ -70,16 +71,19 @@ module Static = struct
     type _ t = Static : unit t
   end
 
-  module M = Machine.Make (States)
+  module Static_machine = Machine.Make (States)
 
   let make name =
     let machine =
-      M.make ~id:name ~init:(M.at Static ())
+      Static_machine.make ~id:name
+        ~init:(Static_machine.at Static ())
         [
-          M.state Static name ~entry:(fun () -> [ Cmd.Set_title name ]) M.ignore;
+          Static_machine.state Static name
+            ~entry:(fun () -> [ Cmd.Set_title name ])
+            Static_machine.ignore;
         ]
     in
-    let view (_ : M.snapshot) : unit Node.t = Node.text name in
+    let view (_ : Static_machine.snapshot) : unit Node.t = Node.text name in
     Component.make machine view
 
   let home = make "home"

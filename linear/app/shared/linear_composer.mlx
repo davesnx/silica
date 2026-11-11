@@ -16,46 +16,48 @@ module States = struct
     | Failed : (int * string * Remote.error) t
 end
 
-module M = Machine.Make (States)
+module Composer_machine = Machine.Make (States)
 
 let typed number draft =
   if String.trim draft = "" then
-    M.goto Empty number
+    Composer_machine.goto Empty number
   else
-    M.goto Drafting (number, draft)
+    Composer_machine.goto Drafting (number, draft)
 
 let machine =
-  M.make ~id:"comment-composer" ~init:(M.at Empty 0)
+  Composer_machine.make ~id:"comment-composer"
+    ~init:(Composer_machine.at Empty 0)
     [
-      M.always ~to_:[ Empty ] (function
+      Composer_machine.always ~to_:[ Empty ] (function
         | Props number ->
-            M.goto Empty number
+            Composer_machine.goto Empty number
         | _ ->
-            M.unhandled
+            Composer_machine.unhandled
         );
-      M.state Empty "empty" ~to_:[ Drafting ] (fun number -> function
+      Composer_machine.state Empty "empty" ~to_:[ Drafting ]
+        (fun number -> function
         | Typed draft ->
             typed number draft
         | _ ->
-            M.unhandled
+            Composer_machine.unhandled
         );
-      M.state Drafting "drafting" ~to_:[ Empty; Sending ]
+      Composer_machine.state Drafting "drafting" ~to_:[ Empty; Sending ]
         (fun (number, draft) -> function
         | Typed draft ->
             typed number draft
         | Send -> (
             match Comment.check draft with
             | Ok body ->
-                M.goto Sending (number, body)
+                Composer_machine.goto Sending (number, body)
             | Error _ ->
-                M.goto Empty number
+                Composer_machine.goto Empty number
           )
         | Clear ->
-            M.goto Empty number
+            Composer_machine.goto Empty number
         | _ ->
-            M.unhandled
+            Composer_machine.unhandled
         );
-      M.state Sending "sending" ~to_:[ Empty; Failed ]
+      Composer_machine.state Sending "sending" ~to_:[ Empty; Failed ]
         ~invoke:
           [
             Source.call add_comment_endpoint
@@ -64,22 +66,22 @@ let machine =
           ]
         (fun (number, body) -> function
           | Sent (Ok _) ->
-              M.goto Empty number
+              Composer_machine.goto Empty number
           | Sent (Error error) ->
-              M.goto Failed (number, body, error)
+              Composer_machine.goto Failed (number, body, error)
           | _ ->
-              M.unhandled
+              Composer_machine.unhandled
           );
-      M.state Failed "failed" ~to_:[ Sending; Drafting; Empty ]
+      Composer_machine.state Failed "failed" ~to_:[ Sending; Drafting; Empty ]
         (fun (number, body, _) -> function
         | Send ->
-            M.goto Sending (number, body)
+            Composer_machine.goto Sending (number, body)
         | Typed draft ->
             typed number draft
         | Clear ->
-            M.goto Empty number
+            Composer_machine.goto Empty number
         | _ ->
-            M.unhandled
+            Composer_machine.unhandled
         );
     ]
 
@@ -140,15 +142,15 @@ let error_text : Remote.error -> string = function
   | Network _ ->
       "The network failed"
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Composer_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Empty, _) ->
+  | Composer_machine.At (Empty, _) ->
       form ~draft:"" ~busy:false ~can_send:false ~message:None
-  | M.At (Drafting, (_, draft)) ->
+  | Composer_machine.At (Drafting, (_, draft)) ->
       form ~draft ~busy:false ~can_send:true ~message:None
-  | M.At (Sending, (_, draft)) ->
+  | Composer_machine.At (Sending, (_, draft)) ->
       form ~draft ~busy:true ~can_send:false ~message:None
-  | M.At (Failed, (_, draft, error)) ->
+  | Composer_machine.At (Failed, (_, draft, error)) ->
       form ~draft ~busy:false ~can_send:true
         ~message:(Some ("Could not send the comment. " ^ error_text error))
 

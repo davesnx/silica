@@ -25,18 +25,19 @@ module States = struct
   type _ t = Page : string list t
 end
 
-module M = Machine.Make (States)
+module Combobox_events_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"combobox-events" ~init:(M.at Page [])
+  Combobox_events_machine.make ~id:"combobox-events"
+    ~init:(Combobox_events_machine.at Page [])
     [
-      M.state Page "page" (fun events -> function
+      Combobox_events_machine.state Page "page" (fun events -> function
         | Chose (id, value) ->
-            M.goto Page (events @ [ id ^ " " ^ value ])
+            Combobox_events_machine.goto Page (events @ [ id ^ " " ^ value ])
         );
     ]
 
-let view (M.At (Page, events)) =
+let view (Combobox_events_machine.At (Page, events)) =
   <section class_="flex flex-col gap-4">
     (Combobox.make
        ~on_value_change:(fun value -> Chose ("fruit", value))

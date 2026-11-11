@@ -39,7 +39,7 @@ module States = struct
     | Failed : (Linear_view.t * Remote.error) t
 end
 
-module M = Machine.Make (States)
+module List_machine = Machine.Make (States)
 
 let show view = Router.replace routes State.Issues { create = false; view }
 let row_ref number = Ref.make ("issue-row-" ^ string_of_int number)
@@ -79,11 +79,11 @@ let move (r : ready) step =
   in
   match target with
   | Some number ->
-      M.goto Ready
+      List_machine.goto Ready
         { r with cursor = Some number }
         ~cmds:[ Cmd.Focus (row_ref number) ]
   | None ->
-      M.unhandled
+      List_machine.unhandled
 
 let add_toast (r : ready) request outcome =
   let key = "toast-" ^ string_of_int (List.length r.toasts) in
@@ -97,28 +97,28 @@ let create view = Router.navigate routes State.Issues { create = true; view }
 
 let ready_event (r : ready) = function
   | Props view ->
-      M.goto Ready { r with view }
+      List_machine.goto Ready { r with view }
   | Updated update ->
-      M.goto Ready { r with data = Linear_data.apply update r.data }
+      List_machine.goto Ready { r with data = Linear_data.apply update r.data }
   | Reconnect ->
-      M.reenter Ready r
+      List_machine.reenter Ready r
   | Filter_open filter_open ->
-      M.goto Ready { r with filter_open }
+      List_machine.goto Ready { r with filter_open }
   | Filter_changed filter ->
-      M.stay [ show { r.view with filter } ]
+      List_machine.stay [ show { r.view with filter } ]
   | Grouping_picked name -> (
       match List.assoc_opt name Linear_view.grouping_names with
       | Some grouping ->
-          M.stay [ show { r.view with grouping } ]
+          List_machine.stay [ show { r.view with grouping } ]
       | None ->
-          M.unhandled
+          List_machine.unhandled
     )
   | Ordering_picked name -> (
       match List.assoc_opt name Linear_view.ordering_names with
       | Some ordering ->
-          M.stay [ show { r.view with ordering } ]
+          List_machine.stay [ show { r.view with ordering } ]
       | None ->
-          M.unhandled
+          List_machine.unhandled
     )
   | Toggle_group group ->
       let collapsed =
@@ -127,17 +127,17 @@ let ready_event (r : ready) = function
         else
           group :: r.collapsed
       in
-      M.goto Ready { r with collapsed }
+      List_machine.goto Ready { r with collapsed }
   | Cursor_next ->
       move r `Next
   | Cursor_previous ->
       move r `Previous
   | Row_focused number ->
-      M.goto Ready { r with cursor = Some number }
+      List_machine.goto Ready { r with cursor = Some number }
   | Menu_open menu_open ->
-      M.goto Ready { r with menu_open }
+      List_machine.goto Ready { r with menu_open }
   | Create_key ->
-      M.stay [ create r.view ]
+      List_machine.stay [ create r.view ]
   | Command value -> (
       let issues = Linear_data.issues r.data in
       let focused =
@@ -145,28 +145,28 @@ let ready_event (r : ready) = function
       in
       match (Linear_commands.parse ~issues ~focused value, focused) with
       | Some Linear_commands.Create, _ ->
-          M.stay [ create r.view ]
+          List_machine.stay [ create r.view ]
       | Some Linear_commands.Go_list, _ ->
-          M.stay [ Router.navigate routes State.Issues list ]
+          List_machine.stay [ Router.navigate routes State.Issues list ]
       | Some (Linear_commands.Open number), _ ->
-          M.stay [ Router.navigate routes State.Issue number ]
+          List_machine.stay [ Router.navigate routes State.Issue number ]
       | Some (Linear_commands.Set change), Some issue ->
-          M.goto Ready
+          List_machine.goto Ready
             { r with data = Linear_data.start issue.number change r.data }
       | Some (Linear_commands.Set _), None | None, _ ->
-          M.unhandled
+          List_machine.unhandled
     )
   | Saved (id, result) -> (
       let data, outcome = Linear_data.finish id result r.data in
       let r = { r with data } in
       match outcome with
       | Some (request, outcome) ->
-          M.goto Ready (add_toast r request outcome)
+          List_machine.goto Ready (add_toast r request outcome)
       | None ->
-          M.goto Ready r
+          List_machine.goto Ready r
     )
   | Toast_closed key ->
-      M.goto Ready
+      List_machine.goto Ready
         {
           r with
           toasts =
@@ -175,7 +175,7 @@ let ready_event (r : ready) = function
               r.toasts;
         }
   | Loaded _ | Retry ->
-      M.unhandled
+      List_machine.unhandled
 
 let list_keys =
   [
@@ -189,18 +189,18 @@ let list_keys =
   @ Linear_commands.keys (Menu_open true)
 
 let machine =
-  M.make ~id:"issue-list"
-    ~init:(M.at Loading Linear_view.default)
+  List_machine.make ~id:"issue-list"
+    ~init:(List_machine.at Loading Linear_view.default)
     [
-      M.state Loading "loading" ~to_:[ Ready; Failed ]
+      List_machine.state Loading "loading" ~to_:[ Ready; Failed ]
         ~entry:(fun _ -> [ Cmd.Set_title "Issues" ])
         ~invoke:
           [ Source.call issues_endpoint (fun _ -> ()) (fun r -> Loaded r) ]
         (fun view -> function
           | Props view ->
-              M.goto Loading view
+              List_machine.goto Loading view
           | Loaded (Ok issues) ->
-              M.goto Ready
+              List_machine.goto Ready
                 {
                   view;
                   data = Linear_data.loaded issues;
@@ -211,11 +211,11 @@ let machine =
                   toasts = [];
                 }
           | Loaded (Error error) ->
-              M.goto Failed (view, error)
+              List_machine.goto Failed (view, error)
           | _ ->
-              M.unhandled
+              List_machine.unhandled
           );
-      M.state Ready "ready"
+      List_machine.state Ready "ready"
         ~invoke:
           [
             Source.live issues_topic
@@ -224,13 +224,14 @@ let machine =
             Source.keys ~prevent:true list_keys;
           ]
         ready_event;
-      M.state Failed "failed" ~to_:[ Loading ] (fun (view, error) -> function
+      List_machine.state Failed "failed" ~to_:[ Loading ]
+        (fun (view, error) -> function
         | Retry ->
-            M.goto Loading view
+            List_machine.goto Loading view
         | Props view ->
-            M.goto Failed (view, error)
+            List_machine.goto Failed (view, error)
         | _ ->
-            M.unhandled
+            List_machine.unhandled
         );
     ]
 
@@ -367,16 +368,16 @@ let toolbar (r : ready) =
     )
   </div>
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : List_machine.snapshot) : event Node.t =
   match snapshot with
-  | M.At (Loading, _) ->
+  | List_machine.At (Loading, _) ->
       <section id="issue-list">
         <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
           "Issues"
         </h1>
         <p class_="text-ui-muted">"Loading issues..."</p>
       </section>
-  | M.At (Failed, (_, error)) ->
+  | List_machine.At (Failed, (_, error)) ->
       <section id="issue-list">
         <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">
           "Issues"
@@ -389,7 +390,7 @@ let view (snapshot : M.snapshot) : event Node.t =
           "Try again"
         </button>
       </section>
-  | M.At (Ready, r) ->
+  | List_machine.At (Ready, r) ->
       let groups = Linear_view.groups r.view (Linear_data.issues r.data) in
       <section id="issue-list">
         <h1 class_="mb-4 text-xl font-semibold" dataSilicaRouteFocus="">

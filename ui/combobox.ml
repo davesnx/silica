@@ -64,9 +64,10 @@ module State = struct
   type _ t = Idle : unit t | Closed : data t | Open : data t | Inline : data t
 end
 
-module M = Machine.Make (State)
+module Combobox_machine = Machine.Make (State)
 
-type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+type snapshot = Combobox_machine.snapshot =
+  | At : 'data State.t * 'data -> snapshot
 
 let input_id (props : props) = props.id ^ "-input"
 let listbox_id (props : props) = props.id ^ "-listbox"
@@ -182,100 +183,109 @@ let start props = { props; query = ""; highlighted = None; selected = None }
 
 let settle data =
   if data.props.inline then
-    M.goto Inline (auto data)
+    Combobox_machine.goto Inline (auto data)
   else
-    M.goto Closed { data with highlighted = None }
+    Combobox_machine.goto Closed { data with highlighted = None }
 
 let machine =
-  M.make ~id:"combobox" ~init:(M.at Idle ())
+  Combobox_machine.make ~id:"combobox"
+    ~init:(Combobox_machine.at Idle ())
     [
-      M.state Idle "idle" ~to_:[ Closed; Inline ] (fun () -> function
+      Combobox_machine.state Idle "idle" ~to_:[ Closed; Inline ]
+        (fun () -> function
         | Props props ->
             settle (start props)
         | _ ->
-            M.unhandled
+            Combobox_machine.unhandled
         );
-      M.state Closed "closed" ~to_:[ Open; Inline ] (fun data -> function
+      Combobox_machine.state Closed "closed" ~to_:[ Open; Inline ]
+        (fun data -> function
         | Props props ->
             settle { data with props }
         | Typed query ->
-            M.goto Open { data with query; highlighted = None }
+            Combobox_machine.goto Open { data with query; highlighted = None }
         | Move direction ->
             let data, cmds = move direction data in
-            M.goto Open data ~cmds
+            Combobox_machine.goto Open data ~cmds
         | Show ->
-            M.goto Open data
+            Combobox_machine.goto Open data
         | Escape when data.query <> "" ->
-            M.goto Closed { data with query = "" }
+            Combobox_machine.goto Closed { data with query = "" }
         | Escape
         | Highlight _
         | Choose_highlighted
         | Choose _
         | Outside_press
         | Focus_out ->
-            M.unhandled
+            Combobox_machine.unhandled
         );
-      M.state Open "open" ~to_:[ Closed; Inline ] ~invoke:sources
+      Combobox_machine.state Open "open" ~to_:[ Closed; Inline ] ~invoke:sources
         (fun data -> function
         | Props props when props.inline ->
             settle { data with props }
         | Props props ->
-            M.goto Open (valid { data with props })
+            Combobox_machine.goto Open (valid { data with props })
         | Typed query ->
-            M.goto Open { data with query; highlighted = None }
+            Combobox_machine.goto Open { data with query; highlighted = None }
         | Move direction ->
             let data, cmds = move direction data in
-            M.goto Open data ~cmds
+            Combobox_machine.goto Open data ~cmds
         | Highlight value ->
-            M.goto Open (valid { data with highlighted = Some value })
+            Combobox_machine.goto Open
+              (valid { data with highlighted = Some value })
         | Choose_highlighted -> (
             match Option.bind data.highlighted (choose data) with
             | Some data ->
-                M.goto Closed data
+                Combobox_machine.goto Closed data
             | None ->
-                M.unhandled
+                Combobox_machine.unhandled
           )
         | Choose value -> (
             match choose data value with
             | Some data ->
-                M.goto Closed data ~cmds:[ Cmd.Focus (input_ref data.props) ]
+                Combobox_machine.goto Closed data
+                  ~cmds:[ Cmd.Focus (input_ref data.props) ]
             | None ->
-                M.unhandled
+                Combobox_machine.unhandled
           )
         | Escape | Outside_press | Focus_out ->
-            M.goto Closed { data with highlighted = None }
+            Combobox_machine.goto Closed { data with highlighted = None }
         | Show ->
-            M.unhandled
+            Combobox_machine.unhandled
         );
-      M.state Inline "inline" ~to_:[ Closed ] (fun data -> function
+      Combobox_machine.state Inline "inline" ~to_:[ Closed ]
+        (fun data -> function
         | Props props ->
             settle { data with props }
         | Typed query ->
-            M.goto Inline (auto { data with query; highlighted = None })
+            Combobox_machine.goto Inline
+              (auto { data with query; highlighted = None })
         | Move direction ->
             let data, cmds = move direction data in
-            M.goto Inline data ~cmds
+            Combobox_machine.goto Inline data ~cmds
         | Highlight value ->
-            M.goto Inline (auto { data with highlighted = Some value })
+            Combobox_machine.goto Inline
+              (auto { data with highlighted = Some value })
         | Choose_highlighted -> (
             match Option.bind data.highlighted (choose data) with
             | Some data ->
-                M.goto Inline (auto data)
+                Combobox_machine.goto Inline (auto data)
             | None ->
-                M.unhandled
+                Combobox_machine.unhandled
           )
         | Choose value -> (
             match choose data value with
             | Some data ->
-                M.goto Inline (auto data)
+                Combobox_machine.goto Inline (auto data)
                   ~cmds:[ Cmd.Focus (input_ref data.props) ]
             | None ->
-                M.unhandled
+                Combobox_machine.unhandled
           )
         | Escape when data.query <> "" ->
-            M.goto Inline (auto { data with query = ""; highlighted = None })
+            Combobox_machine.goto Inline
+              (auto { data with query = ""; highlighted = None })
         | Escape | Show | Outside_press | Focus_out ->
-            M.unhandled
+            Combobox_machine.unhandled
         );
     ]
 

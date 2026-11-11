@@ -1,8 +1,8 @@
-module S = struct
+module States = struct
   type _ t = A : unit t
 end
-module M = Silica.Machine.Make (S)
+module Timer_machine = Silica.Machine.Make (States)
 let _ =
-  M.goto
+  Timer_machine.goto
     ~cmds:[ Silica.Cmd.Start_timer { id = "t"; ms = 5; event = () } ]
-    S.A ()
+    States.A ()

@@ -61,12 +61,15 @@ shortest trace:
 {@ocaml[
 # let at_most_two =
     { Check.name = "at-most-two";
-      holds = (fun (Doc_stepper.M.At (Count, data)) _ -> data.count <= 2) };;
-val at_most_two : (Doc_stepper.M.snapshot, 'a) Check.invariant =
+      holds =
+        (fun (Doc_stepper.Stepper_machine.At (Count, data)) _ ->
+          data.count <= 2) };;
+val at_most_two : (Doc_stepper.Stepper_machine.snapshot, 'a) Check.invariant =
   {Check.name = "at-most-two"; holds = <fun>}
 # match
     Check.component ~invariants:[ at_most_two ]
-      ~within:(fun (Doc_stepper.M.At (Count, data)) -> data.count <= 5)
+      ~within:(fun (Doc_stepper.Stepper_machine.At (Count, data)) ->
+        data.count <= 5)
       Doc_stepper.component
   with
   | Check.Violation { invariant; trace; _ } -> (invariant, trace)
@@ -127,7 +130,8 @@ val props : Doc_stepper.event list =
   [Doc_stepper.Props "Adults"; Doc_stepper.Props "Children"]
 # match
     Check.component ~props
-      ~within:(fun (Doc_stepper.M.At (Count, data)) -> data.count <= 3)
+      ~within:(fun (Doc_stepper.Stepper_machine.At (Count, data)) ->
+        data.count <= 3)
       Doc_stepper.component
   with
   | Check.Ok { states; _ } -> states

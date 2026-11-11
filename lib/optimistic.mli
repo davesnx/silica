@@ -3,9 +3,10 @@
     involved. A machine keeps one in its snapshot data: the value is first-order
     (no functions), so the checker can compare and hash it.
 
-    For a Remote mutation: {!S.apply} when the call starts, {!S.settle} when the
-    answer arrives, {!S.drop} when it fails. For Live data: {!S.apply} when the
-    change is sent, and {!S.settle} when a state with a higher [seq] arrives. *)
+    For a Remote mutation: {!OPTIMISTIC.apply} when the call starts,
+    {!OPTIMISTIC.settle} when the answer arrives, {!OPTIMISTIC.drop} when it
+    fails. For Live data: {!OPTIMISTIC.apply} when the change is sent, and
+    {!OPTIMISTIC.settle} when a state with a higher [seq] arrives. *)
 
 (** How a change goes on a value. *)
 module type CHANGE = sig
@@ -16,7 +17,7 @@ module type CHANGE = sig
   (** [apply value change] is the value with the change on it. *)
 end
 
-module type S = sig
+module type OPTIMISTIC = sig
   type value
   type change
   type t
@@ -54,5 +55,5 @@ module type S = sig
   (** The change [id] is pending. *)
 end
 
-module Make (C : CHANGE) :
-  S with type value = C.value and type change = C.change
+module Make (Change : CHANGE) :
+  OPTIMISTIC with type value = Change.value and type change = Change.change

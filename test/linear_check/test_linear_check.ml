@@ -116,7 +116,7 @@ let test_create_reaches_submitting () =
     {
       Check.name = "never submitting";
       holds =
-        (fun (Linear_create.M.At (state, _)) _ ->
+        (fun (Linear_create.Create_machine.At (state, _)) _ ->
           match state with
           | Linear_create.States.Submitting ->
               false

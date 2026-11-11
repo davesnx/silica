@@ -1,4 +1,4 @@
-module S = Silica_example_adapter.Server
+module Server = Silica_example_adapter.Server
 
 let doc slug =
   match
@@ -17,18 +17,18 @@ let clock () =
 
 let handlers =
   [
-    S.implement Site_doc.endpoint (fun _ slug -> Ok (doc slug));
-    S.implement Tutorial_api.greeting (fun _ name -> Ok ("Hello, " ^ name));
-    S.implement Landing_save.save (fun _ _ ->
+    Server.implement Site_doc.endpoint (fun _ slug -> Ok (doc slug));
+    Server.implement Tutorial_api.greeting (fun _ name -> Ok ("Hello, " ^ name));
+    Server.implement Landing_save.save (fun _ _ ->
         Unix.sleepf 0.6;
         Ok (clock ())
     );
   ]
 
 let create config ~assets ~read () =
-  S.create config ~assets ~read ~handlers ~islands:[] ~topics:[]
-    ~page:(fun (page : S.page) ->
-      S.render_page_settled
+  Server.create config ~assets ~read ~handlers ~islands:[] ~topics:[]
+    ~page:(fun (page : Server.page) ->
+      Server.render_page_settled
         (Site_app.make
            (Site_theme.choice
               (Silica_server.cookie page.context.request

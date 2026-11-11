@@ -4,17 +4,17 @@ module States = struct
   type _ t = Home : unit t
 end
 
-module M = Machine.Make (States)
+module Home_machine = Machine.Make (States)
 
 let machine =
-  M.make ~id:"home" ~init:(M.at Home ())
+  Home_machine.make ~id:"home" ~init:(Home_machine.at Home ())
     [
-      M.state Home "home"
+      Home_machine.state Home "home"
         ~entry:(fun () -> [ Cmd.Set_title "Silica example" ])
-        M.ignore;
+        Home_machine.ignore;
     ]
 
-let view (_ : M.snapshot) : unit Node.t =
+let view (_ : Home_machine.snapshot) : unit Node.t =
   <div>
     <h1>"Silica example"</h1>
     (Example_nav.make ())

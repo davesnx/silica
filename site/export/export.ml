@@ -1,4 +1,4 @@
-module A = Silica_example_adapter
+module Adapter = Silica_example_adapter
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
@@ -64,11 +64,12 @@ let () =
       ~secret:(Silica_server_kit.Random_source.hex_id ~bytes:32)
   in
   let server =
-    Site_server.create config ~assets ~read:(A.read_dir !static) ()
+    Site_server.create config ~assets ~read:(Adapter.read_dir !static) ()
   in
   match
-    Silica_static_export.run ~handle:(A.Server.handle server) ~pages
-      ~not_found:"/404"
+    Silica_static_export.run
+      ~handle:(Adapter.Server.handle server)
+      ~pages ~not_found:"/404"
       ~files:(Silica_server.Assets.outputs assets)
       ~prefix:"/silica-answers/" ~out:!out
   with

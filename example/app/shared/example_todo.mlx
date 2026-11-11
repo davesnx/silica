@@ -11,18 +11,19 @@ module States = struct
   type _ t = Todo : state t
 end
 
-module M = Machine.Make (States)
+module Todo_machine = Machine.Make (States)
 
 let machine : (state, event) Machine.t =
   let table =
-    M.make ~id:"todo" ~init:(M.at Todo init)
+    Todo_machine.make ~id:"todo"
+      ~init:(Todo_machine.at Todo init)
       [
-        M.state Todo "todo" (fun s e ->
+        Todo_machine.state Todo "todo" (fun s e ->
             match e with
             | Draft draft ->
-                M.goto Todo { s with draft }
+                Todo_machine.goto Todo { s with draft }
             | Add when String.trim s.draft = "" ->
-                M.stay [ Cmd.Focus input_ref ]
+                Todo_machine.stay [ Cmd.Focus input_ref ]
             | Add ->
                 let todo =
                   {
@@ -31,7 +32,7 @@ let machine : (state, event) Machine.t =
                     completed = false;
                   }
                 in
-                M.goto Todo ~cmds:[ Cmd.Focus input_ref ]
+                Todo_machine.goto Todo ~cmds:[ Cmd.Focus input_ref ]
                   {
                     todos = s.todos @ [ todo ];
                     draft = "";
@@ -44,16 +45,16 @@ let machine : (state, event) Machine.t =
                   else
                     t
                 in
-                M.goto Todo { s with todos = List.map flip s.todos }
+                Todo_machine.goto Todo { s with todos = List.map flip s.todos }
             | Delete id ->
-                M.goto Todo
+                Todo_machine.goto Todo
                   { s with todos = List.filter (fun t -> t.id <> id) s.todos }
         );
       ]
   in
   Machine.map_snapshot table
-    ~get:(fun (M.At (Todo, s) : M.snapshot) : state -> s)
-    ~set:(fun s -> M.at Todo s)
+    ~get:(fun (Todo_machine.At (Todo, s) : Todo_machine.snapshot) : state -> s)
+    ~set:(fun s -> Todo_machine.at Todo s)
 
 let text = Node.text
 

@@ -1,6 +1,6 @@
 open Silica
 open Linear_model
-module S = Silica_example_adapter.Server
+module Server = Silica_example_adapter.Server
 
 let origin = "http://app.test"
 
@@ -50,7 +50,7 @@ type visitor = { cookie : string; csrf : string; html : string }
 
 let visit ?cookie t path =
   let headers = match cookie with Some c -> [ ("cookie", c) ] | None -> [] in
-  let r = S.handle t (request ~headers path) in
+  let r = Server.handle t (request ~headers path) in
   let cookie =
     match (List.assoc_opt "set-cookie" r.headers, cookie) with
     | Some set, _ ->
@@ -67,7 +67,7 @@ let visit ?cookie t path =
   }
 
 let post t (v : visitor) path body =
-  S.handle t
+  Server.handle t
     (request ~meth:"POST" ~body path
        ~headers:
          [
@@ -126,10 +126,10 @@ let test_detail_page () =
   let v = visit t "/issue/3" in
   has "detail" v.html "Login page flashes on load";
   has "id" v.html "ENG-3";
-  let missing = S.handle t (request "/issue/9999") in
+  let missing = Server.handle t (request "/issue/9999") in
   Alcotest.(check int) "unknown issue is 404" 404 missing.status;
   has "message" missing.body "There is no issue ENG-9999.";
-  let nowhere = S.handle t (request "/no/such/page") in
+  let nowhere = Server.handle t (request "/no/such/page") in
   Alcotest.(check int) "unknown path is 404" 404 nowhere.status
 
 let lacks msg html needle =
@@ -210,7 +210,7 @@ let test_create_rejects_bad_drafts () =
   let list = decode issues_endpoint (post t v "/api/issues" "null") in
   Alcotest.(check int) "nothing stored" 30 (List.length list);
   let no_csrf =
-    S.handle t
+    Server.handle t
       (request ~meth:"POST"
          ~body:(encode create_endpoint (draft "x"))
          ~headers:
@@ -228,20 +228,20 @@ type socket = { sent : string list ref; mutable closed : int option }
 
 let connect ?(name = "issues") ?(key = "all") t (v : visitor) =
   match
-    S.upgrade t
+    Server.upgrade t
       (request
          ~headers:[ ("cookie", v.cookie); ("origin", origin) ]
          "/_silica/live"
       )
   with
-  | S.Refused r ->
+  | Server.Refused r ->
       Alcotest.failf "refused with %d" r.status
-  | S.Accepted attach ->
+  | Server.Accepted attach ->
       let sock = { sent = ref []; closed = None } in
       let connection =
         attach
           {
-            S.send = (fun s -> sock.sent := s :: !(sock.sent));
+            Server.send = (fun s -> sock.sent := s :: !(sock.sent));
             close = (fun code -> sock.closed <- Some code);
           }
       in
@@ -395,20 +395,20 @@ let test_unknown_topic_key () =
   let t = make () in
   let v = visit t "/" in
   match
-    S.upgrade t
+    Server.upgrade t
       (request
          ~headers:[ ("cookie", v.cookie); ("origin", origin) ]
          "/_silica/live"
       )
   with
-  | S.Refused _ ->
+  | Server.Refused _ ->
       Alcotest.fail "refused"
-  | S.Accepted attach ->
+  | Server.Accepted attach ->
       let sock = { sent = ref []; closed = None } in
       let connection =
         attach
           {
-            S.send = (fun s -> sock.sent := s :: !(sock.sent));
+            Server.send = (fun s -> sock.sent := s :: !(sock.sent));
             close = (fun code -> sock.closed <- Some code);
           }
       in

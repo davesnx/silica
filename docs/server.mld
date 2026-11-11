@@ -274,7 +274,9 @@ From [example/server/main.ml]:
   let vote _ () =
     let n = Atomic.fetch_and_add votes 1 + 1 in
     ignore
-      (S.publish (Option.get !server) Example_model.votes_topic ~key:"main" n);
+      (Server.publish (Option.get !server) Example_model.votes_topic ~key:"main"
+         n
+      );
     Ok n
   in
 ]}
@@ -283,7 +285,7 @@ From [example/server/main.ml]:
 {@ocaml skip[
       ~topics:
         [
-          S.Topic_def
+          Server.Topic_def
             {
               topic = Example_model.votes_topic;
               init = (fun _ ~key:_ -> Ok (Atomic.get votes));

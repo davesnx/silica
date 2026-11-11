@@ -6,55 +6,58 @@ module States = struct
   type _ t = Clean : unit t | Dirty : string t | Asking : (string * Nav.t) t
 end
 
-module M = Machine.Make (States)
+module Edit_machine = Machine.Make (States)
 
 let block () = Source.block (fun nav -> Attempt nav)
 
 let machine =
-  M.make ~id:"edit" ~init:(M.at Clean ())
+  Edit_machine.make ~id:"edit" ~init:(Edit_machine.at Clean ())
     [
-      M.state Clean "clean" ~to_:[ Dirty ]
+      Edit_machine.state Clean "clean" ~to_:[ Dirty ]
         ~entry:(fun () -> [ Cmd.Set_title "Edit" ])
         (fun () -> function
-          | Draft text when text <> "" -> M.goto Dirty text | _ -> M.unhandled
+          | Draft text when text <> "" ->
+              Edit_machine.goto Dirty text
+          | _ ->
+              Edit_machine.unhandled
           );
-      M.state Dirty "dirty" ~to_:[ Clean; Asking ]
+      Edit_machine.state Dirty "dirty" ~to_:[ Clean; Asking ]
         ~invoke:[ block () ]
         (fun draft -> function
           | Draft "" | Save ->
-              M.goto Clean ()
+              Edit_machine.goto Clean ()
           | Draft text ->
-              M.goto Dirty text
+              Edit_machine.goto Dirty text
           | Attempt nav ->
-              M.goto Asking (draft, nav)
+              Edit_machine.goto Asking (draft, nav)
           | Leave | Stay ->
-              M.unhandled
+              Edit_machine.unhandled
           );
-      M.state Asking "asking" ~to_:[ Clean; Dirty ]
+      Edit_machine.state Asking "asking" ~to_:[ Clean; Dirty ]
         ~invoke:[ block () ]
         (fun (draft, nav) -> function
           | Leave ->
-              M.goto ~cmds:[ Cmd.Resume nav ] Clean ()
+              Edit_machine.goto ~cmds:[ Cmd.Resume nav ] Clean ()
           | Stay ->
-              M.goto Dirty draft
+              Edit_machine.goto Dirty draft
           | Attempt next ->
-              M.goto Asking (draft, next)
+              Edit_machine.goto Asking (draft, next)
           | Draft _ | Save ->
-              M.unhandled
+              Edit_machine.unhandled
           );
     ]
 
 let text = Node.text
 
-let draft : M.snapshot -> string = function
-  | M.At (Clean, ()) ->
+let draft : Edit_machine.snapshot -> string = function
+  | Edit_machine.At (Clean, ()) ->
       ""
-  | M.At (Dirty, draft) ->
+  | Edit_machine.At (Dirty, draft) ->
       draft
-  | M.At (Asking, (draft, _)) ->
+  | Edit_machine.At (Asking, (draft, _)) ->
       draft
 
-let view (snapshot : M.snapshot) : event Node.t =
+let view (snapshot : Edit_machine.snapshot) : event Node.t =
   <div>
     <h1>"Edit"</h1>
     (Example_nav.make ())
@@ -63,7 +66,7 @@ let view (snapshot : M.snapshot) : event Node.t =
     />
     <button on_press=Save>"Save"</button>
     ( match snapshot with
-    | M.At (Asking, _) ->
+    | Edit_machine.At (Asking, _) ->
         <div role=`alertdialog aria_label="Unsaved draft">
           <p>"Leave this page? The draft is not saved."</p>
           <button on_press=Leave>"Leave"</button>

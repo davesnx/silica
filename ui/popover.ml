@@ -31,9 +31,10 @@ module Make (Content : Dialog.CONTENT) = struct
     type _ t = Idle : unit t | Closed : props t | Open : props t
   end
 
-  module M = Machine.Make (State)
+  module Popover_machine = Machine.Make (State)
 
-  type snapshot = M.snapshot = At : 'data State.t * 'data -> snapshot
+  type snapshot = Popover_machine.snapshot =
+    | At : 'data State.t * 'data -> snapshot
 
   let parts (props : props) = Popup.parts props.id
 
@@ -56,7 +57,7 @@ module Make (Content : Dialog.CONTENT) = struct
     props.open_ = Some false && previous.open_ <> Some false
 
   let open_ (props : props) =
-    M.goto Open props ~cmds:[ Cmd.Focus (parts props).popup ]
+    Popover_machine.goto Open props ~cmds:[ Cmd.Focus (parts props).popup ]
 
   let close ?(focus = true) (props : props) =
     let cmds =
@@ -65,37 +66,40 @@ module Make (Content : Dialog.CONTENT) = struct
       else
         []
     in
-    M.goto Closed props ~cmds
+    Popover_machine.goto Closed props ~cmds
 
   let machine =
-    M.make ~id:Content.id ~init:(M.at Idle ())
+    Popover_machine.make ~id:Content.id
+      ~init:(Popover_machine.at Idle ())
       [
-        M.state Idle "idle" ~to_:[ Closed; Open ] (fun () -> function
+        Popover_machine.state Idle "idle" ~to_:[ Closed; Open ]
+          (fun () -> function
           | Props props when opened_by None props ->
               open_ props
           | Props props ->
-              M.goto Closed props
+              Popover_machine.goto Closed props
           | _ ->
-              M.unhandled
+              Popover_machine.unhandled
           );
-        M.state Closed "closed" ~to_:[ Open ] (fun previous -> function
+        Popover_machine.state Closed "closed" ~to_:[ Open ]
+          (fun previous -> function
           | Props props when opened_by (Some previous) props ->
               open_ props
           | Props props ->
-              M.goto Closed props
+              Popover_machine.goto Closed props
           | Open_request _ ->
               open_ previous
           | Close_request _ | Content _ ->
-              M.unhandled
+              Popover_machine.unhandled
           );
-        M.state Open "open" ~to_:[ Closed ] ~invoke:sources
+        Popover_machine.state Open "open" ~to_:[ Closed ] ~invoke:sources
           (fun previous -> function
           | Props props when closed_by previous props ->
               close props
           | Props props when props.place <> previous.place ->
-              M.reenter Open props
+              Popover_machine.reenter Open props
           | Props props ->
-              M.goto Open props
+              Popover_machine.goto Open props
           | Close_request Popup.Outside_press ->
               close ~focus:false previous
           | Close_request _ ->
@@ -103,9 +107,9 @@ module Make (Content : Dialog.CONTENT) = struct
           | Content event when Content.closes event ->
               close previous
           | Content _ ->
-              M.stay []
+              Popover_machine.stay []
           | Open_request _ ->
-              M.unhandled
+              Popover_machine.unhandled
           );
       ]
 
