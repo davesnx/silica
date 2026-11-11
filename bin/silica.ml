@@ -99,6 +99,6 @@ let () =
     (Cmd.eval'
        (Cmd.group
           (Cmd.info "silica" ~doc:"Make, test and check Silica apps.")
-          [ new_command; check_command ]
+          [ new_command; check_command; Silica_dev.Dev_command.command ]
        )
     )

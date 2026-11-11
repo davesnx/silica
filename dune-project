@@ -21,6 +21,12 @@
   jsonkit-melange
   tiny_httpd
   cmdliner
+  (dune-rpc (>= 3.24))
+  (fiber (>= 3.7))
+  (stdune (>= 3.24))
+  csexp
+  ordering
+  pp
   (alcotest :with-test)
   (odoc :with-doc)
   (mdx :with-test)))

@@ -30,9 +30,11 @@ in [client/], two tests in [test/], the checks in [check/] and an
 {@sh skip[
 cd myapp
 npm --prefix client install
-dune build
-dune exec server/main.exe
+silica dev
 ]}
+
+[silica dev] builds the app, runs the server, and reloads the page after each
+save (see {{!section-dev}Development}).
 
 [dune test] runs the tests: one steps the machine, one drives the page with
 {!Silica_memory}, and [check/main.ml] runs the checker and compares the golden
@@ -43,6 +45,127 @@ files in [check/spec/]. [silica check] runs the checker alone, and
 [silica new] never overwrites a file. A file that already has the content of
 the template is skipped. When a file differs, the command lists it and writes
 nothing.
+
+{1:dev Development: silica dev}
+
+[silica dev] runs an app while you edit it. One command builds the app on
+each save, starts the server again, reloads the page, and shows compile errors
+in the page. An agent with no browser reads the same events as JSON lines.
+
+{2:dev-run Run}
+
+From the root of an app that [silica new] made:
+
+{@sh skip[
+npm --prefix client install
+silica dev
+]}
+
+Then open {{:http://127.0.0.1:8080}http://127.0.0.1:8080}. The options, with
+their defaults, match the layout of [silica new]:
+
+- [--server server/main.exe]: the server executable, as a dune target.
+- [--client client]: the client directory. dune builds [client/meta.json] and
+  [client/dist] (esbuild).
+- [--port 8080]: the port of the page, on 127.0.0.1.
+- [--json]: print each event as one JSON line on stdout.
+
+In this repository, run the site with
+[dune exec -- silica dev --server site/server/main.exe --client site/client].
+
+{2:dev-what What it does}
+
+- It starts [dune build --watch] on the server and the client and reads the
+  build state and the errors from dune's RPC socket ([_build/.rpc/dune]).
+- After each build that succeeds, it compares the server executable and
+  [meta.json] with the last ones. When one changed, it stops the server with
+  SIGTERM (SIGKILL after 3 s), starts the new one on a free port, and waits
+  for [GET /_silica/health] to answer 200 (at most 10 s).
+- It listens on [--port] and passes each connection to the server. A request
+  that arrives while the server starts waits for it, at most 10 s. When no
+  server runs, a page shows the build state and reloads when the server is
+  up.
+- It tells the page what changed: a new script reloads the page; a new
+  stylesheet alone replaces the [<link>] in place; a change to the server
+  alone reloads nothing, and the Live sockets connect again by themselves.
+
+The server gets this environment: [PORT], [SILICA_SECRET] (made once and kept
+in [_build/silica-dev/secret]), [SILICA_ORIGINS], [SILICA_STATIC],
+[SILICA_METAFILE] and [SILICA_DEV_STATE] ([_build/silica-dev/state.json]).
+With [SILICA_DEV_STATE], {!Silica_server.dev_of_env} gives [Some _]: the
+server saves its sessions, its Live islands and its kept values at SIGTERM and
+reads them at start (see {!Silica_server.Make.shutdown}), so the cookie, the
+CSRF token and the state of each island stay across a restart. A full page
+reload makes new island instances, so an island starts again after it. In
+dev mode each HTML page also loads [/_silica/dev/client.js], the dev client.
+
+The server of [silica new] reads all of these. A server of your own must read
+[PORT], [SILICA_STATIC], [SILICA_METAFILE], use
+{!Silica_server.secret_of_env} and {!Silica_server.dev_of_env}, and call
+[Server.shutdown] in the [on_stop] of {!Silica_adapter.run}. An app with Live
+islands also calls the codec registration of its machines at start, so the
+islands can be saved.
+
+{2:dev-page In the page}
+
+The dev client connects to [ws://<host>/_silica/dev]. It shows:
+
+- a small indicator while dune builds, with the number of rules done;
+- an overlay when the build fails: each error with its file, line and column,
+  the message, and two source lines on each side. An error with no location
+  (an esbuild or a Tailwind failure) shows its message only. The page under
+  the overlay keeps running the last good build. The overlay goes at the next
+  build that succeeds;
+- an overlay with the output of the server when the server stops.
+
+The dev client is a separate script, served by [silica dev]; it is never in
+the app bundle. A test in [test/budget] checks the bundles for it.
+
+{2:dev-json Events as JSON}
+
+With [--json], stdout has one JSON object per line. The server output goes to
+stderr. The events:
+
+- [{"t":"dev","url":"http://127.0.0.1:8080"}]: [silica dev] listens.
+- [{"t":"build","status":"started"}], then [{"t":"build","status":"ok"}] or
+  [{"t":"build","status":"failed","errors":[...]}]. Each error has [file]
+  (relative to the root), [line], [col] (from 1), [end_line], [end_col],
+  [severity] (["error"] or ["warning"]), [message] and [excerpt], a list of
+  [[line, text]]. An error with no location has [severity] and [message]
+  only. When dune reports more errors after the first [failed], another
+  [failed] follows with all of them.
+- [{"t":"server","status":"started","pid":4021,"ms":20}], or ["restarted"].
+- [{"t":"server","status":"crashed","code":"exit 2","output":"..."}]: the
+  server stopped. [output] is its last 60 lines. [silica dev] starts it again
+  after the next build that succeeds, not before.
+- [{"t":"reload","what":"page"}], or ["css"] with the swapped stylesheets.
+
+An edit, a compile error and its fix of the example app:
+
+{v
+{"t":"build","status":"started"}
+{"t":"build","status":"ok"}
+{"t":"server","status":"restarted","pid":784319,"ms":20}
+{"t":"reload","what":"page"}
+{"t":"build","status":"started"}
+{"t":"build","status":"failed","errors":[{"file":"example/app/shared/example_about.mlx","line":20,"col":20,"end_line":20,"end_col":32,"severity":"error","message":"Unbound constructor About_broken","excerpt":[[18,"    (Node.element \"h1\""],[19,"       [ Attr.bool \"data-silica-route-focus\" true ]"],[20,"       [ Node.text About_broken ]"],[21,"    )"],[22,"    (Example_nav.make ())"]]}]}
+{"t":"build","status":"started"}
+{"t":"build","status":"ok"}
+v}
+
+The fix gave the same files as the build before the error, so the server did
+not start again. An agent waits for [ok] and, after a change to the server or
+the client, for [restarted].
+
+{2:dev-stop Stop}
+
+SIGINT (Ctrl-C), SIGTERM and SIGHUP stop the server (which saves its state),
+then dune, and free the port; the exit code is 0. The children run in their
+own process groups, so SIGKILL on [silica dev] leaves them running.
+
+A second [silica dev] in the same project stops at once with
+[another silica dev runs in this project (pid N)]. A [dune build --watch]
+that already runs in the project stops it too: [silica dev] starts its own.
 
 The rest of this page sets up a project by hand.
 

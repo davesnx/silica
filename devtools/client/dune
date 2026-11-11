@@ -1,0 +1,34 @@
+(melange.emit
+ (target out)
+ (alias devtools-js)
+ (modules silica_dev_client)
+ (module_systems
+  (esm mjs))
+ (preprocess
+  (pps melange.ppx))
+ (libraries silica silica.json-melange))
+
+(rule
+ (enabled_if
+  (<> %{profile} release))
+ (targets silica-dev.js)
+ (deps
+  (alias devtools-js)
+  (source_tree ../../example/client/node_modules))
+ (action
+  (run
+   ../../example/client/node_modules/esbuild/bin/esbuild
+   out/devtools/client/silica_dev_client.mjs
+   --bundle
+   --format=esm
+   --minify
+   --legal-comments=none
+   --outfile=silica-dev.js
+   --log-level=warning)))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (<> %{profile} release))
+ (action
+  (diff ../dist/silica-dev.js silica-dev.js)))

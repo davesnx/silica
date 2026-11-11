@@ -23,7 +23,24 @@ Run every command from this directory.
 
 - Install the bundler once: `npm --prefix client install`
 - Build: `dune build`
-- Run: `dune exec server/main.exe`, then open http://127.0.0.1:8080
+- Run in development: `silica dev`, then open http://127.0.0.1:8080. It
+  builds on each save, starts the server again (sessions and Live state
+  stay), reloads the page, and shows compile errors in the page.
+- Run with no browser: `silica dev --json` in the background. Each line of
+  stdout is one JSON event:
+  - `{"t":"build","status":"started"}`
+  - `{"t":"build","status":"failed","errors":[...]}`: each error has `file`,
+    `line`, `col`, `end_line`, `end_col`, `severity`, `message` and
+    `excerpt` (a list of `[line, text]`); an error with no location has only
+    `severity` and `message`.
+  - `{"t":"build","status":"ok"}`
+  - `{"t":"server","status":"started"}` or `"restarted"`, with `pid` and `ms`
+  - `{"t":"server","status":"crashed","code":"exit 2","output":"..."}`
+  - `{"t":"reload","what":"page"}` or `"css"`: what the page was told to do.
+
+  After an edit, wait for `build` `ok` and then `server` `restarted` (or for
+  `failed`, and fix each error). The server output goes to stderr. Stop it
+  with SIGINT or SIGTERM.
 - Test: `dune test`
 - Check the machines: `silica check`, or `silica check --json` for a report
   that a program reads. Exit code 0: passed; 1: findings; 2: a check stopped at

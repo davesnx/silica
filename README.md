@@ -136,11 +136,10 @@ From a checkout of this repository, run `dune exec -- silica new ../myapp` inste
 ```sh
 cd myapp
 npm --prefix client install
-dune build
-dune exec server/main.exe
+silica dev
 ```
 
-Then open <http://127.0.0.1:8080>. `dune test` steps the machine, drives the page with `Silica_memory` and runs the model checker.
+Then open <http://127.0.0.1:8080>. `silica dev` builds on each save, starts the server again with its sessions and Live state, reloads the page, and shows compile errors in the page; `silica dev --json` gives the same events as JSON lines for an agent (see [docs/install.mld](docs/install.mld)). `dune test` steps the machine, drives the page with `Silica_memory` and runs the model checker.
 
 You need OCaml 5.1 or later, dune 3.20 or later, Melange 7 or later, [mlx](https://github.com/ocaml-mlx/mlx) (the opam packages `mlx` and `ocamlformat-mlx`), `jsonkit` and `jsonkit-melange`, and Node.js for esbuild and Tailwind in the client build.
 

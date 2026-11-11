@@ -4,6 +4,7 @@ module Server = Adapter.Server
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
 let () =
+  Example_codecs.register ();
   let port =
     ref
       ( match Sys.getenv_opt "PORT" with

@@ -1,0 +1,10 @@
+(executable
+ (name fake_app)
+ (modules fake_app)
+ (libraries unix))
+
+(test
+ (name test_dev)
+ (modules test_dev)
+ (deps fake_app.exe)
+ (libraries silica_dev silica.server-kit alcotest unix threads.posix))

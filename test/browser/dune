@@ -23,7 +23,15 @@
   browser.test.mjs
   host.test.mjs
   ui.test.mjs
+  devtools.test.mjs
+  %{project_root}/devtools/dist/silica-dev.js
   package.json
   (source_tree node_modules))
  (action
-  (run node --test browser.test.mjs host.test.mjs ui.test.mjs)))
+  (run
+   node
+   --test
+   browser.test.mjs
+   host.test.mjs
+   ui.test.mjs
+   devtools.test.mjs)))

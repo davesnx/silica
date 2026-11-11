@@ -124,6 +124,7 @@ let cookie_name = "silica_sid"
 let csrf_header = "x-silica-csrf"
 let live_path = "/_silica/live"
 let health_path = "/_silica/health"
+let dev_client_path = "/_silica/dev/client.js"
 
 let header name (headers : (string * string) list) =
   List.find_map
@@ -324,6 +325,38 @@ let text status body =
 
 let with_header name value (res : response) =
   { res with headers = (name, value) :: List.remove_assoc name res.headers }
+
+let last_index_of ~part text =
+  let rec search index =
+    if index < 0 then
+      None
+    else if String.sub text index (String.length part) = part then
+      Some index
+    else
+      search (index - 1)
+  in
+  search (String.length text - String.length part)
+
+let with_dev_client (res : response) =
+  match header "content-type" res.headers with
+  | Some content_type when String.starts_with ~prefix:"text/html" content_type
+    ->
+      let script =
+        Printf.sprintf "<script type=\"module\" src=\"%s\"></script>"
+          dev_client_path
+      in
+      let body =
+        match last_index_of ~part:"</body>" res.body with
+        | Some index ->
+            String.sub res.body 0 index
+            ^ script
+            ^ String.sub res.body index (String.length res.body - index)
+        | None ->
+            res.body ^ script
+      in
+      { res with body }
+  | _ ->
+      res
 
 module Make (Io : IO) = struct
   let ( let* ) = Io.bind
@@ -1558,7 +1591,7 @@ module Make (Io : IO) = struct
         }
     in
     let res =
-      res
+      (match t.config.dev with Some _ -> with_dev_client res | None -> res)
       |> with_header "cache-control" "private, no-store"
       |> with_header "x-silica-nonce" nonce
     in

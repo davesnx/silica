@@ -28,8 +28,7 @@ Make a new app.
   Next:
     cd counter-app
     npm --prefix client install
-    dune build
-    dune exec server/main.exe
+    silica dev
 
 The directory name is the project name.
 
@@ -46,8 +45,7 @@ A second run changes nothing.
   Next:
     cd counter-app
     npm --prefix client install
-    dune build
-    dune exec server/main.exe
+    silica dev
 
 A changed file stops the command, and it writes nothing.
 

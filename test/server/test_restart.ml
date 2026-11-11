@@ -806,6 +806,47 @@ let environment_tests =
     );
   ]
 
+let html_server ~dev =
+  Server.create
+    {
+      (Silica_server.default_config ~origins:(Silica_server.Origins [ origin ])
+         ~secret
+      )
+      with
+      dev =
+        ( if dev then
+            Some { Silica_server.state_file = directory () }
+          else
+            None
+        );
+    }
+    ~read:(fun _ -> None)
+    ~handlers:[] ~islands:[] ~topics:[]
+    ~page:(fun _ ->
+      {
+        Silica_server.status = 200;
+        headers = [ ("content-type", "text/html; charset=utf-8") ];
+        body = "<html><body><p>hi</p></body></html>";
+      }
+    )
+    ()
+
+let dev_client_tests =
+  let open Alcotest in
+  [
+    test_case "with dev, a page loads the dev client before </body>" `Quick
+      (fun () ->
+        check string "body"
+          "<html><body><p>hi</p><script type=\"module\" \
+           src=\"/_silica/dev/client.js\"></script></body></html>"
+          (Server.handle (html_server ~dev:true) (request "/")).body
+    );
+    test_case "with no dev, a page has no dev client" `Quick (fun () ->
+        check string "body" "<html><body><p>hi</p></body></html>"
+          (Server.handle (html_server ~dev:false) (request "/")).body
+    );
+  ]
+
 let () =
   Alcotest.run "restart"
     [
@@ -814,4 +855,5 @@ let () =
       ("sessions", session_tests);
       ("resume", resume_tests);
       ("environment", environment_tests);
+      ("dev client", dev_client_tests);
     ]

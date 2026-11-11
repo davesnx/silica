@@ -81,8 +81,9 @@ type dev = {
 type config = {
   dev : dev option;
       (** [None] in production. With [Some _], the server keeps its state across
-          a restart (see {!Make.shutdown}) and {!Make.render_page_settled} shows
-          detailed error pages. The state file is never read or written with
+          a restart (see {!Make.shutdown}), {!Make.render_page_settled} shows
+          detailed error pages, and each HTML page loads the script at
+          {!dev_client_path}. The state file is never read or written with
           [None]. *)
   origins : origins;
   secret : string;
@@ -142,6 +143,12 @@ val live_path : string
 
 val health_path : string
 (** ["/_silica/health"]. *)
+
+val dev_client_path : string
+(** ["/_silica/dev/client.js"]: the script of [silica dev] that shows the build
+    status and the compile errors, and reloads the page after a build. With
+    [config.dev], each HTML page that the [page] function of {!Make.create}
+    answers loads it, before [</body>]. *)
 
 module Make (Io : IO) : sig
   type handler

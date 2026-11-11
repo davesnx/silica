@@ -5,7 +5,7 @@
  (public_name silica)
  (package silica)
  (modules silica new_project template_files)
- (libraries cmdliner unix))
+ (libraries cmdliner unix silica_dev))
 
 (rule
  (target template_files.ml)

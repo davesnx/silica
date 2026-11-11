@@ -54,8 +54,7 @@ let next_steps directory =
   print_string "\nNext:\n";
   Printf.printf "  cd %s\n" directory;
   print_string "  npm --prefix client install\n";
-  print_string "  dune build\n";
-  print_string "  dune exec server/main.exe\n"
+  print_string "  silica dev\n"
 
 let write directory files =
   let missing =

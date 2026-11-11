@@ -31,7 +31,8 @@ server, and the model checker.
 
 Start:
 
-- {!page-install}: the requirements, the dune project and a first component.
+- {!page-install}: the requirements, [silica new], [silica dev], the dune
+  project and a first component.
 - {!page-tutorial}: a counter, then a machine with a Remote call.
 
 Concepts:

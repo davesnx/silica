@@ -49,3 +49,30 @@
    %{project_root}/linear/client/dist
    site
    %{project_root}/site/client/dist)))
+
+(rule
+ (alias runtest)
+ (deps
+  no_dev_client.ts
+  %{project_root}/linear/client/dist
+  %{project_root}/site/client/dist
+  %{project_root}/example/client/dist)
+ (action
+  (run
+   node
+   no_dev_client.ts
+   linear
+   %{project_root}/linear/client/dist
+   site
+   %{project_root}/site/client/dist
+   example
+   %{project_root}/example/client/dist)))
+
+(rule
+ (alias runtest)
+ (deps no_dev_client.ts %{project_root}/devtools/dist/silica-dev.js)
+ (action
+  (ignore-stderr
+   (with-accepted-exit-codes
+    1
+    (run node no_dev_client.ts devtools %{project_root}/devtools/dist)))))
