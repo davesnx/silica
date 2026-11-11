@@ -1,0 +1,28 @@
+(library
+ (name joint_fixtures)
+ (wrapped false)
+ (modules job row board joint_cases)
+ (libraries silica silica.check))
+
+(test
+ (name test_joint)
+ (modules test_joint)
+ (libraries joint_fixtures silica silica.check silica.memory alcotest))
+
+(executable
+ (name gen_script)
+ (modules gen_script)
+ (libraries joint_fixtures silica silica.check))
+
+(rule
+ (with-stdout-to
+  bumped_script.ml
+  (run ./gen_script.exe)))
+
+(executable
+ (name bumped_script)
+ (modules bumped_script)
+ (libraries joint_fixtures silica silica.check silica.memory))
+
+(cram
+ (deps bumped_script.ml bumped_script.exe))

@@ -1,0 +1,16 @@
+digraph "issue-detail" {
+rankdir=LR;
+"issue-detail.__init" [shape=point];
+"issue-detail.__init" -> "issue-detail.loading";
+"issue-detail.loading" [label="loading\ninvoke /api/issues" shape=box];
+"issue-detail.failed" [label="failed" shape=box];
+"issue-detail.not_found" [label="not_found" shape=box];
+"issue-detail.ready" [label="ready\ninvoke live:issues\nhold keys" shape=box];
+"issue-detail.failed" -> "issue-detail.loading" [label="props, retry"];
+"issue-detail.loading" -> "issue-detail.failed" [label="loaded error"];
+"issue-detail.loading" -> "issue-detail.loading" [label="props"];
+"issue-detail.loading" -> "issue-detail.not_found" [label="loaded ok"];
+"issue-detail.loading" -> "issue-detail.ready" [label="loaded ok"];
+"issue-detail.not_found" -> "issue-detail.loading" [label="props"];
+"issue-detail.ready" -> "issue-detail.loading" [label="props"];
+}

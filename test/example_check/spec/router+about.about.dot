@@ -1,0 +1,6 @@
+digraph "about" {
+rankdir=LR;
+"about.__init" [shape=point];
+"about.__init" -> "about.about";
+"about.about" [label="about" shape=box];
+}

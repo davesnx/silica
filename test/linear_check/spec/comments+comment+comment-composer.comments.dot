@@ -1,0 +1,11 @@
+digraph "comments" {
+rankdir=LR;
+"comments.__init" [shape=point];
+"comments.__init" -> "comments.loading";
+"comments.loading" [label="loading\ninvoke /api/comments" shape=box];
+"comments.failed" [label="failed" shape=box];
+"comments.ready" [label="ready\ninvoke live:comments" shape=box];
+"comments.failed" -> "comments.loading" [label="retry"];
+"comments.loading" -> "comments.failed" [label="loaded error"];
+"comments.loading" -> "comments.ready" [label="loaded ok"];
+}

@@ -1,0 +1,37 @@
+state /
+path
+  (start)
+view
+  component home
+
+state /item/:int
+path
+  / -> /item/:int on url changed, by an input
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "Loading item 1..."
+
+state /about
+path
+  / -> /about on url changed, by an input
+view
+  component about
+
+state /edit
+path
+  / -> /edit on url changed, by an input
+view
+  component edit
+
+state /*
+path
+  / -> /* on url changed, by an input
+view
+  component not_found

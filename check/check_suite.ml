@@ -196,17 +196,24 @@ let views_text (report : (_, _) Check.report) =
        report.views
     )
 
-let golden_files (Ran { report; _ }) =
+let golden_files (Ran { check; report }) =
+  let id = Check.id check in
+  let prefix =
+    if id = report.machine then
+      ""
+    else
+      id ^ "."
+  in
   List.concat_map
     (fun (spec : Silica.Spec.t) ->
       [
-        (spec.id ^ ".spec.txt", Silica.Spec.to_text spec);
-        (spec.id ^ ".qnt", Silica.Spec.to_quint spec);
-        (spec.id ^ ".dot", Silica.Spec.to_dot spec);
+        (prefix ^ spec.id ^ ".spec.txt", Silica.Spec.to_text spec);
+        (prefix ^ spec.id ^ ".qnt", Silica.Spec.to_quint spec);
+        (prefix ^ spec.id ^ ".dot", Silica.Spec.to_dot spec);
       ]
     )
     report.specs
-  @ [ (report.machine ^ ".views.txt", views_text report) ]
+  @ [ (id ^ ".views.txt", views_text report) ]
 
 let suffixes = [ ".spec.txt"; ".views.txt"; ".qnt"; ".dot" ]
 
@@ -467,7 +474,7 @@ let to_json result =
         list
           (fun (Ran { check; report }) ->
             Check_json.report
-              ?trace_files:(List.assoc_opt report.machine result.trace_files)
+              ?trace_files:(List.assoc_opt (Check.id check) result.trace_files)
               check report
           )
           result.ran
@@ -540,7 +547,7 @@ let pp formatter result =
   in
   if not quiet then (
     List.iter
-      (fun (Ran { report; _ }) ->
+      (fun (Ran { check; report }) ->
         Format.fprintf formatter "%a@." Check.pp_report report;
         List.iteri
           (fun index file ->
@@ -548,7 +555,7 @@ let pp formatter result =
               file
           )
           (Option.value ~default:[]
-             (List.assoc_opt report.machine result.trace_files)
+             (List.assoc_opt (Check.id check) result.trace_files)
           )
       )
       result.ran;
@@ -690,12 +697,12 @@ let write_traces dir result =
     if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
     List.map
       (fun (Ran { check; report }) ->
-        ( report.machine,
+        ( Check.id check,
           List.mapi
             (fun index (violation : (_, _) Check.violation) ->
               let file =
                 Filename.concat dir
-                  (Printf.sprintf "%s-%d.jsonl" report.machine (index + 1))
+                  (Printf.sprintf "%s-%d.jsonl" (Check.id check) (index + 1))
               in
               write_file file
                 (Silica.Trace.to_jsonl

@@ -660,3 +660,147 @@ let comment_check ?(props = [ (mine, true); (mine, false) ]) () =
     Linear_comment.component
 
 let comment ?props () = Check.run (comment_check ?props ())
+
+let joint_router ?(max_states = 1_000_000) ?(max_history = 2) ?properties ~pages
+    ~paths ~routes:checked () =
+  let open Linear_routes in
+  Check.app ~max_states ~max_history ?properties ~pages
+    ~inputs:(fun _ ->
+      List.map
+        (fun path -> Silica.Router.Url_changed (Url.of_string path))
+        paths
+    )
+    ~routes:checked ~parse:(Router.parse routes) ~print:(Router.print routes)
+    ~is_not_found:(Router.is_not_found routes)
+    ~url_event:(fun url -> Silica.Router.Url_changed url)
+    Linear_app.app
+
+let joint_list_page =
+  Check.child ~samples:[ issues; topic; saves ]
+    ~within:(function
+      | Linear_list.Ready ready ->
+          ready.data.next_id <= 1 && ready.toasts = []
+      | Loading | Failed _ ->
+          true
+      )
+    Linear_list.component
+
+let router_with_list ?max_states ?max_history () =
+  let open Linear_routes in
+  joint_router ?max_states ?max_history ~pages:[ joint_list_page ]
+    ~paths:[ "/"; "/issue/1" ] ~routes:[ Issues list; Issue 1 ] ()
+
+let joint_detail_page =
+  Check.child ~samples:[ issues; topic; saves ]
+    ~within:(function
+      | Linear_detail.Ready ready ->
+          ready.data.next_id <= 1 && ready.toasts = []
+      | Loading | Not_found | Failed _ ->
+          true
+      )
+    Linear_detail.component
+
+let router_with_detail ?max_states ?max_history () =
+  let open Linear_routes in
+  joint_router ?max_states ?max_history ~pages:[ joint_detail_page ]
+    ~paths:[ "/"; "/issue/1"; "/issue/9" ]
+    ~routes:[ Issues list; Issue 1; Issue 9 ]
+    ()
+
+let joint_dialog = Check.child Linear_create.dialog_component.component
+
+let joint_create =
+  Check.child
+    ~samples:
+      [
+        Check.answers ~rejected:[ "Title is too long" ] create_endpoint
+          [ issue 3 ];
+      ]
+    ~inputs:(function
+      | Linear_create.Editing _ ->
+          [ Linear_create.Title "x" ]
+      | Closed | Submitting _ | Failed _ ->
+          []
+      )
+    Linear_create.component
+
+let router_with_create ?max_states ?properties () =
+  let open Linear_routes in
+  joint_router ?max_states ?properties
+    ~pages:[ joint_create; joint_dialog ]
+    ~paths:[ "/"; "/?new=true" ]
+    ~routes:[ Issues list; Issues { list with create = true } ]
+    ()
+
+let shows_dialog view =
+  exists
+    (function
+      | Node.Element (_, attrs, _) ->
+          List.mem (Node.String ("role", "dialog")) attrs
+      | _ ->
+          false
+      )
+    view
+
+let create_with_dialog ~props () =
+  Check.component ~max_states:1_000_000 ~props
+    ~samples:
+      [
+        Check.answers ~rejected:[ "Title is too long" ] create_endpoint
+          [ issue 3 ];
+      ]
+    ~inputs:create_inputs ~children:[ joint_dialog ]
+    ~properties:
+      [
+        Check.always ~name:"the dialog shows exactly when the machine is open"
+          (Check.holds (fun (state : Linear_create.state) view ->
+               shows_dialog view
+               =
+               match state with
+               | Closed ->
+                   false
+               | Editing _ | Submitting _ | Failed _ ->
+                   true
+           )
+          );
+      ]
+    Linear_create.component
+
+let comments_with_rows () =
+  let thread =
+    {
+      Thread.viewer = User.Ada;
+      comments = [ a_comment 1 "Mine"; a_comment ~author:User.Ben 2 "Ben's" ];
+    }
+  in
+  Check.component ~max_states:1_000_000 ~props:[ 1 ]
+    ~samples:
+      [
+        Check.answers comments_endpoint [ thread ];
+        Check.states comments_topic
+          [ thread.comments; thread.comments @ [ a_comment 3 "New" ] ];
+      ]
+    ~children:
+      [
+        Check.child
+          ~inputs:(fun _ -> [ Linear_comment.Typed "x" ])
+          ~samples:
+            [
+              Check.answers
+                ~rejected:[ "Only the author can edit" ]
+                edit_comment_endpoint
+                [ { mine with body = "x"; edited = true } ];
+            ]
+          Linear_comment.component;
+        Check.child
+          ~inputs:(fun _ -> [ Linear_composer.Typed "x" ])
+          ~samples:
+            [
+              Check.answers
+                ~rejected:[ "The comment is too long" ]
+                add_comment_endpoint
+                [ a_comment 3 "x" ];
+            ]
+          Linear_composer.component;
+      ]
+    Linear_comments.component

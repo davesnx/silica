@@ -1,0 +1,15 @@
+machine create-issue
+initial closed
+state closed
+state editing
+state failed
+state submitting
+  invoke /api/issues/create
+edge closed -> editing on props
+edge editing -> closed on cancel props
+edge editing -> submitting on submit
+edge failed -> closed on cancel props
+edge failed -> submitting on submit
+edge submitting -> closed on "created ok"
+edge submitting -> failed on "created error"
+stay editing on submit title

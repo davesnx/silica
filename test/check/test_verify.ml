@@ -52,6 +52,8 @@ let show_input show : (_, _) Check.input -> string = function
       show event
   | Check.Props _ ->
       "new props"
+  | Check.In_child _ ->
+      "child"
 
 let report_to_string report = Format.asprintf "%a" Check.pp_report report
 
@@ -674,6 +676,8 @@ let show_app_event show : _ Check.app_event -> string = function
       "back"
   | Browser_forward ->
       "forward"
+  | In_child _ ->
+      "child"
 
 let app_trace show check =
   let report = Check.run check in

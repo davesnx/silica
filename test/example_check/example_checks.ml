@@ -123,6 +123,8 @@ let pp_item_input f : (_, Example_item.event) Check.input -> unit = function
       pp_item_event f event
   | Props _ ->
       Format.pp_print_string f "new props"
+  | In_child _ ->
+      Format.pp_print_string f "child"
 
 let item ?(properties = []) ~props () =
   let properties =
@@ -156,3 +158,51 @@ let vote () =
 
 let counter_bounded () =
   Check.component ~within:(fun count -> count <= 5) Example_counter.component
+
+let joint_router ?(max_history = 2) page =
+  Check.app ~max_states:1_000_000 ~max_history ~pages:[ page ]
+    ~inputs:(fun _ ->
+      List.map
+        (fun path -> Silica.Router.Url_changed (Url.of_string path))
+        [ "/"; "/item/1"; "/about"; "/edit"; "/nowhere" ]
+    )
+    ~routes:all_routes ~parse:(Router.parse routes) ~print:(Router.print routes)
+    ~is_not_found:(Router.is_not_found routes)
+    ~url_event:(fun u -> Silica.Router.Url_changed u)
+    Example_app.app
+
+let joint_pages =
+  [
+    ("home", Check.child Example_home.component);
+    ( "item",
+      Check.child
+        ~samples:
+          [
+            Check.answers item_endpoint ~rejected:[ "no item" ]
+              [
+                {
+                  Item.id = 1;
+                  title = "Item 1";
+                  price_cents = 1999;
+                  tags = [ "a" ];
+                };
+              ];
+          ]
+        ~properties:
+          [
+            Check.always ~name:"never shows loading and an item"
+              (Check.view (fun view ->
+                   not (has_loading view && has_article view)
+               )
+              );
+          ]
+        Example_item.component
+    );
+    ("about", Check.child Example_about.component);
+    ( "edit",
+      Check.child
+        ~inputs:(fun _ -> [ Example_edit.Draft "note"; Example_edit.Draft "" ])
+        Example_edit.component
+    );
+    ("not found", Check.child Example_not_found.component);
+  ]

@@ -108,12 +108,63 @@ val states : 's Silica.Topic.t -> 's list -> sample
     ([Failed { error = Network "down"; last }]), after which nothing arrives. A
     topic with no [states] gives [Loading None] and the failure only. *)
 
+(** {1 Children} *)
+
+type child
+(** A child machine that runs inside the check of its parent (see {!component}
+    [?children] and {!app} [?pages]). *)
+
+val child :
+  ?samples:sample list ->
+  ?inputs:('s -> 'e list) ->
+  ?within:('s -> bool) ->
+  ?max_instances:int ->
+  ?properties:('s, 'e) property list ->
+  ('p, 's, 'e) Silica.Component.t ->
+  child
+(** [child component]: every component node of the machine of [component] in the
+    views of the check runs as an instance of that machine, the way
+    {!Silica.Instance} runs it. An instance is known by its place in the view of
+    its parent, its machine id and its key. It starts with the props of its
+    node, gets new props through [on_props] when the node gives other props,
+    sends the events of [output] to its parent after each step it handles and
+    the events of [on_final] once when it reaches a final state, and ends (with
+    the stops of what it owns) when its node is no longer rendered. Its view
+    replaces its node, so the view rules see the whole page.
+
+    The bounds of a joint check:
+    - Only listed children run. Other component nodes stay in [not_explored].
+    - [max_instances] (default 2) instances of the machine run at once. A
+      further instance shows the view of its start state, takes no step, and is
+      listed in [not_explored] as
+      ["component <id> (instances 3 to <n> not run)"].
+    - [samples] answer the calls and subscriptions of the child, [inputs] give
+      it events ({!component} explains both), and [within] bounds it: a joint
+      snapshot where a child is outside its [within] is not explored.
+    - The [max_states] of the check bounds the joint snapshots. The report gives
+      the number of distinct snapshots of each machine in [machines].
+
+    [properties] are {!always} properties. They hold on every snapshot of every
+    instance: the view is the resolved view of the instance with only its own
+    handlers, [event] is the event of the step when the instance took it, and
+    {!entered} and {!action} never hold. A violation inside a child names the
+    machine and the instance. Unreached states of a child are named
+    ["<machine id>: <state>"]. Raises {!Invalid_check} when [max_instances] is
+    below 1 or a property is temporal: put {!leads_to} and {!never_after} on the
+    parent, where they see the whole page, or on the check of the child alone.
+*)
+
+type child_event = Check_model.child_event
+(** An event of a child instance, as a step of a joint check holds it. *)
+
 (** {1 Making a check} *)
 
 (** A step of a component check. *)
 type ('p, 'e) input = ('p, 'e) Check_model.input =
   | Event of 'e  (** An event of the machine. *)
   | Props of 'p  (** The parent gives other props. *)
+  | In_child of child_event
+      (** An event of a child instance, in a check with [children]. *)
 
 val component :
   ?max_states:int ->
@@ -124,6 +175,7 @@ val component :
   ?samples:sample list ->
   ?arrivals:int ->
   ?keys:Silica.Key.t list ->
+  ?children:child list ->
   ?properties:('s, 'e) property list ->
   ?allow:allowance list ->
   ('p, 's, 'e) Silica.Component.t ->
@@ -154,8 +206,11 @@ val component :
     the view. Time is abstract: a running timer can fire at any step, in any
     order. A timer, call or subscription starts with its start action and stops
     with [Stop]; a call ends with its answer and a timer when it fires. So
-    nothing of a state that was left arrives. Handlers on elements with
-    [disabled] set are not enabled.
+    nothing of a state that was left arrives. As in a browser and in
+    [Silica_memory], a handler is not enabled on an element that has [hidden] or
+    [inert] or is inside one, or that is a disabled [button], [input], [select],
+    [textarea], [option], [optgroup] or [fieldset] or is inside one; a portal
+    starts again outside them.
 
     The built-in rules are in {!val-rules}. [max_states] (default 100000) bounds
     the search; when it stops the search, the report is not [complete]. [within]
@@ -165,7 +220,9 @@ val component :
     the report is then [truncated]. The checker does not enter component nodes
     in the view: it lists them in [not_explored] and keeps their props in
     [children]. To check a child, make a check of its own machine with [~props]
-    from {!props}. *)
+    from {!props}, or list it in [children] to run it inside this check (see
+    {!val-child}). With [children], properties see the whole resolved view with
+    only the handlers of the root machine. *)
 
 val live :
   ?max_states:int ->
@@ -200,6 +257,7 @@ type 'e app_event = 'e Check_model.app_event =
   | Link of Silica.Url.t  (** Press on a [data-silica-link] anchor. *)
   | Browser_back
   | Browser_forward
+  | In_child of child_event  (** An event of a page or of its children. *)
 
 val app :
   ?max_states:int ->
@@ -210,6 +268,7 @@ val app :
   ?samples:sample list ->
   ?arrivals:int ->
   ?keys:Silica.Key.t list ->
+  ?pages:child list ->
   ?properties:('s app_state, 'e) property list ->
   ?allow:allowance list ->
   routes:'s list ->
@@ -229,6 +288,12 @@ val app :
     nothing here. [max_history] (default 4) bounds the history; the oldest
     entries are dropped, which keeps the state space finite.
 
+    [pages] run the listed page components (and their children, when listed)
+    inside the check, as {!component} [?children] does: links in pages are
+    followed, and the navigation actions of a page change the history after the
+    events that its step raised are handled. Check a router with one or a few
+    pages per check, so the product of the router and its pages stays small.
+
     Besides the component rules, two rules hold:
     - [route-round-trip]: [parse (print route) = route] for every route in
       [routes] and for the route of every reached state, so a
@@ -241,7 +306,8 @@ val app :
       not-found route. A [parse] that raises [Failure] fails the rule. *)
 
 val id : ('s, 'ev) t -> string
-(** The id of the root machine. *)
+(** The id of the root machine; for a check with [children] or [pages], the root
+    and the listed children joined by ["+"], such as ["router+issue-list"]. *)
 
 val state_json : ('s, 'ev) t -> 's -> Silica_json.Json.t option
 (** The snapshot as JSON by the state codec of the root machine (see
@@ -347,15 +413,20 @@ type ('s, 'ev) report = {
       (** Each allowance and how many distinct violations it turned off. *)
   not_explored : string list;
       (** Sorted, without duplicates: what the views showed and the checker did
-          not run: ["component <machine id>"] for each child component node and
-          ["island <channel>"] for each Live island (an element with
-          [data-silica-live]). *)
+          not run: ["component <machine id>"] for each child component node that
+          is not listed in [children] or [pages], the instances over
+          [max_instances], and ["island <channel>"] for each Live island (an
+          element with [data-silica-live]). *)
   children : children;
+  machines : (string * int) list;
+      (** For each machine, the root first then each listed child: the number of
+          its distinct snapshots that the search met. With no children, the root
+          and [states]. *)
   specs : Silica.Spec.t list;
-      (** The spec that the run found for the root machine: the states it
-          reached, initial state first then by name, each with the timers and
-          sources of the first snapshot reached in it, and the steps it took,
-          with event names. *)
+      (** The specs that the run found, the root machine first, then each listed
+          child that started. A spec holds the states it reached, initial state
+          first then by name, each with the timers and sources of the first
+          snapshot reached in it, and the steps it took, with event names. *)
   paths : (string * 'ev step list) list;
       (** For each state name, in the order the search reached them, a shortest
           path from a start to its first snapshot. *)
@@ -520,12 +591,14 @@ val replay : ('s, 'ev) t -> 'ev list -> ('s, 'ev) replay
 val replay_trace :
   ('s, 'ev) t -> Silica.Trace.t -> (('s, 'ev) replay, string) result
 (** Replays the steps of the root instance of a trace, such as one that
-    {!export} wrote. Each step is matched by its event data, decoded with the
-    event and props codecs of the root machine (see
-    {!Silica.Machine.register_codecs}), and by its cause: the same element,
-    timer, call or source when the check offers it. A step with no data is
-    matched by its event name and cause. [Error] when the trace is of another
-    machine, has no start of its root, or holds data that does not decode. *)
+    {!export} wrote, and in a joint check the steps of the listed children (not
+    their props and not what their parents did on their [output]). Each step is
+    matched by its event data, decoded with the event and props codecs of the
+    root machine (see {!Silica.Machine.register_codecs}), and by its cause: the
+    same element, timer, call or source when the check offers it. A step with no
+    data is matched by its event name and cause. [Error] when the trace is of
+    another machine, has no start of its root, or holds data that does not
+    decode. *)
 
 val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
 (** A counterexample as a trace file (see {!Silica.Trace}): the start, then one
@@ -559,8 +632,11 @@ val script :
     fires first (the checker lets running timers fire in any order), an event
     from [inputs], a Live update, a held source, the result of an action, an
     element with no role and no text; also when the replay in the check no
-    longer breaks the rule. Replay such a trace in the check with
-    {!replay_trace}. *)
+    longer breaks the rule, and when the script would compare the view of the
+    last step and that view holds a component node that the check does not run
+    (the page in memory paints it). Replay such a trace in the check with
+    {!replay_trace}. In a joint check, the steps of children are steps of the
+    trace too: an element of a child is found in the whole page. *)
 
 val view_violations :
   ?rule:string -> state:string -> 'e Silica.Node.t -> string list

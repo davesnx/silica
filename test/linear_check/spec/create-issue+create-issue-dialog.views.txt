@@ -1,0 +1,85 @@
+state closed
+path
+  (start)
+view
+  link "New issue" href="/?new=true"
+
+state editing
+path
+  (start)
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state submitting
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state failed
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. Title is too long"
+      button "Cancel" [press]
+      button "Create issue"

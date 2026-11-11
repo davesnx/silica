@@ -119,8 +119,9 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
   let firsts = Hashtbl.create 16 in
   let first_order = ref [] in
   let views = ref [] in
-  let not_explored = ref [] in
+  let not_explored = Hashtbl.create 16 in
   let children = ref [] in
+  let known_children = Hashtbl.create 16 in
   let report ~state ~state_name ~view ~prefix ~last
       (finding : Check_rules.finding) =
     if not !truncated then
@@ -195,7 +196,7 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
         raise (closure_error machine)
   in
   let add parent ~actions node view =
-    if not (within (model.snapshot node)) then
+    if not (within (model.snapshot node) && model.tree.inside node) then
       None
     else
       let hash = Hashtbl.hash_param 100 200 node in
@@ -243,14 +244,24 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
                       first_order := name :: !first_order;
                       views := (name, View_text.to_string view) :: !views
                     );
-                    not_explored :=
-                      List.rev_append
-                        (Check_rules.not_explored_of_view view)
-                        !not_explored;
-                    children :=
-                      List.rev_append
-                        (Check_model.children_of_view view)
-                        !children;
+                    List.iter
+                      (fun entry -> Hashtbl.replace not_explored entry ())
+                      (Check_rules.not_explored_of_view view);
+                    List.iter
+                      (fun child ->
+                        let machine = Check_model.seen_machine child in
+                        if
+                          not
+                            (List.exists
+                               (Check_model.same_seen child)
+                               (Hashtbl.find_all known_children machine)
+                            )
+                        then (
+                          Hashtbl.add known_children machine child;
+                          children := child :: !children
+                        )
+                      )
+                      (Check_model.children_of_view view);
                     Queue.add (index, moves) queue;
                     check_node index node view moves
                       {
@@ -429,7 +440,9 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
     firsts =
       List.rev_map (fun name -> (name, Hashtbl.find firsts name)) !first_order;
     views = List.rev !views;
-    not_explored = List.sort_uniq String.compare !not_explored;
+    not_explored =
+      List.sort String.compare
+        (Hashtbl.fold (fun entry () entries -> entry :: entries) not_explored []);
     children = List.rev !children;
     graph =
       ( if graph then

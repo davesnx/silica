@@ -1,0 +1,59 @@
+// Generated from the spec of the machine "comment-composer". Do not edit.
+module comment_composer {
+  type State = | Empty | Drafting | Failed | Sending
+  type Event = OnStart | OnAny | OnClear | OnSend | OnSentError | OnSentOk | OnTyped
+
+  var state: State
+  var running: Set[str]
+  var last: Event
+
+  pure def owned(s: State): Set[str] = match s {
+    | Empty => Set()
+    | Drafting => Set()
+    | Failed => Set()
+    | Sending => Set("sending/invoke /api/comments/add")
+  }
+
+  pure val finals: Set[State] = Set()
+  pure val movable: Set[State] = Set(Empty, Drafting, Failed, Sending)
+
+  action enter(s: State, e: Event): bool = all {
+    state' = s,
+    running' = owned(s),
+    last' = e,
+  }
+
+  action init = all {
+    state' = Empty,
+    running' = owned(Empty),
+    last' = OnStart,
+  }
+
+  action drafting_to_empty_on_clear = all { state == Drafting, enter(Empty, OnClear) }
+  action drafting_to_sending_on_send = all { state == Drafting, enter(Sending, OnSend) }
+  action empty_to_drafting_on_typed = all { state == Empty, enter(Drafting, OnTyped) }
+  action failed_to_drafting_on_typed = all { state == Failed, enter(Drafting, OnTyped) }
+  action failed_to_empty_on_clear = all { state == Failed, enter(Empty, OnClear) }
+  action failed_to_sending_on_send = all { state == Failed, enter(Sending, OnSend) }
+  action sending_to_empty_on_sent_ok = all { state == Sending, enter(Empty, OnSentOk) }
+  action sending_to_failed_on_sent_error = all { state == Sending, enter(Failed, OnSentError) }
+  action drafting_stays_on_typed = all { state == Drafting, state' = state, running' = running, last' = OnTyped }
+  action empty_stays_on_clear = all { state == Empty, state' = state, running' = running, last' = OnClear }
+
+  action step = any {
+    drafting_to_empty_on_clear,
+    drafting_to_sending_on_send,
+    empty_to_drafting_on_typed,
+    failed_to_drafting_on_typed,
+    failed_to_empty_on_clear,
+    failed_to_sending_on_send,
+    sending_to_empty_on_sent_ok,
+    sending_to_failed_on_sent_error,
+    drafting_stays_on_typed,
+    empty_stays_on_clear,
+  }
+
+  val resources_owned = running.subseteq(owned(state))
+  val can_move = finals.contains(state) or movable.contains(state)
+  val inv = resources_owned and can_move
+}

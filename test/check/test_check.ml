@@ -9,6 +9,8 @@ let show_input show_event : (_, _) Check.input -> string = function
       show_event event
   | Check.Props _ ->
       "new props"
+  | Check.In_child _ ->
+      "child"
 
 let print report = Format.asprintf "%a" Check.pp_report report
 
@@ -424,6 +426,8 @@ let show_app formatter : _ Check.app_event -> unit = function
       Format.pp_print_string formatter "back"
   | Check.Browser_forward ->
       Format.pp_print_string formatter "forward"
+  | Check.In_child _ ->
+      Format.pp_print_string formatter "child"
 
 let good_links =
   [
@@ -1526,6 +1530,8 @@ let test_props_input () =
              "event"
          | Check.Props number ->
              "props " ^ string_of_int number
+         | Check.In_child _ ->
+             "child"
        )
        (inputs violation)
     )

@@ -110,6 +110,8 @@ let test_create_reaches_submitting () =
                     Format.asprintf "%a" pp_create_event event
                 | Check.Props _ ->
                     "props"
+                | Check.In_child _ ->
+                    "child"
               )
               (Check.steps first.counterexample)
            )
@@ -163,7 +165,7 @@ let round_trip_path_events name machine (report : _ Check.report) =
             match step.input with
             | Check.Event event ->
                 Some event
-            | Check.Props _ ->
+            | Check.Props _ | Check.In_child _ ->
                 None
           )
           steps

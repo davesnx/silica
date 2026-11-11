@@ -1,0 +1,32 @@
+machine router
+initial /
+state /
+state /*
+state /about
+state /edit
+state /item/:int
+edge / -> /* on "url changed"
+edge / -> /about on "url changed"
+edge / -> /edit on "url changed"
+edge / -> /item/:int on "url changed"
+edge /* -> / on "url changed"
+edge /* -> /about on "url changed"
+edge /* -> /edit on "url changed"
+edge /* -> /item/:int on "url changed"
+edge /about -> / on "url changed"
+edge /about -> /* on "url changed"
+edge /about -> /edit on "url changed"
+edge /about -> /item/:int on "url changed"
+edge /edit -> / on "url changed"
+edge /edit -> /* on "url changed"
+edge /edit -> /about on "url changed"
+edge /edit -> /item/:int on "url changed"
+edge /item/:int -> / on "url changed"
+edge /item/:int -> /* on "url changed"
+edge /item/:int -> /about on "url changed"
+edge /item/:int -> /edit on "url changed"
+stay / on "url changed"
+stay /* on "url changed"
+stay /about on "url changed"
+stay /edit on "url changed"
+stay /item/:int on "url changed"

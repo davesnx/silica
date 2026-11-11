@@ -1,0 +1,17 @@
+machine issue-detail
+initial loading
+state loading
+  invoke /api/issues
+state failed
+state not_found
+state ready
+  invoke live:issues
+  hold keys
+edge failed -> loading on props retry
+edge loading -> failed on "loaded error"
+edge loading -> loading on props
+edge loading -> not_found on "loaded ok"
+edge loading -> ready on "loaded ok"
+edge not_found -> loading on props
+edge ready -> loading on props
+stay ready on cancel_edit create_key edit "menu_open true" "picker open" reconnect reconnected save updated

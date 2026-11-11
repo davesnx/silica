@@ -76,7 +76,12 @@ type sample = Check_model.sample
 let answers = Check_model.answers
 let states = Check_model.states
 
-type ('p, 'e) input = ('p, 'e) Check_model.input = Event of 'e | Props of 'p
+type child_event = Check_model.child_event
+
+type ('p, 'e) input = ('p, 'e) Check_model.input =
+  | Event of 'e
+  | Props of 'p
+  | In_child of child_event
 
 type 's app_state = 's Check_model.app_state = {
   router : 's;
@@ -89,15 +94,150 @@ type 'e app_event = 'e Check_model.app_event =
   | Link of Url.t
   | Browser_back
   | Browser_forward
+  | In_child of child_event
+
+let property_finding ~name ~hint ~condition context =
+  if condition context then
+    []
+  else
+    [
+      {
+        Check_rules.rule = name;
+        element = None;
+        values = [ ("property", name) ];
+        custom =
+          Some
+            ( Check_rules.property_message,
+              Option.value hint ~default:Check_rules.property_hint
+            );
+      };
+    ]
+
+type child = Check_model.child
+
+let child ?(samples = []) ?(inputs = fun _ -> []) ?(within = fun _ -> true)
+    ?(max_instances = 2) ?(properties = []) (component : (_, _, _) Component.t)
+    =
+  if max_instances < 1 then
+    raise
+      (Invalid_check
+         ("the child "
+         ^ Machine.id component.machine
+         ^ " has max_instances below 1: give at least 1"
+         )
+      );
+  let always =
+    List.map
+      (function
+        | Always { name; hint; condition } ->
+            (name, hint, condition)
+        | Never_after { name; _ } | Leads_to { name; _ } ->
+            raise
+              (Invalid_check
+                 ("the property " ^ name ^ " of the child "
+                 ^ Machine.id component.machine
+                 ^ " is temporal: a child takes only Check.always; put \
+                    leads_to and never_after on the check of the parent or of \
+                    the child alone"
+                 )
+              )
+        )
+      properties
+  in
+  Check_model.Child
+    {
+      component;
+      samples;
+      inputs;
+      within;
+      max_instances;
+      names = List.map property_name properties;
+      check =
+        (fun ~snapshot ~view ~event ~name ->
+          List.concat_map
+            (fun (property, hint, condition) ->
+              property_finding ~name:property ~hint ~condition
+                {
+                  snapshot;
+                  view = Lazy.from_val view;
+                  event;
+                  name;
+                  from = None;
+                  actions = Lazy.from_val [];
+                }
+            )
+            always
+        );
+    }
+
+let lift_property own_of own_actions property =
+  let lift condition context =
+    condition
+      {
+        snapshot = context.snapshot;
+        view = lazy (Check_tree.restrict own_of (Lazy.force context.view));
+        event = Option.bind context.event own_of;
+        name = context.name;
+        from = context.from;
+        actions = lazy (!own_actions (Lazy.force context.actions));
+      }
+  in
+  match property with
+  | Always { name; hint; condition } ->
+      Always { name; hint; condition = lift condition }
+  | Never_after { name; hint; after; never } ->
+      Never_after { name; hint; after = lift after; never = lift never }
+  | Leads_to { name; hint; from; to_ } ->
+      Leads_to { name; hint; from = lift from; to_ = lift to_ }
+
+let joint_actions () =
+  ref (fun _ -> invalid_arg "Check: the joint model is not built yet")
+
+let child_names children =
+  List.concat_map (fun (Check_model.Child listed) -> listed.names) children
+
+let joint_id root children =
+  String.concat "+"
+    (root
+    :: List.map
+         (fun (Check_model.Child listed) -> Machine.id listed.component.machine)
+         children
+    )
+
+let listed_ids children =
+  List.map
+    (fun (Check_model.Child listed) -> Machine.id listed.component.machine)
+    children
+
+let child_json children (Check_model.Child_event { witness; event; _ }) =
+  List.find_map
+    (fun (Check_model.Child listed) ->
+      match
+        Type.Id.provably_equal witness (Machine.type_id listed.component.machine)
+      with
+      | Some Type.Equal -> (
+          match Machine.event_codec listed.component.machine with
+          | Ok (codec : _ Codec.t) ->
+              Some (codec.encode event)
+          | Error _ ->
+              None
+        )
+      | None ->
+          None
+    )
+    children
 
 type ('s, 'ev) t =
   | Check : {
       id : string Lazy.t;
+      root : string Lazy.t;
+      listed : string list;
       build : unit -> ('n, 's, 'ev, 'e) Check_model.model;
       max_states : int;
       max_violations : int;
       within : 's -> bool;
       properties : ('s, 'e) property list;
+      names : string list;
       allow : allowance list;
       state_json : 's -> Silica_json.Json.t option;
       input_json : 'ev -> Silica_json.Json.t option;
@@ -126,7 +266,7 @@ let component_json machine =
     function
     | (Event event : (_, _) input) ->
         encode (Machine.event_codec machine) event
-    | Props _ ->
+    | Props _ | In_child _ ->
         None
   )
 
@@ -158,6 +298,39 @@ let component_input_of machine (record : Transition.t) =
   | _, _, None ->
       Ok None
 
+let joint_input_of ~into children own_input_of (record : Transition.t) =
+  match
+    List.find_opt
+      (fun (Check_model.Child listed) ->
+        Machine.id listed.component.machine = record.machine
+      )
+      children
+  with
+  | Some (Check_model.Child listed) -> (
+      let machine = listed.component.machine in
+      match record.data with
+      | Some json ->
+          Result.map
+            (fun event ->
+              Some
+                (into
+                   (Check_model.Child_event
+                      {
+                        instance = record.instance;
+                        machine = record.machine;
+                        witness = Machine.type_id machine;
+                        event;
+                      }
+                   )
+                )
+            )
+            (decode_at record (Machine.event_codec machine) json)
+      | None ->
+          Ok None
+    )
+  | None ->
+      own_input_of record
+
 let subject_of machine =
   match Machine.default_props machine with
   | Some _ ->
@@ -168,27 +341,82 @@ let subject_of machine =
 let component ?(max_states = 100_000) ?(max_violations = 50)
     ?(within = fun _ -> true) ?(inputs = fun _ -> []) ?(props = [])
     ?(samples = []) ?(arrivals = 2) ?(keys = Check_rules.default_keys)
-    ?(properties = []) ?(allow = []) (component : (_, _, _) Component.t) =
-  Check
-    {
-      id = lazy (Machine.id component.machine);
-      build =
-        (fun () ->
-          Check_model.component_model ~client_only:false ~keys ~inputs ~props
-            ~samples ~arrivals component
-        );
-      max_states;
-      max_violations;
-      within;
-      properties;
-      allow;
-      state_json = fst (component_json component.machine);
-      input_json = snd (component_json component.machine);
-      machine_json = fst (component_json component.machine);
-      input_of = component_input_of component.machine;
-      url = (fun _ -> None);
-      subject = subject_of component.machine;
-    }
+    ?(children = []) ?(properties = []) ?(allow = [])
+    (component : (_, _, _) Component.t) =
+  let flat () =
+    Check_model.component_model ~client_only:false ~keys ~inputs ~props ~samples
+      ~arrivals component
+  in
+  let own_of : (_, _) input -> _ = function
+    | Event event ->
+        Some event
+    | Props _ | In_child _ ->
+        None
+  in
+  let state_json, input_json = component_json component.machine in
+  let root = Machine.id component.machine in
+  match children with
+  | [] ->
+      Check
+        {
+          id = lazy root;
+          root = lazy root;
+          listed = [];
+          build = flat;
+          max_states;
+          max_violations;
+          within;
+          properties;
+          names = [];
+          allow;
+          state_json;
+          input_json;
+          machine_json = state_json;
+          input_of = component_input_of component.machine;
+          url = (fun _ -> None);
+          subject = subject_of component.machine;
+        }
+  | children ->
+      let own_actions = joint_actions () in
+      let into child_event : (_, _) input = In_child child_event in
+      Check
+        {
+          id = lazy (joint_id root children);
+          root = lazy root;
+          listed = listed_ids children;
+          build =
+            (fun () ->
+              Check_tree.joint ~own_actions ~keys ~arrivals
+                ~own:(fun event : (_, _) input -> Event event)
+                ~own_of ~into
+                ~out_of:(function
+                  | (In_child child_event : (_, _) input) ->
+                      Some child_event
+                  | Event _ | Props _ ->
+                      None
+                  )
+                ~children (flat ())
+            );
+          max_states;
+          max_violations;
+          within;
+          properties = List.map (lift_property own_of own_actions) properties;
+          names = child_names children;
+          allow;
+          state_json;
+          input_json =
+            (function
+            | (In_child child_event : (_, _) input) ->
+                child_json children child_event
+            | input ->
+                input_json input
+            );
+          machine_json = state_json;
+          input_of =
+            joint_input_of ~into children (component_input_of component.machine);
+          url = (fun _ -> None);
+          subject = subject_of component.machine;
+        }
 
 let live ?(max_states = 100_000) ?(max_violations = 50)
     ?(within = fun _ -> true) ?(inputs = fun _ -> []) ?(samples = [])
@@ -197,6 +425,8 @@ let live ?(max_states = 100_000) ?(max_violations = 50)
   Check
     {
       id = lazy (Machine.id live.component.machine);
+      root = lazy (Machine.id live.component.machine);
+      listed = [];
       build =
         (fun () ->
           Check_model.component_model ~client_only:true ~keys ~inputs ~props:[]
@@ -206,6 +436,7 @@ let live ?(max_states = 100_000) ?(max_violations = 50)
       max_violations;
       within;
       properties;
+      names = [];
       allow;
       state_json = fst (component_json live.component.machine);
       input_json = snd (component_json live.component.machine);
@@ -254,7 +485,7 @@ let app_input_json ~routes ~print root = function
       Option.bind (root_machine ~routes ~print root) (fun machine ->
           encode (Machine.event_codec machine) event
       )
-  | Link _ | Browser_back | Browser_forward ->
+  | Link _ | Browser_back | Browser_forward | In_child _ ->
       None
 
 let app_input_of ~routes ~print root (record : Transition.t) =
@@ -287,44 +518,99 @@ let app_input_of ~routes ~print root (record : Transition.t) =
 
 let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ?(max_history = 4) ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
-    ?(keys = Check_rules.default_keys) ?(properties = []) ?(allow = []) ~routes
-    ~parse ~print ?is_not_found ~url_event root =
-  Check
-    {
-      id =
-        lazy
-          ( match routes with
-          | [] ->
-              raise
-                (Invalid_check "Check.app needs at least one route in ~routes")
-          | first :: _ ->
-              Machine.id (root (print first)).Component.machine
-          );
-      build =
-        (fun () ->
-          Check_model.app_model ~keys ~max_history ~inputs ~samples ~arrivals
-            ~routes ~parse ~print ?is_not_found ~url_event root
-        );
-      max_states;
-      max_violations;
-      within;
-      properties;
-      allow;
-      state_json = app_state_json ~routes ~print root;
-      input_json = app_input_json ~routes ~print root;
-      machine_json =
-        (fun (state : _ app_state) ->
-          Option.bind (root_machine ~routes ~print root) (fun machine ->
-              encode (Machine.state_codec machine) state.router
-          )
-        );
-      input_of = app_input_of ~routes ~print root;
-      url =
-        (fun (state : _ app_state) ->
-          Option.map Url.to_string (List.nth_opt state.history state.index)
-        );
-      subject = Routed;
-    }
+    ?(keys = Check_rules.default_keys) ?(pages = []) ?(properties = [])
+    ?(allow = []) ~routes ~parse ~print ?is_not_found ~url_event root =
+  let id =
+    lazy
+      ( match routes with
+      | [] ->
+          raise (Invalid_check "Check.app needs at least one route in ~routes")
+      | first :: _ ->
+          Machine.id (root (print first)).Component.machine
+      )
+  in
+  let flat () =
+    Check_model.app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes
+      ~parse ~print ?is_not_found ~url_event root
+  in
+  let own_of : _ app_event -> _ = function
+    | Event event ->
+        Some event
+    | Link _ | Browser_back | Browser_forward | In_child _ ->
+        None
+  in
+  let state_json = app_state_json ~routes ~print root
+  and input_json = app_input_json ~routes ~print root
+  and machine_json (state : _ app_state) =
+    Option.bind (root_machine ~routes ~print root) (fun machine ->
+        encode (Machine.state_codec machine) state.router
+    )
+  and url (state : _ app_state) =
+    Option.map Url.to_string (List.nth_opt state.history state.index)
+  in
+  match pages with
+  | [] ->
+      Check
+        {
+          id;
+          root = id;
+          listed = [];
+          build = flat;
+          max_states;
+          max_violations;
+          within;
+          properties;
+          names = [];
+          allow;
+          state_json;
+          input_json;
+          machine_json;
+          input_of = app_input_of ~routes ~print root;
+          url;
+          subject = Routed;
+        }
+  | pages ->
+      let own_actions = joint_actions () in
+      let into child_event : _ app_event = In_child child_event in
+      Check
+        {
+          id = lazy (joint_id (Lazy.force id) pages);
+          root = id;
+          listed = listed_ids pages;
+          build =
+            (fun () ->
+              Check_tree.joint ~own_actions ~keys ~arrivals
+                ~own:(fun event -> Event event)
+                ~own_of ~into
+                ~out_of:(function
+                  | In_child child_event ->
+                      Some child_event
+                  | Event _ | Link _ | Browser_back | Browser_forward ->
+                      None
+                  )
+                ~link:(fun href -> Link (Url.of_string href))
+                ~children:pages (flat ())
+            );
+          max_states;
+          max_violations;
+          within;
+          properties = List.map (lift_property own_of own_actions) properties;
+          names = child_names pages;
+          allow;
+          state_json;
+          input_json =
+            (function
+            | (In_child child_event : _ app_event) ->
+                child_json pages child_event
+            | input ->
+                input_json input
+            );
+          machine_json;
+          input_of =
+            joint_input_of ~into pages (app_input_of ~routes ~print root);
+          url;
+          subject = Routed;
+        }
 
 type cause = Check_model.cause =
   | View of {
@@ -386,6 +672,7 @@ type ('s, 'ev) report = {
   allowed : (allowance * int) list;
   not_explored : string list;
   children : children;
+  machines : (string * int) list;
   specs : Spec.t list;
   paths : (string * 'ev step list) list;
   views : (string * string) list;
@@ -400,8 +687,8 @@ type rule = Check_rules.rule = {
 
 let rules = Check_rules.rules
 
-let validate ~properties allow =
-  let names = List.map property_name properties in
+let validate ~properties ~children allow =
+  let names = List.map property_name properties @ children in
   List.iter
     (fun (allowance : allowance) ->
       if String.trim allowance.reason = "" then
@@ -573,8 +860,10 @@ let temporal_violations (type n s ev e)
   let steps links =
     List.map
       (fun (link : Check_temporal.link) ->
+        let target = graph.targets.(link.edge) in
         step_of link.source graph.moves.(link.edge)
-          names.(graph.targets.(link.edge))
+          ~next:(Some (node target))
+          ~target:names.(target)
       )
       links
   in
@@ -762,6 +1051,10 @@ let rules_of (type n e ev) (model : (n, _, ev, e) Check_model.model) properties
     ("view", fun _ view _ _ -> Check_accessibility.view_rules view);
     ("view", dead_end);
     ("machine", fun node view _ _ -> model.state_rules node view);
+    ( "child",
+      fun node view _ (arrival : (_, _) Check_search.arrival) ->
+        model.tree.rules node view arrival.event
+    );
   ]
   @ List.filter_map
       (function
@@ -773,7 +1066,7 @@ let rules_of (type n e ev) (model : (n, _, ev, e) Check_model.model) properties
       properties
 
 let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
-  validate ~properties:check.properties check.allow;
+  validate ~properties:check.properties ~children:check.names check.allow;
   let model = check.build () in
   let rules = rules_of model check.properties in
   let temporal =
@@ -787,22 +1080,52 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
       ~within:(fun node -> check.within node)
       ~allow:check.allow ~graph:(temporal <> [])
   in
-  let step_of parent (move : _ Check_model.move) target =
+  let step_of parent (move : _ Check_model.move) ~next ~target =
     let node = Dynarray.get result.nodes parent in
-    {
-      input = move.event;
-      event = model.event_name move.event;
-      cause = model.cause node (model.view node) move;
-      instance = "0";
-      machine = model.machine;
-      from = model.name node;
-      target;
-    }
+    let cause = model.cause node (model.view node) move in
+    match model.tree.actor move.event with
+    | None ->
+        {
+          input = move.event;
+          event = model.event_name move.event;
+          cause;
+          instance = "0";
+          machine = model.machine;
+          from = model.name node;
+          target;
+        }
+    | Some (instance, machine) ->
+        let state node =
+          Option.value ~default:"(ended)" (model.tree.state_of node instance)
+        in
+        let next =
+          match next with
+          | Some next ->
+              Some next
+          | None -> (
+              match model.step node move with
+              | next, _, _ ->
+                  Some next
+              | exception _ ->
+                  None
+            )
+        in
+        {
+          input = move.event;
+          event = model.event_name move.event;
+          cause;
+          instance;
+          machine;
+          from = state node;
+          target =
+            (match next with Some next -> state next | None -> state node);
+        }
   in
   let path index =
     List.map
       (fun (parent, move, child) ->
-        step_of parent move (model.name (Dynarray.get result.nodes child))
+        let next = Dynarray.get result.nodes child in
+        step_of parent move ~next:(Some next) ~target:(model.name next)
       )
       (Check_search.path result.parents index)
   in
@@ -815,13 +1138,22 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
         let last =
           match (found.prefix, found.last) with
           | Some index, Some (move, target) ->
-              [ step_of index move target ]
+              [ step_of index move ~next:None ~target ]
           | _ ->
               []
         in
+        let message =
+          match List.rev last with
+          | { instance; machine; from; _ } :: _ when instance <> "0" ->
+              Printf.sprintf
+                "%s The child %s at instance %s took this step in its state %s."
+                found.message machine instance from
+          | _ ->
+              found.message
+        in
         {
           rule = found.rule;
-          message = found.message;
+          message;
           hint = found.hint;
           counterexample = Path (prefix @ last);
           state = found.state;
@@ -881,8 +1213,16 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
     violations;
     unreached = List.rev unreached;
     allowed;
-    not_explored = result.not_explored;
+    not_explored =
+      List.sort_uniq String.compare (result.not_explored @ model.tree.not_run ());
     children = result.children;
+    machines =
+      ( match model.tree.counts () with
+      | [] ->
+          [ (model.machine, Dynarray.length result.nodes) ]
+      | counts ->
+          counts
+      );
     specs = model.specs ();
     paths = List.map (fun (name, index) -> (name, path index)) result.firsts;
     views = result.views;
@@ -903,14 +1243,31 @@ let pp_lines formatter text =
     (String.split_on_char '\n' text)
 
 let pp_step formatter index step =
-  Format.fprintf formatter "@,  %d. %s -> %s: %s, by %s" (index + 1) step.from
-    step.target
+  Format.fprintf formatter "@,  %d. %s%s -> %s: %s, by %s" (index + 1)
+    ( if step.instance = "0" then
+        ""
+      else
+        Printf.sprintf "[%s at %s] " step.machine step.instance
+    )
+    step.from step.target
     (match step.event with "" -> "(unnamed event)" | name -> name)
     (describe_cause step.cause)
 
 let pp_report formatter report =
   Format.fprintf formatter "@[<v>%s: %d states, %d transitions" report.machine
     report.states report.transitions;
+  ( match report.machines with
+  | [] | [ _ ] ->
+      ()
+  | machines ->
+      Format.fprintf formatter "@,machines: %s"
+        (String.concat ", "
+           (List.map
+              (fun (machine, count) -> Printf.sprintf "%s %d" machine count)
+              machines
+           )
+        )
+  );
   ( if not report.complete then
       let message, hint =
         Check_rules.render
@@ -1057,7 +1414,7 @@ type ('s, 'ev, 'r) consumer = {
 let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
     ~(prefer : _ -> bool) (inputs : ev wanted list)
     (consumer : (s, ev, r) consumer) : (r, exn) result =
-  validate ~properties:check.properties check.allow;
+  validate ~properties:check.properties ~children:check.names check.allow;
   let model = check.build () in
   let rules = rules_of model check.properties in
   let failures ~state (findings : Check_rules.finding list) =
@@ -1151,16 +1508,32 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
       next;
     }
   in
-  let step_of node view (move : _ Check_model.move) target =
-    {
-      input = move.event;
-      event = model.event_name move.event;
-      cause = model.cause node view move;
-      instance = "0";
-      machine = model.machine;
-      from = model.name node;
-      target;
-    }
+  let step_of ?next node view (move : _ Check_model.move) target =
+    let step =
+      {
+        input = move.event;
+        event = model.event_name move.event;
+        cause = model.cause node view move;
+        instance = "0";
+        machine = model.machine;
+        from = model.name node;
+        target;
+      }
+    in
+    match model.tree.actor move.event with
+    | None ->
+        step
+    | Some (instance, machine) ->
+        let state node =
+          Option.value ~default:"(ended)" (model.tree.state_of node instance)
+        in
+        {
+          step with
+          instance;
+          machine;
+          from = state node;
+          target = state (Option.value next ~default:node);
+        }
   in
   let choose node view moves (wanted : ev wanted) =
     let candidates =
@@ -1293,7 +1666,8 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
                     in
                     let reached =
                       point
-                        ~step:(Some (step_of node view move (model.name next)))
+                        ~step:
+                          (Some (step_of ~next node view move (model.name next)))
                         ~before:(Some (node, view, move))
                         ~host ~how ~extra:(ignored @ actions) next
                     in
@@ -1597,7 +1971,12 @@ let check_cause : Transition.cause -> cause option = function
   | Start | Child _ | Url _ | Preload _ | Ended ->
       None
 
-let root_steps (trace : Trace.t) =
+let root_steps ?(listed = []) (trace : Trace.t) =
+  let of_listed instance =
+    List.exists
+      (fun machine -> String.ends_with ~suffix:(":" ^ machine) instance)
+      listed
+  in
   let root =
     List.find_map
       (fun (record : Transition.t) ->
@@ -1619,7 +1998,17 @@ let root_steps (trace : Trace.t) =
         ( start,
           List.filter
             (fun (record : Transition.t) ->
-              record.instance = start.instance
+              (record.instance = start.instance
+              || String.starts_with ~prefix:(start.instance ^ "/")
+                   record.instance
+                 && of_listed record.instance && record.cause <> Props
+              )
+              && ( match record.cause with
+                | Child { instance } ->
+                    not (of_listed instance)
+                | _ ->
+                    true
+                )
               &&
               match record.change with
               | Started | Resumed | Ended ->
@@ -1651,13 +2040,15 @@ let loop_start (trace : Trace.t) records =
   )
 
 let replay_trace check (trace : Trace.t) =
-  if trace.header.root <> id check then
+  let (Check { root; listed; _ }) = check in
+  if trace.header.root <> Lazy.force root then
     Error
       (Printf.sprintf "the trace is a run of %s, and the check is of %s"
-         trace.header.root (id check)
+         trace.header.root (Lazy.force root)
       )
   else
-    Result.bind (root_steps trace) (fun ((start : Transition.t), records) ->
+    Result.bind (root_steps ~listed trace)
+      (fun ((start : Transition.t), records) ->
         Result.map
           (fun wanted ->
             match
@@ -1751,6 +2142,19 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
           in
           match (point.replayed.step, point.before) with
           | Some step, Some (node, _, move) ->
+              let common =
+                if step.instance = "0" then
+                  common
+                else
+                  {
+                    common with
+                    instance = step.instance;
+                    machine = step.machine;
+                    target = step.target;
+                    props = None;
+                    snapshot = None;
+                  }
+              in
               {
                 common with
                 from = step.from;
@@ -2009,22 +2413,22 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
           )
   in
   let* () =
-    if trace.header.root = id subject then
+    if trace.header.root = Lazy.force check.root then
       Ok ()
     else
       Error
         (Printf.sprintf "the trace is a run of %s, and the check is of %s"
-           trace.header.root (id subject)
+           trace.header.root (Lazy.force check.root)
         )
   in
-  let* start, records = root_steps trace in
+  let* start, records = root_steps ~listed:check.listed trace in
   let* wanted = wanted_of subject records in
   let component =
     match component with
     | Some component ->
         component
     | None -> (
-        Check_script.module_of_id (id subject)
+        Check_script.module_of_id (Lazy.force check.root)
         ^
         match check.subject with
         | Routed ->
@@ -2088,7 +2492,7 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
               ("the replay of the trace in the check no longer breaks " ^ rule
              ^ "; run the replay command to see each step"
               )
-        | Some failure ->
+        | Some failure -> (
             let view_rule =
               List.exists
                 (fun (known : rule) ->
@@ -2123,19 +2527,38 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
                   else
                     (actions, Not_this_view last.replayed.view)
             in
-            Ok
-              (Check_script.to_string
-                 {
-                   component;
-                   mount;
-                   actions;
-                   rule;
-                   state = last.replayed.state_name;
-                   message = failure.message;
-                   hint = failure.hint;
-                   ending;
-                 }
-              )
+            let unrun =
+              match last.next with
+              | Some (view, _) ->
+                  Check_rules.not_explored_of_view view
+              | None ->
+                  []
+            in
+            match ending with
+            | (Loop _ | Waits _ | Not_this_view _) when unrun <> [] ->
+                Error
+                  ("compares the view of the last step, which holds what the \
+                    check does not run ("
+                  ^ String.concat ", " (List.sort_uniq String.compare unrun)
+                  ^ "); Silica_memory paints them, so the views cannot match. \
+                     List those components with Check.child in ~children or \
+                     ~pages, or check the property on a check that runs them"
+                  )
+            | _ ->
+                Ok
+                  (Check_script.to_string
+                     {
+                       component;
+                       mount;
+                       actions;
+                       rule;
+                       state = last.replayed.state_name;
+                       message = failure.message;
+                       hint = failure.hint;
+                       ending;
+                     }
+                  )
+          )
       )
   in
   match

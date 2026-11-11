@@ -1,0 +1,29 @@
+state loading
+path
+  (start)
+view
+  heading "Comments" level=2
+  text "Loading comments..."
+
+state ready
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01 Mine"
+      button "Edit" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state failed
+path
+  loading -> failed on loaded error, by the answer of the call comments/loading//api/comments 1 to /api/comments
+view
+  heading "Comments" level=2
+  alert
+    text "Could not load the comments."
+  button "Try again" [press]

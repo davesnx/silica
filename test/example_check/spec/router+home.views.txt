@@ -1,0 +1,41 @@
+state /
+path
+  (start)
+view
+  heading "Silica example" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  component todo
+  component votes
+  component vote
+  heading "Live counter" level=2
+  island counter
+
+state /item/:int
+path
+  / -> /item/:int on url changed, by an input
+view
+  component item
+
+state /about
+path
+  / -> /about on url changed, by an input
+view
+  component about
+
+state /edit
+path
+  / -> /edit on url changed, by an input
+view
+  component edit
+
+state /*
+path
+  / -> /* on url changed, by an input
+view
+  component not_found

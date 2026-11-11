@@ -39,6 +39,24 @@ let props (type p s e) children (component : (p, s, e) Component.t) : p list =
     [] children
   |> List.rev
 
+let same_seen (Seen (first, first_props)) (Seen (second, second_props)) =
+  match
+    Type.Id.provably_equal
+      (Machine.type_id first.Component.machine)
+      (Machine.type_id second.Component.machine)
+  with
+  | Some Type.Equal -> (
+      match first_props = second_props with
+      | same ->
+          same
+      | exception Invalid_argument _ ->
+          false
+    )
+  | None ->
+      false
+
+let seen_machine (Seen (component, _)) = Machine.id component.Component.machine
+
 let children_of_view node =
   Check_rules.collect
     (function
@@ -65,6 +83,15 @@ type cause =
   | Props
   | Child of { instance : string; machine : string }
   | Navigation
+
+type child_event =
+  | Child_event : {
+      instance : string;
+      machine : string;
+      witness : ('p * 's * 'e) Type.Id.t;
+      event : 'e;
+    }
+      -> child_event
 
 type phase = Connecting | Up | Down | Ended
 type sub = { phase : phase; arrivals : int; last : int option; dropped : bool }
@@ -627,6 +654,27 @@ let unreached_of recorder machine =
     )
     (Option.value ~default:[] (Machine.states machine))
 
+type ('n, 'ev, 'e) tree = {
+  actor : 'ev -> (string * string) option;
+  state_of : 'n -> string -> string option;
+  rules : 'n -> 'e Node.t -> 'ev option -> Check_rules.finding list;
+  inside : 'n -> bool;
+  not_run : unit -> string list;
+  counts : unit -> (string * int) list;
+  navigate : 'n -> 'e Action.host list -> 'n * 'e Action.host list;
+}
+
+let flat () =
+  {
+    actor = (fun _ -> None);
+    state_of = (fun _ _ -> None);
+    rules = (fun _ _ _ -> []);
+    inside = (fun _ -> true);
+    not_run = (fun () -> []);
+    counts = (fun () -> []);
+    navigate = (fun node _ -> (node, []));
+  }
+
 type ('n, 's, 'ev, 'e) model = {
   machine : string;
   initial : 's;
@@ -652,9 +700,30 @@ type ('n, 's, 'ev, 'e) model = {
   unreached : unit -> string list;
   answer : 'n -> 'ev move -> Silica_json.Json.t option;
   props_json : 'n -> Silica_json.Json.t option;
+  tree : ('n, 'ev, 'e) tree;
 }
 
-type ('p, 'e) input = Event of 'e | Props of 'p
+type ('p, 'e) input = Event of 'e | Props of 'p | In_child of child_event
+
+type ('p, 's, 'e) listed = {
+  component : ('p, 's, 'e) Component.t;
+  samples : sample list;
+  inputs : 's -> 'e list;
+  within : 's -> bool;
+  max_instances : int;
+  names : string list;
+  check :
+    snapshot:'s ->
+    view:'e Node.t ->
+    event:'e option ->
+    name:string ->
+    Check_rules.finding list;
+}
+
+type child = Child : ('p, 's, 'e) listed -> child
+
+let not_in_child () =
+  invalid_arg "Check_model: a flat model got the event of a child instance"
 
 let owner_rules machine world =
   let owned =
@@ -803,11 +872,15 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
     | Props props ->
         let s, actions, how = change_props recorder machine world props in
         (exec { world with s; props } actions, actions, how)
+    | In_child _ ->
+        not_in_child ()
   in
   let cause world view move =
     match (move.event : (_, _) input) with
     | Props _ ->
         (Props : cause)
+    | In_child _ ->
+        not_in_child ()
     | Event event -> (
         match move.via with
         | By_view ->
@@ -833,8 +906,11 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
           Machine.event_name machine event
       | Props _ ->
           "props"
+      | In_child _ ->
+          not_in_child ()
       );
-    event_of = (function Event event -> Some event | Props _ -> None);
+    event_of =
+      (function Event event -> Some event | Props _ | In_child _ -> None);
     cause;
     state_rules =
       (fun world view ->
@@ -873,7 +949,7 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
         match (move.event : (_, _) input) with
         | Event event ->
             answer_json host world move.via event
-        | Props _ ->
+        | Props _ | In_child _ ->
             None
       );
     props_json =
@@ -884,6 +960,7 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
              (Machine.props_codec machine)
           )
       );
+    tree = flat ();
   }
 
 type 's app_state = { router : 's; history : Url.t list; index : int }
@@ -893,6 +970,7 @@ type 'e app_event =
   | Link of Url.t
   | Browser_back
   | Browser_forward
+  | In_child of child_event
 
 let rec nth items index =
   match items with
@@ -914,7 +992,7 @@ let link_problem ?is_not_found ~parse ~print href =
   match parse url with
   | snapshot ->
       let printed = Url.to_string (print snapshot) in
-      if printed <> Url.to_string url then
+      if printed <> Url.to_string { url with hash = None } then
         Some
           ("which is not canonical: the router prints that route as " ^ printed)
       else if
@@ -1014,7 +1092,7 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
           (resource_moves host world)
       @ List.map
           (fun href -> user (Link (Url.of_string href)))
-          (Check_rules.links view)
+          (Check_rules.reachable_links view)
       @ ( if world.idx > 0 then
             [ user Browser_back ]
           else
@@ -1046,6 +1124,8 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
         navigate [ Action.Run Action.Back ]
     | Browser_forward ->
         navigate [ Action.Run Action.Forward ]
+    | In_child _ ->
+        not_in_child ()
   in
   let cause world view move =
     match move.event with
@@ -1065,6 +1145,8 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
       )
     | Browser_back | Browser_forward ->
         Navigation
+    | In_child _ ->
+        not_in_child ()
   in
   let route_findings world =
     if round_trips ~parse ~print world.s then
@@ -1113,6 +1195,8 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
           "back"
       | Browser_forward ->
           "forward"
+      | In_child _ ->
+          not_in_child ()
       );
     event_of = (function Event event -> Some event | _ -> None);
     cause;
@@ -1147,8 +1231,17 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
         match move.event with
         | Event event ->
             answer_json host world move.via event
-        | Link _ | Browser_back | Browser_forward ->
+        | Link _ | Browser_back | Browser_forward | In_child _ ->
             None
       );
     props_json = (fun _ -> None);
+    tree =
+      {
+        (flat ()) with
+        navigate =
+          (fun world actions ->
+            let world, actions = apply 0 (world, []) actions in
+            (world, actions)
+          );
+      };
   }

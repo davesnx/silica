@@ -27,3 +27,16 @@
   (glob_files_rec spec/**))
  (action
   (run ./main.exe golden spec)))
+
+(executable
+ (name joint_traces)
+ (modules joint_traces)
+ (libraries
+  silica
+  silica.check
+  silica.memory
+  linear_checks
+  silica_linear_app_native))
+
+(cram
+ (deps joint_traces.exe))

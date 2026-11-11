@@ -144,7 +144,15 @@ let finding ~rule ~values ~state =
 let report ?(trace_files = []) check (report : (_, _) Check.report) =
   record
     [
-      ("id", string report.machine);
+      ("id", string (Check.id check));
+      ("machine", string report.machine);
+      ( "machines",
+        list
+          (fun (machine, states) ->
+            record [ ("machine", string machine); ("states", int states) ]
+          )
+          report.machines
+      );
       ("passed", bool (Check.passed report));
       ("complete", bool report.complete);
       ("truncated", bool report.truncated);

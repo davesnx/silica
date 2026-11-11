@@ -1,0 +1,15 @@
+machine edit
+initial clean
+state clean
+state asking
+  hold block
+state dirty
+  hold block
+edge asking -> clean on leave
+edge asking -> dirty on stay
+edge clean -> dirty on draft
+edge dirty -> asking on attempt
+edge dirty -> clean on draft save
+stay clean on save
+stay asking on attempt save
+stay dirty on draft

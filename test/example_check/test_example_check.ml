@@ -142,7 +142,7 @@ let round_trips name (machine : (unit, _, _) Silica.Machine.t) check =
                  let state, _, _ = Silica.Machine.step machine () state event in
                  round_trip name state_codec state;
                  state
-             | Props () ->
+             | Props () | In_child _ ->
                  state
            )
            start steps

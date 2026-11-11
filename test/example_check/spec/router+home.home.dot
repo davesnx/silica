@@ -1,0 +1,6 @@
+digraph "home" {
+rankdir=LR;
+"home.__init" [shape=point];
+"home.__init" -> "home.home";
+"home.home" [label="home" shape=doublecircle];
+}

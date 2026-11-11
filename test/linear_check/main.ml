@@ -25,8 +25,17 @@ let () =
                   )
                 :: []
               );
+            Check_suite.entry
+              (create_with_dialog
+                 ~props:(Check.props router.children Linear_create.component)
+                 ()
+              );
           ]
       );
+      Check_suite.entry (router_with_list ());
+      Check_suite.entry (router_with_detail ());
+      Check_suite.entry (router_with_create ());
+      Check_suite.entry (comments_with_rows ());
       Check_suite.entry (list_check ());
       Check_suite.entry (unsaved_check ());
       Check_suite.entry (me_check ());

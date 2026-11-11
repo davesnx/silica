@@ -1,0 +1,17 @@
+digraph "create-issue" {
+rankdir=LR;
+"create-issue.__init" [shape=point];
+"create-issue.__init" -> "create-issue.closed";
+"create-issue.closed" [label="closed" shape=box];
+"create-issue.editing" [label="editing" shape=box];
+"create-issue.failed" [label="failed" shape=box];
+"create-issue.submitting" [label="submitting\ninvoke /api/issues/create" shape=box];
+"create-issue.closed" -> "create-issue.editing" [label="props"];
+"create-issue.editing" -> "create-issue.closed" [label="cancel, props"];
+"create-issue.editing" -> "create-issue.submitting" [label="submit"];
+"create-issue.failed" -> "create-issue.closed" [label="cancel, props"];
+"create-issue.failed" -> "create-issue.editing" [label="description, priority_picked, status_picked, title"];
+"create-issue.failed" -> "create-issue.submitting" [label="submit"];
+"create-issue.submitting" -> "create-issue.closed" [label="created ok"];
+"create-issue.submitting" -> "create-issue.failed" [label="created error"];
+}

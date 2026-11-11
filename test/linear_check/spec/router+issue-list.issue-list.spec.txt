@@ -1,0 +1,12 @@
+machine issue-list
+initial loading
+state loading
+  invoke /api/issues
+state failed
+state ready
+  invoke live:issues
+  hold keys
+edge failed -> loading on retry
+edge loading -> failed on "loaded error"
+edge loading -> ready on "loaded ok"
+stay ready on create_key cursor_next cursor_previous "filter_open true" "menu_open true" reconnect reconnected row_focused toggle_group updated

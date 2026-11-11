@@ -1,0 +1,14 @@
+machine comment
+initial viewing
+state viewing
+state edited
+state editing
+state saving
+  invoke /api/comments/edit
+edge edited -> editing on edit
+edge editing -> saving on save
+edge editing -> viewing on cancel
+edge saving -> edited on "saved ok"
+edge saving -> editing on "saved error"
+edge viewing -> editing on edit
+stay editing on typed

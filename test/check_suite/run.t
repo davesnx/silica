@@ -20,6 +20,13 @@ state, and the update ignores it there.
     "entries": [
       {
         "id": "save",
+        "machine": "save",
+        "machines": [
+          {
+            "machine": "save",
+            "states": 3
+          }
+        ],
         "passed": false,
         "complete": true,
         "truncated": false,

@@ -1,0 +1,14 @@
+machine item
+initial loading
+state loading
+  invoke /api/item
+state failed
+state loaded
+state missing
+edge failed -> loading on props
+edge loaded -> loading on props
+edge loading -> failed on "settled error"
+edge loading -> loaded on "settled ok"
+edge loading -> missing on "settled rejected"
+edge missing -> loading on props
+stay loading on props

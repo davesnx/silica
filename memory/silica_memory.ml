@@ -1739,7 +1739,26 @@ let replay handle (expected : Trace.t) =
                           )
                           added
                       in
-                      match compare wanted (List.nth_opt (List.rev mine) 0) with
+                      let own =
+                        List.filter
+                          (fun (record : Transition.t) ->
+                            match record.cause with
+                            | Props | Child _ ->
+                                record.cause = wanted.cause
+                            | _ ->
+                                true
+                          )
+                          mine
+                      in
+                      match
+                        compare wanted
+                          (List.nth_opt
+                             (List.rev
+                                (match own with [] -> mine | own -> own)
+                             )
+                             0
+                          )
+                      with
                       | Some different ->
                           different
                       | None ->

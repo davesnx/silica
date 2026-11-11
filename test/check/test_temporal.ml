@@ -62,8 +62,8 @@ let replays machine (stem : _ Check.step list) (cycle : _ Check.step list) =
           step.target
           (Machine.name machine next);
         next
-    | Check.Props _ ->
-        Alcotest.fail "no props in these fixtures"
+    | Check.Props _ | Check.In_child _ ->
+        Alcotest.fail "no props or children in these fixtures"
   in
   let start, _ = Machine.start machine () in
   let entry = List.fold_left play start stem in

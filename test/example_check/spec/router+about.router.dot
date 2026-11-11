@@ -1,0 +1,30 @@
+digraph "router" {
+rankdir=LR;
+"router.__init" [shape=point];
+"router.__init" -> "router./";
+"router./" [label="/" shape=box];
+"router./*" [label="/*" shape=box];
+"router./about" [label="/about" shape=box];
+"router./edit" [label="/edit" shape=box];
+"router./item/:int" [label="/item/:int" shape=box];
+"router./" -> "router./*" [label="url changed"];
+"router./" -> "router./about" [label="url changed"];
+"router./" -> "router./edit" [label="url changed"];
+"router./" -> "router./item/:int" [label="url changed"];
+"router./*" -> "router./" [label="url changed"];
+"router./*" -> "router./about" [label="url changed"];
+"router./*" -> "router./edit" [label="url changed"];
+"router./*" -> "router./item/:int" [label="url changed"];
+"router./about" -> "router./" [label="url changed"];
+"router./about" -> "router./*" [label="url changed"];
+"router./about" -> "router./edit" [label="url changed"];
+"router./about" -> "router./item/:int" [label="url changed"];
+"router./edit" -> "router./" [label="url changed"];
+"router./edit" -> "router./*" [label="url changed"];
+"router./edit" -> "router./about" [label="url changed"];
+"router./edit" -> "router./item/:int" [label="url changed"];
+"router./item/:int" -> "router./" [label="url changed"];
+"router./item/:int" -> "router./*" [label="url changed"];
+"router./item/:int" -> "router./about" [label="url changed"];
+"router./item/:int" -> "router./edit" [label="url changed"];
+}

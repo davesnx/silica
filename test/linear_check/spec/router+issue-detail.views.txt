@@ -1,0 +1,24 @@
+state /?new&status&assignee&priority&label&group&order
+path
+  (start)
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    component issue-list
+
+state /issue/:int
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "Loading issue..."

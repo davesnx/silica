@@ -478,13 +478,82 @@ let rec attr_handlers ~keys = function
     ->
       []
 
-let is_disabled attrs = List.mem (Node.Bool ("disabled", true)) attrs
+let has_attribute attrs name =
+  List.exists
+    (function
+      | Node.String (other, _) | Node.Bool (other, true) ->
+          other = name
+      | _ ->
+          false
+      )
+    attrs
+
+let natively_disabled =
+  [ "button"; "input"; "select"; "textarea"; "option"; "optgroup"; "fieldset" ]
+
+let blocks tag attrs =
+  has_attribute attrs "hidden"
+  || has_attribute attrs "inert"
+  || (List.mem tag natively_disabled && has_attribute attrs "disabled")
+
+let rec iter_reachable f ~blocked node =
+  let shape = Node.view node in
+  match shape with
+  | Node.Element (tag, attrs, children) ->
+      let blocked = blocked || blocks tag attrs in
+      if not blocked then f shape;
+      List.iter (iter_reachable f ~blocked) children
+  | Node.List children ->
+      List.iter (iter_reachable f ~blocked) children
+  | Node.Keyed (_, child) ->
+      iter_reachable f ~blocked child
+  | Node.Portal (_, children) ->
+      List.iter (iter_reachable f ~blocked:false) children
+  | Node.Boundary { body; _ } ->
+      iter_reachable f ~blocked body
+  | Node.Chunk chunk ->
+      iter_reachable f ~blocked (Node.chunk_view chunk)
+  | Node.Text _ | Node.Component _ ->
+      ()
+
+let collect_reachable f node =
+  let acc = ref [] in
+  iter_reachable
+    (fun shape -> acc := List.rev_append (f shape) !acc)
+    ~blocked:false node;
+  List.rev !acc
+
+let blocked_paths view =
+  let paths = Hashtbl.create 16 in
+  let rec walk ~blocked ~portal items =
+    List.iter
+      (function
+        | Accessibility.Element element ->
+            let path = Accessibility.path element in
+            let inside = String.starts_with ~prefix:"portal > " path in
+            let blocked =
+              (blocked && (portal || not inside))
+              || blocks
+                   (Accessibility.tag element)
+                   (Accessibility.attributes element)
+            in
+            if blocked then Hashtbl.replace paths path ();
+            walk ~blocked ~portal:inside (Accessibility.children element)
+        | Accessibility.Text _
+        | Accessibility.Component _
+        | Accessibility.Loading ->
+            ()
+        )
+      items
+  in
+  walk ~blocked:false ~portal:false (Accessibility.items view);
+  paths
 
 let handlers ~keys node =
   dedup
-    (collect
+    (collect_reachable
        (function
-         | Node.Element (_, attrs, _) when not (is_disabled attrs) ->
+         | Node.Element (_, attrs, _) ->
              List.concat_map (attr_events ~keys) attrs
          | _ ->
              []
@@ -500,10 +569,11 @@ type located = {
 }
 
 let locate ~keys view matches =
+  let blocked = blocked_paths view in
   List.find_map
     (fun element ->
       let attrs = Accessibility.attributes element in
-      if is_disabled attrs then
+      if Hashtbl.mem blocked (Accessibility.path element) then
         None
       else
         List.find_map
@@ -552,11 +622,25 @@ let links node =
       )
     node
 
+let reachable_links node =
+  collect_reachable
+    (function
+      | Node.Element ("a", attrs, _) when is_link attrs ->
+          List.filter_map
+            (function Node.String ("href", href) -> Some href | _ -> None)
+            attrs
+      | _ ->
+          []
+      )
+    node
+
 let locate_link view href =
+  let blocked = blocked_paths view in
   List.find_map
     (fun element ->
       if
-        Accessibility.tag element = "a"
+        (not (Hashtbl.mem blocked (Accessibility.path element)))
+        && Accessibility.tag element = "a"
         && is_link (Accessibility.attributes element)
         && Accessibility.attribute element "href" = Some href
       then

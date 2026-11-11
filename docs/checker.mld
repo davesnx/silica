@@ -398,9 +398,9 @@ checked.
 
 {1:children Children}
 
-The checker does not run a child component inside the check of its parent. A
-report lists each child in [not_explored], and keeps the props that the
-parent gave in [children]. Check the child alone with those props:
+By default the checker does not run a child component inside the check of its
+parent. A report lists each child in [not_explored], and keeps the props that
+the parent gave in [children]. Check the child alone with those props:
 
 {@ocaml[
 # let children =
@@ -417,6 +417,79 @@ val props : string list = ["Adults"; "Children"]
         Doc_stepper.component)).states;;
 - : int = 8
 ]}
+
+A child alone cannot show a bug between the parent and the child: props that
+the parent gives at the wrong moment, an [output] event that the parent
+handles wrongly, a child that ends while it still waits for an answer. To see
+these, list the child with {!Check.val-child} in [children]: its machine then
+runs inside the check of the parent, as {!Silica.Instance} runs it in a page.
+Each instance starts with the props of its node, gets new props through
+[on_props], sends its [output] and [on_final] events to the parent, and ends
+when its node goes away. Its view takes the place of its node, so the view
+rules and the properties see the whole page.
+
+{@ocaml[
+# let report =
+    Check.run
+      (Check.component
+         ~children:
+           [
+             Check.child
+               ~within:(fun (Doc_stepper.Count count) -> count <= 2)
+               Doc_stepper.component;
+           ]
+         ~properties:
+           [
+             Check.always ~name:"the guests are the sum of the steppers"
+               (Check.holds (fun (Doc_party.Party party) view ->
+                    let text = Silica.View_text.to_string view in
+                    let shows needle =
+                      let length = String.length needle in
+                      let rec scan index =
+                        index + length <= String.length text
+                        && (String.sub text index length = needle
+                           || scan (index + 1))
+                      in
+                      scan 0
+                    in
+                    shows (Printf.sprintf "Adults: %d" party.adults)
+                    && shows (Printf.sprintf "Children: %d" party.children)));
+           ]
+         Doc_party.component)
+  in
+  (Check.passed report, report.states, report.machines);;
+- : bool * int * (string * int) list =
+(true, 9, [("party", 9); ("stepper", 8)])
+]}
+
+A step of a child has [instance] and [machine] set, such as
+["party/#adults:stepper"]: the instance path that {!Silica.Instance} and the
+transition log give, made of the place of the node in the view of its parent,
+its key, and its machine id. A violation inside a child names that instance in
+its message. {!Check.val-replay}, {!Check.export}, {!Check.replay_trace} and
+[Silica_memory.replay] take the steps of children like the steps of the root:
+a press inside a child is a press on its element in the whole page.
+
+The state space of a joint check is the product of the parent and its running
+children, so it grows fast. These bounds keep it small, and each one is in
+your hands:
+
+- Only the listed children run. The others stay in [not_explored].
+- [max_instances] (default 2) instances of each listed machine run at once.
+  Two find the bugs between siblings; more seldom add any. A further instance
+  shows the view of its start state, takes no step, and is listed in
+  [not_explored].
+- Each child has its own [samples], [inputs] and [within].
+- [max_states] of the check bounds the joint snapshots, and [machines] in the
+  report counts the distinct snapshots of each machine, so you can see which
+  one to bound.
+
+The properties of the check, [always] and the temporal ones, see the whole
+page with only the handlers and actions of the root machine. A child takes
+only [always] properties, which see the view of the child; in them [entered]
+and [action] never hold. A temporal property on a child raises
+{!Check.Invalid_check}: put it on the parent, or on the check of the child
+alone.
 
 {1:live Live components}
 
@@ -465,8 +538,11 @@ hold:
 ]}
 
 The pages of this example are plain nodes, so they are part of the check. A
-page that is a component node is listed in [not_explored]: check it alone,
-as a child.
+page that is a component node is listed in [not_explored]: check it alone, as
+a child, or list it in [pages] (a list of {!Check.val-child}) to run it inside
+the router check. Links in a page are then followed, and the navigation
+actions of the page change the history. Check a router with one or a few pages
+at a time, so that the product of the router and its pages stays small.
 
 {1:quint Diagrams and Quint}
 
@@ -578,7 +654,10 @@ needs the props its parent rendered:
 [Check_suite.entry router ~dependents:(fun report -> [ Check_suite.entry
 (Check.component ~props:(Check.props report.children Item.component)
 Item.component) ])]. A component of a library that another suite checks is
-listed with [Check_suite.elsewhere ~machine ~reason].
+listed with [Check_suite.elsewhere ~machine ~reason]. A joint check (see
+{!section-children}) is an entry like any other: its id is the root and the
+listed children joined by ["+"], such as ["router+issue-list"], and a child
+that ran in it counts as checked.
 
 The executable has five commands:
 
@@ -628,7 +707,9 @@ From [test/example_check/dune]:
 [golden DIR] runs every entry, prints the findings, and compares, for each
 machine, [<id>.spec.txt] ({!Silica.Spec.to_text}), [<id>.qnt], [<id>.dot] and
 [<id>.views.txt]: the text view of the first snapshot of each state, with the
-path that reaches it. A missing file, a changed file and a file that no entry
+path that reaches it. The files of a joint check start with its id:
+[router+issue-list.router.spec.txt], [router+issue-list.issue-list.spec.txt]
+and [router+issue-list.views.txt]. A missing file, a changed file and a file that no entry
 makes are [golden-drift] findings. A changed spec is described in words by
 {!Silica.Spec.diff}; a changed view by its changed lines. When one edge of the
 door changes its target:
@@ -661,7 +742,12 @@ its [rule], [message] and [hint], the [trace] that reaches it with the
   "outcome": "passed" | "findings" | "incomplete" | "setup error",
   "passed": bool,
   "entries": [ {
-      "id": string,                  the root machine id
+      "id": string,                  the root machine id; for a joint check,
+                                     the root and the listed children joined
+                                     by "+", such as "router+issue-list"
+      "machine": string,             the root machine id
+      "machines": [ { "machine": string, "states": int } ],
+                                     the root first, then each listed child
       "passed": bool, "complete": bool, "truncated": bool,
       "states": int, "transitions": int,
       "violations": [ {
@@ -689,8 +775,10 @@ its [rule], [message] and [hint], the [trace] that reaches it with the
 
 step = {
   "index": int,                      from 1, through the trace and the loop
-  "instance": string,                "0" for the root machine
-  "machine": string,
+  "instance": string,                "0" for the root machine, the instance
+                                     path of a child in a joint check, such
+                                     as "board/6.#1:row"
+  "machine": string,                 the machine that took the step
   "from": string, "target": string,  state names
   "event": string,                   the event name
   "data": json | null,               the event by the event codec
@@ -709,9 +797,11 @@ v}
 {!Silica.Machine.register_codecs}), else [null]. The [text] of a cause is the
 phrase that the text report prints. [version] changes only when a field
 changes its meaning or goes away; new fields can appear in the same version.
-[kind] is [path] for every violation today; [waits] and [loop] come with
-temporal properties, in the same shape. [trace_file] is the trace file of
-the violation with [--traces DIR], else [null].
+[kind] is [path] for a violation of a rule or an [always] property; [waits]
+and [loop] come with temporal properties, in the same shape. In a joint check,
+the [data] of a step of a child is the event of the child by its codec, and
+[from] and [target] are the states of that child. [trace_file] is the trace
+file of the violation with [--traces DIR], else [null].
 
 A violation of the seeded bug in [test/check_suite/]: the saved state shows
 the Save button, and the update ignores it there.
