@@ -610,10 +610,32 @@ module Make (Io : IO) = struct
               Remote.Failed (Remote.Http 500)
           )
 
-  let start_runner ~log ?(on_close = ignore) (live : (_, _) Live.t) ~handlers
-      ~context ~send =
+  let start_runner ~log ?(on_close = ignore) ?observe (live : (_, _) Live.t)
+      ~handlers ~context ~send =
     let machine = live.component.machine in
     let state = ref (Machine.init machine) in
+    let entry = ref 0 in
+    let observed ~from ~event change actions cause =
+      match observe with
+      | None ->
+          ()
+      | Some (observer : Instance.observer) ->
+          observer.observe
+            (Instance.Detached
+               {
+                 instance = Machine.id machine;
+                 machine;
+                 props = ();
+                 entry = !entry;
+                 from;
+                 snapshot = !state;
+                 change;
+                 event;
+                 actions;
+                 cause;
+               }
+            )
+    in
     let lock = Mutex.create () in
     let queue = Queue.create () in
     let running = ref false in
@@ -681,31 +703,54 @@ module Make (Io : IO) = struct
       let* () = send_state actions in
       List.iter run actions;
       Io.return ()
-    and step ?finished event () =
-      let s, actions, _ = Machine.step ?finished machine () !state event in
+    and step ?finished ~cause event () =
+      let from = !state in
+      let s, actions, how = Machine.step ?finished machine () !state event in
       state := s;
+      let change =
+        match how with
+        | Machine.Unhandled ->
+            Instance.Unhandled
+        | Machine.Kept ->
+            Instance.Kept
+        | Machine.Entered ->
+            incr entry;
+            Instance.Entered
+      in
+      observed ~from:(Some from) ~event:(Some event) change actions cause;
       publish actions
     and run = function
       | Action.Start_timer { id; ms; event } ->
           let token = start id in
           Io.async (fun () ->
               let* () = Io.sleep (float_of_int ms /. 1000.) in
-              enqueue (deliver id token (step ~finished:id event))
+              enqueue
+                (deliver id token
+                   (step ~finished:id ~cause:(Instance.Timer (id, ms)) event)
+                )
           )
       | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
           let token = start id in
           Io.async (fun () ->
               let* result = call_endpoint handlers context endpoint input in
-              enqueue (deliver id token (step ~finished:id (on_result result)))
+              enqueue
+                (deliver id token
+                   (step ~finished:id
+                      ~cause:(Instance.Answer (id, endpoint, result))
+                      (on_result result)
+                   )
+                )
           );
           Option.iter
             (fun ms ->
               Io.async (fun () ->
                   let* () = Io.sleep (float_of_int ms /. 1000.) in
                   enqueue
-                    (deliver id token
+                    (let answer = Remote.Failed (Remote.Network "timeout") in
+                     deliver id token
                        (step ~finished:id
-                          (on_result (Remote.Failed (Remote.Network "timeout")))
+                          ~cause:(Instance.Answer (id, endpoint, answer))
+                          (on_result answer)
                        )
                     )
               )
@@ -730,6 +775,8 @@ module Make (Io : IO) = struct
       enqueue (fun () ->
           let s, actions = Machine.start machine () in
           state := s;
+          observed ~from:None ~event:None Instance.Started actions
+            Instance.Start;
           publish actions
       )
     in
@@ -743,7 +790,7 @@ module Make (Io : IO) = struct
             Io.return ()
         | Ok e ->
             last_id := id;
-            enqueue (step e)
+            enqueue (step ~cause:Instance.Message e)
     in
     Io.return
       {
@@ -765,13 +812,21 @@ module Make (Io : IO) = struct
         event;
         resend = (fun () -> enqueue (fun () -> publish []));
         set_send = (fun next -> sender := next);
-        close = (fun () -> closed := true);
+        close =
+          (fun () ->
+            if not !closed then (
+              closed := true;
+              observed ~from:(Some !state) ~event:None Instance.Ended []
+                Instance.End
+            )
+          );
       }
 
   let stderr_log line = Printf.eprintf "silica: %s\n%!" line
 
-  let live ?on_close live ~handlers ~context ~send =
-    start_runner ~log:stderr_log ?on_close live ~handlers ~context ~send
+  let live ?on_close ?observe live ~handlers ~context ~send =
+    start_runner ~log:stderr_log ?on_close ?observe live ~handlers ~context
+      ~send
 
   let receive r msg = r.receive msg
   let resend r = r.resend ()
@@ -830,6 +885,7 @@ module Make (Io : IO) = struct
     islands : island list;
     topics : topic_def list;
     page : page -> response Io.t;
+    observe_live : (context -> channel:string -> Instance.observer) option;
     lock : Mutex.t;
     mutable next_connection : int;
     open_sockets : (int, open_socket) Hashtbl.t;
@@ -837,7 +893,8 @@ module Make (Io : IO) = struct
     topic_states : (string * string, topic_state) Hashtbl.t;
   }
 
-  let create config ?assets ~read ~handlers ~islands ~topics ~page () =
+  let create config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
+      () =
     if String.length config.secret < 16 then
       invalid_arg "Silica_server.create: secret must have at least 16 bytes";
     {
@@ -848,6 +905,7 @@ module Make (Io : IO) = struct
       islands;
       topics;
       page;
+      observe_live;
       lock = Mutex.create ();
       next_connection = 0;
       open_sockets = Hashtbl.create 16;
@@ -1328,8 +1386,13 @@ module Make (Io : IO) = struct
                           let* runner =
                             start_runner
                               ~log:(log t ~source:"silica.live")
-                              ~on_close:drop_instance l ~handlers:t.handlers
-                              ~context
+                              ~on_close:drop_instance
+                              ?observe:
+                                (Option.map
+                                   (fun observe -> observe context ~channel)
+                                   t.observe_live
+                                )
+                              l ~handlers:t.handlers ~context
                               ~send:(warning_send t socket.send)
                           in
                           let inst =

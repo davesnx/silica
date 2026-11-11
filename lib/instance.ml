@@ -2,16 +2,6 @@ type message = { run : unit -> unit }
 
 type type_id = Type_id : 'a Type.Id.t -> type_id
 
-type context = {
-  queue : (unit -> unit) Queue.t;
-  mutable actions : message Action.host list;
-  mutable next_id : int;
-  dev : bool;
-  on_error : (exn -> Node.error -> unit) option;
-  mutable waiting : int;
-  machines : (string, type_id) Hashtbl.t;
-}
-
 let error_counter = ref 0
 let seeded = ref false
 
@@ -28,8 +18,24 @@ type segment = Index of int | Key of string
 
 type boundary_cell = { mutable failure : Node.error option }
 
-type ('p, 's, 'e) cell = {
+type change = Started | Unhandled | Kept | Entered | Ended
+
+type context = {
+  queue : (unit -> unit) Queue.t;
+  mutable actions : message Action.host list;
+  mutable next_id : int;
+  dev : bool;
+  on_error : (exn -> Node.error -> unit) option;
+  mutable waiting : int;
+  machines : (string, type_id) Hashtbl.t;
+  observer : observer option;
+  mutable view : message Node.t option;
+  mutable current : message option;
+}
+
+and ('p, 's, 'e) cell = {
   id : int;
+  slot : segment list;
   context : context;
   component : ('p, 's, 'e) Node.component;
   mutable snapshot : 's;
@@ -52,10 +58,78 @@ type ('p, 's, 'e) cell = {
 
 and packed = Packed : ('p, 's, 'e) cell -> packed
 
+and cause =
+  | Start
+  | Props
+  | End
+  | Message
+  | Handler
+  | Element of message Node.attr * string option * Key.t option
+  | Timer of string * int
+  | Answer :
+      string * ('i, 'o, 'x) Endpoint.t * ('o, 'x) Endpoint.answer
+      -> cause
+  | Live : string * 's Topic.t * 's Topic.update -> cause
+  | Source : string * 'm Action.source -> cause
+  | Result : 'm Action.t -> cause
+  | Child : ('p, 's, 'e) cell -> cause
+  | Route of Router.event
+
+and observed =
+  | Observed :
+      ('p, 's, 'e) cell
+      * Machine.how
+      * 's
+      * 'e option
+      * message Action.host list
+      * cause
+      -> observed
+  | Detached : {
+      instance : string;
+      machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
+      entry : int;
+      from : 's option;
+      snapshot : 's;
+      change : change;
+      event : 'e option;
+      actions : 'e Action.host list;
+      cause : cause;
+    }
+      -> observed
+
+and observer = {
+  observe : observed -> unit;
+  handler : 'e. (cause -> 'e -> message) -> 'e Node.attr -> message Node.attr;
+}
+
 type ('p, 's, 'e) t = { context : context; root : ('p, 's, 'e) cell }
 
 let add_action context (action : message Action.host) =
   context.actions <- action :: context.actions
+
+let rec until_physically stop = function
+  | actions when actions == stop ->
+      []
+  | action :: rest ->
+      action :: until_physically stop rest
+  | [] ->
+      []
+
+let observe : type p s e.
+    (p, s, e) cell ->
+    Machine.how ->
+    s ->
+    e option ->
+    message Action.host list ->
+    cause ->
+    unit =
+ fun cell how from event before cause ->
+  match cell.context.observer with
+  | None ->
+      ()
+  | Some observer ->
+      observer.observe (Observed (cell, how, from, event, before, cause))
 
 let qualify cell local =
   string_of_int cell.id ^ "." ^ string_of_int cell.entry ^ "/" ^ local
@@ -110,18 +184,21 @@ let rec invalidate : type p s e. force:bool -> (p, s, e) cell -> unit =
         ()
   )
 
-let rec step : type p s e. ?finished:string -> (p, s, e) cell -> e -> unit =
- fun ?finished cell event ->
+let rec step : type p s e.
+    ?finished:string -> cause:cause -> (p, s, e) cell -> e -> unit =
+ fun ?finished ~cause cell event ->
   if cell.alive then
     guard cell (fun () ->
+        let from = cell.snapshot and before = cell.context.actions in
         match
           Machine.step ?finished cell.component.machine cell.props cell.snapshot
             event
         with
         | _, _, Machine.Unhandled ->
-            ()
+            observe cell Machine.Unhandled from (Some event) before cause
         | snapshot, actions, ((Machine.Kept | Machine.Entered) as how) ->
             apply cell snapshot actions how;
+            observe cell how from (Some event) before cause;
             cell.notify event snapshot;
             check_final cell
     )
@@ -162,10 +239,13 @@ and check_final : type p s e. (p, s, e) cell -> unit =
     cell.notify_final cell.snapshot
   )
 
-and timed : type p s e. ?finished:string -> (p, s, e) cell -> e -> message =
- fun ?finished cell event ->
+and timed : type p s e.
+    ?finished:string -> cause:cause -> (p, s, e) cell -> e -> message =
+ fun ?finished ~cause cell event ->
   let entry = cell.entry in
-  { run = (fun () -> if cell.entry = entry then step ?finished cell event) }
+  {
+    run = (fun () -> if cell.entry = entry then step ?finished ~cause cell event);
+  }
 
 and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
  fun cell actions ->
@@ -177,7 +257,12 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
           Hashtbl.replace cell.owned id qualified;
           add
             (Action.Start_timer
-               { id = qualified; ms; event = timed ~finished:id cell event }
+               {
+                 id = qualified;
+                 ms;
+                 event =
+                   timed ~finished:id ~cause:(Timer (qualified, ms)) cell event;
+               }
             )
       | Action.Start_source { id; source } ->
           let qualified = qualify cell id in
@@ -186,7 +271,10 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
             (Action.Start_source
                {
                  id = qualified;
-                 source = Action.map_source (timed cell) source;
+                 source =
+                   Action.map_source
+                     (timed ~cause:(Source (qualified, source)) cell)
+                     source;
                }
             )
       | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
@@ -200,7 +288,11 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
                  input;
                  timeout_ms;
                  on_result =
-                   (fun result -> timed ~finished:id cell (on_result result));
+                   (fun result ->
+                     timed ~finished:id
+                       ~cause:(Answer (qualified, endpoint, result))
+                       cell (on_result result)
+                   );
                }
             )
       | Action.Start_live { id; topic; key; on_update } ->
@@ -212,7 +304,12 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
                  id = qualified;
                  topic;
                  key;
-                 on_update = (fun update -> timed cell (on_update update));
+                 on_update =
+                   (fun update ->
+                     timed
+                       ~cause:(Live (qualified, topic, update))
+                       cell (on_update update)
+                   );
                }
             )
       | Action.Stop id -> (
@@ -229,18 +326,25 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
           add
             (Action.Run
                (Action.map
-                  (fun event -> { run = (fun () -> step cell event) })
+                  (fun event ->
+                    { run = (fun () -> step ~cause:(Result action) cell event) }
+                  )
                   action
                )
             )
       )
     actions
 
-let to_message cell event = { run = (fun () -> step cell event) }
+let to_message cause cell event = { run = (fun () -> step ~cause cell event) }
 
 let create : type p s e.
-    context -> (p, s, e) Node.component -> p -> (p, s, e) cell =
- fun context component props ->
+    context ->
+    slot:segment list ->
+    parent:packed option ->
+    (p, s, e) Node.component ->
+    p ->
+    (p, s, e) cell =
+ fun context ~slot ~parent component props ->
   let machine = component.machine in
   let id = Machine.id machine and type_id = Machine.type_id machine in
   let other (Type_id known) =
@@ -261,6 +365,7 @@ let create : type p s e.
   let cell =
     {
       id = context.next_id;
+      slot;
       context;
       component;
       snapshot;
@@ -275,13 +380,15 @@ let create : type p s e.
       boundaries = [];
       catch = None;
       owned = Hashtbl.create 4;
-      parent = None;
+      parent;
       stale = false;
       rendering = false;
       last = None;
     }
   in
+  let before = context.actions in
   emit cell actions;
+  observe cell Machine.Kept snapshot None before Start;
   cell
 
 let rec unmount_cell : type p s e. (p, s, e) cell -> unit =
@@ -289,12 +396,14 @@ let rec unmount_cell : type p s e. (p, s, e) cell -> unit =
   if cell.alive then (
     List.iter (fun (_, Packed child) -> unmount_cell child) cell.children;
     cell.children <- [];
+    let before = cell.context.actions in
     emit cell (Machine.exit cell.component.machine cell.props cell.snapshot);
     cell.alive <- false;
     Hashtbl.iter
       (fun _ qualified -> add_action cell.context (Action.Stop qualified))
       cell.owned;
-    Hashtbl.reset cell.owned
+    Hashtbl.reset cell.owned;
+    observe cell Machine.Kept cell.snapshot None before End
   )
 
 let props_changed old_props new_props =
@@ -307,27 +416,21 @@ let set_cell_props : type p s e. (p, s, e) cell -> p -> unit =
     cell.props <- props;
     cell.stale <- true;
     guard cell (fun () ->
+        let from = cell.snapshot and before = cell.context.actions in
         match
           Machine.set_props cell.component.machine ~previous props cell.snapshot
         with
         | _, _, Machine.Unhandled ->
-            ()
+            observe cell Machine.Unhandled from None before Props
         | snapshot, actions, ((Machine.Kept | Machine.Entered) as how) ->
             apply cell snapshot actions how;
+            observe cell how from None before Props;
             check_final cell
     )
   )
 
 let same_slot (path, machine) (other_path, other_machine) =
   path = other_path && String.equal machine other_machine
-
-let rec until_physically stop = function
-  | actions when actions == stop ->
-      []
-  | action :: rest ->
-      action :: until_physically stop rest
-  | [] ->
-      []
 
 let same_cell : type p s e.
     (p, s, e) Machine.t -> packed -> (p, s, e) cell option =
@@ -384,12 +487,21 @@ and render_view : type p s e. (p, s, e) cell -> message Node.t =
   let claimed = ref [] in
   let pending = ref false in
   let before = cell.context.actions in
+  let handle : e Node.attr -> message Node.attr =
+    match cell.context.observer with
+    | None ->
+        Node.map_attr (to_message Message cell)
+    | Some observer ->
+        observer.handler (fun cause event ->
+            { run = (fun () -> step ~cause cell event) }
+        )
+  in
   let resolve_attr reset (attr : e Node.attr) : message Node.attr option =
     match[@warning "-4"] attr with
     | Node.On_reset | Node.Rated (_, Node.On_reset) ->
         Option.map (fun message -> Node.On_press message) reset
     | attr ->
-        Some (Node.map_attr (to_message cell) attr)
+        Some (handle attr)
   in
   let rec walk :
       e Node.t ->
@@ -523,25 +635,21 @@ and render_view : type p s e. (p, s, e) cell -> message Node.t =
               set_cell_props existing child.props;
               existing
           | None ->
-              create cell.context child.component child.props
+              create cell.context ~slot:(fst slot) ~parent:(Some (Packed cell))
+                child.component child.props
         in
         instance.catch <- catch;
+        let from_child parent_event =
+          Queue.add
+            (fun () -> step ~cause:(Child instance) cell parent_event)
+            cell.context.queue
+        in
         instance.notify <-
           (fun event snapshot ->
-            List.iter
-              (fun parent_event ->
-                Queue.add (fun () -> step cell parent_event) cell.context.queue
-              )
-              (child.output event snapshot)
+            List.iter from_child (child.output event snapshot)
           );
         instance.notify_final <-
-          (fun snapshot ->
-            List.iter
-              (fun parent_event ->
-                Queue.add (fun () -> step cell parent_event) cell.context.queue
-              )
-              (child.on_final snapshot)
-          );
+          (fun snapshot -> List.iter from_child (child.on_final snapshot));
         instance.parent <- Some (Packed cell);
         claimed := (slot, Packed instance) :: !claimed;
         check_final instance;
@@ -603,7 +711,7 @@ let take_actions context =
   context.actions <- [];
   actions
 
-let mount_with_props ?(dev = false) ?on_error ~props
+let mount_with_props ?(dev = false) ?on_error ?observe ~props
     (component : (_, _, _) Node.component) =
   let context =
     {
@@ -614,13 +722,16 @@ let mount_with_props ?(dev = false) ?on_error ~props
       on_error;
       waiting = 0;
       machines = Hashtbl.create 16;
+      observer = observe;
+      view = None;
+      current = None;
     }
   in
-  let root = create context component props in
+  let root = create context ~slot:[] ~parent:None component props in
   { context; root }
 
-let mount ?dev ?on_error component =
-  mount_with_props ?dev ?on_error ~props:() component
+let mount ?dev ?on_error ?observe component =
+  mount_with_props ?dev ?on_error ?observe ~props:() component
 
 let set_props tree props = set_cell_props tree.root props
 
@@ -630,6 +741,7 @@ let update tree message =
   if not tree.root.alive then
     (Node.list [], [])
   else (
+    tree.context.current <- message;
     Option.iter (fun message -> message.run ()) message;
     let rec settle round =
       drain tree.context;
@@ -644,10 +756,140 @@ let update tree message =
         settle (round + 1)
     in
     let node = settle 0 in
+    tree.context.view <- Some node;
     (node, take_actions tree.context)
   )
 
-let message tree event = to_message tree.root event
+let message tree event = to_message Message tree.root event
+let route tree route event = to_message (Route route) tree.root event
+let percent_encode key =
+  let buffer = Buffer.create (String.length key) in
+  String.iter
+    (function
+      | ('%' | '/' | ':' | '#' | '.') as char ->
+          let code = Char.code char in
+          Buffer.add_char buffer '%';
+          Buffer.add_char buffer "0123456789ABCDEF".[code lsr 4];
+          Buffer.add_char buffer "0123456789ABCDEF".[code land 15]
+      | char ->
+          Buffer.add_char buffer char
+      )
+    key;
+  Buffer.contents buffer
+
+let rec cell_path : type p s e. (p, s, e) cell -> string =
+ fun cell ->
+  let id = Machine.id cell.component.machine in
+  match cell.parent with
+  | None ->
+      id
+  | Some (Packed parent) ->
+      cell_path parent ^ "/"
+      ^ String.concat "."
+          (List.rev_map
+             (function
+               | Index index ->
+                   string_of_int index
+               | Key key ->
+                   "#" ^ percent_encode key
+               )
+             cell.slot
+          )
+      ^ ":" ^ id
+
+let path tree = cell_path tree.root
+
+type inspected =
+  | Inspected : {
+      instance : string;
+      number : int;
+      entry : int;
+      machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
+      from : 's option;
+      snapshot : 's;
+      change : change;
+      event : 'e option;
+      actions : 'm Action.host list;
+      cause : cause;
+      view : message Node.t option;
+      message : message option;
+    }
+      -> inspected
+
+let change_of_how : Machine.how -> change = function
+  | Machine.Unhandled ->
+      Unhandled
+  | Machine.Kept ->
+      Kept
+  | Machine.Entered ->
+      Entered
+
+let inspect_cell : type p s e.
+    (p, s, e) cell ->
+    change ->
+    s option ->
+    e option ->
+    message Action.host list ->
+    cause ->
+    inspected =
+ fun cell change from event before cause ->
+  Inspected
+    {
+      instance = cell_path cell;
+      number = cell.id;
+      entry = cell.entry;
+      machine = cell.component.machine;
+      props = cell.props;
+      from;
+      snapshot = cell.snapshot;
+      change;
+      event;
+      actions = List.rev (until_physically before cell.context.actions);
+      cause;
+      view = cell.context.view;
+      message = cell.context.current;
+    }
+
+let inspect = function
+  | Observed (cell, how, from, event, before, cause) -> (
+      match[@warning "-4"] cause with
+      | Start ->
+          inspect_cell cell Started None event before cause
+      | End ->
+          inspect_cell cell Ended (Some from) event before cause
+      | _ ->
+          inspect_cell cell (change_of_how how) (Some from) event before cause
+    )
+  | Detached
+      {
+        instance;
+        machine;
+        props;
+        entry;
+        from;
+        snapshot;
+        change;
+        event;
+        actions;
+        cause;
+      } ->
+      Inspected
+        {
+          instance;
+          number = 1;
+          entry;
+          machine;
+          props;
+          from;
+          snapshot;
+          change;
+          event;
+          actions;
+          cause;
+          view = None;
+          message = None;
+        }
 let waiting tree = tree.context.waiting > 0
 
 let callback run = { run }
@@ -664,6 +906,9 @@ let failure ?(dev = false) ?on_error exn =
       on_error;
       waiting = 0;
       machines = Hashtbl.create 16;
+      observer = None;
+      view = None;
+      current = None;
     }
     ("(none)", "") exn
 

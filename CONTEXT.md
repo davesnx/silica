@@ -248,6 +248,31 @@ name, its states and its handlers (`Silica.View_text`). An agent or a reviewer
 reads and compares it with no browser.
 _Avoid_: snapshot (a snapshot is a state of a machine), DOM dump
 
+**Transition log**:
+One record (`Silica.Transition.t`) for each start, step, ignored event, props
+change and end of each instance, with the state names before and after, the
+event, the actions and the cause. A host gives it to a hook; with no hook
+nothing is recorded.
+_Avoid_: event log, history (the history is the list of URLs)
+
+**Cause**:
+What made a step: the element of a handler (by role, accessible name and
+path), a timer, the answer of a call, a Live update, a held source, the result
+of an action, new props, a child, a URL change or a message of the host.
+_Avoid_: trigger, source (a source is a held resource)
+
+**Instance path**:
+The name of an instance in its tree: the machine id of the root, then for each
+child the position of its component node in the view of its parent (or its
+key) and its machine id, such as `app/0.2:router/#inbox:issue-list`.
+_Avoid_: instance id (the instance number in timer ids)
+
+**Trace**:
+The transitions of one run as a file (`Silica.Trace`): JSON Lines, one header
+line, then one record per line. The memory platform, the browser recorder, the
+Live runner of the server and the checker write the same format.
+_Avoid_: log file, recording
+
 ## Navigation
 
 **Page**:

@@ -358,6 +358,61 @@ let live_tests =
           ]
           (states r)
     );
+    test_case "a Live session gives its transitions to a recorder" `Quick
+      (fun () ->
+        Queue.clear pending;
+        Machine.register_codecs live.component.machine ~state:live.state
+          ~event:live.event ();
+        let recorder =
+          Trace.Recorder.create ~data:true ~platform:"server" ~build:"t" ()
+        in
+        let session =
+          Server.live live
+            ~observe:(Trace.Recorder.observer recorder)
+            ~handlers ~context ~send:ignore
+        in
+        let r = { session; sent = ref []; next_id = 0 } in
+        send r Inc;
+        send r Double;
+        flush ();
+        Server.close r.session;
+        let trace = Trace.Recorder.trace recorder ~url:None in
+        let causes =
+          List.map
+            (fun (record : Transition.t) ->
+              let cause =
+                match[@warning "-4"] record.cause with
+                | Transition.Start ->
+                    "start"
+                | Transition.Message ->
+                    "message"
+                | Transition.Answer { path; answer = Some answer; _ } ->
+                    "answer " ^ path ^ " " ^ Json.to_string answer
+                | Transition.Ended ->
+                    "end"
+                | _ ->
+                    "other"
+              in
+              record.instance ^ " "
+              ^ Option.fold record.data ~none:"-" ~some:Json.to_string
+              ^ " <- " ^ cause
+            )
+            trace.transitions
+        in
+        check (list string) "start, the client events, the answer, the end"
+          [
+            "counter - <- start";
+            "counter \"inc\" <- message";
+            "counter \"double\" <- message";
+            "counter \"set:2\" <- answer /api/double [\"Ok\",2]";
+            "counter - <- end";
+          ]
+          causes;
+        check (option string) "the snapshot after the answer" (Some "2")
+          (Option.map Json.to_string
+             (List.nth trace.transitions 3).Transition.snapshot
+          )
+    );
     test_case "call runs server side and feeds the result back" `Quick
       (fun () ->
         let r = start () in

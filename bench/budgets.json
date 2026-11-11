@@ -3,6 +3,8 @@
     "server render landing median ms": 0.6,
     "server render doc median ms": 2.3,
     "server render linear median ms": 24,
+    "trace recorder step overhead %": 10,
+    "trace recorder press overhead %": 10,
     "keyed silica create1k 1x ms": 141,
     "keyed silica replace1k 1x ms": 150,
     "keyed silica update 1x ms": 56,

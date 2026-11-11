@@ -43,9 +43,120 @@ type ('p, 's, 'e) t
 (** A tree whose root component has props ['p], snapshots ['s] and events ['e].
 *)
 
+(** {1 Observing a tree}
+
+    A tree, or the Live runner of the server, can give each start, step and end
+    of each instance to an {!observer}. The values it gives hold the typed state
+    of the moment and cost nothing to make; {!inspect} reads them, and
+    [Transition.observer] turns them into records. All the code that reads them
+    is reached only through an observer, so an app with no observer carries none
+    of it. *)
+
+type ('p, 's, 'e) cell
+(** A running instance in a tree. *)
+
+type change =
+  | Started  (** The instance started. *)
+  | Unhandled  (** The machine ignored the event or the props. *)
+  | Kept  (** The step kept the state name. *)
+  | Entered  (** The step entered a state. *)
+  | Ended  (** The instance ended. *)
+
+(** What made a step, with the values the host had. *)
+type cause =
+  | Start
+  | Props  (** The parent gave new props. *)
+  | End
+  | Message  (** A message of the host for the root (see {!val-message}). *)
+  | Handler
+      (** A handler of the view whose message is made with the view, such as a
+          press: the element is the one that holds the delivered message (see
+          {!inspected}). *)
+  | Element of message Node.attr * string option * Key.t option
+      (** The handler attribute, physically as it is in the view the input
+          happened on; the text of an input; the key of a key handler. *)
+  | Timer of string * int  (** The id and the delay of a timer. *)
+  | Answer :
+      string * ('i, 'o, 'x) Endpoint.t * ('o, 'x) Endpoint.answer
+      -> cause  (** The id of a call, its endpoint and its answer. *)
+  | Live : string * 's Topic.t * 's Topic.update -> cause
+      (** The id of a subscription, its topic and the update. *)
+  | Source : string * 'm Action.source -> cause
+      (** The id of a held source and the source. *)
+  | Result : 'm Action.t -> cause  (** The action whose result this is. *)
+  | Child : ('p, 's, 'e) cell -> cause
+      (** The [output] or [on_final] of this child. *)
+  | Route of Router.event  (** A URL change or a preload of the runtime. *)
+
+type observed =
+  | Observed :
+      ('p, 's, 'e) cell
+      * Machine.how
+      * 's
+      * 'e option
+      * message Action.host list
+      * cause
+      -> observed
+      (** A start ({!Start}), step, props change or end ({!End}) in a tree, with
+          the snapshot before. Read it with {!inspect} while the observer runs:
+          the tree changes after. *)
+  | Detached : {
+      instance : string;
+      machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
+      entry : int;
+      from : 's option;
+      snapshot : 's;
+      change : change;
+      event : 'e option;
+      actions : 'e Action.host list;
+      cause : cause;
+    }
+      -> observed
+      (** A step of a machine that runs with no tree, such as a Live island on
+          the server. *)
+
+type observer = {
+  observe : observed -> unit;
+  handler : 'e. (cause -> 'e -> message) -> 'e Node.attr -> message Node.attr;
+      (** Resolve an attribute of a view with the function that makes the
+          message of an event with its cause. An observer gives an {!Element}
+          cause to the handlers whose message is made at the time of the input
+          (input, keys, pointer), and {!Handler} to the others. *)
+}
+
+type inspected =
+  | Inspected : {
+      instance : string;
+          (** The instance path (see [Transition.t.instance]). *)
+      number : int;  (** As in timer ids. *)
+      entry : int;  (** The entry after the step, as in timer ids. *)
+      machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
+      from : 's option;  (** [None] for [Started]. *)
+      snapshot : 's;  (** After the step. *)
+      change : change;
+      event : 'e option;
+      actions : 'm Action.host list;  (** The actions of the step, in order. *)
+      cause : cause;
+      view : message Node.t option;
+          (** The last view of the tree, the one an input happened on. *)
+      message : message option;
+          (** The message that the last {!update} delivered: for a [Handler]
+              step, the element of [view] that holds it. *)
+    }
+      -> inspected
+
+val inspect : observed -> inspected
+(** The values of the step. Call it while the observer runs. *)
+
+val cell_path : ('p, 's, 'e) cell -> string
+(** The instance path of a cell. *)
+
 val mount :
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
+  ?observe:observer ->
   (unit, 's, 'e) Component.t ->
   (unit, 's, 'e) t
 (** Create the root and start its machine. The actions are returned by the first
@@ -57,11 +168,21 @@ val mount :
     gets; with no hook the error goes to stderr. [dev] (default [false]) puts
     the details in {!Node.error.detail}. An exception with no boundary above it
     leaves {!update}; the tree is then not safe to use and the host should drop
-    it. *)
+    it.
+
+    [observe] gets one {!observed} for each start, step (also an ignored event),
+    props change and end of each instance of the tree, at the time it happens,
+    with its cause: the element of a handler (only with a hook are handler
+    messages made with their element), the timer, the answer, the Live update,
+    the held source, the action, the props, the child or the message of the
+    host. Give it [Transition.observer] or [Trace.Recorder.observer]. With no
+    observer the cost is one test of an option per step. A step that raises is
+    not observed. *)
 
 val mount_with_props :
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
+  ?observe:observer ->
   props:'p ->
   ('p, 's, 'e) Component.t ->
   ('p, 's, 'e) t
@@ -105,6 +226,14 @@ val waiting : ('p, 's, 'e) t -> bool
 
 val message : ('p, 's, 'e) t -> 'e -> message
 (** An event for the root component, such as a URL change. *)
+
+val route : ('p, 's, 'e) t -> Router.event -> 'e -> message
+(** Like {!val-message}, for the event that the root makes of a URL change or a
+    preload: an observer gets the cause {!constructor-Route}. *)
+
+val path : ('p, 's, 'e) t -> string
+(** The instance path of the root: the id of its machine. Children have the
+    paths that [Transition.t.instance] describes. *)
 
 val unmount : ('p, 's, 'e) t -> message Action.host list
 (** End the root, children first. Later messages are dropped. *)

@@ -145,6 +145,58 @@ button "More Mugs" [press]
 - : unit = ()
 ]}
 
+{2:trace The transition log}
+
+The memory platform records every start, step and end of every instance:
+{!Silica_memory.trace} gives the run as a {!Silica.Trace.t}.
+{!Silica.Trace.to_text} prints one line per record: its number, its time on the
+memory clock, the instance path, the states before and after, how the step
+went, the event and its cause, then the actions:
+
+{@ocaml[
+# let page = Silica_memory.mount Doc_debounce.component;;
+val page : unit Silica_memory.t = <abstr>
+# Silica_memory.input
+    (Silica_memory.by_role page Silica.Accessibility.Textbox ~name:"Word")
+    "ocaml";;
+- : unit = ()
+# Silica_memory.advance page 500;;
+- : unit = ()
+# print_string (Silica.Trace.to_text (Silica_memory.trace page));;
+trace debounce / build memory from memory
+1 +0ms debounce empty (started) <- start
+2 +0ms debounce empty -> typing (entered) on typed <- input textbox "Word" (div > input) ocaml => start timer 1.1/debounce/typing/after 500ms 500ms
+3 +500ms debounce typing -> settled (entered) on settle <- timer 500ms 1.1/debounce/typing/after 500ms => stop 1.1/debounce/typing/after 500ms
+- : unit = ()
+]}
+
+The cause says what made each step: the element of a handler (by role,
+accessible name and path), a timer, the answer of a call, a Live update, a held
+source, the result of an action, new props, a child, a URL change or a message
+of the host. An ignored event is recorded too, marked [unhandled].
+
+{!Silica.Trace.to_jsonl} writes the trace as a file, JSON Lines: one header
+line, then one {!Silica.Transition.t} per line; {!Silica.Trace.of_jsonl} reads
+it back and names the line of an error. A record holds the event data, the
+props and the snapshot only for machines whose codecs are registered with
+{!Silica.Machine.register_codecs}; names, causes, answers and Live updates are
+always there. The {!Silica.Trace} page says what a trace does not hold.
+
+The role, name and path of the element of a handler are computed when the
+trace is read, not when the input happens: the record keeps the element and
+the elements above it, which are immutable data, so a press on a large page
+costs the same with a recorder as without one.
+
+The same records come from the browser and the server.
+{!Silica_browser.recorder} makes a {!Silica.Trace.Recorder.t}, a ring of the
+last transitions (1000 by default, names only unless [~data:true]); give it to
+[Silica_browser.mount ~observe:(Trace.Recorder.observer recorder)] and send
+[Trace.to_jsonl] through an endpoint of the app. [Server.live ~observe] and
+[Server.create ~observe_live] give the transitions of a Live session to an
+observer, such as [Silica.Trace.Recorder.observer]. With no observer nothing
+is recorded, and a release bundle that does not make a recorder has no
+recorder code.
+
 [mount ~answers] answers calls before the first paint, as a server render
 does. {!Silica_memory.mount_app} runs a router app with a history: see
 {!page-router.app}. The platform also records the actions, the running

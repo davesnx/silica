@@ -118,17 +118,24 @@ let run (type p s e) ?live_config ?on_session_gone ?(dev = false) ?on_error
     ~create ();
   Dom.set_attribute root "data-silica-ready" ""
 
+let recorder ?capacity ?data ~build () =
+  Trace.Recorder.create ?capacity ?data ~clock:Js.Date.now ~platform:"browser"
+    ~build ()
+
 let mount ?live_config ?on_session_gone ?dev ?on_error ?hydrate ?(lives = [])
-    ~root (component : (_, _, _) Component.t) =
+    ?observe ~root (component : (_, _, _) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
-    ~create:(fun ~dev ~on_error -> Instance.mount ~dev ?on_error component)
+    ~create:(fun ~dev ~on_error ->
+      Instance.mount ~dev ?on_error ?observe component
+    )
     ~on_route:None ()
 
 let mount_app ?live_config ?on_session_gone ?dev ?on_error ?hydrate
-    ?(lives = []) ~root (app : Url.t -> (_, _, Router.event) Component.t) =
+    ?(lives = []) ?observe ~root
+    (app : Url.t -> (_, _, Router.event) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error ->
-      Instance.mount ~dev ?on_error (app (Dom_renderer.current_url ()))
+      Instance.mount ~dev ?on_error ?observe (app (Dom_renderer.current_url ()))
     )
     ~on_route:(Some Fun.id) ()
 
@@ -140,7 +147,7 @@ let mount_live ?live_config ?on_session_gone ?(dev = false) ~root
   in
   ()
 
-let mount_with_renderer ?dev ?on_error ?answers ~renderer
+let mount_with_renderer ?dev ?on_error ?answers ?observe ~renderer
     (component : (_, _, _) Component.t) =
   Runtime.start ?dev ?on_error ?answers
     ~platform:
@@ -149,7 +156,9 @@ let mount_with_renderer ?dev ?on_error ?answers ~renderer
         location = Dom_renderer.current_url;
         io = Web.io ();
       }
-    ~create:(fun ~dev ~on_error -> Instance.mount ~dev ?on_error component)
+    ~create:(fun ~dev ~on_error ->
+      Instance.mount ~dev ?on_error ?observe component
+    )
     ()
 
 let cookie name = Js.Nullable.toOption (Dom.cookie name)

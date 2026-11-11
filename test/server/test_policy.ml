@@ -104,7 +104,7 @@ let files =
     ("", "top secret");
   ]
 
-let make ?(modify = Fun.id) ?(topics = true) () =
+let make ?(modify = Fun.id) ?(topics = true) ?observe_live () =
   Queue.clear pending;
   logs := [];
   requests := [];
@@ -131,7 +131,7 @@ let make ?(modify = Fun.id) ?(topics = true) () =
     | Error e ->
         Alcotest.fail e
   in
-  Server.create config ~assets
+  Server.create config ~assets ?observe_live
     ~read:(fun name -> List.assoc_opt name files)
     ~handlers ~islands:[ Server.Island live ]
     ~topics:
@@ -940,6 +940,29 @@ let island_tests =
         check (list shown_t) "states"
           [ Hello_ok; State (1, 0, 0); State (2, 1, 1); State (3, 2, 2) ]
           (shown f)
+    );
+    test_case "each island instance gives its transitions to the hook" `Quick
+      (fun () ->
+        let seen = ref [] in
+        let observe_live (context : Server.context) ~channel =
+          Transition.observer (fun record ->
+              seen :=
+                ( context.session.id <> "" && channel = "counter",
+                  (Transition.resolve record).seq
+                )
+                :: !seen
+          )
+        in
+        let t = make ~observe_live () in
+        let c = visit t in
+        let f = connect t c in
+        send f (hello c (island ()));
+        send f (event 1 Inc);
+        check
+          (list (pair bool int))
+          "the start and the event, with the session and the channel"
+          [ (true, 1); (true, 2) ]
+          (List.rev !seen)
     );
     test_case "an event id that is not higher is dropped" `Quick (fun () ->
         let t = make () in

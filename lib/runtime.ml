@@ -186,7 +186,7 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
       (platform.renderer
          ~on_route:
            (Option.map
-              (fun on_route event -> Instance.message !tree (on_route event))
+              (fun on_route event -> Instance.route !tree event (on_route event))
               on_route
            )
          ~dispatch:send

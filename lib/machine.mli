@@ -166,16 +166,25 @@ val event_name : ('p, 's, 'e) t -> 'e -> string
     none. *)
 
 val register_codecs :
-  ('p, 's, 'e) t -> ?state:'s Codec.t -> ?event:'e Codec.t -> unit -> unit
-(** [register_codecs machine ?state ?event ()] gives the machine JSON codecs of
-    its snapshots and events, for traces, replay and development tools. A second
-    call for the same machine replaces the first.
+  ('p, 's, 'e) t ->
+  ?props:'p Codec.t ->
+  ?state:'s Codec.t ->
+  ?event:'e Codec.t ->
+  unit ->
+  unit
+(** [register_codecs machine ?props ?state ?event ()] gives the machine JSON
+    codecs of its props, snapshots and events, for traces, replay and
+    development tools. A second call for the same machine replaces the first.
 
     The codecs are not part of the machine definition on purpose: only the code
     that calls [register_codecs] references them. Call it from development entry
     points (tests, the checker suite, a development client), and a release
     bundle that never calls it carries no codec. Leave out a codec when the
     values hold closures or other data that is not plain data. *)
+
+val props_codec : ('p, 's, 'e) t -> ('p Codec.t, string) result
+(** The props codec given to {!register_codecs}, or an [Error] as for
+    {!state_codec}. *)
 
 val state_codec : ('p, 's, 'e) t -> ('s Codec.t, string) result
 (** The state codec given to {!register_codecs}. [Error] names the machine and

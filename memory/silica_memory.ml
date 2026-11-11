@@ -58,6 +58,8 @@ type memory = {
   mutable arrivals : int;
   mutable announced : string list;
   limiters : (int * int list * string, Rate.t * (message -> unit)) Hashtbl.t;
+  mutable recorder : Trace.Recorder.t option;
+  start_url : string;
 }
 
 and element = { owner : memory; root : int; path : int list }
@@ -896,26 +898,46 @@ let make ~csrf ~url ~media =
     arrivals = 0;
     announced = [];
     limiters = Hashtbl.create 8;
+    recorder = None;
+    start_url = url;
   }
 
 let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
     ?(url = "/") ?(media = []) ~(on_route : (Router.event -> e) option)
-    ~(create : memory -> dev:bool -> on_error:_ -> (p, s, e) Instance.t) () =
+    ~(create :
+       memory ->
+       dev:bool ->
+       on_error:_ ->
+       observe:Instance.observer ->
+       (p, s, e) Instance.t
+       ) () =
   let t = make ~csrf ~url ~media in
+  let recorder =
+    Trace.Recorder.create ~capacity:max_int ~data:true
+      ~clock:(fun () -> float_of_int t.now)
+      ~platform:"memory" ~build:"memory" ()
+  in
+  t.recorder <- Some recorder;
   Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
-    ~platform:(platform t) ~create:(create t) ();
+    ~platform:(platform t)
+    ~create:(fun ~dev ~on_error ->
+      create t ~dev ~on_error ~observe:(Trace.Recorder.observer recorder)
+    )
+    ();
   t
 
 let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
   start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
-    ~create:(fun _ ~dev ~on_error -> Instance.mount ~dev ?on_error component)
+    ~create:(fun _ ~dev ~on_error ~observe ->
+      Instance.mount ~dev ?on_error ~observe component
+    )
     ()
 
 let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
   start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
     ~on_route:(Some Fun.id)
-    ~create:(fun t ~dev ~on_error ->
-      Instance.mount ~dev ?on_error (app (current_url t))
+    ~create:(fun t ~dev ~on_error ~observe ->
+      Instance.mount ~dev ?on_error ~observe (app (current_url t))
     )
     ()
 
@@ -1124,9 +1146,10 @@ let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
   let tree = ref None in
   let memory =
     start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
-      ~create:(fun _ ~dev ~on_error ->
+      ~create:(fun _ ~dev ~on_error ~observe ->
         let created =
-          Instance.mount_with_props ~dev ?on_error ~props:!current component
+          Instance.mount_with_props ~dev ?on_error ~observe ~props:!current
+            component
         in
         tree := Some created;
         created
@@ -1166,6 +1189,13 @@ let key_up handle key_value = key_up handle.memory key_value
 let back handle = back handle.memory
 let forward handle = forward handle.memory
 let now handle = now handle.memory
+
+let trace handle =
+  match handle.memory.recorder with
+  | Some recorder ->
+      Trace.Recorder.trace recorder ~url:(Some handle.memory.start_url)
+  | None ->
+      invalid_arg "Silica_memory.trace: the runtime has not started"
 let advance handle ms = advance handle.memory ms
 let timers handle = timers handle.memory
 let requests handle = requests handle.memory

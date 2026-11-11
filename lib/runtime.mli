@@ -37,6 +37,11 @@ val start :
     event for the root component from each URL change and each link preload that
     the renderer reports.
 
+    Transition log: [create] gives the tree its hook (see {!Instance.mount}).
+    The runtime gives the root each URL change and preload with the cause
+    {!Instance.constructor-Route} (see {!Instance.route}). After an error page,
+    "Try again" calls [create] again, and the new tree gets the same hook.
+
     Errors. The runtime is a top-level boundary: an exception that no
     {!Node.val-boundary} catches paints an error page (with "Try again", which
     starts the root again with fresh state, and "Reload the page"), and goes to

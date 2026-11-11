@@ -32,6 +32,7 @@ val mount :
   ?on_error:(exn -> Node.error -> unit) ->
   ?hydrate:bool ->
   ?lives:live list ->
+  ?observe:Instance.observer ->
   root:string ->
   (unit, 's, 'e) Component.t ->
   unit
@@ -85,7 +86,29 @@ val mount :
     "Reload the page". A step that raises changes nothing: the state, the view
     and the actions of that step are dropped with the tree. In dev mode an
     exception during the first paint is raised again after the error page shows,
-    so a test sees it. *)
+    so a test sees it.
+
+    Transition log. [observe] gets each start, step and end of each instance
+    (see {!Silica.Instance.mount}); "Try again" keeps the same hook. The setting
+    works the same in {!mount_app} and {!mount_with_renderer}. *)
+
+val recorder :
+  ?capacity:int -> ?data:bool -> build:string -> unit -> Trace.Recorder.t
+(** A {!Silica.Trace.Recorder} with the browser clock ([Date.now]) and the
+    platform ["browser"], names only unless [data] (see
+    {!Silica.Trace.Recorder.create}):
+
+    {[
+      let recorder = Silica_browser.recorder ~build:"1.4.2" () in
+      Silica_browser.mount_app ~root:"app"
+        ~observe:(Trace.Recorder.observer recorder)
+        app
+    ]}
+
+    Read the trace with {!Silica.Trace.Recorder.val-trace} and send
+    {!Silica.Trace.to_jsonl} through an endpoint of the app. The observer is a
+    value, not the recorder, so an app that makes no recorder carries no
+    recorder code. *)
 
 val mount_app :
   ?live_config:live_config ->
@@ -94,6 +117,7 @@ val mount_app :
   ?on_error:(exn -> Node.error -> unit) ->
   ?hydrate:bool ->
   ?lives:live list ->
+  ?observe:Instance.observer ->
   root:string ->
   (Url.t -> (unit, 's, Router.event) Component.t) ->
   unit
@@ -164,6 +188,7 @@ val mount_with_renderer :
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
   ?answers:Answers.t ->
+  ?observe:Instance.observer ->
   renderer:Instance.message Renderer.make ->
   (unit, 's, 'e) Component.t ->
   unit

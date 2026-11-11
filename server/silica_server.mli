@@ -265,6 +265,7 @@ module Make (Io : IO) : sig
 
   val live :
     ?on_close:(unit -> unit) ->
+    ?observe:Silica.Instance.observer ->
     ('s, 'e) Silica.Live.t ->
     handlers:handler list ->
     context:context ->
@@ -286,7 +287,14 @@ module Make (Io : IO) : sig
       closes like {!val-close}, and [on_close] runs once so the host can close
       the socket. Only an exception raised synchronously while the step runs is
       caught: [Io] has no catch, so a failure inside a later continuation of an
-      asynchronous [Io] is the host's to handle. *)
+      asynchronous [Io] is the host's to handle.
+
+      Transition log. [observe] gets the start, each step (also an ignored
+      event) and the end ({!val-close}) of the machine, as
+      {!Silica.Instance.mount} gives them: the instance path is the machine id,
+      a client event has the cause {!Silica.Instance.Message}, and timers and
+      calls have their own causes. Give it [Silica.Trace.Recorder.observer] to
+      get a trace of the session with no browser. *)
 
   val receive : runner -> string -> unit Io.t
   (** Handle one client message, an [event] (see {!Silica.Protocol}). An event
@@ -320,6 +328,7 @@ module Make (Io : IO) : sig
   val create :
     config ->
     ?assets:Assets.t ->
+    ?observe_live:(context -> channel:string -> Silica.Instance.observer) ->
     read:(string -> string option Io.t) ->
     handlers:handler list ->
     islands:island list ->
@@ -330,7 +339,11 @@ module Make (Io : IO) : sig
   (** [read name] gives the bytes of the file [name] under [assets_prefix], or
       [None]. The server only asks for names without [..], a leading slash or
       control characters. Raises [Invalid_argument] when [config.secret] has
-      fewer than 16 bytes. *)
+      fewer than 16 bytes.
+
+      [observe_live context ~channel] is the hook of each island instance that a
+      socket starts (see {!val-live}), for example a
+      [Silica.Trace.Recorder.observer] kept by session id. *)
 
   val handle : t -> request -> response Io.t
   (** The whole HTTP policy.

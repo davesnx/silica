@@ -237,6 +237,20 @@ val timers : _ t -> int list
 (** The delays, in milliseconds, of the scheduled tasks that have not run and
     were not cancelled, in the order they were scheduled. *)
 
+(** {1 Transition log} *)
+
+val trace : _ t -> Trace.t
+(** Every transition since the start, with data: the runtime always records (see
+    {!Silica.Instance.mount} and {!Silica.Trace}). Each record has the time of
+    the memory clock. Event data, props and snapshots are there for the machines
+    that registered their codecs ({!Silica.Machine.register_codecs}); answers,
+    Live updates and input text are always there. The header has the first URL,
+    the build ["memory"] and the platform ["memory"]. Read it with
+    {!Silica.Trace.to_text} or write it with {!Silica.Trace.to_jsonl}.
+
+    After an error page, "Try again" starts a new tree: its records follow, with
+    their numbers going on and instance numbers starting again at 1. *)
+
 (** {1 HTTP} *)
 
 type request

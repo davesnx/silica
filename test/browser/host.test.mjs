@@ -963,3 +963,35 @@ test("a field whose event leaves the state as it was gets the view value back", 
   assert.equal(input.value, "ab");
   assert.equal(input.getAttribute("value"), "ab");
 });
+
+test("a recorder keeps the transitions of the page, with the element of each input", async () => {
+  const w = setup("");
+  const before = Date.now();
+  App.mount_traced(true, "root");
+  keydown(w, $("plain"), { key: "q" });
+  const field = $("debounced");
+  field.value = "abc";
+  field.dispatchEvent(new w.Event("input", { bubbles: true }));
+  await until(() => /debounced:abc/.test(text("log")), "the debounced input");
+  const lines = App.trace_text().split("\n");
+  assert.equal(lines[0], "trace events / build jsdom from browser");
+  assert.match(lines[1], /^1 \+0ms events only \(started\) <- start$/);
+  assert.match(lines[2], /^2 \+\d+ms events only -> only \(kept\) <- key_down textbox "plain" \(main > input\[2\]\) q$/);
+  assert.match(lines[3], /^3 \+\d+ms events only -> only \(kept\) <- input textbox "debounced" \(main > input\[3\]\) abc$/);
+  assert.ok(App.trace_reads_back(), "the JSON Lines file reads back as the same trace");
+  for (const time of App.trace_times()) {
+    assert.ok(time >= before && time <= Date.now(), "each record has the browser time");
+  }
+});
+
+test("a recorder with no data keeps no input text", async () => {
+  const w = setup("");
+  App.mount_traced(false, "root");
+  const field = $("debounced");
+  field.value = "secret";
+  field.dispatchEvent(new w.Event("input", { bubbles: true }));
+  await until(() => /debounced:secret/.test(text("log")), "the debounced input");
+  const text_form = App.trace_text();
+  assert.match(text_form, /input textbox "debounced" \(main > input\[3\]\)\n/);
+  assert.doesNotMatch(text_form, /secret/);
+});

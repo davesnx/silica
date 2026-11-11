@@ -104,6 +104,107 @@ let test_create_in_flight_survives () =
     "the create button that sent the call gets its answer and gives focus back"
     true (focused ())
 
+let contains text needle =
+  let n = String.length needle and h = String.length text in
+  let rec go i = i + n <= h && (String.sub text i n = needle || go (i + 1)) in
+  go 0
+
+let test_trace_of_a_visit () =
+  Linear_codecs.register ();
+  let t = Memory.mount_app ~url:"/" Linear_app.app in
+  answer t;
+  Memory.press (Memory.by_role ~name:"New issue" t Accessibility.Link);
+  let dialog = Memory.by_role ~name:"New issue" t Accessibility.Dialog in
+  let title =
+    Memory.by_role ~within:dialog ~name:"Title" t Accessibility.Textbox
+  in
+  Memory.input title "Traced";
+  Memory.submit title;
+  let trace = Memory.trace t in
+  let text = Trace.to_text trace in
+  if Sys.getenv_opt "SILICA_PRINT_TRACE" = Some "1" then print_string text;
+  let transitions = trace.transitions in
+  let first = List.hd transitions in
+  Alcotest.(check string)
+    "the root starts first" "started"
+    ( match first.change with
+    | Transition.Started ->
+        "started"
+    | Transition.Unhandled | Kept | Entered | Ended ->
+        "other"
+    );
+  Alcotest.(check string)
+    "the root is the router" trace.header.root first.machine;
+  Alcotest.(check (list int))
+    "numbered from 1 with no gap"
+    (List.init (List.length transitions) (fun index -> index + 1))
+    (List.map (fun (record : Transition.t) -> record.seq) transitions);
+  let has_cause name found =
+    if not (List.exists found transitions) then
+      Alcotest.failf "no %s in the trace:\n%s" name text
+  in
+  has_cause "answer of /api/issues with the issues" (fun record ->
+      match[@warning "-4"] record.cause with
+      | Transition.Answer { path = "/api/issues"; answer = Some answer; _ } ->
+          contains (Silica_json.Json.to_string answer) "\"Second\""
+      | _ ->
+          false
+  );
+  has_cause "submit of the form" (fun record ->
+      match[@warning "-4"] record.cause with
+      | Transition.Element { handler = "submit"; element; _ } ->
+          contains element "form"
+      | _ ->
+          false
+  );
+  has_cause "the create call, started by the parent of the dialog"
+    (fun record ->
+      match[@warning "-4"] record.cause with
+      | Transition.Child { instance } ->
+          contains instance ":create-issue-dialog"
+          && List.exists
+               (fun action -> contains action "start call")
+               record.actions
+      | _ ->
+          false
+  );
+  has_cause "input of Traced in the Title field" (fun record ->
+      match[@warning "-4"] record.cause with
+      | Transition.Element
+          { handler = "input"; role = Some "textbox"; value = Some "Traced"; _ }
+        ->
+          true
+      | _ ->
+          false
+  );
+  has_cause "the event and snapshot data of a machine with codecs"
+    (fun record ->
+      record.machine = "create-issue"
+      && record.event = "title"
+      && Option.map Silica_json.Json.to_string record.data
+         = Some "[\"Title\",\"Traced\"]"
+      && record.snapshot <> None
+  );
+  has_cause "the URL change to the dialog" (fun record ->
+      record.cause = Transition.Url "/?new=true"
+  );
+  has_cause "a child instance with a path under the root" (fun record ->
+      contains record.instance (first.instance ^ "/")
+  );
+  match Trace.of_jsonl (Trace.to_jsonl trace) with
+  | Ok again ->
+      List.iter2
+        (fun (read : Transition.t) (written : Transition.t) ->
+          if read <> written then
+            Alcotest.failf "record %d reads back as %s" written.seq
+              (Codec.to_string Transition.codec read)
+        )
+        again.transitions trace.transitions;
+      Alcotest.(check bool)
+        "the file reads back to the same trace" true (again = trace)
+  | Error message ->
+      Alcotest.fail message
+
 let () =
   Alcotest.run "linear_memory"
     [
@@ -113,6 +214,8 @@ let () =
             test_user_call_runs_once;
           Alcotest.test_case "a create in flight survives a move between pages"
             `Quick test_create_in_flight_survives;
+          Alcotest.test_case "the trace of a visit, from memory" `Quick
+            test_trace_of_a_visit;
         ]
       );
     ]

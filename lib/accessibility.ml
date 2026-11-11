@@ -313,15 +313,17 @@ let build node =
   let document = { all = []; ids = Hashtbl.create 16 } in
   let portals = ref [] in
   let rec make ~ancestors ~prefix ~collect raws =
-    let count tag =
-      List.length
-        (List.filter
-           (function[@warning "-4"]
-             | Raw_element (other, _, _) -> other = tag | _ -> false
-             )
-           raws
+    let counts = Hashtbl.create 8 in
+    List.iter
+      (function[@warning "-4"]
+        | Raw_element (tag, _, _) ->
+            Hashtbl.replace counts tag
+              (1 + Option.value (Hashtbl.find_opt counts tag) ~default:0)
+        | _ ->
+            ()
         )
-    in
+      raws;
+    let count tag = Option.value (Hashtbl.find_opt counts tag) ~default:0 in
     let seen = Hashtbl.create 8 in
     List.concat_map
       (function

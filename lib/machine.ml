@@ -62,6 +62,7 @@ type codecs =
   | Codecs : {
       id : string;
       type_id : ('p * 's * 'e) Type.Id.t;
+      props : 'p Codec.t option;
       state : 's Codec.t option;
       event : 'e Codec.t option;
     }
@@ -70,24 +71,25 @@ type codecs =
 let registered : codecs list ref = ref []
 
 let codecs (type p s e) (machine : (p, s, e) t) :
-    (s Codec.t option * e Codec.t option) option =
-  let rec find : codecs list -> (s Codec.t option * e Codec.t option) option =
-    function
+    (p Codec.t option * s Codec.t option * e Codec.t option) option =
+  let rec find :
+      codecs list ->
+      (p Codec.t option * s Codec.t option * e Codec.t option) option = function
     | [] ->
         None
     | Codecs entry :: rest -> (
         match Type.Id.provably_equal entry.type_id machine.type_id with
         | Some Type.Equal ->
-            Some (entry.state, entry.event)
+            Some (entry.props, entry.state, entry.event)
         | None ->
             find rest
       )
   in
   find !registered
 
-let register_codecs machine ?state ?event () =
+let register_codecs machine ?props ?state ?event () =
   registered :=
-    Codecs { id = machine.id; type_id = machine.type_id; state; event }
+    Codecs { id = machine.id; type_id = machine.type_id; props; state; event }
     :: List.filter
          (fun (Codecs { type_id; _ }) ->
            Option.is_none (Type.Id.provably_equal type_id machine.type_id)
@@ -110,9 +112,17 @@ let codec machine what = function
           and call that module before asking for a codec"
         )
 
-let state_codec machine = codec machine "state" (Option.map fst (codecs machine))
+let props_codec machine =
+  codec machine "props"
+    (Option.map (fun (props, _, _) -> props) (codecs machine))
 
-let event_codec machine = codec machine "event" (Option.map snd (codecs machine))
+let state_codec machine =
+  codec machine "state"
+    (Option.map (fun (_, state, _) -> state) (codecs machine))
+
+let event_codec machine =
+  codec machine "event"
+    (Option.map (fun (_, _, event) -> event) (codecs machine))
 
 let registered_codecs () = List.map (fun (Codecs { id; _ }) -> id) !registered
 let is_final machine = machine.final

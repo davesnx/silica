@@ -206,6 +206,36 @@ module Events = struct
 end
 
 let mount_events root = Silica_browser.mount ~root Events.component
+let traced = ref None
+
+let mount_traced ~data root =
+  let recorder = Silica_browser.recorder ~data ~build:"jsdom" () in
+  traced := Some recorder;
+  Silica_browser.mount
+    ~observe:(Trace.Recorder.observer recorder)
+    ~root Events.component
+
+let traced_trace () =
+  match !traced with
+  | Some recorder ->
+      Trace.Recorder.trace recorder ~url:(Some "/")
+  | None ->
+      failwith "no traced mount"
+
+let trace_text () = Trace.to_text (traced_trace ())
+
+let trace_reads_back () =
+  let trace = traced_trace () in
+  Trace.of_jsonl (Trace.to_jsonl trace) = Ok trace
+
+let trace_times () =
+  Array.of_list
+    (List.map
+       (fun (record : Transition.t) ->
+         Option.value record.time_ms ~default:(-1.)
+       )
+       (traced_trace ()).transitions
+    )
 
 module Hydrate = struct
   type event = Inc | Type of string

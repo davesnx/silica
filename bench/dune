@@ -4,6 +4,7 @@
   check.ts
   budgets.json
   server/bench.exe
+  trace/trace_bench.exe
   server/wrk.sh
   ../site/server/main.exe
   ../site/client/meta.json
