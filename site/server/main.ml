@@ -80,29 +80,26 @@ let () =
       );
     ]
     ignore "Silica site server";
+  let origins =
+    match !origins with
+    | [] ->
+        Silica_server.Localhost
+    | list ->
+        Silica_server.Origins list
+  in
+  let dev = Silica_server.dev_of_env () in
   let secret =
-    match Sys.getenv_opt "SILICA_SECRET" with
-    | Some secret when String.length secret >= 16 ->
+    match Silica_server.secret_of_env ~origins ~dev with
+    | Ok secret ->
         secret
-    | Some _ ->
-        prerr_endline "site: SILICA_SECRET needs at least 16 bytes";
+    | Error message ->
+        prerr_endline ("site: " ^ message);
         exit 1
-    | None ->
-        Silica_server_kit.Random_source.hex_id ~bytes:32
   in
   let config =
     {
-      (Silica_server.default_config
-         ~origins:
-           ( match !origins with
-           | [] ->
-               Silica_server.Localhost
-           | list ->
-               Silica_server.Origins list
-           )
-         ~secret
-      )
-      with
+      (Silica_server.default_config ~origins ~secret) with
+      dev;
       secure_cookie = !secure_cookie;
     }
   in
@@ -116,5 +113,9 @@ let () =
         prerr_endline ("site: bad metafile: " ^ message);
         exit 1
   in
+  let server =
+    Site_server.create config ~assets ~read:(Adapter.read_dir !static) ()
+  in
   Adapter.run ~port:!port ~max_connections:!max_connections ~addr:!addr
-    (Site_server.create config ~assets ~read:(Adapter.read_dir !static) ())
+    ~on_stop:(fun () -> Adapter.Server.shutdown server)
+    server

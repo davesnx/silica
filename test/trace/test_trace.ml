@@ -176,6 +176,8 @@ let cause_text (cause : Transition.cause) =
 let change_text : Transition.change -> string = function
   | Started ->
       "started"
+  | Resumed ->
+      "resumed"
   | Unhandled ->
       "unhandled"
   | Kept ->
@@ -484,7 +486,7 @@ let elements_found_later () =
         match record.change with
         | Transition.Unhandled ->
             Some record.cause
-        | Transition.Started | Kept | Entered | Ended ->
+        | Transition.Started | Resumed | Kept | Entered | Ended ->
             None
       )
       (Trace.Recorder.transitions recorder)

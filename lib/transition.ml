@@ -1,6 +1,12 @@
 module Json = Silica_json.Json
 
-type change = Instance.change = Started | Unhandled | Kept | Entered | Ended
+type change = Instance.change =
+  | Started
+  | Resumed
+  | Unhandled
+  | Kept
+  | Entered
+  | Ended
 
 type cause =
   | Start
@@ -44,6 +50,8 @@ type t = {
 let change_to_string = function
   | Started ->
       "started"
+  | Resumed ->
+      "resumed"
   | Unhandled ->
       "unhandled"
   | Kept ->
@@ -56,6 +64,8 @@ let change_to_string = function
 let change_of_string = function
   | "started" ->
       Ok Started
+  | "resumed" ->
+      Ok Resumed
   | "unhandled" ->
       Ok Unhandled
   | "kept" ->
@@ -783,7 +793,7 @@ let make ~seq ~time_ms observed =
   let cause, element = make_cause ~view ~message cause in
   let with_props =
     match[@warning "-4"] (change, cause) with
-    | Started, _ | _, Props ->
+    | (Started | Resumed), _ | _, Props ->
         encoded (Machine.props_codec machine) props
     | _ ->
         None

@@ -70,17 +70,23 @@ let () =
       );
     ]
     ignore "mini Linear server";
-  let config =
-    Silica_server.default_config
-      ~origins:
-        ( match !origins with
-        | [] ->
-            Silica_server.Localhost
-        | list ->
-            Silica_server.Origins list
-        )
-      ~secret:(Silica_server_kit.Random_source.hex_id ~bytes:32)
+  let origins =
+    match !origins with
+    | [] ->
+        Silica_server.Localhost
+    | list ->
+        Silica_server.Origins list
   in
+  let dev = Silica_server.dev_of_env () in
+  let secret =
+    match Silica_server.secret_of_env ~origins ~dev with
+    | Ok secret ->
+        secret
+    | Error message ->
+        prerr_endline ("mini Linear: " ^ message);
+        exit 1
+  in
+  let config = { (Silica_server.default_config ~origins ~secret) with dev } in
   let assets =
     match
       Silica_server.Assets.of_metafile ~prefix:"/static/" (read_file !metafile)
@@ -91,7 +97,10 @@ let () =
         prerr_endline ("mini Linear: bad metafile: " ^ message);
         exit 1
   in
+  let server =
+    Linear_server.create ~count:!count config ~assets
+      ~read:(Adapter.read_dir !static) ()
+  in
   Adapter.run ~port:!port ~max_connections:!max_connections
-    (Linear_server.create ~count:!count config ~assets
-       ~read:(Adapter.read_dir !static) ()
-    )
+    ~on_stop:(fun () -> Adapter.Server.shutdown server)
+    server

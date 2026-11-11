@@ -10,9 +10,14 @@ let save _context count =
 
 let () =
   let port = int_of_string (environment "PORT" ~default:"8080") in
+  let dev = Silica_server.dev_of_env () in
   let secret =
-    environment "SILICA_SECRET"
-      ~default:(Silica_server_kit.Random_source.hex_id ~bytes:32)
+    match Silica_server.secret_of_env ~origins:Silica_server.Localhost ~dev with
+    | Ok secret ->
+        secret
+    | Error message ->
+        prerr_endline message;
+        exit 1
   in
   let static =
     environment "SILICA_STATIC" ~default:"_build/default/client/dist"
@@ -32,7 +37,10 @@ let () =
   in
   let server =
     Server.create
-      (Silica_server.default_config ~origins:Silica_server.Localhost ~secret)
+      {
+        (Silica_server.default_config ~origins:Silica_server.Localhost ~secret) with
+        dev;
+      }
       ~assets
       ~read:(Silica_adapter.read_dir static)
       ~handlers:[ Server.implement Api.save save ]
@@ -47,4 +55,4 @@ let () =
       ()
   in
   Printf.printf "http://127.0.0.1:%d\n%!" port;
-  Silica_adapter.run ~port server
+  Silica_adapter.run ~port ~on_stop:(fun () -> Server.shutdown server) server

@@ -1,5 +1,11 @@
 (tests
- (names test_server test_policy test_adapter test_adapter_stop test_settle)
+ (names
+  test_server
+  test_policy
+  test_adapter
+  test_adapter_stop
+  test_settle
+  test_restart)
  (libraries
   silica
   silica_test_support

@@ -162,5 +162,8 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
       )
       ()
   in
+  Server.keep t ~name:"linear-store"
+    ~save:(fun () -> Linear_store.save store)
+    ~load:(Linear_store.load store);
   server := Some t;
   t

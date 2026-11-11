@@ -18,7 +18,7 @@ type segment = Index of int | Key of string
 
 type boundary_cell = { mutable failure : Node.error option }
 
-type change = Started | Unhandled | Kept | Entered | Ended
+type change = Started | Resumed | Unhandled | Kept | Entered | Ended
 
 type context = {
   queue : (unit -> unit) Queue.t;

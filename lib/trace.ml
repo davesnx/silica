@@ -156,6 +156,8 @@ let of_jsonl text =
 let change_text : Transition.change -> string = function
   | Started ->
       "started"
+  | Resumed ->
+      "resumed"
   | Unhandled ->
       "unhandled"
   | Kept ->
@@ -229,7 +231,7 @@ let to_text trace =
     in
     let states =
       match record.change with
-      | Started ->
+      | Started | Resumed ->
           record.target
       | Unhandled | Kept | Entered | Ended ->
           record.from ^ " -> " ^ record.target

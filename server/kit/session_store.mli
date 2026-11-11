@@ -36,14 +36,33 @@ val expire : t -> now:float -> int
 val count : t -> int
 (** The number of sessions in the store, expired ones included. *)
 
+val save : t -> string
+(** Every session of the store as JSON text, expired ones included, for
+    {!val-load} in another process. The text holds the session ids, which are as
+    secret as the cookies that carry them. *)
+
+val load : t -> now:float -> string -> (int, string) result
+(** [load t ~now text] adds the sessions of a text from {!val-save} to the
+    store, and gives how many it added. It trusts the text no more than a
+    cookie: a session is skipped when it is expired, when its id is not 1 to 128
+    lower case hexadecimal digits, when [last_seen] is before [created] or after
+    [now], when a field is missing or of another type, or when the store already
+    has its id. [Error] when the text is not a JSON array; the store does not
+    change then. *)
+
 type ops = {
   get : now:float -> string -> session option;
   set : session -> unit;
   update : now:float -> string -> (session -> session) -> session option;
   remove : string -> unit;
   expire : now:float -> int;
+  save : unit -> string;
+  load : now:float -> string -> (int, string) result;
 }
-(** The store as a record of functions, so the server can use another store. *)
+(** The store as a record of functions, so the server can use another store.
+    [save] and [load] keep the sessions across a restart in development (see
+    [Silica_server.config.dev]); a store that outlives the process can give
+    [save = fun () -> "[]"] and a [load] that returns [Ok 0]. *)
 
 val ops : t -> ops
 (** The store as {!type-ops}. *)

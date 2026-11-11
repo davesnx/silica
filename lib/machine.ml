@@ -264,6 +264,8 @@ let start machine props =
   let state, actions, _ = props_step machine ~previous:None props state in
   (state, run machine.first @ enter machine props machine.init @ actions)
 
+let resume machine props state = starts (owned machine props state)
+
 let set_props machine ~previous props state =
   props_step machine ~previous:(Some previous) props state
 

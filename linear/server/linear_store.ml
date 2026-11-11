@@ -245,6 +245,47 @@ let edit_comment t ~author (input : Comment_edit.t) =
               Ok edited
       )
 
+let save t =
+  locked t (fun () ->
+      Jsonkit.to_string
+        (Jsonkit.declassify
+           (`Assoc
+              [
+                ("issues", Issues.to_json t.issues);
+                ("comments", Comments.to_json t.comments);
+              ]
+           )
+        )
+  )
+
+let load t text =
+  match Jsonkit.of_string text with
+  | exception Jsonkit.Of_string_error message ->
+      Error ("not JSON: " ^ message)
+  | json -> (
+      let field name =
+        match Jsonkit.classify json with
+        | `Assoc fields ->
+            List.assoc_opt name fields
+        | _ ->
+            None
+      in
+      match (field "issues", field "comments") with
+      | Some issues, Some comments -> (
+          match (Issues.of_json issues, Comments.of_json comments) with
+          | issues, comments ->
+              locked t (fun () ->
+                  t.issues <- issues;
+                  t.comments <- comments
+              );
+              Ok ()
+          | exception (Jsonkit.Of_json_error _ as error) ->
+              Error (Printexc.to_string error)
+        )
+      | _ ->
+          Error "no issues and comments"
+    )
+
 let next_user () =
   let lock = Mutex.create () in
   let count = ref 0 in

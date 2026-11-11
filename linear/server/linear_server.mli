@@ -13,4 +13,6 @@ val create :
 (** A new store with [count] seed issues (see {!Linear_store.create}). The first
     visitor that asks who they are gets Ada, the next Ben, then Cleo, and the
     answer stays the same for the life of that session. A created issue is
-    published to the topic [issues] under the key [all]. *)
+    published to the topic [issues] under the key [all]. With [config.dev], the
+    issues and comments are kept across a restart (see
+    {!Silica_server.Make.keep}). *)

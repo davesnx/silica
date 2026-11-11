@@ -161,6 +161,7 @@ let page ?(csrf = "") ?(nonce = "") ?(islands = []) ?(url = "/") handlers :
     imports = (fun _ -> []);
     handlers;
     islands;
+    dev = false;
   }
 
 let render ?(timeout = 1000) handlers =

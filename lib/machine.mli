@@ -238,6 +238,18 @@ val start : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
 (** The initial snapshot after the [start] actions of the machine, the actions
     of entering it, and [on_props None props]. *)
 
+val resume : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+(** [resume machine props snapshot] gives the actions that run the machine again
+    at a snapshot it reached before, in another process or bundle: the starts of
+    the timers, calls, subscriptions and held sources that the snapshot owns, in
+    the order of [owns], with the ids of {!active}. A timer starts with its full
+    delay and a call is sent again.
+
+    It gives no [start] actions, no [entry] and no [on_props]: the snapshot
+    entered its state before, when they ran, and their effects (a focus, a
+    title, a navigation, a call made by an action) must not happen twice. After
+    it, the actions and {!active} agree, as after {!start}. *)
+
 val step :
   ?finished:string ->
   ('p, 's, 'e) t ->

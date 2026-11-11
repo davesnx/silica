@@ -73,8 +73,12 @@ Each variable has a flag of the same meaning ([main.exe --help]).
   [[::1]] work: a deployed server needs this variable.
 - [SILICA_SECURE_COOKIE]: [1] adds [Secure] to the session cookie. Set it when
   the public address is HTTPS, also when a proxy ends TLS.
-- [SILICA_SECRET]: the key of the CSRF tokens, at least 16 bytes (see
+- [SILICA_SECRET]: the key of the CSRF tokens, at least 16 bytes. A server
+  with [SILICA_ORIGINS] does not start without it (see
   {{!section-secret}The session secret}).
+- [SILICA_DEV_STATE]: development only. The file where the server keeps its
+  sessions, Live islands and app data across a restart (see
+  {!Silica_server.dev_of_env}). Never set it in production.
 - [SILICA_MAX_CONNECTIONS]: the open connections at most, default [1024]. Each
   open Live socket and each idle keep-alive connection holds one, with a
   thread; a client above the limit waits until one closes.
@@ -136,7 +140,10 @@ From [fly.toml]:
 ]}
 
 Change [app] and [SILICA_ORIGINS] to the name of your app, then run
-[fly launch --no-deploy --copy-config] once and [fly deploy --ha=false].
+[fly launch --no-deploy --copy-config] once,
+[fly secrets set SILICA_SECRET=$(openssl rand -hex 32)] once, and
+[fly deploy --ha=false]. Without the secret the server stops at start with a
+message that says so.
 
 - The Fly proxy ends TLS and passes WebSocket upgrades through. The browser
   sends the [Origin] of the public address, so [SILICA_ORIGINS] must hold it.
@@ -233,35 +240,40 @@ serve the static export from Vercel or point the domain at that host.
 {1:secret The session secret}
 
 The CSRF token of a session is a keyed hash of the session id with the secret.
-The site makes a new random secret at each start, unless [SILICA_SECRET] is set:
+The site reads the secret from [SILICA_SECRET] with
+{!Silica_server.secret_of_env}:
 
 From [site/server/main.ml]:
 {@ocaml[
+  let dev = Silica_server.dev_of_env () in
   let secret =
-    match Sys.getenv_opt "SILICA_SECRET" with
-    | Some secret when String.length secret >= 16 ->
+    match Silica_server.secret_of_env ~origins ~dev with
+    | Ok secret ->
         secret
-    | Some _ ->
-        prerr_endline "site: SILICA_SECRET needs at least 16 bytes";
+    | Error message ->
+        prerr_endline ("site: " ^ message);
         exit 1
-    | None ->
-        Silica_server_kit.Random_source.hex_id ~bytes:32
   in
 ]}
 
-After a restart the sessions are gone, because the store is in memory, with or
-without [SILICA_SECRET]:
+A server with public origins ([SILICA_ORIGINS]) or in development mode
+([SILICA_DEV_STATE]) does not start without the secret: a random one would
+make every token invalid at each restart and deploy. Only a local server with
+neither gets a random secret, and it says so on stderr.
+
+After a restart in production the sessions are gone, because the store is in
+memory:
 
 - A call from a page that was open before the restart gets status 403 (the
   cookie names no session). Its machine gets [Failed (Http 403)].
 - A Live socket is closed with [close_session], and the page reloads once. The
   reload gets a new session and a new token (see {!page-server}).
 
-A fixed secret matters when the sessions outlive the process or are shared by
-several instances (next section): every instance must check the tokens with
-the same key. Keep it out of the image and of [fly.toml]; give it as a secret
-of the host, such as [fly secrets set SILICA_SECRET=...] with a value from
-[openssl rand -hex 32].
+The fixed secret matters when the sessions outlive the process: in
+development, where the server saves them at stop and reads them at start, or
+when several instances share them (next section). Keep it out of the image and
+of [fly.toml]; give it as a secret of the host, such as
+[fly secrets set SILICA_SECRET=...] with a value from [openssl rand -hex 32].
 
 {1:scale One instance}
 

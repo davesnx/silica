@@ -181,8 +181,10 @@ A session is temporary server data for one visitor, found by the cookie
 [silica_sid]. The cookie is [HttpOnly], [SameSite=Lax] and [Path=/], and
 [Secure] when [secure_cookie] is set. With the default store, a session lives
 8 hours when unused and 7 days at most, and the store keeps at most 10 000
-sessions. Sessions live in memory: a restart ends them. [config.sessions]
-takes another store, a {!Silica_server.Session.type-ops}. Its [update] changes
+sessions. Sessions live in memory: a restart ends them, except in development
+mode, where {!Silica_server.Make.shutdown} saves them, with the Live islands,
+and the next {!Silica_server.Make.create} reads them (see [config.dev]).
+[config.sessions] takes another store, a {!Silica_server.Session.type-ops}. Its [update] changes
 one session in one step: no other call of the store runs between the read and
 the write, so two requests of the same visitor do not lose a change.
 

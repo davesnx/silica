@@ -17,6 +17,11 @@
 
 type change = Instance.change =
   | Started  (** The instance started: [from] is [""]. *)
+  | Resumed
+      (** The instance started again at a snapshot it reached before, such as a
+          Live island after a server restart: [from] is [""], [target] is the
+          state of that snapshot, [actions] are only the starts of what it owns
+          (see {!Machine.resume}), and the cause is [Start]. *)
   | Unhandled  (** The machine ignored the event: nothing changed. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state, with the same name or another. *)
@@ -75,17 +80,18 @@ type t = {
       (** The number of the entry of the state after the step, as in timer and
           source ids. *)
   machine : string;  (** {!Machine.id}. *)
-  from : string;  (** The state name before; [""] for [Started]. *)
+  from : string;
+      (** The state name before; [""] for [Started] and [Resumed]. *)
   target : string;  (** The state name after. *)
   change : change;
   event : string;
       (** {!Machine.event_name} of the event; [""] when there is no event
-          ([Started], [Ended], [Props]). *)
+          ([Started], [Resumed], [Ended], [Props]). *)
   data : Silica_json.Json.t option;
       (** The event, by the event codec of the machine. *)
   props : Silica_json.Json.t option;
-      (** The props, by the props codec of the machine, for [Started] and for a
-          [Props] cause. *)
+      (** The props, by the props codec of the machine, for [Started], [Resumed]
+          and for a [Props] cause. *)
   snapshot : Silica_json.Json.t option;
       (** The snapshot after, by the state codec of the machine. *)
   actions : string list;

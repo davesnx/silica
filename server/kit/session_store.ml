@@ -19,6 +19,8 @@ type ops = {
   update : now:float -> string -> (session -> session) -> session option;
   remove : string -> unit;
   expire : now:float -> int;
+  save : unit -> string;
+  load : now:float -> string -> (int, string) result;
 }
 
 let create ?(max_sessions = 10_000) ?(idle = 8. *. 3600.)
@@ -96,6 +98,105 @@ let expire t ~now =
 
 let count t = Mutex.protect t.lock (fun () -> Hashtbl.length t.table)
 
+let encode s =
+  `Assoc
+    [
+      ("id", `String s.id);
+      ("created", `Float s.created);
+      ("last_seen", `Float s.last_seen);
+      ( "data",
+        `List (List.map (fun (k, v) -> `List [ `String k; `String v ]) s.data)
+      );
+    ]
+
+let save t =
+  let sessions =
+    Mutex.protect t.lock (fun () ->
+        Hashtbl.fold (fun _ s acc -> s :: acc) t.table []
+    )
+  in
+  Jsonkit.to_string
+    (Jsonkit.declassify
+       (`List (List.map (fun s -> Jsonkit.declassify (encode s)) sessions))
+    )
+
+let valid_id id =
+  String.length id > 0
+  && String.length id <= 128
+  && String.for_all (function '0' .. '9' | 'a' .. 'f' -> true | _ -> false) id
+
+let number json =
+  match Jsonkit.classify json with
+  | `Float f ->
+      Some f
+  | `Int i ->
+      Some (float_of_int i)
+  | _ ->
+      None
+
+let pair json =
+  match Jsonkit.classify json with
+  | `List [ key; value ] -> (
+      match (Jsonkit.classify key, Jsonkit.classify value) with
+      | `String key, `String value ->
+          Some (key, value)
+      | _ ->
+          None
+    )
+  | _ ->
+      None
+
+let decode t ~now json =
+  match Jsonkit.classify json with
+  | `Assoc fields -> (
+      let field name = List.assoc_opt name fields in
+      match
+        ( Option.map Jsonkit.classify (field "id"),
+          Option.bind (field "created") number,
+          Option.bind (field "last_seen") number,
+          Option.map Jsonkit.classify (field "data")
+        )
+      with
+      | Some (`String id), Some created, Some last_seen, Some (`List data)
+        when valid_id id && created <= last_seen && last_seen <= now ->
+          let pairs = List.filter_map pair data in
+          if List.length pairs <> List.length data then
+            None
+          else
+            let s = { id; created; last_seen; data = pairs } in
+            if expired t ~now s then
+              None
+            else
+              Some s
+      | _ ->
+          None
+    )
+  | _ ->
+      None
+
+let load t ~now text =
+  match Jsonkit.of_string text with
+  | exception Jsonkit.Of_string_error message ->
+      Error ("not JSON: " ^ message)
+  | json -> (
+      match Jsonkit.classify json with
+      | `List items ->
+          Ok
+            (List.fold_left
+               (fun added item ->
+                 match decode t ~now item with
+                 | Some s when get t ~now s.id = None ->
+                     set t s;
+                     added + 1
+                 | Some _ | None ->
+                     added
+               )
+               0 items
+            )
+      | _ ->
+          Error "not a JSON array of sessions"
+    )
+
 let ops t =
   {
     get = (fun ~now id -> get t ~now id);
@@ -103,4 +204,6 @@ let ops t =
     update = (fun ~now id f -> update t ~now id f);
     remove = remove t;
     expire = (fun ~now -> expire t ~now);
+    save = (fun () -> save t);
+    load = (fun ~now text -> load t ~now text);
   }

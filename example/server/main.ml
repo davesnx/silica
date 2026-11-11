@@ -74,17 +74,23 @@ let () =
     ]
   in
   let islands = [ Server.Island Example_counter.live ] in
-  let config =
-    Silica_server.default_config
-      ~origins:
-        ( match !origins with
-        | [] ->
-            Silica_server.Localhost
-        | list ->
-            Silica_server.Origins list
-        )
-      ~secret:(Silica_server_kit.Random_source.hex_id ~bytes:32)
+  let origins =
+    match !origins with
+    | [] ->
+        Silica_server.Localhost
+    | list ->
+        Silica_server.Origins list
   in
+  let dev = Silica_server.dev_of_env () in
+  let secret =
+    match Silica_server.secret_of_env ~origins ~dev with
+    | Ok secret ->
+        secret
+    | Error message ->
+        prerr_endline ("silica example: " ^ message);
+        exit 1
+  in
+  let config = { (Silica_server.default_config ~origins ~secret) with dev } in
   let assets =
     match
       Silica_server.Assets.of_metafile ~prefix:"/static/" (read_file !metafile)
@@ -114,4 +120,4 @@ let () =
       ()
   in
   server := Some t;
-  Adapter.run ~port:!port t
+  Adapter.run ~port:!port ~on_stop:(fun () -> Server.shutdown t) t

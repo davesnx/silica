@@ -50,7 +50,10 @@ let stderr_observer =
     on_socket = ignore;
   }
 
+type dev = { state_file : string }
+
 type config = {
+  dev : dev option;
   origins : origins;
   secret : string;
   secure_cookie : bool;
@@ -67,6 +70,7 @@ type config = {
 
 let default_config ~origins ~secret =
   {
+    dev = None;
     origins;
     secret;
     secure_cookie = false;
@@ -80,6 +84,41 @@ let default_config ~origins ~secret =
     assets_prefix = "/static/";
     observer = stderr_observer;
   }
+
+let dev_of_env () =
+  match Sys.getenv_opt "SILICA_DEV_STATE" with
+  | Some state_file when state_file <> "" ->
+      Some { state_file }
+  | Some _ | None ->
+      None
+
+let secret_bytes = 16
+
+let secret_of_env ~origins ~dev =
+  match (Sys.getenv_opt "SILICA_SECRET", origins, dev) with
+  | Some secret, _, _ when String.length secret >= secret_bytes ->
+      Ok secret
+  | Some secret, _, _ ->
+      Error
+        (Printf.sprintf "SILICA_SECRET has %d bytes; it needs at least %d"
+           (String.length secret) secret_bytes
+        )
+  | None, Origins _, _ ->
+      Error
+        "SILICA_SECRET is not set. A server with public origins needs a fixed \
+         secret, or every restart and deploy ends the sessions. Make one with \
+         `openssl rand -hex 32` and give it as a secret of the host, such as \
+         `fly secrets set SILICA_SECRET=...`."
+  | None, Localhost, Some _ ->
+      Error
+        "SILICA_SECRET is not set. Dev mode (SILICA_DEV_STATE) keeps the \
+         sessions across restarts, so it needs a fixed secret; `silica dev` \
+         gives one."
+  | None, Localhost, None ->
+      prerr_endline
+        "silica: SILICA_SECRET is not set: a random secret is used, and the \
+         sessions end when the server stops";
+      Ok (Silica_server_kit.Random_source.hex_id ~bytes:32)
 
 let cookie_name = "silica_sid"
 let csrf_header = "x-silica-csrf"
@@ -572,6 +611,7 @@ module Make (Io : IO) = struct
     resend : unit -> unit Io.t;
     set_send : (string -> unit Io.t) option -> unit;
     close : unit -> unit;
+    save : unit -> ((string * Json.t) list, string) result;
   }
 
   let call_endpoint : type i o x.
@@ -610,8 +650,8 @@ module Make (Io : IO) = struct
               Remote.Failed (Remote.Http 500)
           )
 
-  let start_runner ~log ?(on_close = ignore) ?observe (live : (_, _) Live.t)
-      ~handlers ~context ~send =
+  let start_runner ~log ?(on_close = ignore) ?observe ?resume
+      (live : (_, _) Live.t) ~handlers ~context ~send =
     let machine = live.component.machine in
     let state = ref (Machine.init machine) in
     let entry = ref 0 in
@@ -773,11 +813,21 @@ module Make (Io : IO) = struct
     in
     let* () =
       enqueue (fun () ->
-          let s, actions = Machine.start machine () in
-          state := s;
-          observed ~from:None ~event:None Instance.Started actions
-            Instance.Start;
-          publish actions
+          match resume with
+          | Some (snapshot, ack, resumed_entry) ->
+              state := snapshot;
+              entry := resumed_entry;
+              last_id := ack;
+              let actions = Machine.resume machine () snapshot in
+              observed ~from:None ~event:None Instance.Resumed actions
+                Instance.Start;
+              publish actions
+          | None ->
+              let s, actions = Machine.start machine () in
+              state := s;
+              observed ~from:None ~event:None Instance.Started actions
+                Instance.Start;
+              publish actions
       )
     in
     let event id json =
@@ -820,6 +870,19 @@ module Make (Io : IO) = struct
                 Instance.End
             )
           );
+        save =
+          (fun () ->
+            Result.map
+              (fun (codec : _ Codec.t) ->
+                [
+                  ("machine", Json.declassify (`String (Machine.id machine)));
+                  ("snapshot", codec.encode !state);
+                  ("ack", Json.declassify (`Int !last_id));
+                  ("entry", Json.declassify (`Int !entry));
+                ]
+              )
+              (Machine.state_codec machine)
+          );
       }
 
   let stderr_log line = Printf.eprintf "silica: %s\n%!" line
@@ -849,13 +912,16 @@ module Make (Io : IO) = struct
     imports : string -> string list;
     handlers : handler list;
     islands : island list;
+    dev : bool;
   }
 
   let render_page_settled app ~status ~scripts ?preload ?head ?dev ?on_error
       ?error_page ?settle_timeout_ms (page : page) =
     settle_page ~handlers:page.handlers ~islands:page.islands ~csrf:page.csrf
       ~nonce:page.nonce ~context:page.context app ~status ~scripts ?preload
-      ?head ?dev ?on_error ?error_page ?settle_timeout_ms page.url
+      ?head
+      ~dev:(Option.value dev ~default:page.dev)
+      ?on_error ?error_page ?settle_timeout_ms page.url
 
   type socket = { send : string -> unit Io.t; close : int -> unit }
   type connection = { receive : string -> unit Io.t; closed : unit -> unit }
@@ -877,6 +943,17 @@ module Make (Io : IO) = struct
 
   type open_socket = { socket : socket; mutable last_traffic : float }
 
+  type restored = {
+    saved : Json.t;
+    since : float;
+    start :
+      on_close:(unit -> unit) ->
+      observe:Instance.observer option ->
+      context ->
+      send:(string -> unit Io.t) ->
+      runner Io.t;
+  }
+
   type t = {
     config : config;
     assets : Assets.t option;
@@ -891,9 +968,13 @@ module Make (Io : IO) = struct
     open_sockets : (int, open_socket) Hashtbl.t;
     instances : (string * string * string, instance) Hashtbl.t;
     topic_states : (string * string, topic_state) Hashtbl.t;
+    restored : (string * string * string, restored) Hashtbl.t;
+    kept : (string, unit -> string) Hashtbl.t;
+    unclaimed : (string, string) Hashtbl.t;
+    mutable stopped : bool;
   }
 
-  let create config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
+  let empty config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
       () =
     if String.length config.secret < 16 then
       invalid_arg "Silica_server.create: secret must have at least 16 bytes";
@@ -911,10 +992,360 @@ module Make (Io : IO) = struct
       open_sockets = Hashtbl.create 16;
       instances = Hashtbl.create 16;
       topic_states = Hashtbl.create 16;
+      restored = Hashtbl.create 16;
+      kept = Hashtbl.create 4;
+      unclaimed = Hashtbl.create 4;
+      stopped = false;
     }
 
   let locked t f = Mutex.protect t.lock f
   let log t ~source line = t.config.observer.log ~source line
+  let dev_log t line = log t ~source:"silica.dev" line
+  let ( let+ ) = Result.bind
+
+  let string_field fields name =
+    match Option.map Json.classify (List.assoc_opt name fields) with
+    | Some (`String value) ->
+        Ok value
+    | _ ->
+        Error ("no string field " ^ name)
+
+  let count_field fields name =
+    match Option.map Json.classify (List.assoc_opt name fields) with
+    | Some (`Int value) when value >= 0 ->
+        Ok value
+    | _ ->
+        Error ("no field " ^ name ^ " with a count")
+
+  let restore_island t ~now json =
+    let+ fields =
+      match Json.classify json with
+      | `Assoc fields ->
+          Ok fields
+      | _ ->
+          Error "not an object"
+    in
+    let+ session = string_field fields "session" in
+    let+ channel = string_field fields "channel" in
+    let+ instance = string_field fields "instance" in
+    let named reason =
+      Printf.sprintf "island %S (instance %S): %s" channel instance reason
+    in
+    let+ (Island live) =
+      Option.to_result
+        ~none:(named "no island has this channel")
+        (List.find_opt (fun (Island l) -> l.Live.channel = channel) t.islands)
+    in
+    let machine = live.component.machine in
+    let+ () =
+      match t.config.sessions.get ~now session with
+      | Some _ ->
+          Ok ()
+      | None ->
+          Error (named "its session is gone")
+    in
+    let+ () =
+      match string_field fields "machine" with
+      | Ok id when id = Machine.id machine ->
+          Ok ()
+      | Ok id ->
+          Error
+            (named
+               (Printf.sprintf "it ran the machine %S, the channel now has %S"
+                  id (Machine.id machine)
+               )
+            )
+      | Error message ->
+          Error (named message)
+    in
+    let+ (codec : _ Codec.t) =
+      Result.map_error named (Machine.state_codec machine)
+    in
+    let+ snapshot =
+      Result.map_error
+        (fun message -> named ("its snapshot does not decode: " ^ message))
+        (Codec.field "snapshot" codec json)
+    in
+    let+ ack = Result.map_error named (count_field fields "ack") in
+    let+ entry = Result.map_error named (count_field fields "entry") in
+    Ok
+      ( (session, channel, instance),
+        {
+          saved = json;
+          since = now;
+          start =
+            (fun ~on_close ~observe context ~send ->
+              start_runner
+                ~log:(log t ~source:"silica.live")
+                ~on_close ?observe ~resume:(snapshot, ack, entry) live
+                ~handlers:t.handlers ~context ~send
+            );
+        }
+      )
+
+  let read_private_file t path =
+    match Unix.lstat path with
+    | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+        None
+    | exception Unix.Unix_error (error, _, _) ->
+        dev_log t (path ^ ": not read: " ^ Unix.error_message error);
+        None
+    | stats when stats.st_kind <> Unix.S_REG ->
+        dev_log t (path ^ ": ignored: not a regular file");
+        None
+    | stats when stats.st_uid <> Unix.getuid () || stats.st_perm land 0o077 <> 0
+      ->
+        dev_log t
+          (Printf.sprintf
+             "%s: ignored: it must belong to this user with mode 600, and has \
+              mode %o"
+             path stats.st_perm
+          );
+        None
+    | _ -> (
+        let text =
+          try Some (In_channel.with_open_bin path In_channel.input_all)
+          with Sys_error message ->
+            dev_log t (path ^ ": not read: " ^ message);
+            None
+        in
+        try
+          Sys.remove path;
+          text
+        with Sys_error message ->
+          dev_log t (path ^ ": not removed: " ^ message);
+          text
+      )
+
+  let load_state t (dev : dev) =
+    match read_private_file t dev.state_file with
+    | None ->
+        ()
+    | Some text -> (
+        let now = t.config.now () in
+        match Json.of_string text with
+        | Ok json
+          when match Json.classify json with `Assoc _ -> true | _ -> false -> (
+            let fields =
+              match Json.classify json with `Assoc fields -> fields | _ -> []
+            in
+            let section name =
+              Option.map Json.classify (List.assoc_opt name fields)
+            in
+            ( match List.assoc_opt "sessions" fields with
+            | Some sessions -> (
+                match t.config.sessions.load ~now (Json.to_string sessions) with
+                | Ok _ ->
+                    ()
+                | Error message ->
+                    dev_log t
+                      (dev.state_file ^ ": sessions not restored: " ^ message)
+              )
+            | None ->
+                dev_log t (dev.state_file ^ ": no sessions")
+            );
+            ( match section "islands" with
+            | Some (`List islands) ->
+                List.iter
+                  (fun island ->
+                    match restore_island t ~now island with
+                    | Ok (key, restored) ->
+                        Hashtbl.replace t.restored key restored
+                    | Error message ->
+                        dev_log t (message ^ "; it starts again")
+                    | exception exn ->
+                        dev_log t
+                          ("an island is not restored: "
+                         ^ Printexc.to_string exn ^ "; it starts again"
+                          )
+                  )
+                  islands
+            | _ ->
+                dev_log t (dev.state_file ^ ": no islands")
+            );
+            match section "kept" with
+            | Some (`Assoc kept) ->
+                List.iter
+                  (fun (name, value) ->
+                    match Json.classify value with
+                    | `String text ->
+                        Hashtbl.replace t.unclaimed name text
+                    | _ ->
+                        dev_log t ("kept value " ^ name ^ " is not a string")
+                  )
+                  kept
+            | _ ->
+                dev_log t (dev.state_file ^ ": no kept values")
+          )
+        | Ok _ ->
+            dev_log t (dev.state_file ^ ": ignored: not a JSON object")
+        | Error message ->
+            dev_log t (dev.state_file ^ ": ignored: not JSON: " ^ message)
+      )
+
+  let write_private_file path text =
+    let directory = Filename.dirname path in
+    if not (Sys.file_exists directory) then Unix.mkdir directory 0o700;
+    let temporary = path ^ ".tmp" in
+    (try Unix.unlink temporary with Unix.Unix_error (Unix.ENOENT, _, _) -> ());
+    let descriptor =
+      Unix.openfile temporary
+        [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_EXCL; Unix.O_CLOEXEC ]
+        0o600
+    in
+    let channel = Unix.out_channel_of_descr descriptor in
+    match Out_channel.output_string channel text with
+    | () ->
+        Out_channel.close channel;
+        Unix.rename temporary path
+    | exception exn ->
+        Out_channel.close_noerr channel;
+        raise exn
+
+  let save_state t (dev : dev) =
+    let islands, restored, kept, unclaimed =
+      locked t (fun () ->
+          ( Hashtbl.fold (fun key inst acc -> (key, inst) :: acc) t.instances [],
+            Hashtbl.fold (fun _ r acc -> r.saved :: acc) t.restored [],
+            Hashtbl.fold (fun name save acc -> (name, save) :: acc) t.kept [],
+            Hashtbl.fold
+              (fun name text acc -> (name, text) :: acc)
+              t.unclaimed []
+          )
+      )
+    in
+    let string value = Json.declassify (`String value) in
+    let saved_islands =
+      List.filter_map
+        (fun ((session, channel, instance), (inst : instance)) ->
+          let not_saved reason =
+            dev_log t
+              (Printf.sprintf
+                 "island %S (instance %S) not saved, it starts again: %s"
+                 channel instance reason
+              );
+            None
+          in
+          match inst.runner.save () with
+          | Ok fields ->
+              Some
+                (Json.declassify
+                   (`Assoc
+                      (("session", string session)
+                      :: ("channel", string channel)
+                      :: ("instance", string instance)
+                      :: fields
+                      )
+                   )
+                )
+          | Error reason ->
+              not_saved reason
+          | exception exn ->
+              not_saved (Printexc.to_string exn)
+        )
+        islands
+    in
+    let kept =
+      List.filter_map
+        (fun (name, save) ->
+          match save () with
+          | text ->
+              Some (name, string text)
+          | exception exn ->
+              dev_log t
+                ("kept value " ^ name ^ " not saved: " ^ Printexc.to_string exn);
+              None
+        )
+        kept
+      @ List.map (fun (name, text) -> (name, string text)) unclaimed
+    in
+    let sessions =
+      match Json.of_string (t.config.sessions.save ()) with
+      | Ok sessions ->
+          sessions
+      | Error message ->
+          dev_log t ("sessions not saved: " ^ message);
+          Json.declassify (`List [])
+    in
+    let document =
+      Json.declassify
+        (`Assoc
+           [
+             ("sessions", sessions);
+             ("islands", Json.declassify (`List (saved_islands @ restored)));
+             ("kept", Json.declassify (`Assoc kept));
+           ]
+        )
+    in
+    match write_private_file dev.state_file (Json.to_string document) with
+    | () ->
+        ()
+    | exception Unix.Unix_error (error, call, _) ->
+        dev_log t
+          (Printf.sprintf "%s: not written: %s: %s" dev.state_file call
+             (Unix.error_message error)
+          )
+    | exception Sys_error message ->
+        dev_log t (dev.state_file ^ ": not written: " ^ message)
+
+  let keep t ~name ~save ~load =
+    match t.config.dev with
+    | None ->
+        ()
+    | Some _ -> (
+        let text =
+          locked t (fun () ->
+              Hashtbl.replace t.kept name save;
+              let text = Hashtbl.find_opt t.unclaimed name in
+              Hashtbl.remove t.unclaimed name;
+              text
+          )
+        in
+        let not_loaded reason =
+          dev_log t ("kept value " ^ name ^ " not loaded: " ^ reason)
+        in
+        match Option.map load text with
+        | None | Some (Ok ()) ->
+            ()
+        | Some (Error message) ->
+            not_loaded message
+        | exception exn ->
+            not_loaded (Printexc.to_string exn)
+      )
+
+  let shutdown t =
+    let first =
+      locked t (fun () ->
+          let first = not t.stopped in
+          t.stopped <- true;
+          first
+      )
+    in
+    if first then (
+      Option.iter (save_state t) t.config.dev;
+      let ended =
+        locked t (fun () ->
+            let ended =
+              Hashtbl.fold
+                (fun _ (inst : instance) acc -> inst :: acc)
+                t.instances []
+            in
+            Hashtbl.reset t.instances;
+            Hashtbl.reset t.restored;
+            ended
+        )
+      in
+      List.iter (fun (inst : instance) -> inst.runner.close ()) ended
+    )
+
+  let create config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
+      () =
+    let t =
+      empty config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
+        ()
+    in
+    Option.iter (load_state t) config.dev;
+    t
 
   let warning_send t (send : string -> unit Io.t) message =
     if String.length message > t.config.warn_outgoing then
@@ -1115,6 +1546,7 @@ module Make (Io : IO) = struct
           asset = asset_url t;
           handlers = t.handlers;
           islands = t.islands;
+          dev = Option.is_some t.config.dev;
           imports =
             (fun public ->
               match t.assets with
@@ -1336,6 +1768,7 @@ module Make (Io : IO) = struct
                   | Some (Island l) -> (
                       let key = (session.id, channel, instance_id) in
                       let replaced = ref None in
+                      let restored = ref None in
                       let existing =
                         locked t (fun () ->
                             match Hashtbl.find_opt t.instances key with
@@ -1348,6 +1781,8 @@ module Make (Io : IO) = struct
                                   (Some (warning_send t socket.send));
                                 Some inst
                             | None ->
+                                restored := Hashtbl.find_opt t.restored key;
+                                Hashtbl.remove t.restored key;
                                 None
                         )
                       in
@@ -1383,17 +1818,22 @@ module Make (Io : IO) = struct
                               )
                               sock
                           in
+                          let observe =
+                            Option.map
+                              (fun observe -> observe context ~channel)
+                              t.observe_live
+                          in
+                          let send = warning_send t socket.send in
                           let* runner =
-                            start_runner
-                              ~log:(log t ~source:"silica.live")
-                              ~on_close:drop_instance
-                              ?observe:
-                                (Option.map
-                                   (fun observe -> observe context ~channel)
-                                   t.observe_live
-                                )
-                              l ~handlers:t.handlers ~context
-                              ~send:(warning_send t socket.send)
+                            match !restored with
+                            | Some restored ->
+                                restored.start ~on_close:drop_instance ~observe
+                                  context ~send
+                            | None ->
+                                start_runner
+                                  ~log:(log t ~source:"silica.live")
+                                  ~on_close:drop_instance ?observe l
+                                  ~handlers:t.handlers ~context ~send
                           in
                           let inst =
                             {
@@ -1597,6 +2037,14 @@ module Make (Io : IO) = struct
               t.instances []
           in
           List.iter (fun (key, _) -> Hashtbl.remove t.instances key) ended;
+          Hashtbl.filter_map_inplace
+            (fun _ restored ->
+              if now -. restored.since > t.config.live_keep then
+                None
+              else
+                Some restored
+            )
+            t.restored;
           let stale_topics =
             Hashtbl.fold
               (fun key (entry : topic_state) acc ->
@@ -1619,5 +2067,6 @@ module Make (Io : IO) = struct
     ignore (t.config.sessions.expire ~now)
 
   let sockets t = locked t (fun () -> Hashtbl.length t.open_sockets)
-  let islands t = locked t (fun () -> Hashtbl.length t.instances)
+  let islands t =
+    locked t (fun () -> Hashtbl.length t.instances + Hashtbl.length t.restored)
 end

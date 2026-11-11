@@ -130,7 +130,7 @@ let test_trace_of_a_visit () =
     ( match first.change with
     | Transition.Started ->
         "started"
-    | Transition.Unhandled | Kept | Entered | Ended ->
+    | Transition.Resumed | Unhandled | Kept | Entered | Ended ->
         "other"
     );
   Alcotest.(check string)

@@ -61,7 +61,8 @@ type origins =
 
 type observer = {
   log : source:string -> string -> unit;
-      (** [source] is ["silica.http"], ["silica.live"] or ["silica.remote"]. *)
+      (** [source] is ["silica.http"], ["silica.live"], ["silica.remote"] or
+          ["silica.dev"]. *)
   on_request :
     meth:string -> path:string -> status:int -> seconds:float -> unit;
   on_socket : [ `Opened | `Closed ] -> unit;
@@ -70,7 +71,19 @@ type observer = {
 val stderr_observer : observer
 (** [log] writes one line to stderr; the other callbacks do nothing. *)
 
+type dev = {
+  state_file : string;
+      (** Where {!Make.shutdown} saves the sessions, the Live islands and the
+          kept values, and where {!Make.create} reads them. *)
+}
+(** Development mode: the server keeps its state across a restart. *)
+
 type config = {
+  dev : dev option;
+      (** [None] in production. With [Some _], the server keeps its state across
+          a restart (see {!Make.shutdown}) and {!Make.render_page_settled} shows
+          detailed error pages. The state file is never read or written with
+          [None]. *)
   origins : origins;
   secret : string;
       (** Key of the CSRF tokens. At least 16 bytes; {!Make.create} fails
@@ -96,11 +109,23 @@ type config = {
 }
 
 val default_config : origins:origins -> secret:string -> config
-(** [now] is [Unix.gettimeofday]. Sessions are in memory with the defaults of
-    {!Session.create}: 8 hours idle, 7 days absolute, 10000 sessions. [max_body]
-    is 1 MiB, [max_message] 64 KiB, [heartbeat] 30, [live_keep] 1800,
-    [warn_outgoing] 1 MiB, [assets_prefix] ["/static/"], [secure_cookie] false
-    and [observer] {!stderr_observer}. *)
+(** [dev] is [None]. [now] is [Unix.gettimeofday]. Sessions are in memory with
+    the defaults of {!Session.create}: 8 hours idle, 7 days absolute, 10000
+    sessions. [max_body] is 1 MiB, [max_message] 64 KiB, [heartbeat] 30,
+    [live_keep] 1800, [warn_outgoing] 1 MiB, [assets_prefix] ["/static/"],
+    [secure_cookie] false and [observer] {!stderr_observer}. *)
+
+val dev_of_env : unit -> dev option
+(** [Some] with the file named by the environment variable [SILICA_DEV_STATE]
+    when it is set and not empty, else [None]. [silica dev] sets it. *)
+
+val secret_of_env : origins:origins -> dev:dev option -> (string, string) result
+(** The secret from the environment variable [SILICA_SECRET], which needs at
+    least 16 bytes. When it is not set: an [Error] for a server with [Origins]
+    (a public server, where a random secret would end the sessions at each
+    restart and deploy) or with [dev] (whose sessions outlive the process); with
+    [Localhost] and no [dev], a random secret, and a line on stderr says so. The
+    [Error] message says what to do. *)
 
 val cookie : request -> string -> string option
 (** The value of the cookie [name] in the [cookie] header of the request. A page
@@ -202,6 +227,9 @@ module Make (Io : IO) : sig
             fetches the shared chunks of a split bundle with the entry. *)
     handlers : handler list;  (** The handlers given to {!create}. *)
     islands : island list;  (** The islands given to {!create}. *)
+    dev : bool;
+        (** [config.dev] is set. {!render_page_settled} takes it as the default
+            of its [dev]. *)
   }
   (** What the [page] function of {!create} gets for one page request. *)
 
@@ -218,18 +246,18 @@ module Make (Io : IO) : sig
     page ->
     response Io.t
   (** Like {!render_page} at [page.url], with a settle step first and the
-      [csrf], [nonce], [islands] and [handlers] of the page. It starts the app,
-      then runs the [Start_call] actions of every rendered component against the
-      handlers (with [page.context]), steps the machines with the answers,
-      renders again, and repeats until no call is left. [Start_timer] actions,
-      sources and Live subscriptions do not run. Only calls that answer with
-      success count: a call that fails, has no handler or does not answer within
-      [settle_timeout_ms] (default 1000, for the whole settle step) is left
-      unanswered, and the page shows that state as it is at that moment. An
-      application error ({!implement}) is not an answer either. A [Navigate] or
-      [Replace] at any step ends the settle step with the redirect of
-      {!render_page}; [Set_status] at any step works as there. The answers are
-      written into the page as a
+      [csrf], [nonce], [islands] and [handlers] of the page. [dev] defaults to
+      [page.dev]. It starts the app, then runs the [Start_call] actions of every
+      rendered component against the handlers (with [page.context]), steps the
+      machines with the answers, renders again, and repeats until no call is
+      left. [Start_timer] actions, sources and Live subscriptions do not run.
+      Only calls that answer with success count: a call that fails, has no
+      handler or does not answer within [settle_timeout_ms] (default 1000, for
+      the whole settle step) is left unanswered, and the page shows that state
+      as it is at that moment. An application error ({!implement}) is not an
+      answer either. A [Navigate] or [Replace] at any step ends the settle step
+      with the redirect of {!render_page}; [Set_status] at any step works as
+      there. The answers are written into the page as a
       [<script type="application/json" id="silica-answers">] element (see
       {!Silica.Answers}), with [nonce] as its [nonce] attribute. The browser
       answers the same calls from the table before its first paint, so no call
@@ -343,7 +371,29 @@ module Make (Io : IO) : sig
 
       [observe_live context ~channel] is the hook of each island instance that a
       socket starts (see {!val-live}), for example a
-      [Silica.Trace.Recorder.observer] kept by session id. *)
+      [Silica.Trace.Recorder.observer] kept by session id.
+
+      With [config.dev], [create] reads the file that {!shutdown} wrote, if it
+      exists, and then removes it. It reads the file only when it is a regular
+      file of this user with no rights for others (mode 600); else it logs why
+      and ignores it. It trusts the file no more than a cookie:
+
+      - The sessions go to [config.sessions.load], which skips the expired and
+        malformed ones (see {!Session.val-load}).
+      - An island needs a session of the file, a channel of [islands] that runs
+        the same machine id, and a snapshot that the state codec of the machine
+        decodes (see {!Silica.Machine.register_codecs}). Else that island alone
+        is dropped, the [silica.dev] log says why, and it starts again from the
+        initial state when its socket comes back. A restored island waits for a
+        socket with its session, channel and instance id, as a held island does
+        (see [live_keep]); then it runs again at its snapshot with
+        {!Silica.Machine.resume}, with the request of that socket, and the
+        observer gets a [Resumed] start. Its event ids go on from the saved
+        ones.
+      - The kept values wait for {!keep}.
+
+      A file that is not JSON is logged and ignored; [create] does not fail on
+      it. *)
 
   val handle : t -> request -> response Io.t
   (** The whole HTTP policy.
@@ -412,5 +462,31 @@ module Make (Io : IO) : sig
   (** The number of open sockets. *)
 
   val islands : t -> int
-  (** The number of held island instances, attached or not. *)
+  (** The number of held island instances, attached or not, with the islands
+      restored by {!create} that no socket has claimed yet. *)
+
+  val keep :
+    t ->
+    name:string ->
+    save:(unit -> string) ->
+    load:(string -> (unit, string) result) ->
+    unit
+  (** Keep app data across a restart in development, such as an in-memory store.
+      With [config.dev], {!shutdown} saves [save ()] under [name], and when the
+      file that {!create} read had a value under [name], [keep] calls [load]
+      with it at once. An [Error] or an exception of [load] or [save] goes to
+      the [silica.dev] log. With no [config.dev], [keep] does nothing. A second
+      [keep] with the same name replaces the first. *)
+
+  val shutdown : t -> unit
+  (** Stop the server, at the end of the process: give it as [on_stop] to the
+      adapter. With [config.dev], first write [config.dev.state_file]: the
+      sessions (by [config.sessions.save]), each held Live island with its
+      session, channel, instance id, machine id, last event id, entry number and
+      snapshot (by the state codec of its machine), the restored islands that no
+      socket claimed, and the kept values. The file is JSON, written to a new
+      file with mode 600 that then replaces the old one. An island whose machine
+      has no state codec is not saved, and the [silica.dev] log names the
+      machine and how to register the codec. A failure to write goes to the log
+      too. Then every island ends. A second call does nothing. *)
 end

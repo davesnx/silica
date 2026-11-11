@@ -38,5 +38,12 @@ val edit_comment :
 (** Change the body of a comment of [author] and mark it edited. [Error] for an
     unknown comment, a comment of someone else or a bad body. *)
 
+val save : t -> string
+(** The issues and comments as JSON text, for {!load}. *)
+
+val load : t -> string -> (unit, string) result
+(** Replace the issues and comments with those of a text from {!save}. [Error],
+    and no change, when the text does not decode. *)
+
 val next_user : unit -> unit -> User.t
 (** A function that gives Ada, Ben and Cleo in turn, and then starts again. *)

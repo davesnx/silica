@@ -57,6 +57,9 @@ type ('p, 's, 'e) cell
 
 type change =
   | Started  (** The instance started. *)
+  | Resumed
+      (** The instance started again at a snapshot it reached before (see
+          {!Machine.resume}). *)
   | Unhandled  (** The machine ignored the event or the props. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state. *)
@@ -133,7 +136,7 @@ type inspected =
       entry : int;  (** The entry after the step, as in timer ids. *)
       machine : ('p, 's, 'e) Machine.t;
       props : 'p;
-      from : 's option;  (** [None] for [Started]. *)
+      from : 's option;  (** [None] for [Started] and [Resumed]. *)
       snapshot : 's;  (** After the step. *)
       change : change;
       event : 'e option;
