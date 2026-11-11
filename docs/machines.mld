@@ -391,9 +391,10 @@ the address has no [@]. So the checker sees no button that does nothing.
 {1:spec The spec}
 
 The spec of a machine is the shape that a checker run found: the states it
-reached, the timers and sources of each, and the steps it took. It is in the
-[spec] field of [Check.Ok] (see {!Check.type-report}), and {!Silica.Spec.to_quint} and
-{!Silica.Spec.to_dot} export it. See {!page-checker}.
+reached, the timers and sources of each, and the steps it took with the names
+of their events. It is in the [specs] field of the report of {!Check.run} (see
+{!Check.type-report}), and {!Silica.Spec.to_quint} and {!Silica.Spec.to_dot}
+export it. See {!page-checker}.
 
 {1:next Next}
 

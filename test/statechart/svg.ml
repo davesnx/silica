@@ -3,7 +3,7 @@ let () =
   Sys.mkdir folder 0o755;
   List.iter
     (fun (name, text) ->
-      let spec, labels = Statechart_goldens.Layouts.read text in
+      let spec = Statechart_goldens.Layouts.read text in
       let file =
         Filename.concat folder
           (String.map (function '/' -> '-' | character -> character) name
@@ -14,7 +14,7 @@ let () =
           Out_channel.output_string channel
             (Silica.Render.to_string
                (Silica.Statechart_view.view
-                  (Silica.Statechart_layout.layout ~labels spec)
+                  (Silica.Statechart_layout.layout spec)
                )
             )
       )

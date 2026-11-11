@@ -43,10 +43,10 @@ type t = {
   width : float;
   height : float;
   nodes : node list;  (** In the order of the spec states. *)
-  edges : edge list;  (** In the order of the spec edges. *)
+  edges : edge list;  (** In the order of {!Spec.arrows}. *)
 }
 
-val layout : ?labels:Spec.label list -> Spec.t -> t
+val layout : Spec.t -> t
 (** Layers by longest path after the back edges of a depth first search from the
     initial state are turned around. Edge labels and long edges get places of
     their own in the columns between the layers, so labels and edges do not

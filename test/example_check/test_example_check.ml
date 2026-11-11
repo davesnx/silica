@@ -1,58 +1,44 @@
 open Example_checks
 
-let print_report pp_event report =
-  Format.asprintf "%a" (fun f r -> Check.pp_report ~pp_event f r) report
+let print_report report = Format.asprintf "%a" Check.pp_report report
 
-let print name = function
-  | Check.Ok { states; transitions; _ } ->
-      Printf.printf "%s: %d states, %d transitions\n" name states transitions
-  | _ ->
-      ()
+let print name (report : (_, _) Check.report) =
+  Printf.printf "%s: %d states, %d transitions\n" name report.states
+    report.transitions
 
-let router_report = lazy (router ())
-let home_report = lazy (home ())
+let expect_pass name report =
+  if Check.passed report then
+    print name report
+  else
+    Alcotest.fail (print_report report)
+
+let router_report = lazy (Check.run (router ()))
+let home_report = lazy (Check.run (home ()))
 
 let test_router () =
-  match Lazy.force router_report with
-  | Check.Ok { not_explored; _ } as r ->
-      print "router" r;
-      Alcotest.(check (list string))
-        "pages are listed, not explored"
-        [
-          "component about";
-          "component edit";
-          "component home";
-          "component item";
-          "component not_found";
-        ]
-        not_explored
-  | r ->
-      Alcotest.fail (print_report (Check.pp_app_event pp_router_event) r)
+  let report = Lazy.force router_report in
+  expect_pass "router" report;
+  Alcotest.(check (list string))
+    "pages are listed, not explored"
+    [
+      "component about";
+      "component edit";
+      "component home";
+      "component item";
+      "component not_found";
+    ]
+    report.not_explored
 
 let test_home () =
-  match Lazy.force home_report with
-  | Check.Ok { states; not_explored; _ } ->
-      Alcotest.(check int) "one state" 1 states;
-      Alcotest.(check (list string))
-        "the other components and the island are not run in the page check"
-        [
-          "component todo";
-          "component vote";
-          "component votes";
-          "island counter";
-        ]
-        not_explored
-  | r ->
-      Alcotest.fail
-        (print_report (fun f _ -> Format.pp_print_string f "home event") r)
+  let report = Lazy.force home_report in
+  if not (Check.passed report) then Alcotest.fail (print_report report);
+  Alcotest.(check int) "one state" 1 report.states;
+  Alcotest.(check (list string))
+    "the other components and the island are not run in the page check"
+    [ "component todo"; "component vote"; "component votes"; "island counter" ]
+    report.not_explored
 
-let test_todo () =
-  match todo () with
-  | Check.Ok _ as r ->
-      print "todo" r
-  | r ->
-      Alcotest.fail
-        (print_report (fun f _ -> Format.pp_print_string f "todo event") r)
+let test_todo () = expect_pass "todo" (Check.run (todo ()))
 
 let item_props () =
   Check.props (children (Lazy.force router_report)) Example_item.component
@@ -63,56 +49,53 @@ let test_item_props () =
     (List.sort compare (item_props ()))
 
 let test_item_alone () =
-  match item ~props:(item_props ()) () with
-  | Check.Ok { not_explored; _ } as r ->
-      Alcotest.(check (list string)) "no children" [] not_explored;
-      print "item" r
-  | r ->
-      Alcotest.fail (print_report pp_item_input r)
+  let report = Check.run (item ~props:(item_props ()) ()) in
+  expect_pass "item" report;
+  Alcotest.(check (list string)) "no children" [] report.not_explored
 
 let test_item_reachable () =
   let never_loaded =
-    {
-      Check.name = "never loaded";
-      holds = (fun _ view -> not (has_article view));
-    }
+    Check.always ~name:"never loaded"
+      (Check.view (fun view -> not (has_article view)))
   in
-  match item ~invariants:[ never_loaded ] ~props:(item_props ()) () with
-  | Check.Violation { trace; _ } ->
+  let report =
+    Check.run (item ~properties:[ never_loaded ] ~props:(item_props ()) ())
+  in
+  match report.violations with
+  | first :: _ ->
+      Alcotest.(check string) "the first violation" "never loaded" first.rule;
       Alcotest.(check string)
         "shortest trace" "settled ok"
         (String.concat "; "
-           (List.map (Format.asprintf "%a" pp_item_input) trace)
+           (List.map
+              (fun (step : _ Check.step) ->
+                Format.asprintf "%a" pp_item_input step.input
+              )
+              (Check.steps first.counterexample)
+           )
         )
-  | r ->
-      Alcotest.fail (print_report pp_item_input r)
+  | [] ->
+      Alcotest.fail (print_report report)
 
 let test_about () =
-  match about () with
-  | Check.Ok { states; _ } as r ->
-      print "about" r;
-      Alcotest.(check int) "one state" 1 states
-  | r ->
-      Alcotest.fail
-        (print_report (fun f _ -> Format.pp_print_string f "about event") r)
+  let report = Check.run (about ()) in
+  expect_pass "about" report;
+  Alcotest.(check int) "one state" 1 report.states
 
 let test_edit () =
-  match edit () with
-  | Check.Ok { states; edges; _ } as r ->
-      print "edit" r;
-      Alcotest.(check bool)
-        "clean, dirty and asking are reached" true (states >= 3);
-      Alcotest.(check bool)
-        "a navigation attempt is asked" true
-        (List.exists
-           (fun (l : Silica.Spec.label) ->
-             l.from = "dirty" && l.target = "asking" && l.event = "attempt"
-           )
-           edges
-        )
-  | r ->
-      Alcotest.fail
-        (print_report (fun f _ -> Format.pp_print_string f "edit event") r)
+  let report = Check.run (edit ()) in
+  expect_pass "edit" report;
+  Alcotest.(check bool)
+    "clean, dirty and asking are reached" true (report.states >= 3);
+  Alcotest.(check bool)
+    "a navigation attempt is asked" true
+    (List.exists
+       (fun (label : Silica.Spec.label) ->
+         label.from = "dirty" && label.target = "asking"
+         && label.event = "attempt"
+       )
+       (List.hd report.specs).edges
+    )
 
 let test_not_found () =
   let props =
@@ -121,26 +104,10 @@ let test_not_found () =
       Example_not_found.component
   in
   Alcotest.(check int) "one not-found page from the router" 1 (List.length props);
-  match not_found () with
-  | Check.Ok _ as r ->
-      print "not_found" r
-  | r ->
-      Alcotest.fail (print_report (fun f _ -> Format.pp_print_string f "url") r)
+  expect_pass "not_found" (Check.run (not_found ()))
 
-let test_votes () =
-  match votes () with
-  | Check.Ok _ as r ->
-      print "votes" r
-  | r ->
-      Alcotest.fail (print_report (Check.pp_input pp_votes_event) r)
-
-let test_vote () =
-  match vote () with
-  | Check.Ok _ as r ->
-      print "vote" r
-  | r ->
-      Alcotest.fail
-        (print_report (fun f _ -> Format.pp_print_string f "vote event") r)
+let test_votes () = expect_pass "votes" (Check.run (votes ()))
+let test_vote () = expect_pass "vote" (Check.run (vote ()))
 
 let round_trip name codec value =
   let text = Silica.Codec.to_string codec value in
@@ -155,36 +122,33 @@ let codec name = function
   | Error message ->
       Alcotest.failf "%s: %s" name message
 
-let round_trips name (machine : (unit, _, _) Silica.Machine.t) report =
+let round_trips name (machine : (unit, _, _) Silica.Machine.t) check =
   let event_codec = codec name (Silica.Machine.event_codec machine)
   and state_codec = codec name (Silica.Machine.state_codec machine) in
-  match report with
-  | Check.Ok { paths; _ } ->
-      Alcotest.(check bool) (name ^ " has paths") true (paths <> []);
-      List.iter
-        (fun (_, steps) ->
-          let start, _ = Silica.Machine.start machine () in
-          round_trip name state_codec start;
-          ignore
-            (List.fold_left
-               (fun state (step : (unit, _) Check.input) ->
-                 match step with
-                 | Event event ->
-                     round_trip name event_codec event;
-                     let state, _, _ =
-                       Silica.Machine.step machine () state event
-                     in
-                     round_trip name state_codec state;
-                     state
-                 | Props () ->
-                     state
-               )
-               start steps
-            )
+  let report = Check.run check in
+  if not (Check.passed report) then
+    Alcotest.failf "the check of %s did not pass" name;
+  Alcotest.(check bool) (name ^ " has paths") true (report.paths <> []);
+  List.iter
+    (fun (_, steps) ->
+      let start, _ = Silica.Machine.start machine () in
+      round_trip name state_codec start;
+      ignore
+        (List.fold_left
+           (fun state (step : (unit, _) Check.input Check.step) ->
+             match step.input with
+             | Event event ->
+                 round_trip name event_codec event;
+                 let state, _, _ = Silica.Machine.step machine () state event in
+                 round_trip name state_codec state;
+                 state
+             | Props () ->
+                 state
+           )
+           start steps
         )
-        paths
-  | _ ->
-      Alcotest.failf "the check of %s did not pass" name
+    )
+    report.paths
 
 let test_every_machine_registered () =
   Example_codecs.register ();
@@ -243,20 +207,17 @@ let test_codecs () =
     }
 
 let test_counter () =
-  match Check.component ~max_states:50 Example_counter.component with
-  | Check.Limit { states } ->
-      Alcotest.(check int) "unbounded upward" 50 states
-  | _ ->
-      Alcotest.fail "expected limit"
+  let report =
+    Check.run (Check.component ~max_states:50 Example_counter.component)
+  in
+  Alcotest.(check int) "no violation" 0 (List.length report.violations);
+  Alcotest.(check bool) "expected limit" false report.complete;
+  Alcotest.(check int) "unbounded upward" 50 report.states
 
 let test_counter_bounded () =
-  match counter_bounded () with
-  | Check.Ok { states; _ } as r ->
-      Alcotest.(check int) "states" 6 states;
-      print "counter" r
-  | r ->
-      Alcotest.fail
-        (print_report (fun f _ -> Format.pp_print_string f "event") r)
+  let report = Check.run (counter_bounded ()) in
+  expect_pass "counter" report;
+  Alcotest.(check int) "states" 6 report.states
 
 let () =
   Alcotest.run "example_check"

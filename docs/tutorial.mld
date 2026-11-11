@@ -97,9 +97,9 @@ a name that a screen reader can read. The counter can count forever, so
 {@ocaml[
 # let within (Tutorial_counter.Count n) = n <= 3;;
 val within : Tutorial_counter.state -> bool = <fun>
-# match Check.component ~within Tutorial_counter.component with
-  | Check.Ok { states; _ } -> Printf.sprintf "%d states, no problem" states
-  | _ -> "problem";;
+# let report = Check.run (Check.component ~within Tutorial_counter.component) in
+  if Check.passed report then Printf.sprintf "%d states, no problem" report.states
+  else Format.asprintf "%a" Check.pp_report report;;
 - : string = "4 states, no problem"
 ]}
 
@@ -241,13 +241,14 @@ The checker gives the call each answer in [answers], and also the errors
 path and the error paths.
 
 {@ocaml[
-# match
-    Check.component
-      ~samples:[ Check.answers Tutorial_api.greeting [ "Hello, Ada" ] ]
-      Tutorial_greeting.component
-  with
-  | Check.Ok { states; _ } -> Printf.sprintf "%d states, no problem" states
-  | _ -> "problem";;
+# let report =
+    Check.run
+      (Check.component
+         ~samples:[ Check.answers Tutorial_api.greeting [ "Hello, Ada" ] ]
+         Tutorial_greeting.component)
+  in
+  if Check.passed report then Printf.sprintf "%d states, no problem" report.states
+  else Format.asprintf "%a" Check.pp_report report;;
 - : string = "5 states, no problem"
 ]}
 

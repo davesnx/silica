@@ -66,12 +66,6 @@ let pp_answer f : (_, string) Remote.answer -> unit = function
   | Failed (Remote.Decode _) ->
       Format.fprintf f "decode"
 
-let pp_router_event f = function
-  | Silica.Router.Url_changed u ->
-      Format.fprintf f "url_changed %s" (Url.to_string u)
-  | Silica.Router.Preload u ->
-      Format.fprintf f "preload %s" (Url.to_string u)
-
 let all_routes =
   [ Home; Item 1; Item 2; About; Edit; Locked; Not_found "/nowhere" ]
 
@@ -89,12 +83,11 @@ let router () =
 
 let home () = Check.component ~max_states:10 Example_home.component
 
-let children report =
-  match report with
-  | Check.Ok { children; _ } ->
-      children
-  | _ ->
-      failwith "the parent check did not pass"
+let children (report : (_, _) Check.report) =
+  if Check.passed report then
+    report.children
+  else
+    failwith "the parent check did not pass"
 
 let todo_inputs (t : Example_todo.state) =
   ( if t.next_id < 3 then
@@ -109,39 +102,38 @@ let todo_inputs (t : Example_todo.state) =
     []
 
 let todo () =
-  let invariants : (Example_todo.state, Example_todo.event) Check.invariant list
-      =
+  let properties =
     [
-      {
-        name = "todo ids unique";
-        holds =
-          (fun t _ ->
-            let ids = List.map (fun (x : Example_todo.todo) -> x.id) t.todos in
-            List.length (List.sort_uniq compare ids) = List.length ids
-          );
-      };
+      Check.always ~name:"todo ids unique"
+        (Check.state (fun (t : Example_todo.state) ->
+             let ids = List.map (fun (x : Example_todo.todo) -> x.id) t.todos in
+             List.length (List.sort_uniq compare ids) = List.length ids
+         )
+        );
     ]
   in
-  Check.component ~max_states:500_000 ~inputs:todo_inputs ~invariants
+  Check.component ~max_states:500_000 ~inputs:todo_inputs ~properties
     Example_todo.component
 
 let pp_item_event f (Example_item.Settled answer) =
   Format.fprintf f "settled %a" pp_answer answer
 
-let pp_item_input f input = Check.pp_input pp_item_event f input
+let pp_item_input f : (_, Example_item.event) Check.input -> unit = function
+  | Event event ->
+      pp_item_event f event
+  | Props _ ->
+      Format.pp_print_string f "new props"
 
-let item ?(invariants = []) ~props () =
-  let invariants =
-    {
-      Check.name = "never shows loading and an item";
-      holds = (fun _ view -> not (has_loading view && has_article view));
-    }
-    :: invariants
+let item ?(properties = []) ~props () =
+  let properties =
+    Check.always ~name:"never shows loading and an item"
+      (Check.view (fun view -> not (has_loading view && has_article view)))
+    :: properties
   in
   Check.component ~props
     ~samples:
       [ Check.answers item_endpoint ~rejected:[ "no item" ] [ item 1; item 2 ] ]
-    ~invariants Example_item.component
+    ~properties Example_item.component
 
 let about () = Check.component Example_about.component
 
@@ -151,28 +143,6 @@ let edit () =
     Example_edit.component
 
 let not_found () = Check.component Example_not_found.component
-
-let pp_votes_event f = function
-  | Example_votes.Reconnect ->
-      Format.fprintf f "reconnect"
-  | Example_votes.Update { seq; status } ->
-      Format.fprintf f "update %d %s" seq
-        ( match status with
-        | Status.Idle ->
-            "idle"
-        | Status.Loading _ ->
-            "loading"
-        | Status.Ready { data; stale } ->
-            Printf.sprintf "%s %d"
-              ( if stale then
-                  "stale"
-                else
-                  "ready"
-              )
-              data
-        | Status.Failed _ ->
-            "failed"
-        )
 
 let votes () =
   Check.component

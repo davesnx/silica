@@ -110,7 +110,8 @@ _Avoid_: widget, region, child machine
 **Spec**:
 What a checker run found about a machine: the states it reached
 (initial state first, then by name), the timers and sources of each, and the
-edges it took. The Quint export and diagrams read it.
+edges it took, each with the name of its event. The Quint export, the text
+form and the diagrams read it.
 _Avoid_: schema, graph (as the name of the value)
 
 **Action**:
@@ -184,8 +185,45 @@ _Avoid_: mock, fixture, stub
 
 **Unreached state**:
 A name in the `states` of a machine that a checker run never reached. The
-checker reports it, unless it is in `allow_unreached`.
+checker reports it, unless an allowance with the rule `unreached-state`
+covers it.
 _Avoid_: dead state
+
+**Check**:
+A configured run of the model checker: the component or app, its samples,
+inputs, bounds, properties and allowances. `Check.run` gives its report.
+_Avoid_: checker config
+
+**Rule**:
+A built-in test of the checker, with an id (such as `ignored-event`), a
+message and a fix hint. `Check.rules` lists them.
+_Avoid_: built-in invariant, lint
+
+**Property**:
+A test of the app that must hold in every reached state, made with
+`Check.always`, with its own name and optional hint.
+_Avoid_: invariant (as the name of the value), assertion
+
+**Violation**:
+A rule or property that fails, with its message, fix hint, shortest trace,
+state and text view at the failing step. A report holds every violation, the
+first of each rule, state, element and message.
+_Avoid_: error, failure (as the name of the value)
+
+**Fix hint**:
+The sentence of a violation that tells an agent or a person how to fix it.
+_Avoid_: suggestion, help text
+
+**Allowance**:
+A rule that a check turns off, with its reason, made with `Check.allow`. The
+report lists each allowance and how often it applied.
+_Avoid_: ignore list, suppression
+
+**Cause**:
+Where a step of a trace came from: an element and handler of the view, an
+input, a timer, a call answer, a subscription update, a held source, an action
+result, new props or the browser history.
+_Avoid_: origin, via
 
 **Spec drift**:
 A change of the exported Quint or Graphviz files of a machine: the checker run

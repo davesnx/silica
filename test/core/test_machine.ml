@@ -614,6 +614,11 @@ let test_on_props_default () =
 let spec_state ?(final = false) ?(timers = []) ?(sources = []) name =
   { Spec.name; final; timers; sources; held = [] }
 
+let edges pairs =
+  List.map
+    (fun (from, target) -> { Spec.from; target; event = ""; kept = false })
+    pairs
+
 let search_spec =
   {
     Spec.id = "search";
@@ -627,15 +632,16 @@ let search_spec =
         spec_state ~timers:[ 300 ] "typing";
       ];
     edges =
-      [
-        ("failed", "searching");
-        ("idle", "typing");
-        ("searching", "failed");
-        ("searching", "shown");
-        ("shown", "idle");
-        ("typing", "searching");
-        ("typing", "typing");
-      ];
+      edges
+        [
+          ("failed", "searching");
+          ("idle", "typing");
+          ("searching", "failed");
+          ("searching", "shown");
+          ("shown", "idle");
+          ("typing", "searching");
+          ("typing", "typing");
+        ];
   }
 
 let test_lint () =
@@ -655,12 +661,13 @@ let test_lint () =
           spec_state ~final:true "done";
         ];
       edges =
-        [
-          ("island", "done");
-          ("start", "sink");
-          ("start", "timed");
-          ("timed", "timed");
-        ];
+        edges
+          [
+            ("island", "done");
+            ("start", "sink");
+            ("start", "timed");
+            ("timed", "timed");
+          ];
     }
   in
   Alcotest.(check (list string))

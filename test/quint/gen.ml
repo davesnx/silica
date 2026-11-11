@@ -69,7 +69,7 @@ let dead_end : Spec.t =
     id = "dead_end";
     init = "start";
     states = [ state "start"; state "stuck" ];
-    edges = [ ("start", "stuck") ];
+    edges = [ { from = "start"; target = "stuck"; event = ""; kept = false } ];
   }
 
 let write name text =
@@ -78,10 +78,12 @@ let write name text =
   )
 
 let () =
-  match Check.component (Component.make door view) with
-  | Check.Ok { spec; edges; _ } ->
-      write "door.qnt" (Spec.to_quint ~labels:edges spec);
-      write "dead_end.qnt" (Spec.to_quint dead_end)
-  | _ ->
-      prerr_endline "gen: the check of the door machine did not pass";
-      exit 1
+  let report = Check.run (Check.component (Component.make door view)) in
+  if Check.passed report then (
+    write "door.qnt" (Spec.to_quint (List.hd report.specs));
+    write "dead_end.qnt" (Spec.to_quint dead_end)
+  ) else (
+    Format.eprintf "gen: the check of the door machine did not pass:@.%a@."
+      Check.pp_report report;
+    exit 1
+  )

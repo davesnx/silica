@@ -104,14 +104,17 @@ let html = Render.to_string (Landing_save.view state)
 And the checker explores all of it. It has no server, so you give it a sample of what the server could answer; it also tries the failures by itself:
 
 ```ocaml
-match
-  Check.component
-    ~samples:[ Check.answers Landing_save.save [ "10:42" ] ]
-    Landing_save.component
-with
-| Check.Ok { states; transitions; _ } ->
-    Printf.printf "%d states, %d transitions, no problem" states transitions
-| _ -> print_string "problem"
+let report =
+  Check.run
+    (Check.component
+       ~samples:[ Check.answers Landing_save.save [ "10:42" ] ]
+       Landing_save.component)
+
+let () =
+  if Check.passed report then
+    Printf.printf "%d states, %d transitions, no problem" report.states
+      report.transitions
+  else Format.printf "%a" Check.pp_report report
 (* 4 states, 6 transitions, no problem *)
 ```
 

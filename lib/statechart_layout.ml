@@ -138,7 +138,7 @@ let isotonic values =
   done;
   result
 
-let layout ?(labels = []) (spec : Spec.t) =
+let layout (spec : Spec.t) =
   let states = Array.of_list spec.states in
   let count = Array.length states in
   let index name =
@@ -164,7 +164,7 @@ let layout ?(labels = []) (spec : Spec.t) =
            else
              None
          )
-         labels
+         spec.edges
       )
   in
   let known =
@@ -177,7 +177,7 @@ let layout ?(labels = []) (spec : Spec.t) =
         | _ ->
             None
       )
-      spec.edges
+      (Spec.arrows spec)
   in
   let numbered = List.mapi (fun position edge -> (position, edge)) known in
   let loops =

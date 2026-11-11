@@ -1,14 +1,85 @@
 (** Explicit-state model checking of components and routed apps.
 
-    States and events must be first-order values: they are compared and hashed
-    structurally, so closures are reported as [Error]. The checker explores
-    breadth first, so a [Violation] carries a shortest trace. *)
+    Make a check with {!component}, {!live} or {!app}, and run it with {!run}.
+    States, events and props must be first-order values: they are compared and
+    hashed structurally, so a function inside them raises {!Invalid_check}. The
+    search is breadth first, so each violation carries a shortest trace. It goes
+    on after a violation and reports every violation (see {!type-report}). *)
 
-type ('s, 'e) invariant = {
-  name : string;
-  holds : 's -> 'e Silica.Node.t -> bool;
+exception Invalid_check of string
+(** A state, event or props value holds a function, or the arguments disagree
+    (no props for a component with props, no routes, an allowance with no reason
+    or with a rule that does not exist). *)
+
+type ('s, 'ev) t
+(** A configured check: the subject, its samples, inputs, bounds, properties and
+    allowances. ['s] is what properties read: the snapshot for a component, an
+    {!app_state} for an app. ['ev] is the input of a step: [('p, 'e) input] for
+    a component, ['e app_event] for an app. *)
+
+(** {1 Properties} *)
+
+type ('s, 'e) condition
+(** A test of one point of a run: the snapshot, its view, and the event of the
+    step that reached it. *)
+
+val state : ('s -> bool) -> ('s, 'e) condition
+(** Holds when the snapshot passes the test. *)
+
+val state_named : string -> ('s, 'e) condition
+(** Holds when the state of the snapshot has this name (see
+    {!Silica.Machine.name}). *)
+
+val view : ('e Silica.Node.t -> bool) -> ('s, 'e) condition
+(** Holds when the view of the snapshot passes the test. *)
+
+val holds : ('s -> 'e Silica.Node.t -> bool) -> ('s, 'e) condition
+(** Holds when the snapshot and its view pass the test together. *)
+
+val event : ('e -> bool) -> ('s, 'e) condition
+(** Holds on the snapshot reached by a step whose event of the machine passes
+    the test. The checker visits each snapshot once, through a shortest path, so
+    this reads the event of that path. *)
+
+val ( &&& ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
+val ( ||| ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
+val not_ : ('s, 'e) condition -> ('s, 'e) condition
+
+type ('s, 'e) property
+(** Something that must hold in every run. *)
+
+val always :
+  name:string -> ?hint:string -> ('s, 'e) condition -> ('s, 'e) property
+(** [always ~name ?hint condition]: [condition] holds on every reached snapshot.
+    A violation has the rule [name] and the [hint]; [hint] may name [{state}]
+    for the state of the failing snapshot. Without [hint], the hint asks to
+    change the update, the view, or the property. *)
+
+(** {1 Allowances} *)
+
+type allowance = Check_rules.allowance = private {
+  rule : string;
+  state : string option;
+  element : string option;
+  reason : string;
 }
-(** A property of a state and the view rendered from it. *)
+(** A rule that the check does not report, with the reason. *)
+
+val allow :
+  rule:string ->
+  ?state:string ->
+  ?element:string ->
+  reason:string ->
+  unit ->
+  allowance
+(** [allow ~rule ?state ?element ~reason ()] turns off [rule] (a built-in rule
+    id of {!val-rules} or the name of a property) in state [state] and at the
+    element path [element], or everywhere when they are not given. The report
+    lists each allowance and how many distinct violations it turned off. Use
+    [~rule:"unreached-state" ~state] for a state that no run reaches on purpose.
+*)
+
+(** {1 Samples} *)
 
 type sample
 (** The answers of an endpoint or the states of a topic that the checker
@@ -37,71 +108,26 @@ val states : 's Silica.Topic.t -> 's list -> sample
     ([Failed { error = Network "down"; last }]), after which nothing arrives. A
     topic with no [states] gives [Loading None] and the failure only. *)
 
-type children
-(** The props that the views of a check gave to child components. *)
-
-val props : children -> ('p, 's, 'e) Silica.Component.t -> 'p list
-(** [props children c]: the props, without duplicates, of the component nodes of
-    [c] that the check rendered. Give them to the check of [c] with [~props]. *)
-
-type ('s, 'ev) report =
-  | Ok of {
-      states : int;
-      transitions : int;
-      not_explored : string list;
-      edges : Silica.Spec.label list;
-      children : children;
-      spec : Silica.Spec.t;
-      paths : (string * 'ev list) list;
-    }
-      (** [transitions] counts every explored (state, event) pair.
-          [not_explored] lists, sorted and without duplicates, what the checker
-          saw in the views it rendered but did not run:
-          ["component <machine id>"] for each child component node and
-          ["island <channel>"] for each Live island (an element with
-          [data-silica-live]). The checker never runs a child machine inside the
-          check of its parent: it never looks inside a component node, so a page
-          check lists its children here instead of skipping them silently. Check
-          each listed machine alone with {!component}, with the props from
-          [children]. [edges] are the steps that the run took, sorted, with the
-          event names from {!Silica.Machine.event_name}: a state entered from
-          another state or entered again, and the steps that kept the state
-          ([kept]). [spec] is the spec that the run found: the states it
-          reached, initial state first then by name, each with the timers and
-          sources of the first snapshot reached in it, and the edges it took;
-          export it with {!Silica.Spec.to_quint} and {!Silica.Spec.to_dot}.
-          [paths] gives, for each state name in the order the search reached
-          them, a shortest list of steps from the start to it. *)
-  | Violation of { invariant : string; trace : 'ev list; state : 's }
-  | Unreached of { states : string list }
-      (** The search ended with no violation, but these names of the [states] of
-          the machine (see {!Silica.Machine.make}) were never reached and are
-          not in [allow_unreached]. *)
-  | Limit of { states : int }
-  | Error of string
+(** {1 Making a check} *)
 
 (** A step of a component check. *)
-type ('p, 'e) input =
+type ('p, 'e) input = ('p, 'e) Check_model.input =
   | Event of 'e  (** An event of the machine. *)
   | Props of 'p  (** The parent gives other props. *)
 
-val pp_input :
-  (Format.formatter -> 'e -> unit) -> Format.formatter -> ('p, 'e) input -> unit
-(** Print an input with the given event printer; props print as ["new props"].
-*)
-
 val component :
   ?max_states:int ->
+  ?max_violations:int ->
   ?within:('s -> bool) ->
   ?inputs:('s -> 'e list) ->
   ?props:'p list ->
   ?samples:sample list ->
   ?arrivals:int ->
-  ?allow_unreached:string list ->
   ?keys:Silica.Key.t list ->
-  ?invariants:('s, 'e) invariant list ->
+  ?properties:('s, 'e) property list ->
+  ?allow:allowance list ->
   ('p, 's, 'e) Silica.Component.t ->
-  ('s, ('p, 'e) input) report
+  ('s, ('p, 'e) input) t
 (** The check starts once with each of [props] (default: [()] for a machine made
     by {!Silica.Machine.make}; a machine with props needs them), and in every
     state the parent can give any other of [props]. Events in a state are the
@@ -111,81 +137,65 @@ val component :
     the held sources of the state, [inputs s] (use it for [On_input], which
     needs sample strings), the events of running timers, the answers of running
     calls and the updates of running subscriptions (see {!answers} and
-    {!states}; [arrivals] defaults to 2). A [Global_keys] source gives the event
-    of each key in its table, which is the press of that key; [Outside_press]
-    gives its event; [Resize] gives [on_resize] with {!Silica.Rect.zero};
-    [Intersection] gives [on_change] with [true] and with [false]. [Scroll]
-    gives [on_scroll] with {!Silica.Scroll.zero}; [Visibility], [Online] and
-    [Media] give their event with [true] and with [false]. A [Block] gives
-    [on_attempt] with a push and with a back, both to ["/"]. A [Dismiss] layer
-    gives its Escape event, its outside event and its focus-out event. A
-    [Focus_trap], [Scroll_lock] and [Anchor] give no event. An action with a
-    result event answers once, at any later step and in any state: [Measure]
-    with [Some Silica.Rect.zero], [Copy] and [Load_script] with [true]. The
-    checker treats {!Silica.Rate} limits as pass-through: every value arrives,
-    and none is held back. Elements inside a {!Silica.Node.Portal} and the body
-    of a {!Silica.Node.Boundary} are part of the view. Time is abstract: a
-    running timer can fire at any step, in any order. A timer, call or
-    subscription starts with its start action and stops with [Stop]; a call ends
-    with its answer and a timer when it fires. So nothing of a state that was
-    left arrives.
+    {!val-states}; [arrivals] defaults to 2). A [Global_keys] source gives the
+    event of each key in its table, which is the press of that key;
+    [Outside_press] gives its event; [Resize] gives [on_resize] with
+    {!Silica.Rect.zero}; [Intersection] gives [on_change] with [true] and with
+    [false]. [Scroll] gives [on_scroll] with {!Silica.Scroll.zero};
+    [Visibility], [Online] and [Media] give their event with [true] and with
+    [false]. A [Block] gives [on_attempt] with a push and with a back, both to
+    ["/"]. A [Dismiss] layer gives its Escape event, its outside event and its
+    focus-out event. A [Focus_trap], [Scroll_lock] and [Anchor] give no event.
+    An action with a result event answers once, at any later step and in any
+    state: [Measure] with [Some Silica.Rect.zero], [Copy] and [Load_script] with
+    [true]. The checker treats {!Silica.Rate} limits as pass-through: every
+    value arrives, and none is held back. Elements inside a
+    {!Silica.Node.Portal} and the body of a {!Silica.Node.Boundary} are part of
+    the view. Time is abstract: a running timer can fire at any step, in any
+    order. A timer, call or subscription starts with its start action and stops
+    with [Stop]; a call ends with its answer and a timer when it fires. So
+    nothing of a state that was left arrives. Handlers on elements with
+    [disabled] set are not enabled.
 
-    Built-in invariants: pressable nodes have an accessible name; refs are
-    unique in a view; [Focus], [Blur], [Scroll_into_view] and a [Scroll_to] with
-    a target name a ref in the next view ([focus-target]); [boundary-reset]: the
-    fallback of every boundary holds an element with {!Silica.Node.On_reset};
-    [dead-end]: some event is enabled unless the machine is final or its view
-    holds a child component or an island (the checker does not run those, and
-    they can raise events); [timer-owner]: every running timer belongs to the
-    current state; [call-owner]: every running call and subscription belongs to
-    the current state; [ignored-event]: the machine handles every event of a
-    handler of the view, of a timer, of a call answer and of a subscription
-    ({!Silica.Machine.can}); it may ignore the events of held sources, of
-    [inputs], new props and action results (a result can arrive after the state
-    that asked for it was left). The trace of [ignored-event] ends with the
-    ignored event and [state] is the state before it, so an update that ends
-    with [| _ -> Ignore] cannot hide a button that does nothing. When the search
-    ends with no violation, each name of the [states] of the machine that the
-    search never reached and that is not in [allow_unreached] is reported in
-    [Unreached]. {!Silica.Machine.event_name} names the events of the taken
-    [edges]; a change of props is named ["props"].
-
-    Handlers on elements with [disabled] set are not enabled. [max_states]
-    defaults to 100000. [within] bounds an unbounded state space: states outside
-    it are neither checked nor expanded, so [Ok] holds for the bounded space
-    only. The checker does not enter component nodes in the view: it lists them
-    in [not_explored] and keeps their props in [children]. To check a child,
-    call [component] on its own machine with [~props] from {!props}. *)
+    The built-in rules are in {!val-rules}. [max_states] (default 100000) bounds
+    the search; when it stops the search, the report is not [complete]. [within]
+    bounds an unbounded state space on purpose: snapshots outside it are neither
+    checked nor expanded, and the report holds for the bounded space.
+    [max_violations] (default 50) stops the search after that many violations;
+    the report is then [truncated]. The checker does not enter component nodes
+    in the view: it lists them in [not_explored] and keeps their props in
+    [children]. To check a child, make a check of its own machine with [~props]
+    from {!props}. *)
 
 val live :
   ?max_states:int ->
+  ?max_violations:int ->
   ?within:('s -> bool) ->
   ?inputs:('s -> 'e list) ->
   ?samples:sample list ->
   ?arrivals:int ->
-  ?allow_unreached:string list ->
   ?keys:Silica.Key.t list ->
-  ?invariants:('s, 'e) invariant list ->
+  ?properties:('s, 'e) property list ->
+  ?allow:allowance list ->
   ('s, 'e) Silica.Live.t ->
-  ('s, (unit, 'e) input) report
-(** Like {!component} for a Live component, whose machine runs on the server. A
-    reachable state that owns a client-only source ({!Silica.Source.focus_trap},
-    [scroll_lock], [outside_press], [keys], [resize], [intersection], [dismiss]
-    or [anchor], [scroll], [visibility], [online], [block]) is a [Violation]
-    named ["live-uses-client-source"]: the server has no page to run it on. A
-    step that runs [Measure], [Copy] or [Load_script] is a [Violation] named
-    ["live-uses-client-action"]: the protocol carries no answer of the client
-    back to the machine (see {!Silica.Protocol.host_of_host_action}). So is a
-    step that runs [Resume], [Revert_navigation], [Preload] or [Set_status]:
-    they never cross the wire. *)
+  ('s, (unit, 'e) input) t
+(** Like {!component} for a Live component, whose machine runs on the server,
+    with two more rules: [live-uses-client-source] (a reachable state owns a
+    client-only source: {!Silica.Source.focus_trap}, [scroll_lock],
+    [outside_press], [keys], [resize], [intersection], [dismiss], [anchor],
+    [scroll], [visibility], [online] or [block]) and [live-uses-client-action]
+    (a step runs [Measure], [Copy], [Load_script], [Load_chunk], [Resume],
+    [Revert_navigation], [Preload], [Set_status], [Set_document_attribute] or
+    [Set_cookie]: the protocol carries no answer of the client back, see
+    {!Silica.Protocol.host_of_host_action}). *)
 
-type 's app_state = {
+type 's app_state = 's Check_model.app_state = {
   router : 's;  (** The snapshot of the root machine. *)
   history : Silica.Url.t list;  (** Oldest first. *)
   index : int;  (** Position of the current URL in [history]. *)
 }
 
-type 'e app_event =
+type 'e app_event = 'e Check_model.app_event =
   | Event of 'e  (** An event of the root machine. *)
   | Link of Silica.Url.t  (** Press on a [data-silica-link] anchor. *)
   | Browser_back
@@ -193,21 +203,22 @@ type 'e app_event =
 
 val app :
   ?max_states:int ->
+  ?max_violations:int ->
   ?within:('s app_state -> bool) ->
   ?max_history:int ->
   ?inputs:('s app_state -> 'e list) ->
   ?samples:sample list ->
   ?arrivals:int ->
-  ?allow_unreached:string list ->
   ?keys:Silica.Key.t list ->
-  ?invariants:('s app_state, 'e) invariant list ->
+  ?properties:('s app_state, 'e) property list ->
+  ?allow:allowance list ->
   routes:'s list ->
   parse:(Silica.Url.t -> 's) ->
   print:('s -> Silica.Url.t) ->
   ?is_not_found:('s -> bool) ->
   url_event:(Silica.Url.t -> 'e) ->
   (Silica.Url.t -> (unit, 's, 'e) Silica.Component.t) ->
-  ('s app_state, 'e app_event) report
+  ('s app_state, 'e app_event) t
 (** Explores the root component of a routed app, for example the result of
     [Router.make], started at [print] of the first route, with a simulated
     history. The root view is the only view rendered: the page is a component
@@ -218,7 +229,7 @@ val app :
     nothing here. [max_history] (default 4) bounds the history; the oldest
     entries are dropped, which keeps the state space finite.
 
-    Besides the component built-ins, two invariants hold:
+    Besides the component rules, two rules hold:
     - [route-round-trip]: [parse (print route) = route] for every route in
       [routes] and for the route of every reached state, so a
       {!Silica.Router.val-route} whose constructor and data function disagree is
@@ -227,16 +238,150 @@ val app :
     - [link-parses]: for the [href] of every [data-silica-link] anchor in a
       rendered view, [print (parse href)] is the same URL string (the link is
       canonical), and, when [is_not_found] is given, [parse href] is not the
-      not-found route. A [parse] that raises [Failure] fails the invariant. *)
+      not-found route. A [parse] that raises [Failure] fails the rule. *)
 
-val pp_app_event :
-  (Format.formatter -> 'e -> unit) -> Format.formatter -> 'e app_event -> unit
-(** Print an app event with the given event printer. *)
+val id : ('s, 'ev) t -> string
+(** The id of the root machine. *)
 
-val pp_report :
-  pp_event:(Format.formatter -> 'ev -> unit) ->
-  ?pp_state:(Format.formatter -> 's -> unit) ->
-  Format.formatter ->
-  ('s, 'ev) report ->
-  unit
-(** Prints a counterexample as numbered steps. *)
+(** {1 Reports} *)
+
+(** Where a step came from. *)
+type cause = Check_model.cause =
+  | View of {
+      handler : string;
+          (** ["press"], ["double_press"], ["submit"], ["focus"], ["blur"],
+              ["pointer_enter"], ["pointer_leave"], ["key_down Enter"],
+              ["key_up Escape"]. *)
+      element : string;
+          (** The path of the element, such as ["main > form > button[2]"] (see
+              {!Silica.Accessibility.path}). *)
+      role : string option;
+      name : string;  (** The accessible name of the element. *)
+    }
+  | Input  (** One of [inputs]. *)
+  | Timer of { id : string; ms : int }
+  | Answer of { id : string; path : string }  (** The answer of a call. *)
+  | Live of { id : string; topic : string }  (** An update of a subscription. *)
+  | Held of { id : string; source : string }  (** A held source. *)
+  | Action_result of string  (** The result of the action with this name. *)
+  | Props  (** The parent gave other props. *)
+  | Child of { instance : string; machine : string }
+  | Navigation  (** The back or forward button of the browser. *)
+
+val describe_cause : cause -> string
+(** One phrase, such as
+    ["the view offers press on button \"Save\" at form > button"] or
+    ["the timer save/saved/after 2000ms (2000 ms)"]. *)
+
+type 'ev step = {
+  input : 'ev;
+  event : string;
+      (** The name of the event by {!Silica.Machine.event_name}, ["props"] for
+          new props, ["link <url>"], ["back"] or ["forward"]. *)
+  cause : cause;
+  instance : string;  (** ["0"] for the root machine. *)
+  machine : string;  (** The machine id. *)
+  from : string;  (** The name of the state before the step. *)
+  target : string;
+      (** The name of the state after the step; [from] for a step that the
+          update ignored or that raised. *)
+}
+
+type 'ev counterexample =
+  | Path of 'ev step list
+      (** Finite steps from a start to the failing point. *)
+  | Waits of 'ev step list
+      (** Finite steps to a state where nothing runs and the app waits for the
+          user. *)
+  | Loop of { stem : 'ev step list; cycle : 'ev step list }
+      (** Steps to a cycle that repeats forever. *)
+
+type ('s, 'ev) violation = {
+  rule : string;  (** A built-in rule id of {!val-rules}, or a property name. *)
+  message : string;
+      (** One sentence with the state, the element and the event. *)
+  hint : string;  (** How to fix it. *)
+  counterexample : 'ev counterexample;
+  state : 's;
+      (** The snapshot at the failing point: for [ignored-event] and [raised],
+          the snapshot before the last step. *)
+  state_name : string;
+  view : string;
+      (** {!Silica.View_text} of the view of [state], or [""] when the view
+          raised. *)
+  element : string option;  (** The path of the element, for view rules. *)
+}
+
+type children
+(** The props that the views of a check gave to child components. *)
+
+val props : children -> ('p, 's, 'e) Silica.Component.t -> 'p list
+(** [props children c]: the props, without duplicates, of the component nodes of
+    [c] that the check rendered. Give them to the check of [c] with [~props]. *)
+
+type ('s, 'ev) report = {
+  machine : string;  (** The id of the root machine. *)
+  states : int;  (** The explored snapshots. *)
+  transitions : int;  (** Every explored pair of a snapshot and a step. *)
+  complete : bool;  (** [false] when [max_states] stopped the search. *)
+  truncated : bool;  (** [true] when [max_violations] stopped the search. *)
+  violations : ('s, 'ev) violation list;
+      (** In the order found, so shortest first. The first violation of each
+          rule, state name, element and message. *)
+  unreached : string list;
+      (** The names of the states of the machine (see
+          {!Silica.Machine.val-shape}) that no step reached and no allowance
+          covers. *)
+  allowed : (allowance * int) list;
+      (** Each allowance and how many distinct violations it turned off. *)
+  not_explored : string list;
+      (** Sorted, without duplicates: what the views showed and the checker did
+          not run: ["component <machine id>"] for each child component node and
+          ["island <channel>"] for each Live island (an element with
+          [data-silica-live]). *)
+  children : children;
+  specs : Silica.Spec.t list;
+      (** The spec that the run found for the root machine: the states it
+          reached, initial state first then by name, each with the timers and
+          sources of the first snapshot reached in it, and the steps it took,
+          with event names. *)
+  paths : (string * 'ev step list) list;
+      (** For each state name, in the order the search reached them, a shortest
+          path from a start to its first snapshot. *)
+  views : (string * string) list;
+      (** For each state name, in the same order, {!Silica.View_text} of the
+          view of its first snapshot. *)
+}
+
+val run : ('s, 'ev) t -> ('s, 'ev) report
+(** Runs the search. Raises {!Invalid_check} on a setup error. An exception in
+    the update, the view, the handlers or a property is a violation of the rule
+    [raised]: the search does not go on from that snapshot. *)
+
+val passed : ('s, 'ev) report -> bool
+(** No violation, nothing unreached, and [complete]. *)
+
+val steps : 'ev counterexample -> 'ev step list
+(** Every step of the counterexample, in order: for a [Loop], the stem then the
+    cycle once. *)
+
+val pp_report : Format.formatter -> ('s, 'ev) report -> unit
+(** The report as text: the counts, then each violation with its message, hint,
+    numbered steps with their causes, state and view, then the unreached states,
+    the allowances and what was not explored. *)
+
+(** {1 Rules} *)
+
+type rule = Check_rules.rule = {
+  id : string;
+  message : string;
+      (** The message, with places such as [{state}], [{element}] and [{event}]
+          that a violation fills. *)
+  hint : string;  (** How to fix it, with the same places. *)
+  applies_to : string;
+      (** ["view"], ["state"], ["step"], ["machine"], ["route"] or ["search"].
+      *)
+}
+
+val rules : rule list
+(** Every built-in rule. *)

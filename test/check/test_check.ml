@@ -9,6 +9,32 @@ let show_input show_event : (_, _) Check.input -> string = function
       show_event event
   | Check.Props _ ->
       "new props"
+
+let print report = Format.asprintf "%a" Check.pp_report report
+
+let contains text part =
+  let length = String.length part in
+  let rec go index =
+    index + length <= String.length text
+    && (String.sub text index length = part || go (index + 1))
+  in
+  go 0
+
+let inputs (violation : (_, _) Check.violation) =
+  List.map
+    (fun (step : _ Check.step) -> step.input)
+    (Check.steps violation.counterexample)
+
+let first report =
+  match report.Check.violations with
+  | violation :: _ ->
+      violation
+  | [] ->
+      Alcotest.fail ("expected a violation, got:\n" ^ print report)
+
+let passes report =
+  if not (Check.passed report) then
+    Alcotest.fail ("expected the check to pass, got:\n" ^ print report)
 let btn label e = Node.element "button" [ Attr.on_press e ] [ Node.text label ]
 
 let simple = Silica_test_support.Simple.machine
@@ -41,30 +67,21 @@ let counter_view n =
       []
     )
 
-let violation name trace = function
-  | Check.Violation v ->
-      Alcotest.(check string) "invariant" name v.invariant;
-      Alcotest.(check (list string))
-        "trace" trace
-        (List.map (show_input show) v.trace)
-  | Check.Ok _ ->
-      Alcotest.fail "expected violation, got ok"
-  | Check.Limit _ ->
-      Alcotest.fail "expected violation, got limit"
-  | Check.Unreached _ ->
-      Alcotest.fail "expected violation, got unreached"
-  | Check.Error m ->
-      Alcotest.fail ("expected violation, got error: " ^ m)
+let violation name trace check =
+  let violation = first (Check.run check) in
+  Alcotest.(check string) "rule" name violation.rule;
+  Alcotest.(check (list string))
+    "trace" trace
+    (List.map (show_input show) (inputs violation))
 
 let test_ok () =
-  match Check.component (component counter_view) with
-  | Check.Ok { states; transitions; _ } ->
-      Alcotest.(check int) "states" 3 states;
-      Alcotest.(check int) "transitions" 4 transitions
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report = Check.run (Check.component (component counter_view)) in
+  passes report;
+  Alcotest.(check int) "states" 3 report.states;
+  Alcotest.(check int) "transitions" 4 report.transitions
 
-let non_negative = { Check.name = "non-negative"; holds = (fun n _ -> n >= 0) }
+let non_negative =
+  Check.always ~name:"non-negative" (Check.state (fun n -> n >= 0))
 
 let test_seeded_bug () =
   let c =
@@ -80,7 +97,7 @@ let test_seeded_bug () =
     )
   in
   violation "non-negative" [ "Inc"; "Inc"; "Dec" ]
-    (Check.component ~invariants:[ non_negative ] c)
+    (Check.component ~properties:[ non_negative ] c)
 
 let test_no_name () =
   let c = component (fun _ -> Node.element "button" [ Attr.on_press Inc ] []) in
@@ -96,11 +113,7 @@ let test_aria_label_is_a_name () =
       )
       ~inc:(fun n -> Some (n, []))
   in
-  match Check.component c with
-  | Check.Ok _ ->
-      ()
-  | _ ->
-      Alcotest.fail "expected ok"
+  passes (Check.run (Check.component c))
 
 let test_missing_focus_ref () =
   let c =
@@ -123,16 +136,18 @@ let test_present_focus_ref () =
           btn "go" Inc
         else
           Node.element "input"
-            [ Attr.ref_ (Ref.make "x"); Attr.on_press Inc ]
-            [ Node.text "x" ]
+            [
+              Attr.ref_ (Ref.make "x");
+              Attr.string "aria-label" "x";
+              Attr.on_press Inc;
+            ]
+            []
       )
       ~inc:(fun _ -> Some (1, [ Action.Focus (Ref.make "x") ]))
   in
-  match Check.component c with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check int) "states" 2 states
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report = Check.run (Check.component c) in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states
 
 let test_dead_end () =
   let c =
@@ -163,11 +178,9 @@ let test_dead_end_final_ok () =
     else
       Node.text "done"
   in
-  match Check.component (Component.make machine view) with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check int) "states" 2 states
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report = Check.run (Check.component (Component.make machine view)) in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states
 
 let test_duplicate_refs () =
   let r = Ref.make "dup" in
@@ -186,11 +199,16 @@ let test_duplicate_refs () =
   violation "unique-refs" [] (Check.component c)
 
 let test_limit () =
-  match Check.component ~max_states:5 (component (fun _ -> btn "+" Inc)) with
-  | Check.Limit { states } ->
-      Alcotest.(check int) "states" 5 states
-  | _ ->
-      Alcotest.fail "expected limit"
+  let report =
+    Check.run (Check.component ~max_states:5 (component (fun _ -> btn "+" Inc)))
+  in
+  Alcotest.(check bool) "incomplete" false report.complete;
+  Alcotest.(check bool) "not passed" false (Check.passed report);
+  Alcotest.(check int) "states" 5 report.states;
+  let text = print report in
+  Alcotest.(check bool)
+    "the text gives the state-limit hint" true
+    (contains text "Bound the search with ~within, or raise ~max_states.")
 
 type fstate = { f : int -> int; n : int }
 
@@ -203,11 +221,15 @@ let test_functional_value () =
           None
       )
   in
-  match Check.component (Component.make machine (fun _ -> btn "+" Inc)) with
-  | Check.Error m ->
-      Alcotest.(check bool) "message" true (String.length m > 0)
-  | _ ->
-      Alcotest.fail "expected error"
+  match
+    Check.run (Check.component (Component.make machine (fun _ -> btn "+" Inc)))
+  with
+  | exception Check.Invalid_check message ->
+      Alcotest.(check bool)
+        "the message names the machine" true
+        (contains message "machine c")
+  | report ->
+      Alcotest.fail ("expected Invalid_check, got:\n" ^ print report)
 
 type wait = Waiting | Over [@@deriving state_shape]
 
@@ -236,11 +258,9 @@ let test_inputs () =
       )
       ~inc:(fun n -> Some (min 1 (n + 1), []))
   in
-  match Check.component ~inputs:(fun _ -> [ Inc ]) c with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check int) "states" 2 states
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report = Check.run (Check.component ~inputs:(fun _ -> [ Inc ]) c) in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states
 
 let test_pp () =
   let c =
@@ -255,24 +275,24 @@ let test_pp () =
           )
     )
   in
-  let r = Check.component ~invariants:[ non_negative ] c in
-  let out =
-    Format.asprintf "%a"
-      (Check.pp_report
-         ~pp_event:
-           (Check.pp_input (fun f e -> Format.pp_print_string f (show e)))
-         ~pp_state:Format.pp_print_int
-      )
-      r
-  in
+  let report = Check.run (Check.component ~properties:[ non_negative ] c) in
   Alcotest.(check string)
     "report"
-    "invariant \"non-negative\" violated after 3 steps:\n\
-    \  1. Inc\n\
-    \  2. Inc\n\
-    \  3. Dec\n\
-     state: -1"
-    out
+    "c: 4 states, 5 transitions\n\
+     violation 1: non-negative\n\
+    \  The property \"non-negative\" does not hold in state active.\n\
+    \  hint: Change the update or the view so that \"non-negative\" holds in \
+     state active, or correct the property.\n\
+    \  1. active -> active: (unnamed event), by the view offers press on \
+     button \"+\" at button\n\
+    \  2. active -> active: (unnamed event), by the view offers press on \
+     button \"+\" at button[1]\n\
+    \  3. active -> active: (unnamed event), by the view offers press on \
+     button \"-\" at button\n\
+    \  state: active\n\
+    \  view:\n\
+    \    button \"+\" [press]"
+    (print report)
 
 type child_event = Set of int | Dec
 
@@ -311,7 +331,7 @@ let props_child_component =
     (fun number Showing -> Node.text (string_of_int number))
 
 let child_non_negative =
-  { Check.name = "child-non-negative"; holds = (fun n _ -> n >= 0) }
+  Check.always ~name:"child-non-negative" (Check.state (fun n -> n >= 0))
 
 let test_component_node_not_explored () =
   let machine =
@@ -335,33 +355,29 @@ let test_component_node_not_explored () =
         Node.element "div" [ Attr.string "data-silica-live" "chat" ] [];
       ]
   in
-  match Check.component (Component.make machine view) with
-  | Check.Ok { states; not_explored; children; _ } ->
-      Alcotest.(check int) "states of the root only" 2 states;
-      Alcotest.(check (list string))
-        "not explored"
-        [
-          "component child";
-          "component props-child";
-          "component unnamed-child";
-          "island chat";
-        ]
-        not_explored;
-      Alcotest.(check (list int))
-        "the props given to a child, without duplicates" [ 3; 5 ]
-        (Check.props children props_child_component);
-      Alcotest.(check (list unit))
-        "a child with no props" [ () ]
-        (Check.props children child_component)
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report = Check.run (Check.component (Component.make machine view)) in
+  passes report;
+  Alcotest.(check int) "states of the root only" 2 report.states;
+  Alcotest.(check (list string))
+    "not explored"
+    [
+      "component child";
+      "component props-child";
+      "component unnamed-child";
+      "island chat";
+    ]
+    report.not_explored;
+  Alcotest.(check (list int))
+    "the props given to a child, without duplicates" [ 3; 5 ]
+    (Check.props report.children props_child_component);
+  Alcotest.(check (list unit))
+    "a child with no props" [ () ]
+    (Check.props report.children child_component)
 
 let test_no_children_nothing_listed () =
-  match Check.component (component counter_view) with
-  | Check.Ok { not_explored; _ } ->
-      Alcotest.(check (list string)) "not explored" [] not_explored
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report = Check.run (Check.component (component counter_view)) in
+  passes report;
+  Alcotest.(check (list string)) "not explored" [] report.not_explored
 
 type route = Items of string | Item of int | About | Not_found of string
 
@@ -399,7 +415,15 @@ let show_router_event f = function
   | Router.Preload url ->
       Format.fprintf f "preload %s" (Url.to_string url)
 
-let show_app = Check.pp_app_event show_router_event
+let show_app formatter : _ Check.app_event -> unit = function
+  | Check.Event event ->
+      show_router_event formatter event
+  | Check.Link url ->
+      Format.fprintf formatter "link %s" (Url.to_string url)
+  | Check.Browser_back ->
+      Format.pp_print_string formatter "back"
+  | Check.Browser_forward ->
+      Format.pp_print_string formatter "forward"
 
 let good_links =
   [
@@ -420,93 +444,73 @@ let app_root ?(extra = []) () url =
   in
   Router.make routes ~render url
 
-let app ?(extra = []) ?invariants ?(parse = Router.parse routes)
+let app ?(extra = []) ?properties ?(parse = Router.parse routes)
     ?(print = Router.print routes) ?(routes_to_check = all_routes) ?is_not_found
     () =
-  Check.app ?invariants ~routes:routes_to_check ~parse ~print ?is_not_found
-    ~url_event:(fun url -> Router.Url_changed url)
-    (app_root ~extra ())
-
-let app_failure report =
-  Alcotest.fail
-    (Format.asprintf "%a"
-       (fun formatter report ->
-         Check.pp_report ~pp_event:show_app formatter report
-       )
-       report
+  Check.run
+    (Check.app ?properties ~routes:routes_to_check ~parse ~print ?is_not_found
+       ~url_event:(fun url -> Router.Url_changed url)
+       (app_root ~extra ())
     )
 
-let app_violation name trace = function
-  | Check.Violation v ->
-      Alcotest.(check string) "invariant" name v.invariant;
-      Alcotest.(check (list string))
-        "trace" trace
-        (List.map (Format.asprintf "%a" show_app) v.trace)
-  | report ->
-      app_failure report
+let app_violation name trace report =
+  let violation = first report in
+  Alcotest.(check string) "rule" name violation.rule;
+  Alcotest.(check (list string))
+    "trace" trace
+    (List.map (Format.asprintf "%a" show_app) (inputs violation))
 
 let test_app_ok () =
   let history_matches =
-    {
-      Check.name = "history entry matches route";
-      holds =
-        (fun (state : _ Check.app_state) _ ->
-          let url = List.nth state.history state.index in
-          state.router = Router.parse routes url
-          && Url.to_string (Router.print routes state.router)
-             = Url.to_string url
-        );
-    }
+    Check.always ~name:"history entry matches route"
+      (Check.state (fun (state : _ Check.app_state) ->
+           let url = List.nth state.history state.index in
+           state.router = Router.parse routes url
+           && Url.to_string (Router.print routes state.router)
+              = Url.to_string url
+       )
+      )
   in
-  match
-    app ~invariants:[ history_matches ]
+  let report =
+    app ~properties:[ history_matches ]
       ~is_not_found:(Router.is_not_found routes)
       ()
-  with
-  | Check.Ok { states; not_explored; _ } ->
-      Alcotest.(check bool) "explores history" true (states > 5);
-      Alcotest.(check (list string))
-        "page is not explored" [ "component child" ] not_explored
-  | report ->
-      app_failure report
+  in
+  passes report;
+  Alcotest.(check bool) "explores history" true (report.states > 5);
+  Alcotest.(check (list string))
+    "page is not explored" [ "component child" ] report.not_explored
 
 let test_back_returns () =
   let index_in_history =
-    {
-      Check.name = "index in history";
-      holds =
-        (fun (state : _ Check.app_state) _ ->
-          state.index < List.length state.history
-        );
-    }
+    Check.always ~name:"index in history"
+      (Check.state (fun (state : _ Check.app_state) ->
+           state.index < List.length state.history
+       )
+      )
   in
-  match app ~invariants:[ index_in_history ] () with
-  | Check.Ok _ ->
-      ()
-  | report ->
-      app_failure report
+  passes (app ~properties:[ index_in_history ] ())
 
 let test_page_check_misses_child_bug () =
-  match app () with
-  | Check.Ok { not_explored; _ } ->
-      Alcotest.(check (list string))
-        "child listed" [ "component child" ] not_explored
-  | report ->
-      app_failure report
+  let report = app () in
+  passes report;
+  Alcotest.(check (list string))
+    "child listed" [ "component child" ] report.not_explored
 
 let test_child_alone_finds_bug () =
-  match
-    Check.component ~invariants:[ child_non_negative ]
-      ~inputs:(fun _ -> [ Set (-1) ])
-      child_component
-  with
-  | Check.Violation v ->
-      Alcotest.(check string) "invariant" "child-non-negative" v.invariant;
-      Alcotest.(check (list string))
-        "trace" [ "Set -1" ]
-        (List.map (show_input show_child) v.trace)
-  | _ ->
-      Alcotest.fail "expected violation"
+  let violation =
+    first
+      (Check.run
+         (Check.component ~properties:[ child_non_negative ]
+            ~inputs:(fun _ -> [ Set (-1) ])
+            child_component
+         )
+      )
+  in
+  Alcotest.(check string) "rule" "child-non-negative" violation.rule;
+  Alcotest.(check (list string))
+    "trace" [ "Set -1" ]
+    (List.map (show_input show_child) (inputs violation))
 
 let test_round_trip_query_printed_wrong () =
   let print = function
@@ -548,19 +552,21 @@ let test_round_trip_route_pair_disagrees () =
           (function Page number -> Some (number + 1) | Front -> None);
       ]
   in
-  match
-    Check.app ~routes:[ Front ] ~parse:(Router.parse paged)
-      ~print:(Router.print paged)
-      ~inputs:(fun _ -> [ Router.Url_changed (Url.of_string "/page/1") ])
-      ~url_event:(fun url -> Router.Url_changed url)
-      (Router.make paged ~render:(fun _ -> Node.text "page"))
-  with
-  | Check.Violation v ->
-      Alcotest.(check string) "invariant" "route-round-trip" v.invariant;
-      Alcotest.(check bool)
-        "reached the bad route" true (v.state.router = Page 1)
-  | report ->
-      app_failure report
+  let violation =
+    first
+      (Check.run
+         (Check.app ~routes:[ Front ] ~parse:(Router.parse paged)
+            ~print:(Router.print paged)
+            ~inputs:(fun _ -> [ Router.Url_changed (Url.of_string "/page/1") ])
+            ~url_event:(fun url -> Router.Url_changed url)
+            (Router.make paged ~render:(fun _ -> Node.text "page"))
+         )
+      )
+  in
+  Alcotest.(check string) "rule" "route-round-trip" violation.rule;
+  Alcotest.(check bool)
+    "reached the bad route" true
+    (violation.state.router = Page 1)
 
 let test_link_not_canonical () =
   app_violation "link-parses" [] (app ~extra:[ raw_link "/items?sort=name" ] ())
@@ -574,11 +580,7 @@ let test_link_to_not_found () =
     )
 
 let test_link_to_not_found_allowed_without_predicate () =
-  match app ~extra:[ raw_link "/items/007" ] () with
-  | Check.Ok _ ->
-      ()
-  | report ->
-      app_failure report
+  passes (app ~extra:[ raw_link "/items/007" ] ())
 
 type stale_event = Leave | Back | Tick
 type stale_state = Waiting | Left | Fired | Late [@@deriving state_shape]
@@ -614,29 +616,41 @@ let stale_component =
 
 let test_timer_stops_on_exit () =
   let never_late =
-    { Check.name = "never-late"; holds = (fun s _ -> s <> Late) }
+    Check.always ~name:"never-late" (Check.state (fun s -> s <> Late))
   in
-  ( match Check.component ~invariants:[ never_late ] stale_component with
-  | Check.Unreached { states } ->
-      Alcotest.(check (list string))
-        "the timer of waiting never fires in left" [ "late" ] states
-  | _ ->
-      Alcotest.fail "expected the state late to be unreached"
-  );
-  match
-    Check.component ~invariants:[ never_late ] ~allow_unreached:[ "late" ]
-      stale_component
-  with
-  | Check.Ok { states; transitions; _ } ->
-      Alcotest.(check int) "states" 3 states;
-      Alcotest.(check int) "transitions" 3 transitions
-  | Check.Violation v ->
-      Alcotest.fail
-        (Printf.sprintf "violation %s after %d steps" v.invariant
-           (List.length v.trace)
-        )
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report =
+    Check.run (Check.component ~properties:[ never_late ] stale_component)
+  in
+  Alcotest.(check (list string))
+    "no violation" []
+    (List.map
+       (fun (violation : _ Check.violation) -> violation.rule)
+       report.violations
+    );
+  Alcotest.(check (list string))
+    "the timer of waiting never fires in left" [ "late" ] report.unreached;
+  let text = print report in
+  Alcotest.(check bool)
+    "the text gives the unreached-state hint" true
+    (contains text "Add samples, inputs or props that reach late");
+  let report =
+    Check.run
+      (Check.component ~properties:[ never_late ]
+         ~allow:
+           [
+             Check.allow ~rule:"unreached-state" ~state:"late"
+               ~reason:"the timer of waiting stops when the machine leaves it"
+               ();
+           ]
+         stale_component
+      )
+  in
+  passes report;
+  Alcotest.(check int) "states" 3 report.states;
+  Alcotest.(check int) "transitions" 3 report.transitions;
+  Alcotest.(check (list int))
+    "the allowance applied once" [ 1 ]
+    (List.map snd report.allowed)
 
 type broken = A | B [@@deriving state_shape]
 
@@ -673,36 +687,69 @@ let broken_component ~go =
 
 let test_ignored_event () =
   let machine, view = broken_component ~go:Machine.Ignore in
-  ( match Check.component (Component.make machine (fun state -> view state)) with
-  | Check.Violation { invariant = "ignored-event"; trace; state } ->
-      Alcotest.(check (list string))
-        "the trace ends with the ignored event" [ "Go" ]
-        (List.map (show_input show) trace);
-      Alcotest.(check string)
-        "the state before it" "a"
-        (Machine.shape_name broken_shape state)
+  let violation =
+    first
+      (Check.run
+         (Check.component (Component.make machine (fun state -> view state)))
+      )
+  in
+  Alcotest.(check string) "rule" "ignored-event" violation.rule;
+  Alcotest.(check (list string))
+    "the trace ends with the ignored event" [ "Go" ]
+    (List.map (show_input show) (inputs violation));
+  Alcotest.(check string)
+    "the state before it" "a"
+    (Machine.shape_name broken_shape violation.state);
+  Alcotest.(check (option string))
+    "the element" (Some "button[2]") violation.element;
+  ( match Check.steps violation.counterexample with
+  | [ step ] ->
+      Alcotest.(check string) "from" "a" step.from;
+      Alcotest.(check string) "target: the state did not change" "a" step.target;
+      Alcotest.(check bool)
+        "the cause is the press on the go button" true
+        (step.cause
+        = Check.View
+            {
+              handler = "press";
+              element = "button[2]";
+              role = Some "button";
+              name = "go";
+            }
+        )
   | _ ->
-      Alcotest.fail "expected ignored-event"
+      Alcotest.fail "expected one step"
   );
-  ( match
-      Check.component
-        (Component.make machine (fun state -> view ~disabled:true state))
-    with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check int)
-        "a disabled button offers nothing: a (its timer runs again after it \
-         fires), b"
-        2 states
-  | _ ->
-      Alcotest.fail "expected ok with the button disabled"
-  );
+  Alcotest.(check string)
+    "the message names the element and the state"
+    "In state a, the view offers press on button \"go\" at button[2] gives the \
+     event (unnamed), and the update returns Ignore."
+    violation.message;
+  Alcotest.(check bool)
+    "the hint says how to fix it" true
+    (contains violation.hint "Handle (unnamed) in state a");
+  Alcotest.(check string)
+    "the view at the failing step"
+    "button \"inc\" [press]\nbutton \"go\" [press]\n" violation.view;
+  let report =
+    Check.run
+      (Check.component
+         (Component.make machine (fun state -> view ~disabled:true state))
+      )
+  in
+  passes report;
+  Alcotest.(check int)
+    "a disabled button offers nothing: a (its timer runs again after it \
+     fires), b"
+    2 report.states;
   let machine, view = broken_component ~go:(Machine.Stay []) in
-  match Check.component (Component.make machine (fun state -> view state)) with
-  | Check.Ok { states; transitions; _ } ->
-      Alcotest.(check int) "states" 2 states;
-      Alcotest.(check int) "inc, go and the timer" 3 transitions
-  | _ ->
-      Alcotest.fail "expected ok when the machine handles the event"
+  let report =
+    Check.run
+      (Check.component (Component.make machine (fun state -> view state)))
+  in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states;
+  Alcotest.(check int) "inc, go and the timer" 3 report.transitions
 
 let test_ignored_timer_event () =
   let machine =
@@ -736,20 +783,17 @@ let test_ignored_held_event_is_allowed () =
             Machine.Ignore
       )
   in
-  match
-    Check.component
-      (Component.make machine (fun _ ->
-           Node.element "div" [ Attr.ref_ panel ] [ btn "+" Inc ]
-       )
+  let report =
+    Check.run
+      (Check.component
+         (Component.make machine (fun _ ->
+              Node.element "div" [ Attr.ref_ panel ] [ btn "+" Inc ]
+          )
+         )
       )
-  with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check int) "states" 2 states
-  | Check.Violation v ->
-      Alcotest.failf "violation %s: the events of held sources may be ignored"
-        v.invariant
-  | _ ->
-      Alcotest.fail "expected ok"
+  in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states
 
 module Dialog = struct
   type event = Open | Close | Resized | Seen of bool
@@ -825,53 +869,57 @@ module Dialog = struct
 end
 
 let test_sources_give_events () =
-  match
-    Check.component (Dialog.component ~escape:true ~outside:true ~observers:true)
-  with
-  | Check.Ok { states; transitions; _ } ->
-      Alcotest.(check int) "states" 2 states;
-      Alcotest.(check int)
-        "open; then Escape and outside press (one event, Close), resize, \
-         visible, hidden"
-        5 transitions
-  | Check.Violation v ->
-      Alcotest.failf "violation %s" v.invariant
-  | _ ->
-      Alcotest.fail "expected ok"
+  let report =
+    Check.run
+      (Check.component
+         (Dialog.component ~escape:true ~outside:true ~observers:true)
+      )
+  in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states;
+  Alcotest.(check int)
+    "open; then Escape and outside press (one event, Close), resize, visible, \
+     hidden"
+    5 report.transitions
 
 let test_escape_source_is_pressed () =
-  match
-    Check.component
-      (Dialog.component ~escape:true ~outside:false ~observers:false)
-  with
-  | Check.Ok { states; transitions; _ } ->
-      Alcotest.(check int) "states" 2 states;
-      Alcotest.(check int) "open, then Escape" 2 transitions
-  | _ ->
-      Alcotest.fail "the Escape key of the source must be pressed"
+  let report =
+    Check.run
+      (Check.component
+         (Dialog.component ~escape:true ~outside:false ~observers:false)
+      )
+  in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states;
+  Alcotest.(check int) "open, then Escape" 2 report.transitions
 
 let test_outside_press_source_is_pressed () =
-  match
-    Check.component
-      (Dialog.component ~escape:false ~outside:true ~observers:false)
-  with
-  | Check.Ok { states; transitions; _ } ->
-      Alcotest.(check int) "states" 2 states;
-      Alcotest.(check int) "open, then outside press" 2 transitions
-  | _ ->
-      Alcotest.fail "the outside press of the source must be pressed"
+  let report =
+    Check.run
+      (Check.component
+         (Dialog.component ~escape:false ~outside:true ~observers:false)
+      )
+  in
+  passes report;
+  Alcotest.(check int) "states" 2 report.states;
+  Alcotest.(check int) "open, then outside press" 2 report.transitions
 
 let test_modal_without_a_way_out_is_a_dead_end () =
-  match
-    Check.component
-      (Dialog.component ~escape:false ~outside:false ~observers:false)
-  with
-  | Check.Violation { invariant = "dead-end"; trace; _ } ->
-      Alcotest.(check (list string))
-        "opened and stuck" [ "Open" ]
-        (List.map (show_input Dialog.show) trace)
-  | _ ->
-      Alcotest.fail "expected a dead end"
+  let violation =
+    first
+      (Check.run
+         (Check.component
+            (Dialog.component ~escape:false ~outside:false ~observers:false)
+         )
+      )
+  in
+  Alcotest.(check string) "rule" "dead-end" violation.rule;
+  Alcotest.(check (list string))
+    "opened and stuck" [ "Open" ]
+    (List.map (show_input Dialog.show) (inputs violation));
+  Alcotest.(check bool)
+    "the hint names the state" true
+    (contains violation.hint "leaves opened")
 
 let key_view n =
   Node.element "input"
@@ -890,7 +938,8 @@ let test_element_key_handler_is_pressed () =
   let c = component key_view in
   violation "below-one" [ "Inc" ]
     (Check.component
-       ~invariants:[ { Check.name = "below-one"; holds = (fun n _ -> n < 1) } ]
+       ~properties:
+         [ Check.always ~name:"below-one" (Check.state (fun n -> n < 1)) ]
        c
     );
   violation "dead-end" []
@@ -911,7 +960,8 @@ let test_portal_handlers_are_explored () =
   in
   violation "below-one" [ "Inc" ]
     (Check.component
-       ~invariants:[ { Check.name = "below-one"; holds = (fun n _ -> n < 1) } ]
+       ~properties:
+         [ Check.always ~name:"below-one" (Check.state (fun n -> n < 1)) ]
        (component view)
     )
 
@@ -932,12 +982,12 @@ let test_boundary_needs_a_reset () =
           (btn "+" Inc)
     )
   in
-  ( match Check.component ~max_states:5 with_reset with
-  | Check.Ok _ | Check.Limit _ ->
-      ()
-  | _ ->
-      Alcotest.fail "a boundary with a reset passes"
-  );
+  Alcotest.(check (list string))
+    "a boundary with a reset passes" []
+    (List.map
+       (fun (violation : _ Check.violation) -> violation.rule)
+       (Check.run (Check.component ~max_states:5 with_reset)).violations
+    );
   violation "boundary-reset" [] (Check.component without_reset)
 
 let test_live_rejects_client_only_source () =
@@ -951,17 +1001,15 @@ let test_live_rejects_client_only_source () =
         )
       (Dialog.component ~escape:true ~outside:true ~observers:true)
   in
-  ( match Check.live live with
-  | Check.Violation { invariant = "live-uses-client-source"; trace; state } ->
-      Alcotest.(check string)
-        "reached in the opened state" "opened"
-        (Machine.shape_name Dialog.state_shape state);
-      Alcotest.(check int) "after one event" 1 (List.length trace)
-  | Check.Violation v ->
-      Alcotest.failf "wrong violation %s" v.invariant
-  | _ ->
-      Alcotest.fail "expected a violation"
-  );
+  let violation = first (Check.run (Check.live live)) in
+  Alcotest.(check string) "rule" "live-uses-client-source" violation.rule;
+  Alcotest.(check string)
+    "reached in the opened state" "opened"
+    (Machine.shape_name Dialog.state_shape violation.state);
+  Alcotest.(check int) "after one event" 1 (List.length (inputs violation));
+  Alcotest.(check bool)
+    "the hint names the source" true
+    (contains violation.hint "focus_trap");
   let fine =
     Live.declare ~channel:"fine" ~state:int_codec
       ~event:
@@ -971,13 +1019,7 @@ let test_live_rejects_client_only_source () =
         )
       (component counter_view)
   in
-  match Check.live fine with
-  | Check.Ok _ ->
-      ()
-  | Check.Violation v ->
-      Alcotest.failf "unexpected violation %s" v.invariant
-  | _ ->
-      Alcotest.fail "expected ok"
+  passes (Check.run (Check.live fine))
 
 module Gadget = struct
   type event = Ask | Got of string
@@ -1029,38 +1071,37 @@ module Gadget = struct
 end
 
 let test_action_results_arrive () =
-  ( match Check.component Gadget.component with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check int)
-        "the start, then each subset of the three results after Ask" 9 states
-  | report ->
-      Alcotest.fail
-        (Format.asprintf "%a"
-           (Check.pp_report
-              ~pp_event:
-                (Check.pp_input (fun f e ->
-                     Format.pp_print_string f (Gadget.show e)
-                 )
-                )
-              ?pp_state:None
-           )
-           report
-        )
-  );
+  let report = Check.run (Check.component Gadget.component) in
+  passes report;
+  Alcotest.(check int)
+    "the start, then each subset of the three results after Ask" 9 report.states;
   let all_three =
-    {
-      Check.name = "not-all-three";
-      holds = (fun (_, got) _ -> List.length got < 3);
-    }
+    Check.always ~name:"not-all-three"
+      (Check.state (fun (_, got) -> List.length got < 3))
   in
-  match Check.component ~invariants:[ all_three ] Gadget.component with
-  | Check.Violation v ->
-      Alcotest.(check (list string))
-        "a fixed rect, copy and load succeed"
-        [ "Ask"; "Got copy:true"; "Got load:true"; "Got rect:0" ]
-        (List.sort compare (List.map (show_input Gadget.show) v.trace))
-  | _ ->
-      Alcotest.fail "expected the three results to arrive"
+  let violation =
+    first
+      (Check.run (Check.component ~properties:[ all_three ] Gadget.component))
+  in
+  Alcotest.(check (list string))
+    "a fixed rect, copy and load succeed"
+    [ "Ask"; "Got copy:true"; "Got load:true"; "Got rect:0" ]
+    (List.sort compare (List.map (show_input Gadget.show) (inputs violation)));
+  Alcotest.(check (list string))
+    "each result names its action"
+    [ "Copy"; "Load_script"; "Measure" ]
+    (List.sort compare
+       (List.filter_map
+          (fun (step : _ Check.step) ->
+            match step.cause with
+            | Check.Action_result action ->
+                Some action
+            | _ ->
+                None
+          )
+          (Check.steps violation.counterexample)
+       )
+    )
 
 module Watcher = struct
   type event = Got of string
@@ -1087,25 +1128,27 @@ end
 
 let test_new_sources_give_events () =
   let all =
-    {
-      Check.name = "not-all";
-      holds = (fun (Watcher.Watching got) _ -> List.length got < 5);
-    }
+    Check.always ~name:"not-all"
+      (Check.state (fun (Watcher.Watching got) -> List.length got < 5))
   in
-  match Check.component ~invariants:[ all ] Watcher.component with
-  | Check.Violation { state = Watcher.Watching got; _ } ->
-      Alcotest.(check (list string))
-        "scroll gives a zero position; visibility and online give both values"
-        [
-          "online:false";
-          "online:true";
-          "scroll:0";
-          "visible:false";
-          "visible:true";
-        ]
-        got
-  | _ ->
-      Alcotest.fail "expected every source event"
+  let violation =
+    first (Check.run (Check.component ~properties:[ all ] Watcher.component))
+  in
+  let (Watcher.Watching got) = violation.state in
+  Alcotest.(check (list string))
+    "scroll gives a zero position; visibility and online give both values"
+    [
+      "online:false"; "online:true"; "scroll:0"; "visible:false"; "visible:true";
+    ]
+    got;
+  Alcotest.(check bool)
+    "each step is caused by a held source" true
+    (List.for_all
+       (fun (step : _ Check.step) ->
+         match step.cause with Check.Held _ -> true | _ -> false
+       )
+       (Check.steps violation.counterexample)
+    )
 
 let test_scroll_to_missing_ref () =
   let machine =
@@ -1149,7 +1192,7 @@ let test_live_rejects_result_action () =
         )
       (Component.make machine (fun _ -> btn "go" Go))
   in
-  violation "live-uses-client-action" [ "Go" ] (Check.live live)
+  violation "live-uses-client-action" [ "Go" ] (Check.live ~max_states:100 live)
 
 let test_live_rejects_page_actions () =
   List.iter
@@ -1291,31 +1334,24 @@ module Search = struct
   let component = Component.make machine view
 
   let check () =
-    Check.component
-      ~inputs:(fun _ -> [ Input "a" ])
-      ~samples:[ Check.answers endpoint [ [ "hit" ] ] ]
-      component
+    Check.run
+      (Check.component
+         ~inputs:(fun _ -> [ Input "a" ])
+         ~samples:[ Check.answers endpoint [ [ "hit" ] ] ]
+         component
+      )
 end
 
-let ok_of = function
-  | Check.Ok { spec; edges; paths; _ } ->
-      (spec, edges, paths)
-  | report ->
-      Alcotest.fail
-        (Format.asprintf "%a"
-           (Check.pp_report
-              ~pp_event:
-                (Check.pp_input (fun f e ->
-                     Format.pp_print_string f (Search.show e)
-                 )
-                )
-              ?pp_state:None
-           )
-           report
-        )
+let ok_of report =
+  passes report;
+  match report.Check.specs with
+  | spec :: _ ->
+      (spec, report.paths)
+  | [] ->
+      Alcotest.fail "expected a spec"
 
 let test_spec () =
-  let spec, edges, _ = ok_of (Search.check ()) in
+  let spec, _ = ok_of (Search.check ()) in
   Alcotest.(check string) "id" "search" spec.id;
   Alcotest.(check string) "init" "idle" spec.init;
   Alcotest.(check (list string))
@@ -1343,7 +1379,7 @@ let test_spec () =
       ("typing", "searching");
       ("typing", "typing");
     ]
-    spec.edges;
+    (Spec.arrows spec);
   Alcotest.(check (list string))
     "lint" []
     (List.map Spec.issue_to_string (Spec.lint spec));
@@ -1354,11 +1390,11 @@ let test_spec () =
          label.from = "typing" && label.target = "typing"
          && label.event = "input" && not label.kept
        )
-       edges
+       spec.edges
     )
 
 let test_paths () =
-  let _, _, paths = ok_of (Search.check ()) in
+  let _, paths = ok_of (Search.check ()) in
   Alcotest.(check (list (pair string (list string))))
     "a shortest path to each state, in the order the search reached them"
     [
@@ -1369,7 +1405,13 @@ let test_paths () =
       ("failed", [ "Input a"; "Fire"; "Got failed" ]);
     ]
     (List.map
-       (fun (name, path) -> (name, List.map (show_input Search.show) path))
+       (fun (name, path) ->
+         ( name,
+           List.map
+             (fun (step : _ Check.step) -> show_input Search.show step.input)
+             path
+         )
+       )
        paths
     )
 
@@ -1391,22 +1433,21 @@ let test_kept_steps_are_labels_not_edges () =
       )
   in
   let view _ = Node.list [ btn "+" Inc; btn "go" Go ] in
-  let spec, edges =
-    match Check.component (Component.make machine view) with
-    | Check.Ok { spec; edges; _ } ->
-        (spec, edges)
-    | _ ->
-        Alcotest.fail "expected ok"
+  let spec, _ =
+    ok_of (Check.run (Check.component (Component.make machine view)))
   in
   Alcotest.(check (list (pair string string)))
-    "only the reenter is an edge"
+    "only the reenter is an arrow"
     [ ("counting", "counting") ]
-    spec.edges;
+    (Spec.arrows spec);
   Alcotest.(check (list (pair string bool)))
     "labels"
     [ ("Dec", false); ("Go", true); ("Inc", true) ]
     (List.sort_uniq compare
-       (List.map (fun (label : Spec.label) -> (label.event, label.kept)) edges)
+       (List.map
+          (fun (label : Spec.label) -> (label.event, label.kept))
+          spec.edges
+       )
     )
 
 type item = Shown_item | Loading_item of int [@@deriving state_shape]
@@ -1448,53 +1489,594 @@ let item_component =
 
 let test_props_input () =
   let calls_follow_props =
-    {
-      Check.name = "the call has the input of the state";
-      holds =
-        (fun state _ ->
-          match state with Loading_item n -> n >= 0 | Shown_item -> true
-        );
-    }
+    Check.always ~name:"the call has the input of the state"
+      (Check.state (function Loading_item n -> n >= 0 | Shown_item -> true))
   in
-  ( match
-      Check.component ~props:[ 1; 2 ] ~invariants:[ calls_follow_props ]
-        item_component
-    with
-  | Check.Ok { states; paths; _ } ->
-      Alcotest.(check bool) "explores both props" true (states >= 4);
-      Alcotest.(check (list string))
-        "both states reached"
-        [ "loading_item"; "shown_item" ]
-        (List.sort compare (List.map fst paths))
-  | Check.Violation v ->
-      Alcotest.failf "violation %s" v.invariant
-  | _ ->
-      Alcotest.fail "expected ok"
-  );
+  let report =
+    Check.run
+      (Check.component ~props:[ 1; 2 ] ~properties:[ calls_follow_props ]
+         item_component
+      )
+  in
+  passes report;
+  Alcotest.(check bool) "explores both props" true (report.states >= 4);
+  Alcotest.(check (list string))
+    "both states reached"
+    [ "loading_item"; "shown_item" ]
+    (List.sort compare (List.map fst report.paths));
   let never_two =
-    {
-      Check.name = "never-two";
-      holds = (fun state _ -> state <> Loading_item 2);
-    }
+    Check.always ~name:"never-two"
+      (Check.state (fun state -> state <> Loading_item 2))
   in
+  let violation =
+    first
+      (Check.run
+         (Check.component ~props:[ 1; 2 ] ~properties:[ never_two ]
+            item_component
+         )
+      )
+  in
+  Alcotest.(check string) "rule" "never-two" violation.rule;
+  Alcotest.(check (list string))
+    "a start with the second props" []
+    (List.map
+       (fun (input : (int, _) Check.input) ->
+         match input with
+         | Check.Event _ ->
+             "event"
+         | Check.Props number ->
+             "props " ^ string_of_int number
+       )
+       (inputs violation)
+    )
+
+type step_state = Zero | One | Two | Three [@@deriving state_shape]
+type step_event = Next | Broken [@@deriving event_shape]
+
+let three_breaches ?(update = fun state event -> (state, event)) () =
+  let machine =
+    Machine.make ~id:"three" ~init:Zero ~shape:step_state_shape
+      ~events:step_event_shape (fun state event ->
+        let state, event = update state event in
+        match (state, event) with
+        | Zero, Next ->
+            Machine.Go One
+        | One, Next ->
+            Machine.Go Two
+        | Two, (Next | Broken) ->
+            Machine.Go Three
+        | _ ->
+            Machine.Ignore
+    )
+  in
+  let view = function
+    | Zero | One ->
+        btn "next" Next
+    | Two ->
+        Node.list
+          [ btn "next" Next; Node.element "button" [ Attr.on_press Broken ] [] ]
+    | Three ->
+        Node.text "stuck"
+  in
+  Component.make machine view
+
+let not_one =
+  Check.always ~name:"not-one" (Check.state (fun state -> state <> One))
+
+let rules_of report =
+  List.map
+    (fun (violation : _ Check.violation) ->
+      (violation.rule, violation.state_name)
+    )
+    report.Check.violations
+
+let test_all_violations () =
+  let report =
+    Check.run (Check.component ~properties:[ not_one ] (three_breaches ()))
+  in
+  Alcotest.(check (list (pair string string)))
+    "three breaches, in breadth-first order"
+    [ ("not-one", "one"); ("accessible-name", "two"); ("dead-end", "three") ]
+    (rules_of report);
+  Alcotest.(check bool) "not truncated" false report.truncated;
+  Alcotest.(check (list int))
+    "each trace is a shortest path" [ 1; 2; 3 ]
+    (List.map
+       (fun (violation : _ Check.violation) ->
+         List.length (Check.steps violation.counterexample)
+       )
+       report.violations
+    );
+  let report =
+    Check.run
+      (Check.component ~max_violations:2 ~properties:[ not_one ]
+         (three_breaches ())
+      )
+  in
+  Alcotest.(check (list (pair string string)))
+    "max_violations keeps the first two"
+    [ ("not-one", "one"); ("accessible-name", "two") ]
+    (rules_of report);
+  Alcotest.(check bool) "truncated" true report.truncated;
+  Alcotest.(check bool)
+    "the text says the search was truncated" true
+    (contains (print report) "truncated: the search stopped after 2 violations")
+
+let test_allowances () =
+  let report =
+    Check.run
+      (Check.component ~properties:[ not_one ]
+         ~allow:
+           [
+             Check.allow ~rule:"accessible-name" ~state:"two"
+               ~element:"button[2]" ~reason:"a test of allowances" ();
+             Check.allow ~rule:"not-one" ~reason:"a test of property allowances"
+               ();
+             Check.allow ~rule:"dead-end" ~state:"zero" ~reason:"never used" ();
+           ]
+         (three_breaches ())
+      )
+  in
+  Alcotest.(check (list (pair string string)))
+    "only the dead end is left"
+    [ ("dead-end", "three") ]
+    (rules_of report);
+  Alcotest.(check (list (pair string int)))
+    "each allowance with its count"
+    [ ("accessible-name", 1); ("not-one", 1); ("dead-end", 0) ]
+    (List.map
+       (fun ((allowance : Check.allowance), count) -> (allowance.rule, count))
+       report.allowed
+    );
+  Alcotest.(check bool)
+    "the text gives each reason" true
+    (contains (print report)
+       "allowed accessible-name in two at button[2] (1): a test of allowances"
+    );
+  let invalid allow =
+    match Check.run (Check.component ~allow (three_breaches ())) with
+    | exception Check.Invalid_check message ->
+        message
+    | report ->
+        Alcotest.fail ("expected Invalid_check, got:\n" ^ print report)
+  in
+  Alcotest.(check bool)
+    "a blank reason" true
+    (contains
+       (invalid [ Check.allow ~rule:"dead-end" ~reason:" " () ])
+       "has no reason"
+    );
+  Alcotest.(check bool)
+    "a rule that does not exist" true
+    (contains
+       (invalid [ Check.allow ~rule:"dead-ends" ~reason:"typo" () ])
+       "neither a built-in rule"
+    )
+
+let test_invalid_setup () =
+  ( match Check.run (Check.component item_component) with
+  | exception Check.Invalid_check message ->
+      Alcotest.(check string)
+        "props are needed" "the component item has props: give them with ~props"
+        message
+  | report ->
+      Alcotest.fail ("expected Invalid_check, got:\n" ^ print report)
+  );
   match
-    Check.component ~props:[ 1; 2 ] ~invariants:[ never_two ] item_component
+    Check.run
+      (Check.app ~routes:[] ~parse:(Router.parse routes)
+         ~print:(Router.print routes)
+         ~url_event:(fun url -> Router.Url_changed url)
+         (app_root ())
+      )
   with
-  | Check.Violation { invariant = "never-two"; trace; _ } ->
-      Alcotest.(check (list string))
-        "a start with the second props" []
-        (List.map
-           (fun (input : (int, _) Check.input) ->
-             match input with
-             | Check.Event _ ->
-                 "event"
-             | Check.Props n ->
-                 "props " ^ string_of_int n
-           )
-           trace
-        )
+  | exception Check.Invalid_check message ->
+      Alcotest.(check bool) "routes are needed" true (contains message "~routes")
+  | report ->
+      Alcotest.fail ("expected Invalid_check, got:\n" ^ print report)
+
+let test_raised () =
+  let update state event =
+    match (state, event) with
+    | One, Next ->
+        failwith "boom"
+    | _ ->
+        (state, event)
+  in
+  let report = Check.run (Check.component (three_breaches ~update ())) in
+  let violation = first report in
+  Alcotest.(check string) "rule" "raised" violation.rule;
+  Alcotest.(check string) "the state before the step" "one" violation.state_name;
+  Alcotest.(check (list string))
+    "the trace ends with the step that raised" [ "next"; "next" ]
+    (List.map
+       (fun (step : _ Check.step) -> step.event)
+       (Check.steps violation.counterexample)
+    );
+  Alcotest.(check string)
+    "message" "The update raised Failure(\"boom\") in state one."
+    violation.message;
+  Alcotest.(check bool)
+    "the hint" true
+    (contains violation.hint "Fix the exception in the update");
+  Alcotest.(check (list string))
+    "the search does not go on from a step that raised" [ "two"; "three" ]
+    report.unreached;
+  let machine =
+    Machine.make ~id:"view-raises" ~init:Zero ~shape:step_state_shape
+      ~events:step_event_shape (fun state event ->
+        match (state, event) with
+        | Zero, Next ->
+            Machine.Go One
+        | One, Next ->
+            Machine.Go Zero
+        | _ ->
+            Machine.Ignore
+    )
+  in
+  let view = function Zero -> btn "next" Next | _ -> invalid_arg "no view" in
+  let violation =
+    first (Check.run (Check.component (Component.make machine view)))
+  in
+  Alcotest.(check string) "rule" "raised" violation.rule;
+  Alcotest.(check string)
+    "the state the view failed in" "one" violation.state_name;
+  Alcotest.(check string)
+    "message" "The view raised Invalid_argument(\"no view\") in state one."
+    violation.message;
+  Alcotest.(check string) "no view text" "" violation.view
+
+let test_views_per_state () =
+  let report = Search.check () in
+  Alcotest.(check (list string))
+    "one view for each state, in the order of the paths"
+    (List.map fst report.paths)
+    (List.map fst report.views);
+  Alcotest.(check string)
+    "the view of the first snapshot of failed"
+    "textbox \"query\" [input]\n\
+     button \"retry\" [press]\n\
+     button \"clear\" [press]\n"
+    (List.assoc "failed" report.views)
+
+let test_causes () =
+  let report = Search.check () in
+  let causes =
+    List.map
+      (fun (step : _ Check.step) ->
+        (step.event, step.cause, step.from, step.target)
+      )
+      (List.assoc "shown" report.paths)
+  in
+  Alcotest.(check int) "three steps" 3 (List.length causes);
+  match causes with
+  | [
+   ("input", Check.Input, "idle", "typing");
+   ("fire", Check.Timer { ms = 300; id }, "typing", "searching");
+   ( "got",
+     Check.Answer { path = "/api/search"; id = answer },
+     "searching",
+     "shown"
+   );
+  ] ->
+      Alcotest.(check string) "the timer id" "search/typing/after 300ms" id;
+      Alcotest.(check string)
+        "the call id" "search/searching//api/search \"a\"" answer
   | _ ->
-      Alcotest.fail "expected never-two to fail"
+      Alcotest.fail
+        (String.concat "; "
+           (List.map
+              (fun (event, cause, from, target) ->
+                Printf.sprintf "%s: %s -> %s by %s" event from target
+                  (Check.describe_cause cause)
+              )
+              causes
+           )
+        )
+
+let test_property_hint_and_event () =
+  let violation =
+    first
+      (Check.run
+         (Check.component
+            ~inputs:(fun _ -> [ Search.Input "a" ])
+            ~samples:[ Check.answers Search.endpoint [ [ "hit" ] ] ]
+            ~properties:
+              [
+                Check.always ~name:"no-hit" ~hint:"Keep {state} away from hits."
+                  (Check.not_
+                     (Check.event (function
+                       | Search.Got (Remote.Ok _) ->
+                           true
+                       | _ ->
+                           false
+                       ))
+                  );
+              ]
+            Search.component
+         )
+      )
+  in
+  Alcotest.(check string)
+    "the hint is filled" "Keep shown away from hits." violation.hint;
+  Alcotest.(check (list string))
+    "the first step whose event is a hit"
+    [ "Input a"; "Fire"; "Got ok" ]
+    (List.map (show_input Search.show) (inputs violation));
+  let report =
+    Check.run
+      (Check.component
+         ~properties:
+           [
+             Check.always ~name:"named and positive"
+               Check.(
+                 state_named "active"
+                 &&& (state (fun n -> n >= 0) ||| view (fun _ -> false))
+               );
+           ]
+         (component counter_view)
+      )
+  in
+  passes report
+
+let impure ~source =
+  let starting = ref true in
+  let machine =
+    Machine.make ~id:"impure" ~init:0
+      ~shape:(Machine.shape ~name:(fun _ -> "on") ())
+      ~owns:(fun _ ->
+        if !starting then
+          [ source ]
+        else
+          []
+      )
+      (fun _ (_ : ev) -> Machine.Stay [])
+  in
+  Component.make machine (fun _ ->
+      starting := false;
+      btn "+" Inc
+  )
+
+let endpoint_for_owner =
+  Remote.declare ~path:"/api/owner" ~input:Codec.int ~output:Codec.int
+    ~rejected:Codec.string
+
+let finding rule check =
+  let report = Check.run check in
+  match
+    List.find_opt
+      (fun (violation : _ Check.violation) -> violation.rule = rule)
+      report.violations
+  with
+  | Some violation ->
+      (violation.message, violation.hint)
+  | None ->
+      Alcotest.fail ("expected the rule " ^ rule ^ ", got:\n" ^ print report)
+
+let text_finding rule report =
+  let lines = String.split_on_char '\n' (print report) in
+  let rec find = function
+    | message :: hint :: _ when contains message (rule ^ ":") ->
+        (message, hint)
+    | _ :: rest ->
+        find rest
+    | [] ->
+        Alcotest.fail
+          ("expected the rule " ^ rule ^ " in the text, got:\n" ^ print report)
+  in
+  let message, hint = find lines in
+  if not (contains hint "hint: ") then Alcotest.fail ("no hint after " ^ message);
+  (message, hint)
+
+let test_every_rule () =
+  let paged =
+    Router.routes
+      [
+        Router.route Route.root
+          (fun () -> Front)
+          (function Front -> Some () | Page _ -> None);
+        Router.route
+          Route.(s "page" / int)
+          (fun number -> Page number)
+          (function Page number -> Some (number + 1) | Front -> None);
+      ]
+  in
+  let live machine =
+    Live.declare ~channel:"rule" ~state:Codec.int
+      ~event:
+        (Codec.make
+           ~encode:(fun _ -> Silica_json.Json.declassify (`Int 0))
+           ~decode:(fun _ -> Ok Go)
+        )
+      (Component.make machine (fun _ -> btn "go" Go))
+  in
+  let fixtures =
+    [
+      ( "accessible-name",
+        fun () ->
+          finding "accessible-name"
+            (Check.component
+               (component
+                  (fun _ -> Node.element "button" [ Attr.on_press Inc ] [])
+                  ~inc:(fun n -> Some (n, []))
+               )
+            )
+      );
+      ( "unique-refs",
+        fun () ->
+          let shared = Ref.make "dup" in
+          finding "unique-refs"
+            (Check.component
+               (component
+                  (fun _ ->
+                    Node.list
+                      [
+                        Node.element "input" [ Attr.ref_ shared ] [];
+                        Node.element "input" [ Attr.ref_ shared ] [];
+                        btn "go" Inc;
+                      ]
+                  )
+                  ~inc:(fun n -> Some (n, []))
+               )
+            )
+      );
+      ( "focus-target",
+        fun () ->
+          finding "focus-target"
+            (Check.component
+               (component
+                  (fun n ->
+                    if n = 0 then
+                      btn "go" Inc
+                    else
+                      Node.text "done"
+                  )
+                  ~inc:(fun _ -> Some (1, [ Action.Focus (Ref.make "x") ]))
+               )
+            )
+      );
+      ( "boundary-reset",
+        fun () ->
+          finding "boundary-reset"
+            (Check.component
+               (component
+                  (fun _ ->
+                    Node.boundary
+                      ~fallback:(fun _ ~reset:_ -> Node.text "broken")
+                      (btn "+" Inc)
+                  )
+                  ~inc:(fun n -> Some (n, []))
+               )
+            )
+      );
+      ( "dead-end",
+        fun () -> finding "dead-end" (Check.component (three_breaches ()))
+      );
+      ( "timer-owner",
+        fun () ->
+          finding "timer-owner"
+            (Check.component (impure ~source:(Source.after 5 (Dec : ev))))
+      );
+      ( "call-owner",
+        fun () ->
+          finding "call-owner"
+            (Check.component
+               (impure
+                  ~source:
+                    (Remote.call endpoint_for_owner 1 (fun _ -> (Dec : ev)))
+               )
+            )
+      );
+      ( "ignored-event",
+        fun () ->
+          let machine, view = broken_component ~go:Machine.Ignore in
+          finding "ignored-event" (Check.component (Component.make machine view))
+      );
+      ( "raised",
+        fun () ->
+          finding "raised"
+            (Check.component
+               (three_breaches
+                  ~update:(fun state event ->
+                    match state with
+                    | One ->
+                        failwith "boom"
+                    | _ ->
+                        (state, event)
+                  )
+                  ()
+               )
+            )
+      );
+      ( "unreached-state",
+        fun () ->
+          text_finding "unreached-state"
+            (Check.run (Check.component stale_component))
+      );
+      ( "live-uses-client-source",
+        fun () ->
+          finding "live-uses-client-source"
+            (Check.live
+               (Live.declare ~channel:"dialog" ~state:Dialog.codec
+                  ~event:
+                    (Codec.make
+                       ~encode:(fun _ -> Silica_json.Json.declassify (`Int 0))
+                       ~decode:(fun _ -> Ok Dialog.Open)
+                    )
+                  (Dialog.component ~escape:true ~outside:true ~observers:true)
+               )
+            )
+      );
+      ( "live-uses-client-action",
+        fun () ->
+          finding "live-uses-client-action"
+            (Check.live
+               (live
+                  (simple ~id:"m" ~init:0 (fun n -> function
+                    | Go ->
+                        Some (n, [ Action.Set_status 404 ])
+                    | Inc | Dec ->
+                        None
+                    ))
+               )
+            )
+      );
+      ( "route-round-trip",
+        fun () ->
+          finding "route-round-trip"
+            (Check.app ~routes:[ Front ] ~parse:(Router.parse paged)
+               ~print:(Router.print paged)
+               ~inputs:(fun _ ->
+                 [ Router.Url_changed (Url.of_string "/page/1") ]
+               )
+               ~url_event:(fun url -> Router.Url_changed url)
+               (Router.make paged ~render:(fun _ -> Node.text "page"))
+            )
+      );
+      ( "link-parses",
+        fun () ->
+          finding "link-parses"
+            (Check.app ~routes:all_routes ~parse:(Router.parse routes)
+               ~print:(Router.print routes)
+               ~url_event:(fun url -> Router.Url_changed url)
+               (app_root ~extra:[ raw_link "/items?sort=name" ] ())
+            )
+      );
+      ( "state-limit",
+        fun () ->
+          text_finding "state-limit"
+            (Check.run
+               (Check.component ~max_states:5 (component (fun _ -> btn "+" Inc)))
+            )
+      );
+    ]
+  in
+  Alcotest.(check (list string))
+    "a fixture for every built-in rule"
+    (List.sort compare
+       (List.map (fun (rule : Check.rule) -> rule.id) Check.rules)
+    )
+    (List.sort compare (List.map fst fixtures));
+  List.iter
+    (fun (rule, fixture) ->
+      let message, hint = fixture () in
+      let row =
+        List.find (fun (row : Check.rule) -> row.id = rule) Check.rules
+      in
+      Alcotest.(check bool)
+        (rule ^ ": a message") true
+        (String.trim row.message <> "");
+      Alcotest.(check bool) (rule ^ ": a hint") true (String.trim row.hint <> "");
+      Alcotest.(check bool)
+        (rule ^ ": the violation has a hint")
+        true
+        (String.trim hint <> "");
+      Alcotest.(check bool)
+        (rule ^ ": every place is filled")
+        false
+        (contains message "{" || contains hint "{")
+    )
+    fixtures
 
 let () =
   Alcotest.run "check"
@@ -1573,6 +2155,21 @@ let () =
             test_live_rejects_page_actions;
           Alcotest.test_case "live rejects a client-only source" `Quick
             test_live_rejects_client_only_source;
+        ]
+      );
+      ( "report",
+        [
+          Alcotest.test_case "all violations, max_violations" `Quick
+            test_all_violations;
+          Alcotest.test_case "allowances" `Quick test_allowances;
+          Alcotest.test_case "setup errors" `Quick test_invalid_setup;
+          Alcotest.test_case "raised" `Quick test_raised;
+          Alcotest.test_case "a view for each state" `Quick test_views_per_state;
+          Alcotest.test_case "the cause of each step" `Quick test_causes;
+          Alcotest.test_case "property hint and event condition" `Quick
+            test_property_hint_and_event;
+          Alcotest.test_case "every rule breaks, with a hint" `Quick
+            test_every_rule;
         ]
       );
       ( "app",

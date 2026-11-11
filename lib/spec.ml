@@ -8,12 +8,20 @@ type state = {
   held : string list;
 }
 
-type t = {
-  id : string;
-  init : string;
-  states : state list;
-  edges : (string * string) list;
-}
+type label = { from : string; target : string; event : string; kept : bool }
+type t = { id : string; init : string; states : state list; edges : label list }
+
+let arrows t =
+  List.sort_uniq compare
+    (List.filter_map
+       (fun label ->
+         if label.kept then
+           None
+         else
+           Some (label.from, label.target)
+       )
+       t.edges
+    )
 
 type kind = Unreachable | Dead_end
 type issue = { machine : string; state : string; kind : kind }
@@ -26,7 +34,7 @@ let leaves t name =
       else
         None
     )
-    t.edges
+    (arrows t)
 
 let reachable t =
   let rec go seen = function
@@ -66,8 +74,6 @@ let issue_to_string i =
         "non-final dead end"
     )
 
-type label = { from : string; target : string; event : string; kept : bool }
-
 let words name =
   String.split_on_char ' '
     (String.map
@@ -87,7 +93,7 @@ let camel name =
 
 let snake name = String.concat "_" (List.map String.lowercase_ascii (words name))
 
-let edge_events labels (a, b) =
+let edge_events t (a, b) =
   List.sort_uniq compare
     (List.filter_map
        (fun l ->
@@ -96,7 +102,7 @@ let edge_events labels (a, b) =
          else
            None
        )
-       labels
+       t.edges
     )
 
 let constructors t =
@@ -131,7 +137,7 @@ let lower_snake constructor =
     constructor;
   Buffer.contents b
 
-let to_quint ?(labels = []) t =
+let to_quint t =
   let b = Buffer.create 2048 in
   let names = constructors t in
   let state name = List.assoc name names in
@@ -154,24 +160,13 @@ let to_quint ?(labels = []) t =
     List.sort_uniq compare
       (List.concat_map
          (fun (a, c) ->
-           match edge_events labels (a, c) with
+           match edge_events t (a, c) with
            | [] ->
                [ (a, c, "") ]
            | events ->
                List.map (fun e -> (a, c, e)) events
          )
-         (List.sort_uniq compare
-            (t.edges
-            @ List.filter_map
-                (fun l ->
-                  if l.kept then
-                    None
-                  else
-                    Some (l.from, l.target)
-                )
-                labels
-            )
-         )
+         (arrows t)
       )
   in
   let stays =
@@ -183,7 +178,7 @@ let to_quint ?(labels = []) t =
            else
              None
          )
-         labels
+         t.edges
       )
   in
   let events =
@@ -307,7 +302,7 @@ let details s =
   @ List.map (fun path -> "invoke " ^ path) s.sources
   @ List.map (fun name -> "hold " ^ name) s.held
 
-let to_dot ?(labels = []) t =
+let to_dot t =
   let b = Buffer.create 512 in
   let quote name = Printf.sprintf "\"%s.%s\"" t.id name in
   Printf.bprintf b "digraph \"%s\" {\nrankdir=LR;\n" t.id;
@@ -326,14 +321,14 @@ let to_dot ?(labels = []) t =
     t.states;
   List.iter
     (fun (a, c) ->
-      match edge_events labels (a, c) with
+      match edge_events t (a, c) with
       | [] ->
           Printf.bprintf b "%s -> %s;\n" (quote a) (quote c)
       | events ->
           Printf.bprintf b "%s -> %s [label=\"%s\"];\n" (quote a) (quote c)
             (String.concat ", " events)
     )
-    t.edges;
+    (arrows t);
   Buffer.add_string b "}\n";
   Buffer.contents b
 
@@ -368,7 +363,7 @@ let token word =
     Buffer.add_char b '"';
     Buffer.contents b
 
-let label_events labels ~kept (a, c) =
+let label_events t ~kept (a, c) =
   List.sort_uniq compare
     (List.filter_map
        (fun l ->
@@ -377,16 +372,21 @@ let label_events labels ~kept (a, c) =
          else
            None
        )
-       labels
+       t.edges
     )
 
-let to_text ?(labels = []) t =
+let to_text t =
   let b = Buffer.create 512 in
   let line words =
     Buffer.add_string b (String.concat " " words);
     Buffer.add_char b '\n'
   in
-  let on = function [] -> [] | events -> "on" :: List.map token events in
+  let on = function
+    | [] | [ "" ] ->
+        []
+    | events ->
+        "on" :: List.map token events
+  in
   line [ "machine"; token t.id ];
   line [ "initial"; token t.init ];
   List.iter
@@ -409,17 +409,21 @@ let to_text ?(labels = []) t =
     (fun (a, c) ->
       line
         ([ "edge"; token a; "->"; token c ]
-        @ on (label_events labels ~kept:false (a, c))
+        @ on (label_events t ~kept:false (a, c))
         )
     )
-    t.edges;
+    (arrows t);
   List.iter
     (fun s ->
-      match label_events labels ~kept:true (s.name, s.name) with
-      | [] ->
-          ()
-      | events ->
-          line ([ "stay"; token s.name ] @ on events)
+      if
+        List.exists
+          (fun l -> l.kept && l.from = s.name && l.target = s.name)
+          t.edges
+      then
+        line
+          ([ "stay"; token s.name ]
+          @ on (label_events t ~kept:true (s.name, s.name))
+          )
     )
     t.states;
   Buffer.contents b
@@ -488,7 +492,6 @@ type reading = {
   machine : string option;
   initial : string option;
   read_states : state list;
-  read_edges : (string * string) list;
   read_labels : label list;
 }
 
@@ -535,15 +538,25 @@ let of_text text =
     | [ "hold"; name ] ->
         detail (fun s -> { s with held = s.held @ [ name ] })
     | [ "edge"; from; "->"; target ] ->
-        Ok { reading with read_edges = (from, target) :: reading.read_edges }
+        Ok
+          {
+            reading with
+            read_labels =
+              label ~kept:false from target "" :: reading.read_labels;
+          }
     | "edge" :: from :: "->" :: target :: "on" :: (_ :: _ as events) ->
         Ok
           {
             reading with
-            read_edges = (from, target) :: reading.read_edges;
             read_labels =
               List.map (label ~kept:false from target) events
               @ reading.read_labels;
+          }
+    | [ "stay"; name ] ->
+        Ok
+          {
+            reading with
+            read_labels = label ~kept:true name name "" :: reading.read_labels;
           }
     | "stay" :: name :: "on" :: (_ :: _ as events) ->
         Ok
@@ -568,13 +581,7 @@ let of_text text =
         Ok (reading, number + 1)
       )
       (Ok
-         ( {
-             machine = None;
-             initial = None;
-             read_states = [];
-             read_edges = [];
-             read_labels = [];
-           },
+         ( { machine = None; initial = None; read_states = []; read_labels = [] },
            1
          )
       )
@@ -587,14 +594,12 @@ let of_text text =
       Error "no initial line"
   | Some id, Some init ->
       Ok
-        ( {
-            id;
-            init;
-            states = List.rev reading.read_states;
-            edges = List.rev reading.read_edges;
-          },
-          List.sort_uniq compare reading.read_labels
-        )
+        {
+          id;
+          init;
+          states = List.rev reading.read_states;
+          edges = List.sort_uniq compare reading.read_labels;
+        }
 
 let mermaid_text text =
   let b = Buffer.create (String.length text) in
@@ -614,7 +619,7 @@ let mermaid_text text =
     text;
   Buffer.contents b
 
-let to_mermaid ?(labels = []) t =
+let to_mermaid t =
   let b = Buffer.create 512 in
   let ids = List.mapi (fun i s -> (s.name, Printf.sprintf "s%d" i)) t.states in
   let id name = List.assoc_opt name ids in
@@ -635,7 +640,7 @@ let to_mermaid ?(labels = []) t =
   Option.iter (Printf.bprintf b "  [*] --> %s\n") (id t.init);
   List.iter
     (fun (a, c) ->
-      match (id a, id c, edge_events labels (a, c)) with
+      match (id a, id c, edge_events t (a, c)) with
       | Some from, Some target, [] ->
           Printf.bprintf b "  %s --> %s\n" from target
       | Some from, Some target, events ->
@@ -644,7 +649,7 @@ let to_mermaid ?(labels = []) t =
       | _ ->
           ()
     )
-    t.edges;
+    (arrows t);
   List.iter
     (fun s ->
       if s.final then Printf.bprintf b "  %s --> [*]\n" (List.assoc s.name ids)
@@ -652,7 +657,7 @@ let to_mermaid ?(labels = []) t =
     t.states;
   Buffer.contents b
 
-let to_json ?(labels = []) t =
+let to_json t =
   let string text = Json.declassify (`String text) in
   let list f items = Json.declassify (`List (List.map f items)) in
   let bool value = Json.declassify (`Bool value) in
@@ -676,8 +681,7 @@ let to_json ?(labels = []) t =
           )
           t.states
       );
-      ("edges", list (fun (a, c) -> list string [ a; c ]) t.edges);
-      ( "labels",
+      ( "edges",
         list
           (fun l ->
             record
@@ -688,7 +692,7 @@ let to_json ?(labels = []) t =
                 ("kept", bool l.kept);
               ]
           )
-          labels
+          t.edges
       );
     ]
 
@@ -763,19 +767,6 @@ let of_json json =
   let* edges =
     json_field "edges"
       (json_list (fun json ->
-           let* names = json_list json_string json in
-           match names with
-           | [ a; c ] ->
-               Ok (a, c)
-           | _ ->
-               Error "expected a pair of state names"
-       )
-      )
-      json
-  in
-  let* labels =
-    json_field "labels"
-      (json_list (fun json ->
            let* from = json_field "from" json_string json in
            let* target = json_field "target" json_string json in
            let* event = json_field "event" json_string json in
@@ -785,4 +776,4 @@ let of_json json =
       )
       json
   in
-  Ok ({ id; init; states; edges }, labels)
+  Ok { id; init; states; edges }

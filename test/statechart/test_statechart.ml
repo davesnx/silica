@@ -23,37 +23,34 @@ let odd_spec : Spec.t =
         state "semi;colon#";
       ];
     edges =
-      [
-        ("a b", "quote\"");
-        ("a b", "a b");
-        ("quote\"", "->");
-        ("->", "final");
-        ("back\\slash", "line\nbreak");
-        ("semi;colon#", "a b");
-      ];
+      List.sort_uniq compare
+        [
+          {
+            Spec.from = "a b";
+            target = "quote\"";
+            event = "url changed";
+            kept = false;
+          };
+          { from = "a b"; target = "quote\""; event = ""; kept = false };
+          { from = "a b"; target = "a b"; event = "tick"; kept = false };
+          { from = "quote\""; target = "->"; event = ""; kept = false };
+          { from = "->"; target = "final"; event = "\"quoted\""; kept = false };
+          {
+            from = "back\\slash";
+            target = "line\nbreak";
+            event = "";
+            kept = false;
+          };
+          { from = "quote\""; target = "quote\""; event = ""; kept = true };
+          {
+            from = "quote\"";
+            target = "quote\"";
+            event = "hover true";
+            kept = true;
+          };
+          { from = "semi;colon#"; target = "a b"; event = "a;b"; kept = false };
+        ];
   }
-
-let odd_labels =
-  List.sort_uniq compare
-    [
-      {
-        Spec.from = "a b";
-        target = "quote\"";
-        event = "url changed";
-        kept = false;
-      };
-      { from = "a b"; target = "quote\""; event = ""; kept = false };
-      { from = "a b"; target = "a b"; event = "tick"; kept = false };
-      { from = "->"; target = "final"; event = "\"quoted\""; kept = false };
-      { from = "quote\""; target = "quote\""; event = ""; kept = true };
-      {
-        from = "quote\"";
-        target = "quote\"";
-        event = "hover true";
-        kept = true;
-      };
-      { from = "semi;colon#"; target = "a b"; event = "a;b"; kept = false };
-    ]
 
 let check_read_back message expected actual =
   match actual with
@@ -66,20 +63,19 @@ let check_read_back message expected actual =
 let text_fixpoint () =
   Alcotest.(check bool) "there are goldens" true (List.length goldens >= 30);
   List.iter
-    (fun (name, text, (spec, labels)) ->
-      Alcotest.(check string) name text (Spec.to_text ~labels spec)
+    (fun (name, text, spec) ->
+      Alcotest.(check string) name text (Spec.to_text spec)
     )
     goldens
 
 let text_round_trip () =
   List.iter
-    (fun (name, _, (spec, labels)) ->
-      check_read_back name (spec, labels)
-        (Spec.of_text (Spec.to_text ~labels spec))
+    (fun (name, _, spec) ->
+      check_read_back name spec (Spec.of_text (Spec.to_text spec))
     )
     goldens;
-  check_read_back "names that need quotes" (odd_spec, odd_labels)
-    (Spec.of_text (Spec.to_text ~labels:odd_labels odd_spec))
+  check_read_back "names that need quotes" odd_spec
+    (Spec.of_text (Spec.to_text odd_spec))
 
 let text_errors () =
   let error text =
@@ -98,20 +94,17 @@ let text_errors () =
   Alcotest.(check string) "no initial" "no initial line" (error "machine m\n")
 
 let json_round_trip () =
-  let through_text spec labels =
+  let through_text spec =
     Result.bind
       (Silica_json.Json.of_string
-         (Silica_json.Json.to_string (Spec.to_json ~labels spec))
+         (Silica_json.Json.to_string (Spec.to_json spec))
       )
       Spec.of_json
   in
   List.iter
-    (fun (name, _, (spec, labels)) ->
-      check_read_back name (spec, labels) (through_text spec labels)
-    )
+    (fun (name, _, spec) -> check_read_back name spec (through_text spec))
     goldens;
-  check_read_back "names that need quotes" (odd_spec, odd_labels)
-    (through_text odd_spec odd_labels)
+  check_read_back "names that need quotes" odd_spec (through_text odd_spec)
 
 let json_errors () =
   let error text =
@@ -125,8 +118,8 @@ let json_errors () =
   Alcotest.(check string)
     "wrong type" "id: expected a string" (error {|{"id":1}|});
   Alcotest.(check string)
-    "bad edge" "edges: expected a pair of state names"
-    (error {|{"id":"m","init":"a","states":[],"edges":[["a"]],"labels":[]}|})
+    "bad edge" "edges: expected an object with the field \"from\""
+    (error {|{"id":"m","init":"a","states":[],"edges":[["a"]]}|})
 
 let mermaid () =
   Alcotest.(check string)
@@ -141,14 +134,14 @@ let mermaid () =
     \  state \"final\" as s5\n\
     \  state \"semi#59;colon#35;\" as s6\n\
     \  [*] --> s0\n\
-    \  s0 --> s1 : url changed\n\
-    \  s0 --> s0 : tick\n\
-    \  s1 --> s4\n\
     \  s4 --> s5 : #quot;quoted#quot;\n\
+    \  s0 --> s0 : tick\n\
+    \  s0 --> s1 : url changed\n\
     \  s2 --> s3\n\
+    \  s1 --> s4\n\
     \  s6 --> s0 : a#59;b\n\
     \  s5 --> [*]\n"
-    (Spec.to_mermaid ~labels:odd_labels odd_spec)
+    (Spec.to_mermaid odd_spec)
 
 type box = { left : float; top : float; right : float; bottom : float }
 
@@ -214,9 +207,7 @@ let on_border box (x, y) =
 
 let layouts () =
   List.map
-    (fun (name, _, (spec, labels)) ->
-      (name, spec, Statechart_layout.layout ~labels spec)
-    )
+    (fun (name, _, spec) -> (name, spec, Statechart_layout.layout spec))
     goldens
 
 let pairs list =
@@ -239,7 +230,7 @@ let every_state_and_edge () =
            layout.nodes
         );
       Alcotest.(check (list (pair string string)))
-        (name ^ " edges") spec.edges
+        (name ^ " edges") (Spec.arrows spec)
         (List.map
            (fun (edge : Statechart_layout.edge) -> (edge.from, edge.target))
            layout.edges
@@ -431,11 +422,11 @@ let self_edges_apart () =
 
 let deterministic () =
   List.iter
-    (fun (name, _, (spec, labels)) ->
+    (fun (name, _, spec) ->
       Alcotest.(check string)
         name
-        (Statechart_layout.to_string (Statechart_layout.layout ~labels spec))
-        (Statechart_layout.to_string (Statechart_layout.layout ~labels spec))
+        (Statechart_layout.to_string (Statechart_layout.layout spec))
+        (Statechart_layout.to_string (Statechart_layout.layout spec))
     )
     goldens
 
@@ -455,10 +446,10 @@ let occurrences pattern text =
   count 0 0
 
 let view () =
-  let _, _, (spec, labels) =
+  let _, _, spec =
     List.find (fun (name, _, _) -> name = "ui_check/toast") goldens
   in
-  let layout = Statechart_layout.layout ~labels spec in
+  let layout = Statechart_layout.layout spec in
   let marked =
     Render.to_string
       (Statechart_view.view ~current:"running" ~taken:("running", "expired")

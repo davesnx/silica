@@ -53,25 +53,32 @@ let show_input show : (_, _) Check.input -> string = function
   | Check.Props _ ->
       "new props"
 
-let report_to_string show report =
-  Format.asprintf "%a"
-    (fun f r ->
-      Check.pp_report
-        ~pp_event:(Check.pp_input (fun f e -> Format.pp_print_string f (show e)))
-        f r
-    )
-    report
+let report_to_string report = Format.asprintf "%a" Check.pp_report report
 
-let expect_violation show name trace report =
-  match report with
-  | Check.Violation v ->
-      Alcotest.(check string) "invariant" name v.invariant;
+let trace_of (violation : (_, _) Check.violation) =
+  List.map
+    (fun (step : _ Check.step) -> step.input)
+    (Check.steps violation.counterexample)
+
+let expect_violation show name trace check =
+  let report = Check.run check in
+  match report.violations with
+  | first :: _ ->
+      Alcotest.(check string) "rule" name first.rule;
       Alcotest.(check (list string))
         "trace" trace
-        (List.map (show_input show) v.trace)
-  | r ->
+        (List.map (show_input show) (trace_of first))
+  | [] ->
       Alcotest.failf "expected violation %s, got %s" name
-        (report_to_string show r)
+        (report_to_string report)
+
+let expect_passed report =
+  if not (Check.passed report) then Alcotest.fail (report_to_string report)
+
+let expect_unreached report =
+  if report.Check.violations <> [] || not report.complete then
+    Alcotest.fail (report_to_string report);
+  report.unreached
 
 type load = Loaded of (int, string) Remote.answer | Retry
 
@@ -123,28 +130,26 @@ let test_answers_are_delivered () =
   let c = Component.make (loader ()) loader_view in
   let readies : int list ref = ref [] in
   let seen =
-    {
-      Check.name = "record";
-      holds =
-        (fun state _ ->
-          (match state with Ready n -> readies := n :: !readies | _ -> ());
-          true
-        );
-    }
+    Check.always ~name:"record"
+      (Check.state (fun state ->
+           (match state with Ready n -> readies := n :: !readies | _ -> ());
+           true
+       )
+      )
   in
-  match
-    Check.component
-      ~samples:[ Check.answers endpoint [ 1; 2 ] ]
-      ~invariants:[ seen ] c
-  with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check (list int))
-        "each sample reaches ready" [ 1; 2 ]
-        (List.sort compare !readies);
-      Alcotest.(check int)
-        "loading, ready 1, ready 2, failed 500, failed 0" 5 states
-  | r ->
-      Alcotest.fail (report_to_string show_load r)
+  let report =
+    Check.run
+      (Check.component
+         ~samples:[ Check.answers endpoint [ 1; 2 ] ]
+         ~properties:[ seen ] c
+      )
+  in
+  expect_passed report;
+  Alcotest.(check (list int))
+    "each sample reaches ready" [ 1; 2 ]
+    (List.sort compare !readies);
+  Alcotest.(check int)
+    "loading, ready 1, ready 2, failed 500, failed 0" 5 report.states
 
 let test_rejected_answers_are_delivered () =
   let rejected = ref false in
@@ -167,16 +172,22 @@ let test_rejected_answers_are_delivered () =
             Machine.Ignore
       )
   in
-  match
-    Check.component ~allow_unreached:[ "failed" ]
-      ~samples:[ Check.answers ~rejected:[ "no" ] endpoint [ 1 ] ]
-      (Component.make machine loader_view)
-  with
-  | Check.Ok { states; _ } ->
-      Alcotest.(check bool) "the rejection reached the machine" true !rejected;
-      Alcotest.(check int) "loading, ready 1, ready 2 (no), ready 0" 4 states
-  | r ->
-      Alcotest.fail (report_to_string show_load r)
+  let report =
+    Check.run
+      (Check.component
+         ~allow:
+           [
+             Check.allow ~rule:"unreached-state" ~state:"failed"
+               ~reason:"Every answer leads to Ready, so no step goes to Failed."
+               ();
+           ]
+         ~samples:[ Check.answers ~rejected:[ "no" ] endpoint [ 1 ] ]
+         (Component.make machine loader_view)
+      )
+  in
+  expect_passed report;
+  Alcotest.(check bool) "the rejection reached the machine" true !rejected;
+  Alcotest.(check int) "loading, ready 1, ready 2 (no), ready 0" 4 report.states
 
 let test_unhandled_network_error_is_an_ignored_event () =
   let c = Component.make (loader ~network:false ()) loader_view in
@@ -186,41 +197,36 @@ let test_unhandled_network_error_is_an_ignored_event () =
 let test_decode_only_on_request () =
   let errors : int list ref = ref [] in
   let record =
-    {
-      Check.name = "record";
-      holds =
-        (fun state _ ->
-          (match state with Failed n -> errors := n :: !errors | _ -> ());
-          true
-        );
-    }
+    Check.always ~name:"record"
+      (Check.state (fun state ->
+           (match state with Failed n -> errors := n :: !errors | _ -> ());
+           true
+       )
+      )
   in
   let c = Component.make (loader ~decode:false ()) loader_view in
-  ( match
-      Check.component
-        ~samples:[ Check.answers endpoint [] ]
-        ~invariants:[ record ] c
-    with
-  | Check.Unreached { states } ->
-      Alcotest.(check (list string))
-        "no ok answer, ready never reached" [ "ready" ] states;
-      Alcotest.(check (list int))
-        "only the two default errors" [ 0; 500 ]
-        (List.sort_uniq compare !errors)
-  | r ->
-      Alcotest.fail (report_to_string show_load r)
-  );
+  let report =
+    Check.run
+      (Check.component
+         ~samples:[ Check.answers endpoint [] ]
+         ~properties:[ record ] c
+      )
+  in
+  Alcotest.(check (list string))
+    "no ok answer, ready never reached" [ "ready" ] (expect_unreached report);
+  Alcotest.(check (list int))
+    "only the two default errors" [ 0; 500 ]
+    (List.sort_uniq compare !errors);
   expect_violation show_load "ignored-event" [ "loaded decode sample" ]
     (Check.component ~samples:[ Check.answers ~decode:true endpoint [ 1 ] ] c)
 
 let test_answers_of_another_endpoint_are_not_used () =
   let c = Component.make (loader ()) loader_view in
-  match Check.component ~samples:[ Check.answers other [ 7 ] ] c with
-  | Check.Unreached { states } ->
-      Alcotest.(check (list string))
-        "no ok answer for /api/n" [ "ready" ] states
-  | r ->
-      Alcotest.fail (report_to_string show_load r)
+  let report =
+    Check.run (Check.component ~samples:[ Check.answers other [ 7 ] ] c)
+  in
+  Alcotest.(check (list string))
+    "no ok answer for /api/n" [ "ready" ] (expect_unreached report)
 
 let test_answered_call_runs_again () =
   let answers = ref [] in
@@ -247,27 +253,36 @@ let test_answered_call_runs_again () =
     | Ready _ | Failed _ ->
         Node.text "done"
   in
-  match
-    Check.component ~allow_unreached:[ "failed" ]
-      ~samples:[ Check.answers endpoint [ 1 ] ]
-      (Component.make counting view)
-  with
-  | Check.Ok { states; transitions; edges; _ } ->
-      Alcotest.(check int)
-        "loading with the call, ready: an answered call that the state still \
-         owns runs again"
-        2 states;
-      Alcotest.(check int) "four from loading, none from ready" 4 transitions;
-      Alcotest.(check (list string))
-        "three answers handled"
-        [ "loaded 1"; "loaded http 500"; "loaded network down" ]
-        (List.sort_uniq compare !answers);
-      Alcotest.(check (list (pair string bool)))
-        "the answers kept the state, the retry entered ready"
-        [ ("loading", true); ("ready", false) ]
-        (List.map (fun (l : Spec.label) -> (l.target, l.kept)) edges)
-  | r ->
-      Alcotest.fail (report_to_string show_load r)
+  let report =
+    Check.run
+      (Check.component
+         ~allow:
+           [
+             Check.allow ~rule:"unreached-state" ~state:"failed"
+               ~reason:"Loading goes only to Ready, so no step goes to Failed."
+               ();
+           ]
+         ~samples:[ Check.answers endpoint [ 1 ] ]
+         (Component.make counting view)
+      )
+  in
+  expect_passed report;
+  Alcotest.(check int)
+    "loading with the call, ready: an answered call that the state still owns \
+     runs again"
+    2 report.states;
+  Alcotest.(check int) "four from loading, none from ready" 4 report.transitions;
+  Alcotest.(check (list string))
+    "three answers handled"
+    [ "loaded 1"; "loaded http 500"; "loaded network down" ]
+    (List.sort_uniq compare !answers);
+  Alcotest.(check (list (pair string bool)))
+    "the answers kept the state, the retry entered ready"
+    [ ("loading", true); ("ready", false) ]
+    (List.map
+       (fun (label : Spec.label) -> (label.target, label.kept))
+       (List.hd report.specs).edges
+    )
 
 type ticking = Waiting of int [@@deriving state_shape]
 
@@ -288,13 +303,11 @@ let test_fired_timer_runs_again () =
       [ Node.text "x" ]
   in
   let once =
-    {
-      Check.name = "at most one tick";
-      holds = (fun (Waiting count) _ -> count <= 1);
-    }
+    Check.always ~name:"at most one tick"
+      (Check.state (fun (Waiting count) -> count <= 1))
   in
   expect_violation show_load "at most one tick" [ "retry"; "retry" ]
-    (Check.component ~invariants:[ once ] (Component.make ticker view))
+    (Check.component ~properties:[ once ] (Component.make ticker view))
 
 type watch = Update of int Topic.update | Leave
 
@@ -333,10 +346,8 @@ let watcher_view = function
       Node.text "x"
 
 let not_broken =
-  {
-    Check.name = "not broken";
-    holds = (fun state _ -> match state with Broken -> false | _ -> true);
-  }
+  Check.always ~name:"not broken"
+    (Check.state (function Broken -> false | _ -> true))
 
 let test_stale_update_is_delivered () =
   let c =
@@ -346,43 +357,46 @@ let test_stale_update_is_delivered () =
     [ "0 loading"; "1 ready 4"; "0 stale 4" ]
     (Check.component
        ~samples:[ Check.states topic [ 4; 5 ] ]
-       ~invariants:[ not_broken ] c
+       ~properties:[ not_broken ] c
     )
 
 let below n =
-  {
-    Check.name = Printf.sprintf "fewer than %d states" n;
-    holds =
-      (fun state _ -> match state with Watching count -> count < n | _ -> true);
-  }
+  Check.always
+    ~name:(Printf.sprintf "fewer than %d states" n)
+    (Check.state (function Watching count -> count < n | _ -> true))
 
 let ok_watcher = watcher ~on_stale:(fun count -> Machine.Go (Watching count))
 
 let test_arrivals_are_bounded () =
   let c = Component.make ok_watcher watcher_view in
-  ( match
-      Check.component ~arrivals:1
-        ~samples:[ Check.states topic [ 4; 5 ] ]
-        ~invariants:[ below 3 ]
-        ~allow_unreached:[ "broken" ] c
-    with
-  | Check.Ok _ ->
-      ()
-  | r ->
-      Alcotest.fail (report_to_string show_watch r)
-  );
+  expect_passed
+    (Check.run
+       (Check.component ~arrivals:1
+          ~samples:[ Check.states topic [ 4; 5 ] ]
+          ~properties:[ below 3 ]
+          ~allow:
+            [
+              Check.allow ~rule:"unreached-state" ~state:"broken"
+                ~reason:
+                  "A stale update goes back to Watching, so no step goes to \
+                   Broken."
+                ();
+            ]
+          c
+       )
+    );
   expect_violation show_watch "fewer than 2 states"
     [ "0 loading"; "1 ready 4"; "0 stale 4"; "2 ready 4" ]
     (Check.component ~arrivals:1
        ~samples:[ Check.states topic [ 4; 5 ] ]
-       ~invariants:[ below 2 ]
+       ~properties:[ below 2 ]
        c
     );
   expect_violation show_watch "fewer than 3 states"
     [ "0 loading"; "1 ready 4"; "2 ready 4"; "0 stale 4"; "3 ready 4" ]
     (Check.component
        ~samples:[ Check.states topic [ 4; 5 ] ]
-       ~invariants:[ below 3 ]
+       ~properties:[ below 3 ]
        c
     )
 
@@ -411,26 +425,25 @@ let test_failure_ends_the_subscription () =
       )
   in
   let nothing_after_failure =
-    {
-      Check.name = "nothing arrives after a failure";
-      holds =
-        (fun state _ ->
-          match state with Watching count -> count < 1000 | _ -> true
-        );
-    }
+    Check.always ~name:"nothing arrives after a failure"
+      (Check.state (function Watching count -> count < 1000 | _ -> true))
   in
-  match
-    Check.component ~allow_unreached:[ "broken" ]
-      ~samples:[ Check.states topic [ 4 ] ]
-      ~invariants:[ nothing_after_failure ]
-      (Component.make after_failure watcher_view)
-  with
-  | Check.Ok _ ->
-      Alcotest.(check (list (option int)))
-        "a failure carries the last state" [ None; Some 4 ]
-        (List.sort_uniq compare !failed)
-  | r ->
-      Alcotest.fail (report_to_string show_watch r)
+  expect_passed
+    (Check.run
+       (Check.component
+          ~allow:
+            [
+              Check.allow ~rule:"unreached-state" ~state:"broken"
+                ~reason:"No step of the update goes to Broken." ();
+            ]
+          ~samples:[ Check.states topic [ 4 ] ]
+          ~properties:[ nothing_after_failure ]
+          (Component.make after_failure watcher_view)
+       )
+    );
+  Alcotest.(check (list (option int)))
+    "a failure carries the last state" [ None; Some 4 ]
+    (List.sort_uniq compare !failed)
 
 type go = Go | Wait
 
@@ -518,18 +531,18 @@ let test_answers_rebuilt_at_each_start () =
     | Fetched _ ->
         Node.element "button" [ Attr.on_press Again ] [ Node.text "again" ]
   in
-  match
-    Check.component
-      ~samples:[ Check.answers endpoint [ 1 ] ]
-      ~within:(function Fetching attempt | Fetched attempt -> attempt < 2)
-      (Component.make machine view)
-  with
-  | Check.Ok { paths; _ } ->
-      Alcotest.(check bool)
-        "a later attempt gets its own answers" true
-        (List.mem_assoc "fetched" paths)
-  | report ->
-      Alcotest.fail (report_to_string (fun _ -> "event") report)
+  let report =
+    Check.run
+      (Check.component
+         ~samples:[ Check.answers endpoint [ 1 ] ]
+         ~within:(function Fetching attempt | Fetched attempt -> attempt < 2)
+         (Component.make machine view)
+      )
+  in
+  expect_passed report;
+  Alcotest.(check bool)
+    "a later attempt gets its own answers" true
+    (List.mem_assoc "fetched" report.paths)
 
 type moving = Still | Moving [@@deriving state_shape]
 type moving_event = Moved
@@ -548,17 +561,18 @@ let test_start_away_from_init () =
   let view _ =
     Node.element "button" [ Attr.on_press Moved ] [ Node.text "move" ]
   in
-  match Check.component ~props:[ true ] (Component.make machine view) with
-  | Check.Ok { spec; _ } ->
-      Alcotest.(check string) "the state reached first" "moving" spec.init;
-      Alcotest.(check bool)
-        "the initial state of the spec is one of its states" true
-        (List.exists
-           (fun (state : Spec.state) -> state.name = spec.init)
-           spec.states
-        )
-  | report ->
-      Alcotest.fail (report_to_string (fun Moved -> "moved") report)
+  let report =
+    Check.run (Check.component ~props:[ true ] (Component.make machine view))
+  in
+  expect_passed report;
+  let spec = List.hd report.specs in
+  Alcotest.(check string) "the state reached first" "moving" spec.init;
+  Alcotest.(check bool)
+    "the initial state of the spec is one of its states" true
+    (List.exists
+       (fun (state : Spec.state) -> state.name = spec.init)
+       spec.states
+    )
 
 type asking = Ready_to_ask | Asking | Closed [@@deriving state_shape]
 type asking_event = Ask | Close | Measured
@@ -602,30 +616,25 @@ let test_late_action_result_is_allowed () =
     | Closed ->
         Node.text "closed"
   in
-  match Check.component (Component.make machine view) with
-  | Check.Ok _ ->
-      ()
-  | report ->
-      Alcotest.fail
-        (report_to_string
-           (function Ask -> "ask" | Close -> "close" | Measured -> "measured")
-           report
-        )
+  expect_passed (Check.run (Check.component (Component.make machine view)))
 
-let app_trace show report =
-  match report with
-  | Check.Violation v ->
-      ( v.invariant,
-        List.map (Format.asprintf "%a" (Check.pp_app_event show)) v.trace
-      )
-  | r ->
-      ( Format.asprintf "%a"
-          (fun f r -> Check.pp_report ~pp_event:(Check.pp_app_event show) f r)
-          r,
-        []
-      )
+let show_app_event show : _ Check.app_event -> string = function
+  | Event event ->
+      show event
+  | Link url ->
+      "link " ^ Url.to_string url
+  | Browser_back ->
+      "back"
+  | Browser_forward ->
+      "forward"
 
-let pp_of show f e = Format.pp_print_string f (show e)
+let app_trace show check =
+  let report = Check.run check in
+  match report.violations with
+  | first :: _ ->
+      (first.rule, List.map (show_app_event show) (trace_of first))
+  | [] ->
+      (report_to_string report, [])
 
 let test_app_root_gets_answers () =
   let machine = loader () in
@@ -638,28 +647,30 @@ let test_app_root_gets_answers () =
     Url.of_string path
   in
   let parse url = List.assoc (Url.to_string url) !printed in
-  match
-    Check.app
-      ~samples:[ Check.answers endpoint [ 1 ] ]
-      ~routes:[ start ] ~parse ~print
-      ~url_event:(fun _ -> Retry)
-      root
-  with
-  | Check.Ok { edges; _ } ->
-      Alcotest.(check bool)
-        "the answer of the root call is delivered" true
-        (List.exists
-           (fun (l : Spec.label) -> l.target = "ready" && l.event = "loaded 1")
-           edges
-        )
-  | r ->
-      Alcotest.fail (fst (app_trace (pp_of show_load) r))
+  let report =
+    Check.run
+      (Check.app
+         ~samples:[ Check.answers endpoint [ 1 ] ]
+         ~routes:[ start ] ~parse ~print
+         ~url_event:(fun _ -> Retry)
+         root
+      )
+  in
+  expect_passed report;
+  Alcotest.(check bool)
+    "the answer of the root call is delivered" true
+    (List.exists
+       (fun (label : Spec.label) ->
+         label.target = "ready" && label.event = "loaded 1"
+       )
+       (List.hd report.specs).edges
+    )
 
 let test_app_root_timer_owner () =
   let machine = wrong (Source.after 100 Wait) in
   Alcotest.(check (pair string (list string)))
     "the root machine is checked for ownership" ("timer-owner", [ "go" ])
-    (app_trace (pp_of show_go)
+    (app_trace show_go
        (Check.app ~routes:[ A ]
           ~parse:(fun _ -> A)
           ~print:(fun _ -> Url.of_string "/")
@@ -691,34 +702,39 @@ let drift_view = function
 
 let test_unreached_state () =
   let c = Component.make drifting drift_view in
-  ( match Check.component c with
-  | Check.Unreached { states } ->
-      Alcotest.(check (list string))
-        "declared, never reached" [ "never" ] states
-  | r ->
-      Alcotest.fail (report_to_string show_go r)
-  );
-  match Check.component ~allow_unreached:[ "never" ] c with
-  | Check.Ok _ ->
-      ()
-  | r ->
-      Alcotest.fail (report_to_string show_go r)
+  Alcotest.(check (list string))
+    "declared, never reached" [ "never" ]
+    (expect_unreached (Check.run (Check.component c)));
+  expect_passed
+    (Check.run
+       (Check.component
+          ~allow:
+            [
+              Check.allow ~rule:"unreached-state" ~state:"never"
+                ~reason:"No step of the update goes to Never." ();
+            ]
+          c
+       )
+    )
 
 let test_edges_are_labelled () =
   let c = Component.make (loader ()) loader_view in
-  match Check.component ~samples:[ Check.answers endpoint [ 1 ] ] c with
-  | Check.Ok { edges; _ } ->
-      Alcotest.(check (list (triple string string string)))
-        "taken edges with the event names"
-        [
-          ("failed", "loading", "retry");
-          ("loading", "failed", "loaded http 500");
-          ("loading", "failed", "loaded network down");
-          ("loading", "ready", "loaded 1");
-        ]
-        (List.map (fun (l : Spec.label) -> (l.from, l.target, l.event)) edges)
-  | r ->
-      Alcotest.fail (report_to_string show_load r)
+  let report =
+    Check.run (Check.component ~samples:[ Check.answers endpoint [ 1 ] ] c)
+  in
+  expect_passed report;
+  Alcotest.(check (list (triple string string string)))
+    "taken edges with the event names"
+    [
+      ("failed", "loading", "retry");
+      ("loading", "failed", "loaded http 500");
+      ("loading", "failed", "loaded network down");
+      ("loading", "ready", "loaded 1");
+    ]
+    (List.map
+       (fun (label : Spec.label) -> (label.from, label.target, label.event))
+       (List.hd report.specs).edges
+    )
 
 type child_event = Dec
 type child_state = Count of int [@@deriving state_shape]
@@ -765,35 +781,27 @@ let parent =
     )
 
 let below_five =
-  { Check.name = "below five"; holds = (fun (Count n) _ -> n < 5) }
+  Check.always ~name:"below five" (Check.state (fun (Count n) -> n < 5))
 
 let test_props_reach_the_child () =
-  match Check.component parent with
-  | Check.Ok { children; not_explored; _ } -> (
-      Alcotest.(check (list string)) "listed" [ "component child" ] not_explored;
-      let props = Check.props children child in
-      Alcotest.(check (list int))
-        "props seen in the parent views" [ 1; 7 ] (List.sort compare props);
-      Alcotest.(check int)
-        "no props for the parent itself" 0
-        (List.length (Check.props children parent));
-      expect_violation show_child "below five" []
-        (Check.component ~props ~invariants:[ below_five ] child);
-      let only_one =
-        Check.component ~props:[ 1 ] ~invariants:[ below_five ] child
-      in
-      match only_one with
-      | Check.Ok _ ->
-          ()
-      | r ->
-          Alcotest.fail (report_to_string show_child r)
-    )
-  | r ->
-      Alcotest.fail (report_to_string show_go r)
+  let report = Check.run (Check.component parent) in
+  expect_passed report;
+  Alcotest.(check (list string))
+    "listed" [ "component child" ] report.not_explored;
+  let props = Check.props report.children child in
+  Alcotest.(check (list int))
+    "props seen in the parent views" [ 1; 7 ] (List.sort compare props);
+  Alcotest.(check int)
+    "no props for the parent itself" 0
+    (List.length (Check.props report.children parent));
+  expect_violation show_child "below five" []
+    (Check.component ~props ~properties:[ below_five ] child);
+  expect_passed
+    (Check.run (Check.component ~props:[ 1 ] ~properties:[ below_five ] child))
 
 let test_new_props_are_a_step () =
   let at_seven =
-    { Check.name = "never seven"; holds = (fun (Count n) _ -> n <> 7) }
+    Check.always ~name:"never seven" (Check.state (fun (Count n) -> n <> 7))
   in
   let only_after_props =
     Component.make
@@ -811,7 +819,7 @@ let test_new_props_are_a_step () =
       (fun _ -> Node.text "zero")
   in
   expect_violation show_child "never seven" [ "new props" ]
-    (Check.component ~props:[ 1; 7 ] ~invariants:[ at_seven ] only_after_props)
+    (Check.component ~props:[ 1; 7 ] ~properties:[ at_seven ] only_after_props)
 
 let door : Spec.t =
   {
@@ -831,21 +839,20 @@ let door : Spec.t =
       ];
     edges =
       [
-        ("closed", "open");
-        ("open", "closed");
-        ("open", "gone");
-        ("open", "open");
+        { from = "closed"; target = "open"; event = "press"; kept = false };
+        { from = "open"; target = "closed"; event = "press"; kept = false };
+        {
+          from = "open";
+          target = "closed";
+          event = "after 300ms";
+          kept = false;
+        };
+        { from = "open"; target = "closed"; event = "press"; kept = false };
+        { from = "open"; target = "gone"; event = ""; kept = false };
+        { from = "open"; target = "open"; event = ""; kept = false };
+        { from = "open"; target = "open"; event = "type"; kept = true };
       ];
   }
-
-let door_labels : Spec.label list =
-  [
-    { from = "closed"; target = "open"; event = "press"; kept = false };
-    { from = "open"; target = "closed"; event = "press"; kept = false };
-    { from = "open"; target = "closed"; event = "after 300ms"; kept = false };
-    { from = "open"; target = "closed"; event = "press"; kept = false };
-    { from = "open"; target = "open"; event = "type"; kept = true };
-  ]
 
 let test_quint () =
   let expected =
@@ -901,9 +908,7 @@ module door {
 }
 |}
   in
-  Alcotest.(check string)
-    "quint" expected
-    (Spec.to_quint ~labels:door_labels door)
+  Alcotest.(check string) "quint" expected (Spec.to_quint door)
 
 let test_quint_without_edges () =
   let single : Spec.t =
@@ -954,7 +959,11 @@ let test_quint_state_names () =
       id = "routes";
       init = "/";
       states = [ state "/"; state "/*"; state "a-b"; state "a_b" ];
-      edges = [ ("/", "/*"); ("a-b", "a_b") ];
+      edges =
+        [
+          { from = "/"; target = "/*"; event = ""; kept = false };
+          { from = "a-b"; target = "a_b"; event = ""; kept = false };
+        ];
     }
   in
   let lines = String.split_on_char '\n' (Spec.to_quint spec) in
@@ -968,7 +977,7 @@ let test_quint_state_names () =
     )
 
 let test_dot_labels () =
-  let dot = Spec.to_dot ~labels:door_labels door in
+  let dot = Spec.to_dot door in
   let lines = String.split_on_char '\n' dot in
   Alcotest.(check bool)
     "events of an edge, sorted, once each" true

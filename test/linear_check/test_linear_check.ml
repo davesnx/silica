@@ -1,48 +1,39 @@
 open Linear_checks
 
-let print_report pp_event report =
-  Format.asprintf "%a" (fun f r -> Check.pp_report ~pp_event f r) report
+let print_report report = Format.asprintf "%a" Check.pp_report report
 
-let print_component_report pp_event report =
-  print_report (Check.pp_input pp_event) report
+let passed report =
+  if not (Check.passed report) then Alcotest.fail (print_report report)
 
-let report name = function
-  | Check.Ok { states; transitions; not_explored; _ } ->
-      Printf.printf "%s: %d states, %d transitions, not explored: [%s]\n" name
-        states transitions
-        (String.concat "; " not_explored)
-  | _ ->
-      ()
+let report name (report : _ Check.report) =
+  passed report;
+  Printf.printf "%s: %d states, %d transitions, not explored: [%s]\n" name
+    report.states report.transitions
+    (String.concat "; " report.not_explored)
 
 let router_report = lazy (router ())
 
 let children () =
-  match Lazy.force router_report with
-  | Check.Ok { children; _ } ->
-      children
-  | r ->
-      Alcotest.fail (print_report (Check.pp_app_event pp_router_event) r)
+  let report = Lazy.force router_report in
+  passed report;
+  report.children
 
 let test_router () =
-  match Lazy.force router_report with
-  | Check.Ok { states; transitions; not_explored; _ } as r ->
-      report "router" r;
-      Alcotest.(check bool)
-        "explored something" true
-        (states > 1 && transitions > 1);
-      Alcotest.(check (list string))
-        "the pages, the create button, the user and the theme are listed, not \
-         explored"
-        [
-          "component create-issue";
-          "component issue-detail";
-          "component issue-list";
-          "component me";
-          "component theme";
-        ]
-        not_explored
-  | r ->
-      Alcotest.fail (print_report (Check.pp_app_event pp_router_event) r)
+  let routed = Lazy.force router_report in
+  report "router" routed;
+  let { Check.states; transitions; not_explored; _ } = routed in
+  Alcotest.(check bool) "explored something" true (states > 1 && transitions > 1);
+  Alcotest.(check (list string))
+    "the pages, the create button, the user and the theme are listed, not \
+     explored"
+    [
+      "component create-issue";
+      "component issue-detail";
+      "component issue-list";
+      "component me";
+      "component theme";
+    ]
+    not_explored
 
 let test_props_from_the_router () =
   let children = children () in
@@ -59,125 +50,102 @@ let test_props_from_the_router () =
        )
     )
 
-let test_list () =
-  match list () with
-  | Check.Ok _ as r ->
-      report "list" r
-  | r ->
-      Alcotest.fail (print_component_report pp_list_event r)
+let test_list () = report "list" (list ())
 
 let test_detail () =
-  match
-    detail ~props:(Check.props (children ()) Linear_detail.component) ()
-  with
-  | Check.Ok _ as r ->
-      report "detail" r
-  | r ->
-      Alcotest.fail (print_component_report pp_detail_event r)
+  report "detail"
+    (detail ~props:(Check.props (children ()) Linear_detail.component) ())
 
-let test_create () =
-  match
-    create ~props:(Check.props (children ()) Linear_create.component) ()
-  with
-  | Check.Ok _ as r ->
-      report "create" r
-  | r ->
-      Alcotest.fail (print_component_report pp_create_event r)
+let create_report () =
+  create ~props:(Check.props (children ()) Linear_create.component) ()
+
+let test_create () = report "create" (create_report ())
 
 let test_create_dialog () =
-  let create_children =
-    match
-      create ~props:(Check.props (children ()) Linear_create.component) ()
-    with
-    | Check.Ok { children; _ } ->
-        children
-    | r ->
-        Alcotest.fail (print_component_report pp_create_event r)
-  in
+  let create_report = create_report () in
+  passed create_report;
   let props =
-    Check.props create_children Linear_create.dialog_component.component
+    Check.props create_report.children Linear_create.dialog_component.component
   in
   Alcotest.(check (list string))
     "the create machine asks the dialog to open, to close and to stay while \
      sending"
     [ "props busy"; "props closed"; "props open" ]
     (List.sort_uniq compare (List.map dialog_props_label props));
-  match create_dialog ~props () with
-  | Check.Ok _ as r ->
-      report "create dialog" r
-  | r ->
-      Alcotest.fail (print_component_report pp_dialog_event r)
+  report "create dialog" (create_dialog ~props ())
 
 let test_create_reaches_submitting () =
   let never =
-    {
-      Check.name = "never submitting";
-      holds =
-        (fun (state : Linear_create.state) _ ->
-          match state with
-          | Submitting _ ->
-              false
-          | Closed | Editing _ | Failed _ ->
-              true
-        );
-    }
+    Check.always ~name:"never submitting"
+      (Check.holds (fun (state : Linear_create.state) _ ->
+           match state with
+           | Submitting _ ->
+               false
+           | Closed | Editing _ | Failed _ ->
+               true
+       )
+      )
   in
-  match
-    create ~invariants:[ never ]
+  let report =
+    create ~properties:[ never ]
       ~props:(Check.props (children ()) Linear_create.component)
       ()
-  with
-  | Check.Violation { trace; _ } ->
+  in
+  match report.violations with
+  | first :: _
+    when List.for_all
+           (fun (violation : _ Check.violation) ->
+             violation.rule = "never submitting"
+           )
+           report.violations ->
       Alcotest.(check string)
         "shortest way to a send: the check starts with each props, so the open \
          dialog needs no props step"
         "title \"x\"; submit"
         (String.concat "; "
            (List.map
-              (Format.asprintf "%a" (Check.pp_input pp_create_event))
-              trace
+              (fun (step : (_, _) Check.input Check.step) ->
+                match step.input with
+                | Check.Event event ->
+                    Format.asprintf "%a" pp_create_event event
+                | Check.Props _ ->
+                    "props"
+              )
+              (Check.steps first.counterexample)
            )
         )
-  | r ->
-      Alcotest.fail (print_component_report pp_create_event r)
+  | _ ->
+      Alcotest.fail (print_report report)
 
 let test_me () =
-  match me () with
-  | Check.Ok { states; _ } as r ->
-      report "me" r;
-      Alcotest.(check int) "loading, ready, failed" 3 states
-  | r ->
-      Alcotest.fail (print_component_report pp_me_event r)
+  let me_report = me () in
+  report "me" me_report;
+  Alcotest.(check int) "loading, ready, failed" 3 me_report.states
 
-let alone name pp check () =
-  match check () with
-  | Check.Ok _ as r ->
-      report name r
-  | r ->
-      Alcotest.fail (print_component_report pp r)
+let alone name check () = report name (check ())
 
-let spec name = function
-  | Check.Ok { spec; _ } ->
-      spec
-  | _ ->
-      Alcotest.failf "the check of %s did not pass" name
+let spec name (report : _ Check.report) =
+  if not (Check.passed report) then
+    Alcotest.failf "the check of %s did not pass" name;
+  List.hd report.specs
 
 let test_comment_of_another_author () =
-  match comment ~props:[ (mine, false) ] () with
-  | Check.Unreached { states } ->
+  let report = comment ~props:[ (mine, false) ] () in
+  match report with
+  | { violations = []; complete = true; unreached; _ } ->
       Alcotest.(check (list string))
         "a comment of another author is never edited"
         [ "editing"; "saving"; "edited" ]
-        states
-  | r ->
-      Alcotest.fail (print_component_report pp_comment_event r)
+        unreached
+  | _ ->
+      Alcotest.fail (print_report report)
 
 let list_report = lazy (list ())
 
 let detail_report =
   lazy (detail ~props:(Check.props (children ()) Linear_detail.component) ())
 
-let round_trip_path_events name machine report =
+let round_trip_path_events name machine (report : _ Check.report) =
   let codec =
     match Silica.Machine.event_codec machine with
     | Ok codec ->
@@ -185,33 +153,33 @@ let round_trip_path_events name machine report =
     | Error message ->
         Alcotest.failf "%s: %s" name message
   in
-  match report with
-  | Check.Ok { paths; _ } ->
-      let events =
-        List.concat_map
-          (fun (_, steps) ->
-            List.filter_map
-              (fun (step : (_, _) Check.input) ->
-                match step with Event event -> Some event | Props _ -> None
-              )
-              steps
+  if not (Check.passed report) then
+    Alcotest.failf "the check of %s did not pass" name;
+  let events =
+    List.concat_map
+      (fun (_, steps) ->
+        List.filter_map
+          (fun (step : (_, _) Check.input Check.step) ->
+            match step.input with
+            | Check.Event event ->
+                Some event
+            | Check.Props _ ->
+                None
           )
-          paths
-      in
+          steps
+      )
+      report.paths
+  in
+  Alcotest.(check bool) (name ^ " has events on its paths") true (events <> []);
+  List.iter
+    (fun event ->
+      let text = Silica.Codec.to_string codec event in
       Alcotest.(check bool)
-        (name ^ " has events on its paths")
-        true (events <> []);
-      List.iter
-        (fun event ->
-          let text = Silica.Codec.to_string codec event in
-          Alcotest.(check bool)
-            (name ^ " event " ^ text ^ " round trips")
-            true
-            (Silica.Codec.of_string codec text = Ok event)
-        )
-        events
-  | _ ->
-      Alcotest.failf "the check of %s did not pass" name
+        (name ^ " event " ^ text ^ " round trips")
+        true
+        (Silica.Codec.of_string codec text = Ok event)
+    )
+    events
 
 let round_trip_states name machine states =
   let codec =
@@ -246,8 +214,7 @@ let test_codecs () =
   round_trip_path_events "list" Linear_list.machine (Lazy.force list_report);
   round_trip_path_events "detail" Linear_detail.machine
     (Lazy.force detail_report);
-  round_trip_path_events "create" Linear_create.machine
-    (create ~props:(Check.props (children ()) Linear_create.component) ());
+  round_trip_path_events "create" Linear_create.machine (create_report ());
   round_trip_path_events "me" Linear_me.machine (me ());
   round_trip_path_events "comments" Linear_comments.machine (comments ());
   round_trip_path_events "composer" Linear_composer.machine (composer ());
@@ -289,16 +256,7 @@ let test_codecs () =
 
 let test_lint () =
   let open Silica in
-  let create_report =
-    create ~props:(Check.props (children ()) Linear_create.component) ()
-  in
-  let create_children =
-    match create_report with
-    | Check.Ok { children; _ } ->
-        children
-    | _ ->
-        Alcotest.fail "the check of create-issue did not pass"
-  in
+  let create_report = create_report () in
   let issues =
     List.concat_map Spec.lint
       [
@@ -309,7 +267,7 @@ let test_lint () =
         spec "create dialog"
           (create_dialog
              ~props:
-               (Check.props create_children
+               (Check.props create_report.children
                   Linear_create.dialog_component.component
                )
              ()
@@ -337,19 +295,16 @@ let () =
             test_props_from_the_router;
           Alcotest.test_case "list alone" `Quick test_list;
           Alcotest.test_case "detail alone" `Quick test_detail;
-          Alcotest.test_case "unsaved alone" `Quick
-            (alone "unsaved" pp_unsaved_event unsaved);
+          Alcotest.test_case "unsaved alone" `Quick (alone "unsaved" unsaved);
           Alcotest.test_case "create alone" `Quick test_create;
           Alcotest.test_case "create dialog alone" `Quick test_create_dialog;
           Alcotest.test_case "a send is reachable" `Quick
             test_create_reaches_submitting;
           Alcotest.test_case "me alone" `Quick test_me;
-          Alcotest.test_case "comments alone" `Quick
-            (alone "comments" pp_comments_event comments);
-          Alcotest.test_case "composer alone" `Quick
-            (alone "composer" pp_composer_event composer);
+          Alcotest.test_case "comments alone" `Quick (alone "comments" comments);
+          Alcotest.test_case "composer alone" `Quick (alone "composer" composer);
           Alcotest.test_case "comment alone" `Quick
-            (alone "comment" pp_comment_event (fun () -> comment ()));
+            (alone "comment" (fun () -> comment ()));
           Alcotest.test_case "a comment of another author" `Quick
             test_comment_of_another_author;
           Alcotest.test_case "every machine passes lint" `Quick test_lint;

@@ -408,9 +408,9 @@ let test_landing_chart () =
     spec.init;
   Alcotest.(check bool) "edges were found" true (spec.edges <> []);
   List.iter
-    (fun (from, target) ->
-      if not (List.mem from names && List.mem target names) then
-        Alcotest.failf "edge %s -> %s outside the states" from target
+    (fun (edge : Silica.Spec.label) ->
+      if not (List.mem edge.from names && List.mem edge.target names) then
+        Alcotest.failf "edge %s -> %s outside the states" edge.from edge.target
     )
     spec.edges;
   let html = (get "/").body in

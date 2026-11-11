@@ -9,31 +9,29 @@ let state (state : Silica.Spec.state) =
     (list quoted state.sources)
     (list quoted state.held)
 
-let event formatter (event : Landing_save.event) =
-  Format.pp_print_string formatter
-    (match event with Save -> "save" | Answer _ -> "answer" | Reset -> "reset")
+let label (label : Silica.Spec.label) =
+  Printf.sprintf "{ from = %S; target = %S; event = %S; kept = %b }" label.from
+    label.target label.event label.kept
 
 let () =
-  match
-    Check.component
-      ~samples:
-        [ Check.answers ~rejected:[ "rejected" ] Landing_save.save [ "12:00" ] ]
-      Landing_save.component
-  with
-  | Ok { spec; _ } ->
+  let report =
+    Check.run
+      (Check.component
+         ~samples:
+           [
+             Check.answers ~rejected:[ "rejected" ] Landing_save.save
+               [ "12:00" ];
+           ]
+         Landing_save.component
+      )
+  in
+  match report.specs with
+  | spec :: _ when Check.passed report ->
       print_string "[@@@ocamlformat \"disable\"]\n\n";
       Printf.printf
         "let spec : Silica.Spec.t = { id = %S; init = %S; states = %s; edges = \
          %s }\n"
-        spec.id spec.init (list state spec.states)
-        (list
-           (fun (from, target) -> Printf.sprintf "(%S, %S)" from target)
-           spec.edges
-        )
-  | report ->
-      Format.eprintf "landing_gen: %a@."
-        (fun formatter report ->
-          Check.pp_report ~pp_event:(Check.pp_input event) formatter report
-        )
-        report;
+        spec.id spec.init (list state spec.states) (list label spec.edges)
+  | _ ->
+      Format.eprintf "landing_gen: %a@." Check.pp_report report;
       exit 1
