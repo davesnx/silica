@@ -9,7 +9,8 @@
   test_remote_machine
   test_protocol
   test_place
-  test_sources)
+  test_sources
+  test_accessibility)
  (libraries silica silica_test_support alcotest)
  (preprocess
   (pps silica.ppx)))

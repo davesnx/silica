@@ -29,7 +29,7 @@ type socket = {
 
 type change = Pushed | Replaced of Url.t | Traversed of int
 
-type t = {
+type memory = {
   csrf : string;
   mutable now : int;
   mutable order : int;
@@ -48,6 +48,7 @@ type t = {
   mutable gone : int;
   mutable view : message Node.t;
   mutable roots : vnode list list;
+  mutable accessible : (found * message Accessibility.element) list option;
   mutable paints : int;
   mutable focused : element option;
   mutable dispatch : message -> unit;
@@ -59,9 +60,9 @@ type t = {
   limiters : (int * int list * string, Rate.t * (message -> unit)) Hashtbl.t;
 }
 
-and element = { owner : t; root : int; path : int list }
+and element = { owner : memory; root : int; path : int list }
 
-type found = {
+and found = {
   el : element;
   tag : string;
   attrs : message Node.attr list;
@@ -805,6 +806,7 @@ let run t (action : message Action.t) =
 let paint t node =
   t.view <- node;
   t.roots <- normalize node;
+  t.accessible <- None;
   t.paints <- t.paints + 1;
   match t.focused with
   | Some e when chain_opt e = None ->
@@ -883,6 +885,7 @@ let make ~csrf ~url ~media =
     gone = 0;
     view = Node.list [];
     roots = [];
+    accessible = None;
     paints = 0;
     focused = None;
     dispatch =
@@ -897,7 +900,7 @@ let make ~csrf ~url ~media =
 
 let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
     ?(url = "/") ?(media = []) ~(on_route : (Router.event -> e) option)
-    ~(create : t -> dev:bool -> on_error:_ -> (p, s, e) Instance.t) () =
+    ~(create : memory -> dev:bool -> on_error:_ -> (p, s, e) Instance.t) () =
   let t = make ~csrf ~url ~media in
   Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
     ~platform:(platform t) ~create:(create t) ();
@@ -950,3 +953,234 @@ let leave_asks t =
     t.sources
 
 let announcements t = List.rev t.announced
+
+let accessible memory =
+  match memory.accessible with
+  | Some pairs ->
+      pairs
+  | None ->
+      let found = elements memory in
+      let computed = Accessibility.elements memory.view in
+      if
+        List.compare_lengths found computed <> 0
+        || not
+             (List.for_all2
+                (fun (found : found) element ->
+                  found.tag = Accessibility.tag element
+                )
+                found computed
+             )
+      then
+        failwith
+          "Silica_memory: the accessibility tree does not match the painted \
+           view";
+      let pairs = List.combine found computed in
+      memory.accessible <- Some pairs;
+      pairs
+
+let accessible_element (element : element) =
+  ignore (chain element);
+  snd
+    (List.find
+       (fun ((found : found), _) ->
+         found.el.root = element.root && found.el.path = element.path
+       )
+       (accessible element.owner)
+    )
+
+let role element = Accessibility.role (accessible_element element)
+let accessible_name element = Accessibility.name (accessible_element element)
+
+let in_role ?within memory role =
+  ignore (Option.map chain within);
+  List.filter
+    (fun ((found : found), element) ->
+      (match within with Some outer -> below outer found.el | None -> true)
+      && (not (Accessibility.hidden element))
+      && Accessibility.role element = Some role
+    )
+    (accessible memory)
+
+let state_words ~level ~checked ~selected ~expanded =
+  let flag name = function
+    | Some true ->
+        [ name ]
+    | Some false ->
+        [ name ^ "=false" ]
+    | None ->
+        []
+  in
+  List.concat
+    [
+      Option.fold ~none:[]
+        ~some:(fun level -> [ "level=" ^ string_of_int level ])
+        level;
+      flag "checked" checked;
+      flag "selected" selected;
+      flag "expanded" expanded;
+    ]
+
+let describe role name words =
+  String.concat " "
+    (Accessibility.role_to_string role
+     :: Option.fold ~none:[]
+          ~some:(fun name -> [ Printf.sprintf "%S" name ])
+          name
+    @ words
+    )
+
+let by_role ?within ?name ?level ?checked ?selected ?expanded memory role =
+  let candidates = in_role ?within memory role in
+  let wanted expected actual =
+    match expected with Some expected -> actual = Some expected | None -> true
+  in
+  let matches =
+    List.filter
+      (fun (_, element) ->
+        wanted name (Some (Accessibility.name element))
+        && wanted level (Accessibility.level element)
+        && wanted checked (Accessibility.checked element)
+        && wanted selected (Accessibility.selected element)
+        && wanted expanded (Accessibility.expanded element)
+      )
+      candidates
+  in
+  let query =
+    describe role name (state_words ~level ~checked ~selected ~expanded)
+  in
+  let listing pairs =
+    String.concat ""
+      (List.map
+         (fun (_, element) ->
+           Printf.sprintf "\n  %s at %s"
+             (describe role
+                (Some (Accessibility.name element))
+                (state_words
+                   ~level:(Accessibility.level element)
+                   ~checked:(Accessibility.checked element)
+                   ~selected:(Accessibility.selected element)
+                   ~expanded:(Accessibility.expanded element)
+                )
+             )
+             (Accessibility.path element)
+         )
+         pairs
+      )
+  in
+  match matches with
+  | [ ((found : found), _) ] ->
+      found.el
+  | [] ->
+      if candidates = [] then
+        failwith
+          (Printf.sprintf "Silica_memory: no %s; the view has no %s." query
+             (Accessibility.role_to_string role)
+          )
+      else
+        failwith
+          (Printf.sprintf "Silica_memory: no %s. The elements of role %s are:%s"
+             query
+             (Accessibility.role_to_string role)
+             (listing candidates)
+          )
+  | several ->
+      failwith
+        (Printf.sprintf "Silica_memory: %d elements match %s:%s"
+           (List.length several) query (listing several)
+        )
+
+let all_by_role ?within ?name memory role =
+  List.filter_map
+    (fun ((found : found), element) ->
+      match name with
+      | Some name when Accessibility.name element <> name ->
+          None
+      | Some _ | None ->
+          Some found.el
+    )
+    (in_role ?within memory role)
+
+let view_text memory = View_text.to_string memory.view
+
+type 'p t = { memory : memory; props : 'p -> unit }
+
+let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
+  {
+    memory =
+      mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component;
+    props = ignore;
+  }
+
+let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
+  {
+    memory =
+      mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app;
+    props = ignore;
+  }
+
+let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
+    ~props component =
+  let current = ref props in
+  let tree = ref None in
+  let memory =
+    start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
+      ~create:(fun _ ~dev ~on_error ->
+        let created =
+          Instance.mount_with_props ~dev ?on_error ~props:!current component
+        in
+        tree := Some created;
+        created
+      )
+      ()
+  in
+  let props next =
+    memory.dispatch
+      (Instance.callback (fun () ->
+           current := next;
+           Option.iter (fun created -> Instance.set_props created next) !tree
+       )
+      )
+  in
+  { memory; props }
+
+let set_props handle props = handle.props props
+let view handle = view handle.memory
+let html handle = html handle.memory
+let paints handle = paints handle.memory
+let all ?within handle = all ?within handle.memory
+let by_id handle id = by_id handle.memory id
+let select ?within handle name value = select ?within handle.memory name value
+let by_text ?within handle text = by_text ?within handle.memory text
+
+let by_role ?within ?name ?level ?checked ?selected ?expanded handle role =
+  by_role ?within ?name ?level ?checked ?selected ?expanded handle.memory role
+
+let all_by_role ?within ?name handle role =
+  all_by_role ?within ?name handle.memory role
+
+let view_text handle = view_text handle.memory
+let blur handle = blur handle.memory
+let focused handle = focused handle.memory
+let key handle key_value = key handle.memory key_value
+let key_up handle key_value = key_up handle.memory key_value
+let back handle = back handle.memory
+let forward handle = forward handle.memory
+let now handle = now handle.memory
+let advance handle ms = advance handle.memory ms
+let timers handle = timers handle.memory
+let requests handle = requests handle.memory
+let pending handle = pending handle.memory
+let sockets handle = sockets handle.memory
+let url handle = url handle.memory
+let history handle = history handle.memory
+let history_index handle = history_index handle.memory
+let actions handle = actions handle.memory
+let sources handle = sources handle.memory
+let title handle = title handle.memory
+let document_attribute handle name = document_attribute handle.memory name
+let cookies handle = cookies handle.memory
+let set_media handle query matches = set_media handle.memory query matches
+let logs handle = logs handle.memory
+let leave_asks handle = leave_asks handle.memory
+let announcements handle = announcements handle.memory
+let session_gone handle = session_gone handle.memory

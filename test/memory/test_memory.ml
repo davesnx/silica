@@ -952,6 +952,254 @@ let a_link_preloads_the_chunk_of_its_route () =
   string "the page shows at once" "far" (text t "far");
   int "no second load" 1 Lazy_routes.loader.calls
 
+module Roles = struct
+  type event = Save | Toggle | Rename of string
+  type state = { saved : int; expanded : bool; title : string }
+
+  let element = Node.element
+  let string_attr = Attr.string
+
+  let view { saved; expanded; title } =
+    element "main" []
+      [
+        element "h1" [] [ Node.text "Issues" ];
+        element "h2" [] [ Node.text (Printf.sprintf "Saved %d" saved) ];
+        element "label" [ string_attr "for" "title" ] [ Node.text "Title" ];
+        element "input"
+          [
+            string_attr "id" "title";
+            string_attr "value" title;
+            Attr.on_input (fun value -> Rename value);
+          ]
+          [];
+        element "button" [ Attr.on_press Save ] [ Node.text "Save" ];
+        element "button"
+          [ string_attr "aria-label" "Save draft"; Attr.on_press Save ]
+          [ Node.text "S" ];
+        element "button"
+          [
+            string_attr "aria-expanded" (string_of_bool expanded);
+            Attr.on_press Toggle;
+          ]
+          [ Node.text "Details" ];
+        element "input"
+          [
+            string_attr "type" "checkbox";
+            string_attr "aria-label" "Expanded";
+            Attr.bool "checked" expanded;
+          ]
+          [];
+        element "section"
+          [ string_attr "aria-label" "Sidebar" ]
+          [ element "button" [ Attr.on_press Save ] [ Node.text "Save" ] ];
+        element "div"
+          [ Attr.bool "hidden" true ]
+          [ element "button" [] [ Node.text "Hidden" ] ];
+        Node.portal
+          [
+            element "div"
+              [ string_attr "role" "dialog"; string_attr "aria-label" "Menu" ]
+              [
+                element "button" [ Attr.on_press Toggle ] [ Node.text "Close" ];
+              ];
+          ];
+      ]
+
+  let component =
+    Component.make
+      (Test_apps.simple ~id:"roles"
+         ~init:{ saved = 0; expanded = false; title = "" }
+         (fun state -> function
+        | Save ->
+            Some ({ state with saved = state.saved + 1 }, [])
+        | Toggle ->
+            Some ({ state with expanded = not state.expanded }, [])
+        | Rename title ->
+            Some ({ state with title }, [])
+        ))
+      view
+end
+
+let heading_text memory level =
+  Memory.text (Memory.by_role ~level memory Accessibility.Heading)
+
+let failure_message run =
+  match run () with
+  | _ ->
+      Alcotest.fail "no failure"
+  | exception Failure message ->
+      message
+
+let by_role_finds_and_presses () =
+  let memory = Memory.mount Roles.component in
+  let sidebar = Memory.by_role ~name:"Sidebar" memory Accessibility.Region in
+  Memory.press
+    (Memory.by_role ~within:sidebar ~name:"Save" memory Accessibility.Button);
+  string "the button in the sidebar saves" "Saved 1" (heading_text memory 2);
+  Memory.press (Memory.by_role ~name:"Save draft" memory Accessibility.Button);
+  string "aria-label names a button" "Saved 2" (heading_text memory 2);
+  Memory.input (Memory.by_role ~name:"Title" memory Accessibility.Textbox) "Bug";
+  Alcotest.(check (option string))
+    "label for names a field" (Some "Bug")
+    (Memory.attribute
+       (Memory.by_role ~name:"Title" memory Accessibility.Textbox)
+       "value"
+    )
+
+let by_role_states () =
+  let memory = Memory.mount Roles.component in
+  string "level" "Issues" (heading_text memory 1);
+  Memory.press
+    (Memory.by_role ~name:"Details" ~expanded:false memory Accessibility.Button);
+  ignore
+    ( Memory.by_role ~name:"Details" ~expanded:true memory Accessibility.Button
+      : Memory.element
+      );
+  ignore
+    (Memory.by_role ~checked:true memory Accessibility.Checkbox : Memory.element);
+  let message =
+    failure_message (fun () ->
+        Memory.by_role ~checked:false memory Accessibility.Checkbox
+    )
+  in
+  string "a state that does not match"
+    "Silica_memory: no checkbox checked=false. The elements of role checkbox \
+     are:\n\
+    \  checkbox \"Expanded\" checked at main > input[2]"
+    message
+
+let by_role_failures_list_the_role () =
+  let memory = Memory.mount Roles.component in
+  string "no match lists the buttons with names and paths"
+    "Silica_memory: no button \"Delete\". The elements of role button are:\n\
+    \  button \"Save\" at main > button[1]\n\
+    \  button \"Save draft\" at main > button[2]\n\
+    \  button \"Details\" expanded=false at main > button[3]\n\
+    \  button \"Save\" at main > section > button\n\
+    \  button \"Close\" at portal > div > button"
+    (failure_message (fun () ->
+         Memory.by_role ~name:"Delete" memory Accessibility.Button
+     )
+    );
+  string "several matches"
+    "Silica_memory: 2 elements match button \"Save\":\n\
+    \  button \"Save\" at main > button[1]\n\
+    \  button \"Save\" at main > section > button"
+    (failure_message (fun () ->
+         Memory.by_role ~name:"Save" memory Accessibility.Button
+     )
+    );
+  string "no element of the role"
+    "Silica_memory: no table; the view has no table."
+    (failure_message (fun () -> Memory.by_role memory Accessibility.Table))
+
+let hidden_elements_are_left_out () =
+  let memory = Memory.mount Roles.component in
+  int "a hidden button is not found" 0
+    (List.length (Memory.all_by_role ~name:"Hidden" memory Accessibility.Button));
+  int "but it is in the view" 1
+    (List.length
+       (List.filter
+          (fun found ->
+            Memory.tag found = "button" && Memory.text found = "Hidden"
+          )
+          (Memory.all memory)
+       )
+    );
+  Alcotest.(check (list string))
+    "all_by_role in document order, portals last"
+    [ "Save"; "Save draft"; "Details"; "Save"; "Close" ]
+    (List.map Memory.accessible_name
+       (Memory.all_by_role memory Accessibility.Button)
+    );
+  int "all_by_role with a name" 2
+    (List.length (Memory.all_by_role ~name:"Save" memory Accessibility.Button))
+
+let role_and_name_of_an_element () =
+  let memory = Memory.mount Roles.component in
+  let field = Memory.by_id memory "title" in
+  Alcotest.(check bool)
+    "role" true
+    (Memory.role field = Some Accessibility.Textbox);
+  string "name" "Title" (Memory.accessible_name field);
+  let label =
+    List.find (fun found -> Memory.tag found = "label") (Memory.all memory)
+  in
+  Alcotest.(check bool) "a label has no role" true (Memory.role label = None)
+
+let by_role_in_a_portal () =
+  let memory = Memory.mount Roles.component in
+  let menu = Memory.by_role ~name:"Menu" memory Accessibility.Dialog in
+  Memory.press (Memory.by_role ~within:menu memory Accessibility.Button);
+  ignore
+    ( Memory.by_role ~name:"Details" ~expanded:true memory Accessibility.Button
+      : Memory.element
+      )
+
+let view_text_of_the_page () =
+  let memory = Memory.mount Roles.component in
+  Memory.input (Memory.by_role ~name:"Title" memory Accessibility.Textbox) "Bug";
+  string "text view"
+    {|main
+  heading "Issues" level=1
+  heading "Saved 0" level=2
+  text "Title"
+  textbox "Title" value="Bug" [input]
+  button "Save" [press]
+  button "Save draft" [press]
+  button "Details" expanded=false [press]
+  checkbox "Expanded" checked=false
+  region "Sidebar"
+    button "Save" [press]
+  dialog "Menu"
+    button "Close" [press]
+|}
+    (Memory.view_text memory)
+
+module With_props = struct
+  type state = { shown : int; changes : int }
+
+  let component =
+    Component.make_with_props
+      (Machine.make_with_props ~id:"with-props" ~init:{ shown = 0; changes = 0 }
+         ~shape:(Machine.shape ~name:(fun _ -> "only") ())
+         ~on_props:(fun _ props state ->
+           Machine.Go { shown = props; changes = state.changes + 1 }
+         )
+         (fun props state () ->
+           if props < 0 then
+             failwith "negative"
+           else
+             Machine.Go state
+         )
+      )
+      (fun props { shown; changes } ->
+        Node.element "div" []
+          [
+            Node.element "p"
+              [ Attr.string "id" "props" ]
+              [ Node.text (Printf.sprintf "%d %d %d" props shown changes) ];
+            Node.element "button" [ Attr.on_press () ] [ Node.text "Step" ];
+          ]
+      )
+end
+
+let set_props_reaches_the_root () =
+  let memory = Memory.mount_with_props ~props:1 With_props.component in
+  string "on_props runs at the start" "1 1 1" (text memory "props");
+  Memory.set_props memory 2;
+  string "on_props ran and the view painted" "2 2 2" (text memory "props");
+  Memory.set_props memory 2;
+  string "equal props do nothing" "2 2 2" (text memory "props")
+
+let try_again_uses_the_last_props () =
+  let memory = Memory.mount_with_props ~props:(-1) With_props.component in
+  Memory.set_props memory (-2);
+  Memory.press (Memory.by_role ~name:"Step" memory Accessibility.Button);
+  Memory.press (Memory.by_text memory "Try again");
+  string "the root starts again with the last props" "-2 -2 1"
+    (text memory "props")
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "memory"
@@ -1037,6 +1285,26 @@ let () =
             a_failed_chunk_goes_to_the_boundary;
           case "a link preloads the chunk of its route"
             a_link_preloads_the_chunk_of_its_route;
+        ]
+      );
+      ( "roles",
+        [
+          case "by_role finds by name and within" by_role_finds_and_presses;
+          case "by_role matches level, expanded and checked" by_role_states;
+          case "a failed by_role lists the elements of the role"
+            by_role_failures_list_the_role;
+          case "hidden elements are left out" hidden_elements_are_left_out;
+          case "role and accessible_name of an element"
+            role_and_name_of_an_element;
+          case "by_role in a portal" by_role_in_a_portal;
+          case "view_text" view_text_of_the_page;
+        ]
+      );
+      ( "props",
+        [
+          case "set_props reaches the root" set_props_reaches_the_root;
+          case "Try again starts the root with the last props"
+            try_again_uses_the_last_props;
         ]
       );
       ( "host",

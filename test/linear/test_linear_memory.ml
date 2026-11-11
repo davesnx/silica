@@ -69,10 +69,14 @@ let test_user_call_runs_once () =
 let test_create_in_flight_survives () =
   let t = Memory.mount_app ~url:"/" Linear_app.app in
   answer t;
-  Memory.press (Memory.by_id t "new-issue");
+  Memory.press (Memory.by_role ~name:"New issue" t Accessibility.Link);
   Alcotest.(check string) "the modal is open" "/?new=true" (Memory.url t);
-  Memory.input (Memory.by_id t "new-issue-title") "Made during a visit";
-  Memory.submit (Memory.by_id t "new-issue-title");
+  let dialog = Memory.by_role ~name:"New issue" t Accessibility.Dialog in
+  let title =
+    Memory.by_role ~within:dialog ~name:"Title" t Accessibility.Textbox
+  in
+  Memory.input title "Made during a visit";
+  Memory.submit title;
   let create =
     match
       List.filter

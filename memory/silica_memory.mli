@@ -43,8 +43,9 @@
 
 open Silica
 
-type t
-(** A mounted runtime and its platform. *)
+type 'p t
+(** A mounted runtime and its platform, with a root component that has props
+    ['p]. *)
 
 (** {1 Mount} *)
 
@@ -57,7 +58,7 @@ val mount :
   ?url:string ->
   ?media:(string * bool) list ->
   (unit, 's, 'e) Component.t ->
-  t
+  unit t
 (** Start the runtime with the component as the root, and paint. [answers]
     answers calls before the first paint, as a server render does. [csrf] is the
     page token (default [""]). [url] is the first history entry (default ["/"]).
@@ -74,22 +75,44 @@ val mount_app :
   ?url:string ->
   ?media:(string * bool) list ->
   (Url.t -> (unit, 's, Router.event) Component.t) ->
-  t
+  unit t
 (** Like {!val-mount} for a router app: the app starts at the current URL, and
     each URL change reaches the root as {!Silica.Router.event.Url_changed}, each
     link preload as {!Silica.Router.event.Preload}. *)
 
+val mount_with_props :
+  ?dev:bool ->
+  ?on_error:(exn -> Node.error -> unit) ->
+  ?answers:Answers.t ->
+  ?live_config:Live_client.config ->
+  ?csrf:string ->
+  ?url:string ->
+  ?media:(string * bool) list ->
+  props:'p ->
+  ('p, 's, 'e) Component.t ->
+  'p t
+(** Like {!val-mount}, for a root component with props. After an error page,
+    "Try again" starts the root with the last props. *)
+
+val set_props : 'p t -> 'p -> unit
+(** Give the root new props, as a parent does: the [on_props] of the machine
+    runs, and the view paints again. Props equal to the current ones do nothing.
+*)
+
 (** {1 View} *)
 
-val view : t -> Instance.message Node.t
+val view : _ t -> Instance.message Node.t
 (** The last painted view. *)
 
-val html : t -> string
+val html : _ t -> string
 (** The last painted view as HTML, by {!Silica.Render.to_string}. Portals are
     left out. *)
 
-val paints : t -> int
+val paints : _ t -> int
 (** The number of paints since the start. *)
+
+val view_text : _ t -> string
+(** The last painted view as text, by {!Silica.View_text.to_string}. *)
 
 (** {1 Elements} *)
 
@@ -97,19 +120,19 @@ type element
 (** A position in the painted view. It is looked up again in the current view at
     each use, and raises [Failure] when the view no longer has it. *)
 
-val all : ?within:element -> t -> element list
+val all : ?within:element -> _ t -> element list
 (** Every element in document order. [within] keeps only the descendants of that
     element. *)
 
-val by_id : t -> string -> element
+val by_id : _ t -> string -> element
 (** The first element with this [id]. Raises [Failure] when there is none. *)
 
-val select : ?within:element -> t -> string -> string -> element list
+val select : ?within:element -> _ t -> string -> string -> element list
 (** [select t name value] is every element whose attribute [name] equals [value]
     exactly, in document order. A ref counts as [data-silica-ref]. [within]
     keeps only the descendants of that element. *)
 
-val by_text : ?within:element -> t -> string -> element
+val by_text : ?within:element -> _ t -> string -> element
 (** The innermost element whose text equals the string. Raises [Failure] when
     there is none. *)
 
@@ -121,6 +144,37 @@ val attribute : element -> string -> string option
 
 val tag : element -> string
 (** The tag name. *)
+
+(** {1 Roles and names}
+
+    Find elements as a screen reader does: by their role and accessible name, as
+    {!Silica.Accessibility} computes them. Hidden elements are left out. *)
+
+val by_role :
+  ?within:element ->
+  ?name:string ->
+  ?level:int ->
+  ?checked:bool ->
+  ?selected:bool ->
+  ?expanded:bool ->
+  _ t ->
+  Accessibility.role ->
+  element
+(** The one element of the role that has the name (as {!accessible_name} gives
+    it) and the states. [within] keeps only the descendants of that element.
+    Raises [Failure] when none or several match: the message lists the elements
+    of that role with their names, states and paths. *)
+
+val all_by_role :
+  ?within:element -> ?name:string -> _ t -> Accessibility.role -> element list
+(** Every element of the role, with the name when it is given, in document
+    order. *)
+
+val role : element -> Accessibility.role option
+(** The role of the element. *)
+
+val accessible_name : element -> string
+(** The accessible name of the element. *)
 
 (** {1 Input} *)
 
@@ -141,19 +195,19 @@ val focus : element -> unit
 (** Move focus to the element: the blur handler of the element that had focus,
     then the focus handler of this one, then the focus-out of dismiss layers. *)
 
-val blur : t -> unit
+val blur : _ t -> unit
 (** No element has focus any more. *)
 
-val focused : t -> element option
+val focused : _ t -> element option
 (** The element with focus. *)
 
-val key : t -> Key.t -> unit
+val key : _ t -> Key.t -> unit
 (** A key goes down on the focused element (or the page when none has focus).
     Element key handlers run first; Enter and Space press an element that is not
     a native control; then the [Global_keys] sources and the dismiss layers get
     the key, unless a handler prevented it. *)
 
-val key_up : t -> Key.t -> unit
+val key_up : _ t -> Key.t -> unit
 (** A key goes up on the focused element: only element handlers see it. *)
 
 val hover : element -> unit
@@ -161,25 +215,25 @@ val hover : element -> unit
     [data-silica-preload="intent"], the root gets {!Silica.Router.event.Preload}
     with the URL of the link. {!focus} on such a link does the same. *)
 
-val back : t -> unit
+val back : _ t -> unit
 (** The back button of the browser: move to the previous history entry, if there
     is one, and report its URL. *)
 
-val forward : t -> unit
+val forward : _ t -> unit
 (** The forward button of the browser: move to the next history entry, if there
     is one, and report its URL. *)
 
 (** {1 Clock} *)
 
-val now : t -> int
+val now : _ t -> int
 (** Milliseconds since the start. *)
 
-val advance : t -> int -> unit
+val advance : _ t -> int -> unit
 (** Move the clock forward by the milliseconds, and run each task that becomes
     due, in time order, including tasks that those tasks schedule. Raises
     [Invalid_argument] for a negative time. *)
 
-val timers : t -> int list
+val timers : _ t -> int list
 (** The delays, in milliseconds, of the scheduled tasks that have not run and
     were not cancelled, in the order they were scheduled. *)
 
@@ -197,10 +251,10 @@ val body : request -> string
 val request_csrf : request -> string
 (** The CSRF token sent with the request. *)
 
-val requests : t -> request list
+val requests : _ t -> request list
 (** Every request sent, oldest first. *)
 
-val pending : t -> request list
+val pending : _ t -> request list
 (** The requests with no answer yet, oldest first. *)
 
 val reply : ?status:int -> request -> string -> unit
@@ -216,7 +270,7 @@ val network_error : request -> string -> unit
 type socket
 (** A Live socket that the runtime opened. *)
 
-val sockets : t -> socket list
+val sockets : _ t -> socket list
 (** Every socket opened, oldest first. *)
 
 val sent : socket -> string list
@@ -239,47 +293,47 @@ val socket_error : socket -> unit
 
 (** {1 Records} *)
 
-val url : t -> string
+val url : _ t -> string
 (** The URL of the current history entry. *)
 
-val history : t -> string list
+val history : _ t -> string list
 (** The URLs of the history entries, oldest first. *)
 
-val history_index : t -> int
+val history_index : _ t -> int
 (** The index of the current entry in {!val-history}. *)
 
-val actions : t -> Instance.message Action.t list
+val actions : _ t -> Instance.message Action.t list
 (** The actions that the renderer ran, oldest first. *)
 
-val sources : t -> (string * Instance.message Action.source) list
+val sources : _ t -> (string * Instance.message Action.source) list
 (** The running sources with their ids, in the order they started. *)
 
-val title : t -> string
+val title : _ t -> string
 (** The document title (default [""]). *)
 
-val document_attribute : t -> string -> string option
+val document_attribute : _ t -> string -> string option
 (** The value of an attribute of the document element, as the
     {!Silica.Action.Set_document_attribute} actions left it. *)
 
-val cookies : t -> (string * string) list
+val cookies : _ t -> (string * string) list
 (** The cookies that {!Silica.Action.Set_cookie} stored, as name and value, in
     the order of their last write. *)
 
-val set_media : t -> string -> bool -> unit
+val set_media : _ t -> string -> bool -> unit
 (** The media query now matches, or not: each running {!Silica.Action.Media}
     source of that query raises its event at once. *)
 
-val logs : t -> string list
+val logs : _ t -> string list
 (** The log lines of the runtime, oldest first. *)
 
-val leave_asks : t -> bool
+val leave_asks : _ t -> bool
 (** [true] while a {!Silica.Action.Block} source runs: closing or reloading the
     page would ask the user first. *)
 
-val announcements : t -> string list
+val announcements : _ t -> string list
 (** The titles that the live region announced after navigations, oldest first.
 *)
 
-val session_gone : t -> int
+val session_gone : _ t -> int
 (** How many times the runtime said that the server no longer knows the session.
 *)

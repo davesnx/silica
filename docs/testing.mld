@@ -39,7 +39,7 @@ the request:
 
 {@ocaml[
 # let page = Silica_memory.mount Doc_hello.component;;
-val page : Silica_memory.t = <abstr>
+val page : unit Silica_memory.t = <abstr>
 # Silica_memory.html page;;
 - : string = "<p>Loading.</p>"
 # let request = List.hd (Silica_memory.pending page);;
@@ -56,7 +56,7 @@ A failed call and a retry:
 
 {@ocaml[
 # let page = Silica_memory.mount Doc_hello.component;;
-val page : Silica_memory.t = <abstr>
+val page : unit Silica_memory.t = <abstr>
 # Silica_memory.network_error (List.hd (Silica_memory.pending page)) "down";;
 - : unit = ()
 # Silica_memory.press (Silica_memory.by_text page "Try again");;
@@ -70,8 +70,9 @@ milliseconds after the last text:
 
 {@ocaml[
 # let page = Silica_memory.mount Doc_debounce.component;;
-val page : Silica_memory.t = <abstr>
-# let field = List.hd (Silica_memory.select page "aria-label" "Word");;
+val page : unit Silica_memory.t = <abstr>
+# let field =
+    Silica_memory.by_role page Silica.Accessibility.Textbox ~name:"Word";;
 val field : Silica_memory.element = <abstr>
 # Silica_memory.input field "ocaml";;
 - : unit = ()
@@ -84,6 +85,64 @@ val field : Silica_memory.element = <abstr>
 # Silica_memory.html page;;
 - : string =
 "<div><input aria-label=\"Word\" value=\"ocaml\" /><button>Clear</button><p>You typed ocaml.</p></div>"
+]}
+
+{2:roles Roles and names}
+
+A test finds an element as a screen reader does: by its role and its
+accessible name. {!Silica_memory.by_role} gives the one element that matches,
+and also takes [~level], [~checked], [~selected] and [~expanded].
+{!Silica.Accessibility} computes the role and the name from the view, with the
+rules of WAI-ARIA for the HTML that Silica views use; its page lists them.
+Hidden elements are left out. When no element or several match, the failure
+lists the elements of that role, with their names and paths, so the fix is in
+the message:
+
+{@ocaml[
+# let page = Silica_memory.mount Doc_debounce.component;;
+val page : unit Silica_memory.t = <abstr>
+# Silica_memory.by_role page Silica.Accessibility.Button ~name:"Clean";;
+Exception:
+Failure
+ "Silica_memory: no button \"Clean\". The elements of role button are:\n  button \"Clear\" at div > button".
+]}
+
+{!Silica_memory.view_text} prints the view as {!Silica.View_text} does: one
+line per element that has a role or a handler, with its name, its states and
+its handlers. It is what a test, an agent or a reviewer reads to know what the
+page shows, with no browser:
+
+{@ocaml[
+# Silica_memory.input
+    (Silica_memory.by_role page Silica.Accessibility.Textbox ~name:"Word")
+    "ocaml";;
+- : unit = ()
+# print_string (Silica_memory.view_text page);;
+textbox "Word" value="ocaml" [input]
+button "Clear" [press]
+text "Waiting for you to stop."
+- : unit = ()
+]}
+
+{2:props A root with props}
+
+{!Silica_memory.mount_with_props} mounts a component that has props, and
+{!Silica_memory.set_props} gives it new ones, as a parent does. The type of the
+handle carries the type of the props:
+
+{@ocaml[
+# let page = Silica_memory.mount_with_props ~props:"Cups" Doc_stepper.component;;
+val page : string Silica_memory.t = <abstr>
+# Silica_memory.press
+    (Silica_memory.by_role page Silica.Accessibility.Button ~name:"More Cups");;
+- : unit = ()
+# Silica_memory.set_props page "Mugs";;
+- : unit = ()
+# print_string (Silica_memory.view_text page);;
+text "Mugs: 1"
+button "Fewer Mugs" [press]
+button "More Mugs" [press]
+- : unit = ()
 ]}
 
 [mount ~answers] answers calls before the first paint, as a server render

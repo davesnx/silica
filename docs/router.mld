@@ -158,7 +158,7 @@ with {!Silica_memory.mount_app}:
 
 {@ocaml[
 # let page = Silica_memory.mount_app ~url:"/books/7" Doc_books.app;;
-val page : Silica_memory.t = <abstr>
+val page : unit Silica_memory.t = <abstr>
 # Silica_memory.title page;;
 - : string = "Book 7"
 # Silica_memory.press (Silica_memory.by_text page "Search");;

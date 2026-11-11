@@ -1,0 +1,29 @@
+(** A view as text that a person or a program can read and compare, with no
+    browser. The checker, [Silica_memory] and the golden files print views with
+    this one function.
+
+    One line per element that has a role or a handler, indented by two spaces
+    for each such element above it. A line is:
+    - the role (see {!Accessibility.val-role}), or the tag when the element has
+      a handler and no role;
+    - the accessible name in quotes, when it is not empty;
+    - the states that are set, in this order: [level=2], [value="..."],
+      [checked] or [checked=false], [selected], [expanded] or [expanded=false],
+      [disabled], [current=page], [href="..."], [modal];
+    - the handlers in brackets, such as [[press, key_down]].
+
+    Other elements are left out and their children move up. The text that is not
+    in such a line prints as [text "..."]: the text of the elements left out
+    side by side is joined into one line, with a space where an element starts
+    or ends and white space collapsed. Text inside an element whose role takes
+    its name from its content (see {!Accessibility.name_from_content}) is its
+    name and does not print again.
+
+    A component node prints as [component <id>], an island as
+    [island <channel>], a chunk that loads as [loading]. Hidden elements (see
+    {!Accessibility.hidden}) and their children are left out. The children of a
+    portal print at the place of the portal. In a quoted string, a double quote
+    and a backslash are escaped with a backslash. Each line ends with a newline.
+*)
+
+val to_string : 'e Node.t -> string

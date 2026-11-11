@@ -178,6 +178,24 @@ A change of the exported Quint or Graphviz files of a machine: the checker run
 found other states or edges than before.
 _Avoid_: dead edge, stale spec
 
+**Role**:
+What an element is to a screen reader, such as `button`, `link` or
+`textbox`: its `role` attribute, or the role of its tag.
+`Silica.Accessibility` computes it from the view.
+_Avoid_: kind, type of element
+
+**Accessible name**:
+The name of an element for a screen reader, such as "Save" for a button: from
+`aria-labelledby`, `aria-label`, a `label`, `alt`, the content or `title`.
+Tests find elements by their role and accessible name.
+_Avoid_: label (a `label` element is one source of the name), text
+
+**Text view**:
+A view as text, one line per element that has a role or a handler, with its
+name, its states and its handlers (`Silica.View_text`). An agent or a reviewer
+reads and compares it with no browser.
+_Avoid_: snapshot (a snapshot is a state of a machine), DOM dump
+
 ## Navigation
 
 **Page**:
