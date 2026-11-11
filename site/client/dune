@@ -45,6 +45,8 @@
     app.css))))
 
 (rule
+ (enabled_if
+  (= %{profile} release))
  (targets
   (dir dist)
   meta.json)
@@ -67,4 +69,33 @@
     --entry-names=[name]-[hash]
     --chunk-names=[name]-[hash]
     --metafile=meta.json)
+   (run node %{dep:../../server/precompress.ts} dist))))
+
+(rule
+ (enabled_if
+  (<> %{profile} release))
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  app.css
+  package.json
+  (source_tree node_modules))
+ (action
+  (progn
+   (run
+    node_modules/esbuild/bin/esbuild
+    out/site/client/client_main.mjs
+    app.css
+    --bundle
+    --format=esm
+    --minify=%{env:SILICA_MINIFY=true}
+    --splitting
+    --outdir=dist
+    --entry-names=[name]-[hash]
+    --chunk-names=[name]-[hash]
+    --metafile=meta.json
+    --sourcemap
+    --sources-content=false)
    (run node %{dep:../../server/precompress.ts} dist))))

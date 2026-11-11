@@ -11,6 +11,8 @@
  (libraries silica_example_app_melange silica.browser silica.json-melange))
 
 (rule
+ (enabled_if
+  (= %{profile} release))
  (targets
   (dir dist)
   meta.json)
@@ -27,3 +29,25 @@
    --outdir=dist
    --entry-names=[name]-[hash]
    --metafile=meta.json)))
+
+(rule
+ (enabled_if
+  (<> %{profile} release))
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  package.json
+  (source_tree node_modules))
+ (action
+  (run
+   node_modules/esbuild/bin/esbuild
+   out/example/client/client_main.mjs
+   --bundle
+   --format=esm
+   --outdir=dist
+   --entry-names=[name]-[hash]
+   --metafile=meta.json
+   --sourcemap
+   --sources-content=false)))

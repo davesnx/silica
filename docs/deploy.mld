@@ -6,8 +6,8 @@ built on [silica.adapter] does the same; the commands name the site.
 
 {1:build The production build}
 
-[dune build] makes the production build: the client is minified, split into
-an entry, shared chunks and the chunks of lazy routes (see
+[dune build --profile release] makes the production build: the client is
+minified, split into an entry, shared chunks and the chunks of lazy routes (see
 {!page-router.lazy}), and each file gets a [.br] (brotli 11) and a [.gz] copy
 next to it. The server sends the copy that the browser accepts for hashed
 files, with [vary: accept-encoding]. The esbuild rule of the site:
@@ -21,9 +21,29 @@ From [site/client/dune]:
     --chunk-names=[name]-[hash]
 ]}
 
-[SILICA_MINIFY=false dune build] gives the debug build, not minified, with the
-same file names. [dune test] checks the size of the production build against
-its budgets (see {!page-performance}); it skips that check for a debug build.
+[dune build] without [--profile release] is the development build: the
+same files, and a source map next to each one ([client_main-<hash>.js.map]).
+Each bundle ends with a [sourceMappingURL] comment, so the browser shows the
+stack frames of an error in the Melange output files, such as
+[out/site/client/client_main.mjs], which keep the OCaml names. The maps do not
+contain the sources; the browser developer tools show file and line. The
+release build has no maps and no [sourceMappingURL] comment. The development
+rule of the site adds two flags:
+
+From [site/client/dune]:
+{@dune skip[
+    --metafile=meta.json
+    --sourcemap
+    --sources-content=false)
+]}
+
+Melange 7.0.1 writes no source maps of its own ([melc --help] has no such
+flag), so a frame stops at the [.mjs] file, not at the [.ml] or [.mlx] line.
+
+[SILICA_MINIFY=false dune build] gives the debug build: not minified, with
+source maps and the same file names. [dune test] checks the size of the
+minified build against its budgets (see {!page-performance}); it skips that
+check for a debug build.
 
 The server does not compress HTML pages: the switch has no zlib binding, and
 pages are [private, no-store], so they cannot be compressed ahead. Put a proxy
@@ -137,9 +157,11 @@ there, because its Remote calls only read: the export renders every page on the
 server and writes the answers of the calls as files.
 
 {@sh[
-dune build @all
-dune exec site/export/export.exe -- --out _build/site-static
+dune build --profile release @all
+dune exec --profile release site/export/export.exe -- --out _build/site-static
 ]}
+
+Without [--profile release], the export also copies the source maps.
 
 The directory has [index.html], [docs.html], [docs/<page>.html],
 [components.html], [components/<name>.html], [404.html], the hashed files in
