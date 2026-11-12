@@ -1,5 +1,7 @@
 (rule
  (alias runtest)
+ (enabled_if
+  (= %{profile} release))
  (deps
   budget.ts
   budgets.json
@@ -61,6 +63,7 @@
   (run
    node
    no_dev_client.ts
+   client
    linear
    %{project_root}/linear/client/dist
    site
@@ -75,4 +78,55 @@
   (ignore-stderr
    (with-accepted-exit-codes
     1
-    (run node no_dev_client.ts devtools %{project_root}/devtools/dist)))))
+    (run node no_dev_client.ts client devtools %{project_root}/devtools/dist)))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{profile} release))
+ (deps
+  no_dev_client.ts
+  %{project_root}/linear/client/dist
+  %{project_root}/site/client/dist
+  %{project_root}/example/client/dist)
+ (action
+  (run
+   node
+   no_dev_client.ts
+   handoff
+   linear
+   %{project_root}/linear/client/dist
+   site
+   %{project_root}/site/client/dist
+   example
+   %{project_root}/example/client/dist)))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (<> %{profile} release))
+ (deps no_dev_client.ts %{project_root}/example/client/dist)
+ (action
+  (ignore-stderr
+   (with-accepted-exit-codes
+    1
+    (run
+     node
+     no_dev_client.ts
+     handoff
+     example
+     %{project_root}/example/client/dist)))))
+
+(rule
+ (alias runtest)
+ (deps
+  dev_bundle.ts
+  codec_markers.json
+  %{project_root}/linear/client_dev/dist)
+ (action
+  (run
+   node
+   dev_bundle.ts
+   codec_markers.json
+   linear
+   %{project_root}/linear/client_dev/dist)))

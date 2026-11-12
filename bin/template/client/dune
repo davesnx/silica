@@ -52,4 +52,5 @@
    --metafile=meta.json
    --log-level=warning
    --sourcemap
-   --sources-content=false)))
+   --sources-content=false
+   --inject:out/node_modules/silica.browser/hot_reload.mjs)))

@@ -35,6 +35,28 @@ the `[@@deriving state_shape]` and `[@@deriving event_shape]` derivers make
 them.
 _Avoid_: schema, state names (as the name of the value)
 
+**Fingerprint**:
+The digest of a state type and every type it mentions, made by
+`[@@deriving state_shape]` (and `[@@deriving fingerprint]` for the types it
+mentions) in a development build, and kept in the shape. Two equal fingerprints
+mean the two builds compiled the same declarations, so a hot reload may give the
+old snapshot to the new code. A type the deriver cannot see gives no
+fingerprint, only a reason.
+_Avoid_: type hash, version
+
+**Instance path**:
+The name of an instance in its tree: the slots from the root, as in
+`router/:home/2:todo` (`Instance.cell_path`). The transition log, the handoff
+and the tools name instances by it.
+_Avoid_: instance id (the number in timer ids)
+
+**Handoff**:
+What a hot reload carries from the running page to the new code: the snapshot of
+each instance by instance path, with its fingerprint, and the instance ids of
+the Live islands (`Silica.Handoff`). An instance with an equal fingerprint
+resumes (`Machine.resume`); another one starts again, with the reason shown.
+_Avoid_: saved state, hot state
+
 **Event name**:
 The name of an event, from the event shape of its machine
 (`Machine.event_name`). The checker names the edges of the spec with it.

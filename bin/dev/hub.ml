@@ -7,10 +7,11 @@ type t = {
   mutable clients : client list;
   mutable build : Dev_event.t option;
   mutable crash : Dev_event.t option;
+  report : Dev_event.t -> unit;
 }
 
-let create () =
-  { lock = Mutex.create (); clients = []; build = None; crash = None }
+let create ?(report = ignore) () =
+  { lock = Mutex.create (); clients = []; build = None; crash = None; report }
 
 let send client frame =
   Mutex.protect client.write_lock (fun () ->
@@ -28,7 +29,7 @@ let remember hub event =
       hub.crash <- Some event
   | Server_started _ ->
       hub.crash <- None
-  | Listening _ | Reload _ ->
+  | Listening _ | Reload _ | Hot_reload _ ->
       ()
 
 let publish hub event =
@@ -71,16 +72,19 @@ let read_exactly socket count =
   in
   loop 0
 
-let rec serve client =
+let rec serve hub client =
   match Ws.read_message ~max:65536 ~read:(read_exactly client.socket) with
   | Ok (Some (Ws.Ping payload)) ->
       ignore (send client (Ws.encode (Ws.Pong payload)));
-      serve client
+      serve hub client
   | Ok (Some (Ws.Close _)) ->
       ignore
         (send client (Ws.encode (Ws.Close { code = Some 1000; reason = "" })))
-  | Ok (Some (Ws.Text _ | Ws.Binary _ | Ws.Pong _)) ->
-      serve client
+  | Ok (Some (Ws.Text text)) ->
+      Option.iter hub.report (Dev_event.of_browser text);
+      serve hub client
+  | Ok (Some (Ws.Binary _ | Ws.Pong _)) ->
+      serve hub client
   | Ok None | Error _ ->
       ()
 
@@ -119,7 +123,7 @@ let attach hub socket (head : Http_head.t) =
               current
           with Unix.Unix_error _ -> ()
       );
-      serve client;
+      serve hub client;
       Mutex.protect hub.lock (fun () ->
           hub.clients <- List.filter (fun other -> other != client) hub.clients
       )

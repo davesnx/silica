@@ -8,6 +8,7 @@ type toast = {
   description : string option;
   priority : priority;
 }
+[@@deriving fingerprint]
 
 type classes = {
   viewport : string;

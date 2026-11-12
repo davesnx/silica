@@ -49,8 +49,9 @@ nothing.
 {1:dev Development: silica dev}
 
 [silica dev] runs an app while you edit it. One command builds the app on
-each save, starts the server again, reloads the page, and shows compile errors
-in the page. An agent with no browser reads the same events as JSON lines.
+each save, starts the server again, swaps the new code into the page and keeps
+the state of its machines (hot reload), and shows compile errors in the page.
+An agent with no browser reads the same events as JSON lines.
 
 {2:dev-run Run}
 
@@ -85,9 +86,10 @@ In this repository, run the site with
   that arrives while the server starts waits for it, at most 10 s. When no
   server runs, a page shows the build state and reloads when the server is
   up.
-- It tells the page what changed: a new script reloads the page; a new
-  stylesheet alone replaces the [<link>] in place; a change to the server
-  alone reloads nothing, and the Live sockets connect again by themselves.
+- It tells the page what changed: a new script is swapped in with no page
+  load (see Hot reload below); a new stylesheet alone replaces
+  the [<link>] in place; a change to the server alone reloads nothing, and the
+  Live sockets connect again by themselves.
 
 The server gets this environment: [PORT], [SILICA_SECRET] (made once and kept
 in [_build/silica-dev/secret]), [SILICA_ORIGINS], [SILICA_STATIC],
@@ -95,9 +97,10 @@ in [_build/silica-dev/secret]), [SILICA_ORIGINS], [SILICA_STATIC],
 With [SILICA_DEV_STATE], {!Silica_server.dev_of_env} gives [Some _]: the
 server saves its sessions, its Live islands and its kept values at SIGTERM and
 reads them at start (see {!Silica_server.Make.shutdown}), so the cookie, the
-CSRF token and the state of each island stay across a restart. A full page
-reload makes new island instances, so an island starts again after it. In
-dev mode each HTML page also loads [/_silica/dev/client.js], the dev client.
+CSRF token and the state of each island stay across a restart. A hot reload
+keeps the instance id of each island, so an island keeps its state; a full
+page reload makes new island instances. In dev mode each HTML page also loads
+[/_silica/dev/client.js], the dev client.
 
 The server of [silica new] reads all of these. A server of your own must read
 [PORT], [SILICA_STATIC], [SILICA_METAFILE], use
@@ -121,6 +124,28 @@ The dev client connects to [ws://<host>/_silica/dev]. It shows:
 The dev client is a separate script, served by [silica dev]; it is never in
 the app bundle. A test in [test/budget] checks the bundles for it.
 
+{2:dev-hot Hot reload}
+
+After a build that changed the client, the page stops the running code (its
+timers, calls, Live sockets, held sources and listeners), keeps the snapshot of
+each machine instance by its instance path, loads the new bundle, and resumes
+every instance whose state type did not change: the new view shows, the DOM
+nodes that did not change stay (so focus and scroll stay), and the timers and
+calls of each snapshot start again (a timer with its full delay, a call is
+sent again). An instance starts again, and a panel in the page names it with
+the reason, when its state type changed, when it has no fingerprint, when its
+state holds a function, or when the new view raises on the old snapshot. The
+other instances keep their state. When the new code does not start within 5
+s, the page reloads.
+
+A machine keeps its state only when its state type has a fingerprint:
+[[@@deriving state_shape]] gives one; a type from another module needs
+[[@@deriving fingerprint]] in its own module; a shape written by hand passes
+[~fingerprint] (see {!Silica.Fingerprint}). The hot reload code is in the
+development bundle only: the dev esbuild rule of the client injects
+[out/node_modules/silica.browser/hot_reload.mjs], and a test checks that the
+release bundles have none of it.
+
 {2:dev-json Events as JSON}
 
 With [--json], stdout has one JSON object per line. The server output goes to
@@ -138,7 +163,14 @@ stderr. The events:
 - [{"t":"server","status":"crashed","code":"exit 2","output":"..."}]: the
   server stopped. [output] is its last 60 lines. [silica dev] starts it again
   after the next build that succeeds, not before.
-- [{"t":"reload","what":"page"}], or ["css"] with the swapped stylesheets.
+- [{"t":"reload","what":"code","entry":"/static/client_main-HASH.js","css":[...]}]:
+  the page swaps in the new bundle; ["page"] reloads the page; ["css"] swaps
+  the stylesheets only.
+- [{"t":"hot-reload","status":"kept","ms":26,"kept":[...],"restarted":[...]}]:
+  the page resumed the new code in [ms]. [kept] lists the instance paths that
+  kept their state; each [restarted] entry has [path], [machine] and [reason],
+  such as ["its state type changed"]. [{"t":"hot-reload","status":"reloaded","reason":...}]:
+  the page fell back to a full reload.
 
 An edit, a compile error and its fix of the example app:
 
@@ -146,7 +178,8 @@ An edit, a compile error and its fix of the example app:
 {"t":"build","status":"started"}
 {"t":"build","status":"ok"}
 {"t":"server","status":"restarted","pid":784319,"ms":20}
-{"t":"reload","what":"page"}
+{"t":"reload","what":"code","entry":"/static/client_main-PN2V6BRI.js","css":[]}
+{"t":"hot-reload","status":"kept","ms":26,"kept":["router","router/:about"],"restarted":[]}
 {"t":"build","status":"started"}
 {"t":"build","status":"failed","errors":[{"file":"example/app/shared/example_about.mlx","line":20,"col":20,"end_line":20,"end_col":32,"severity":"error","message":"Unbound constructor About_broken","excerpt":[[18,"    (Node.element \"h1\""],[19,"       [ Attr.bool \"data-silica-route-focus\" true ]"],[20,"       [ Node.text About_broken ]"],[21,"    )"],[22,"    (Example_nav.make ())"]]}]}
 {"t":"build","status":"started"}
@@ -155,7 +188,8 @@ v}
 
 The fix gave the same files as the build before the error, so the server did
 not start again. An agent waits for [ok] and, after a change to the server or
-the client, for [restarted].
+the client, for [restarted], and after a change to the client for
+[hot-reload] with the instances kept and restarted.
 
 {2:dev-stop Stop}
 

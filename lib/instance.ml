@@ -31,6 +31,18 @@ type context = {
   observer : observer option;
   mutable view : message Node.t option;
   mutable current : message option;
+  mutable resume : resume option;
+}
+
+and resume = {
+  take : 'p 's 'e. ('p, 's, 'e) asked -> ('s * 'e Action.host list) option;
+}
+
+and ('p, 's, 'e) asked = {
+  above : packed option;
+  at : segment list;
+  starting : ('p, 's, 'e) Node.component;
+  given : 'p;
 }
 
 and ('p, 's, 'e) cell = {
@@ -337,6 +349,44 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
 
 let to_message cause cell event = { run = (fun () -> step ~cause cell event) }
 
+let percent_encode key =
+  let buffer = Buffer.create (String.length key) in
+  String.iter
+    (function
+      | ('%' | '/' | ':' | '#' | '.') as char ->
+          let code = Char.code char in
+          Buffer.add_char buffer '%';
+          Buffer.add_char buffer "0123456789ABCDEF".[code lsr 4];
+          Buffer.add_char buffer "0123456789ABCDEF".[code land 15]
+      | char ->
+          Buffer.add_char buffer char
+      )
+    key;
+  Buffer.contents buffer
+
+let child_path parent slot id =
+  parent ^ "/"
+  ^ String.concat "."
+      (List.rev_map
+         (function
+           | Index index ->
+               string_of_int index
+           | Key key ->
+               "#" ^ percent_encode key
+           )
+         slot
+      )
+  ^ ":" ^ id
+
+let rec cell_path : type p s e. (p, s, e) cell -> string =
+ fun cell ->
+  let id = Machine.id cell.component.machine in
+  match cell.parent with
+  | None ->
+      id
+  | Some (Packed parent) ->
+      child_path (cell_path parent) cell.slot id
+
 let create : type p s e.
     context ->
     slot:segment list ->
@@ -360,7 +410,21 @@ let create : type p s e.
   | Some _ | None ->
       Hashtbl.replace context.machines id (Type_id type_id)
   );
-  let snapshot, actions = Machine.start component.machine props in
+  let taken =
+    match context.resume with
+    | None ->
+        None
+    | Some resume ->
+        resume.take
+          { above = parent; at = slot; starting = component; given = props }
+  in
+  let snapshot, actions =
+    match taken with
+    | Some started ->
+        started
+    | None ->
+        Machine.start machine props
+  in
   context.next_id <- context.next_id + 1;
   let cell =
     {
@@ -711,7 +775,7 @@ let take_actions context =
   context.actions <- [];
   actions
 
-let mount_with_props ?(dev = false) ?on_error ?observe ~props
+let mount_with_props ?(dev = false) ?on_error ?observe ?resume ~props
     (component : (_, _, _) Node.component) =
   let context =
     {
@@ -725,13 +789,14 @@ let mount_with_props ?(dev = false) ?on_error ?observe ~props
       observer = observe;
       view = None;
       current = None;
+      resume;
     }
   in
   let root = create context ~slot:[] ~parent:None component props in
   { context; root }
 
-let mount ?dev ?on_error ?observe component =
-  mount_with_props ?dev ?on_error ?observe ~props:() component
+let mount ?dev ?on_error ?observe ?resume component =
+  mount_with_props ?dev ?on_error ?observe ?resume ~props:() component
 
 let set_props tree props = set_cell_props tree.root props
 
@@ -756,48 +821,26 @@ let update tree message =
         settle (round + 1)
     in
     let node = settle 0 in
+    tree.context.resume <- None;
     tree.context.view <- Some node;
     (node, take_actions tree.context)
   )
 
 let message tree event = to_message Message tree.root event
 let route tree route event = to_message (Route route) tree.root event
-let percent_encode key =
-  let buffer = Buffer.create (String.length key) in
-  String.iter
-    (function
-      | ('%' | '/' | ':' | '#' | '.') as char ->
-          let code = Char.code char in
-          Buffer.add_char buffer '%';
-          Buffer.add_char buffer "0123456789ABCDEF".[code lsr 4];
-          Buffer.add_char buffer "0123456789ABCDEF".[code land 15]
-      | char ->
-          Buffer.add_char buffer char
-      )
-    key;
-  Buffer.contents buffer
-
-let rec cell_path : type p s e. (p, s, e) cell -> string =
- fun cell ->
-  let id = Machine.id cell.component.machine in
-  match cell.parent with
-  | None ->
-      id
-  | Some (Packed parent) ->
-      cell_path parent ^ "/"
-      ^ String.concat "."
-          (List.rev_map
-             (function
-               | Index index ->
-                   string_of_int index
-               | Key key ->
-                   "#" ^ percent_encode key
-               )
-             cell.slot
-          )
-      ^ ":" ^ id
 
 let path tree = cell_path tree.root
+
+let asked_component asked = asked.starting
+let asked_props asked = asked.given
+
+let asked_path asked =
+  let named = Machine.id asked.starting.machine in
+  match asked.above with
+  | None ->
+      named
+  | Some (Packed parent) ->
+      child_path (cell_path parent) asked.at named
 
 type inspected =
   | Inspected : {
@@ -909,6 +952,7 @@ let failure ?(dev = false) ?on_error exn =
       observer = None;
       view = None;
       current = None;
+      resume = None;
     }
     ("(none)", "") exn
 
@@ -925,3 +969,31 @@ let rec count_cell : type p s e. (p, s, e) cell -> int =
     1 cell.children
 
 let count tree = count_cell tree.root
+
+type running =
+  | Running : {
+      path : string;
+      machine : ('p, 's, 'e) Machine.t;
+      snapshot : 's;
+    }
+      -> running
+
+let running tree =
+  let rec collect : type p s e. (p, s, e) cell -> running list -> running list =
+   fun cell found ->
+    if cell.alive then
+      List.fold_left
+        (fun found (_, Packed child) -> collect child found)
+        (Running
+           {
+             path = cell_path cell;
+             machine = cell.component.machine;
+             snapshot = cell.snapshot;
+           }
+        :: found
+        )
+        cell.children
+    else
+      found
+  in
+  List.rev (collect tree.root [])

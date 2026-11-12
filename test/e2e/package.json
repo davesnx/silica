@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test --test-concurrency=1 e2e.test.ts linear.test.ts components.test.ts site.test.ts static.test.ts dev.test.ts trace.test.ts",
+    "test": "node --experimental-strip-types --test --test-concurrency=1 e2e.test.ts linear.test.ts components.test.ts site.test.ts static.test.ts dev.test.ts dev_apps.test.ts trace.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

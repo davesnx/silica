@@ -88,12 +88,23 @@ type 'a shape
     by its data: the name is [f] applied to the items of the tuple, such as
     [[@event_name_of fun value -> "select " ^ value]]. *)
 
-val shape : name:('a -> string) -> ?names:string list -> unit -> 'a shape
-(** [shape ~name ?names ()]. For states, [name] names the state of a snapshot in
-    the spec, the checker and the ids of timers and sources, and [names] lists
-    every name, for the checker to report the states that a run never reached.
-    For events, [name] names the event on the edges of the spec and in traces.
-*)
+val shape :
+  name:('a -> string) ->
+  ?names:string list ->
+  ?fingerprint:'a Fingerprint.t ->
+  unit ->
+  'a shape
+(** [shape ~name ?names ?fingerprint ()]. For states, [name] names the state of
+    a snapshot in the spec, the checker and the ids of timers and sources, and
+    [names] lists every name, for the checker to report the states that a run
+    never reached. For events, [name] names the event on the edges of the spec
+    and in traces.
+
+    [fingerprint] lets a hot reload keep the snapshots of the machine (see
+    {!Fingerprint}); [[@@deriving state_shape]] gives it in a development build,
+    and a shape written by hand takes the one of [[@@deriving fingerprint]] on
+    its state type. A machine with none starts again at each hot reload, unless
+    its initial snapshot equals the old one. *)
 
 val shape_name : 'a shape -> 'a -> string
 (** The name of the value. *)
@@ -160,6 +171,9 @@ val name : ('p, 's, 'e) t -> 's -> string
 
 val states : ('p, 's, 'e) t -> string list option
 (** The [names] of the shape of the machine. *)
+
+val fingerprint : ('p, 's, 'e) t -> 's Fingerprint.t option
+(** The [fingerprint] of the shape of the machine. *)
 
 val event_name : ('p, 's, 'e) t -> 'e -> string
 (** The name of the event by the [events] of the machine, or [""] when it has

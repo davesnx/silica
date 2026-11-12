@@ -301,7 +301,12 @@ let supervisor_tests =
         check bool "the page reloads after each start" true
           (List.length
              (List.filter
-                (function Dev_event.Reload Dev_event.Page -> true | _ -> false)
+                (function
+                  | Dev_event.Reload (Dev_event.Page | Dev_event.Code _) ->
+                      true
+                  | _ ->
+                      false
+                  )
                 (events recorder)
              )
           = 2
@@ -356,15 +361,35 @@ let supervisor_tests =
 
 let reload_tests =
   let open Alcotest in
-  let reload before after =
-    Supervisor.reload_of ~before:(Some before) ~after:(Some after)
+  let reload ?(entry = Some "dist/main-BBBB.js") before after =
+    Supervisor.reload_of ~entry ~before:(Some before) ~after:(Some after)
   in
   [
-    test_case "a new script reloads the page" `Quick (fun () ->
-        check bool "page" true
+    test_case "a new script loads the new entry and keeps the state" `Quick
+      (fun () ->
+        check bool "code" true
           (reload
              [ "dist/main-AAAA.js"; "dist/app-CCCC.css" ]
-             [ "dist/main-BBBB.js"; "dist/app-CCCC.css" ]
+             [ "dist/main-BBBB.js"; "dist/app-DDDD.css" ]
+          = Some
+              (Dev_event.Code
+                 {
+                   entry = "/static/main-BBBB.js";
+                   css =
+                     [
+                       {
+                         from = "/static/app-CCCC.css";
+                         target = "/static/app-DDDD.css";
+                       };
+                     ];
+                 }
+              )
+          )
+    );
+    test_case "a new script with no entry in the metafile reloads the page"
+      `Quick (fun () ->
+        check bool "page" true
+          (reload ~entry:None [ "dist/main-AAAA.js" ] [ "dist/main-BBBB.js" ]
           = Some Dev_event.Page
           )
     );
@@ -498,6 +523,34 @@ let hub_tests =
           | exception Unix.Unix_error (Unix.EAGAIN, _, _) ->
               true
           );
+        Unix.close socket;
+        Proxy.stop proxy
+    );
+    test_case "a hot reload report of the browser becomes a JSON line" `Quick
+      (fun () ->
+        let reports = ref [] in
+        let hub =
+          Hub.create ~report:(fun event -> reports := event :: !reports) ()
+        in
+        let proxy =
+          start_proxy ~on_dev_socket:(Hub.attach hub) (fun ~timeout:_ -> None)
+        in
+        let socket, _ = open_dev_socket (Proxy.port proxy) in
+        let send text =
+          Http_head.write socket (Ws.encode_masked ~mask:"abcd" (Ws.Text text))
+        in
+        send {|{"t":"hot-reload","status":"kept","ms":"slow"}|};
+        send "not json";
+        send
+          {|{"t":"hot-reload","status":"kept","ms":120,"kept":["app","app/0:counter"],"restarted":[{"path":"app/1:draft","machine":"draft","reason":"its state type changed"}],"extra":1}|};
+        send {|{"t":"hot-reload","status":"reloaded","reason":"no hook"}|};
+        wait_for "two reports" (fun () -> List.length !reports = 2);
+        check (list string) "lines"
+          [
+            {|{"t":"hot-reload","status":"kept","ms":120,"kept":["app","app/0:counter"],"restarted":[{"path":"app/1:draft","machine":"draft","reason":"its state type changed"}]}|};
+            {|{"t":"hot-reload","status":"reloaded","reason":"no hook"}|};
+          ]
+          (List.rev_map Dev_event.to_string !reports);
         Unix.close socket;
         Proxy.stop proxy
     );

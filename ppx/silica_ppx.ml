@@ -532,8 +532,9 @@ let rewrite_jsx =
   end
 
 let () =
-  Driver.register_transformation "silica.ppx"
-    ~preprocess_impl:rewrite_jsx#structure
+  Driver.register_transformation "silica.ppx" ~preprocess_impl:(fun structure ->
+      Type_fingerprint.scan (rewrite_jsx#structure structure)
+  )
 
 let () =
   ignore
@@ -541,6 +542,7 @@ let () =
       : Deriving.t * Deriving.t
       )
 let () = ignore (Routes.deriver : Deriving.t)
+let () = ignore (Type_fingerprint.deriver : Deriving.t)
 
 module Svg_names = Svg_names
 

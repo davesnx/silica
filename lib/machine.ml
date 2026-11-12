@@ -24,9 +24,15 @@ type resource =
   | Held of { id : string; name : string }
 
 type how = Unhandled | Kept | Entered
-type 's shape = { shape_name : 's -> string; shape_names : string list option }
+type 's shape = {
+  shape_name : 's -> string;
+  shape_names : string list option;
+  fingerprint : 's Fingerprint.t option;
+}
 
-let shape ~name ?names () = { shape_name = name; shape_names = names }
+let shape ~name ?names ?fingerprint () =
+  { shape_name = name; shape_names = names; fingerprint }
+
 let shape_name shape = shape.shape_name
 let shape_names shape = Option.value shape.shape_names ~default:[]
 
@@ -50,6 +56,7 @@ let id machine = machine.id
 let init machine = machine.init
 let name machine = machine.shape.shape_name
 let states machine = machine.shape.shape_names
+let fingerprint machine = machine.shape.fingerprint
 
 let event_name machine event =
   match machine.events with

@@ -71,7 +71,7 @@ let digest path =
   | exception Sys_error _ ->
       None
 
-let outputs metafile =
+let metafile_outputs metafile =
   match
     Json.of_string (In_channel.with_open_bin metafile In_channel.input_all)
   with
@@ -84,13 +84,30 @@ let outputs metafile =
       | `Assoc fields -> (
           match Option.map Json.classify (List.assoc_opt "outputs" fields) with
           | Some (`Assoc outputs) ->
-              Some (List.map fst outputs)
+              Some outputs
           | _ ->
               None
         )
       | _ ->
           None
     )
+
+let outputs metafile = Option.map (List.map fst) (metafile_outputs metafile)
+
+let entry_of metafile =
+  Option.bind (metafile_outputs metafile) (fun outputs ->
+      List.find_map
+        (fun (name, output) ->
+          match Json.classify output with
+          | `Assoc fields
+            when Filename.check_suffix name ".js"
+                 && List.mem_assoc "entryPoint" fields ->
+              Some name
+          | _ ->
+              None
+        )
+        outputs
+  )
 
 let without_hash path =
   let base = Filename.remove_extension path in
@@ -102,7 +119,7 @@ let without_hash path =
 
 let url path = "/static/" ^ Filename.basename path
 
-let reload_of ~before ~after =
+let reload_of ~entry ~before ~after =
   let named suffix names =
     List.filter (fun name -> Filename.check_suffix name suffix) names
   in
@@ -110,9 +127,7 @@ let reload_of ~before ~after =
   | Some before, Some after ->
       let old_sheets = named ".css" before
       and new_sheets = named ".css" after in
-      if named ".js" before <> named ".js" after then
-        Some Dev_event.Page
-      else if
+      if
         List.sort compare (List.map without_hash old_sheets)
         <> List.sort compare (List.map without_hash new_sheets)
       then
@@ -133,7 +148,13 @@ let reload_of ~before ~after =
             )
             old_sheets
         in
-        if swaps = [] then
+        if named ".js" before <> named ".js" after then
+          match entry with
+          | Some entry ->
+              Some (Dev_event.Code { entry = url entry; css = swaps })
+          | None ->
+              Some Dev_event.Page
+        else if swaps = [] then
           None
         else
           Some (Dev_event.Stylesheets swaps)
@@ -303,7 +324,11 @@ let built supervisor =
       in
       if (not running) || supervisor.digests <> Some (server, metafile) then (
         let after = outputs supervisor.metafile in
-        let reload = reload_of ~before:supervisor.outputs ~after in
+        let reload =
+          reload_of
+            ~entry:(entry_of supervisor.metafile)
+            ~before:supervisor.outputs ~after
+        in
         supervisor.digests <- Some (server, metafile);
         supervisor.outputs <- after;
         restart supervisor ~reload

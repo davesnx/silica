@@ -28,22 +28,23 @@ stack frames of an error in the Melange output files, such as
 [out/site/client/client_main.mjs], which keep the OCaml names. The maps do not
 contain the sources; the browser developer tools show file and line. The
 release build has no maps and no [sourceMappingURL] comment. The development
-rule of the site adds two flags:
+rule of the site adds three flags: the source maps, and the hot reload code of
+[silica dev], which only a development bundle holds:
 
 From [site/client/dune]:
 {@dune skip[
-    --metafile=meta.json
     --sourcemap
-    --sources-content=false)
+    --sources-content=false
+    --inject:out/node_modules/silica.browser/hot_reload.mjs)
 ]}
 
 Melange 7.0.1 writes no source maps of its own ([melc --help] has no such
 flag), so a frame stops at the [.mjs] file, not at the [.ml] or [.mlx] line.
 
 [SILICA_MINIFY=false dune build] gives the debug build: not minified, with
-source maps and the same file names. [dune test] checks the size of the
-minified build against its budgets (see {!page-performance}); it skips that
-check for a debug build.
+source maps and the same file names. [dune test --profile release] checks the
+size of the minified build against its budgets (see {!page-performance}); it
+skips that check for a debug build.
 
 The server does not compress HTML pages: the switch has no zlib binding, and
 pages are [private, no-store], so they cannot be compressed ahead. Put a proxy

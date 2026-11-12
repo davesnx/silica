@@ -5,10 +5,20 @@ module type CHANGE = sig
   val apply : value -> change -> value
 end
 
+type ('value, 'change) state = {
+  confirmed : 'value;
+  pending : (int * 'change) list;
+}
+
+let fingerprint (Fingerprint.Fingerprint value : 'value Fingerprint.t)
+    (Fingerprint.Fingerprint change : 'change Fingerprint.t) :
+    ('value, 'change) state Fingerprint.t =
+  Fingerprint (Silica ("Optimistic.state", [ value; change ]))
+
 module type OPTIMISTIC = sig
   type value
   type change
-  type t
+  type t = (value, change) state
 
   val make : value -> t
   val apply : id:int -> change -> t -> t
@@ -24,7 +34,7 @@ end
 module Make (Change : CHANGE) = struct
   type value = Change.value
   type change = Change.change
-  type t = { confirmed : value; pending : (int * change) list }
+  type t = (value, change) state
 
   let make confirmed = { confirmed; pending = [] }
 

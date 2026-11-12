@@ -25,7 +25,7 @@ The commands:
 | `dune exec ./check/main.exe -- --only ID` | Runs only the entry `ID`. `silica check` has no `--only`. | as `silica check` |
 | `dune exec ./check/main.exe -- golden check/spec` | Compares the golden files with what the checks find. `dune test` runs it. Add `--write` to accept a change. | 0 no change, 1 drift |
 | `dune exec ./check/main.exe -- rules` | Lists every built-in rule with its message and hint. Add `--json` for JSON. | 0 |
-| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart and reload (see [Development: silica dev](../../../docs/install.mld)). | runs until stopped |
+| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart, reload and hot reload, with the instances kept and restarted (see [Development: silica dev](../../../docs/install.mld)). | runs until stopped |
 
 ## The loop
 
@@ -502,5 +502,4 @@ These are not on main yet. This section will describe them when they land:
 
 - `silica conform`: check a trace recorded in a running app against the spec.
 - `silica check --graphs DIR`: a graph of each checked machine. Today it exits 3 with "--graphs is not available yet".
-- Hot reload in `silica dev`.
 - `silica inspect`.

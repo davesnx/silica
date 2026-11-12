@@ -676,6 +676,59 @@ let rec adopt h ~dev ~typed parent news =
     )
     (children parent)
 
+let compatible namespace dom v =
+  match v.kind with
+  | Txt _ ->
+      Dom.node_type dom = 3
+  | Elt { tag; _ } ->
+      Dom.node_type dom = 1
+      && lowercase (Dom.tag_name dom) = lowercase tag
+      && own namespace tag = Svg
+         = (Dom.opt (Dom.namespace_uri dom) = Some svg_namespace)
+
+let rec adopt_changed h namespace parent news =
+  List.iter
+    (fun dom -> if is_marker dom then Dom.remove_child parent dom)
+    (children parent);
+  let doms = Array.of_list (children parent) in
+  Array.iteri
+    (fun i v ->
+      if i < Array.length doms && compatible namespace doms.(i) v then (
+        let dom = doms.(i) in
+        v.dom <- Some dom;
+        match v.kind with
+        | Txt text ->
+            if Dom.node_value dom <> text then Dom.set_node_value dom text
+        | Elt { tag; attrs; children = inner; channel; _ } ->
+            let names = List.filter_map attr_name attrs in
+            Array.iter
+              (fun name ->
+                if not (List.mem name names) then drop_attr tag dom name
+              )
+              (Dom.attribute_names dom);
+            List.iter (set_attr tag dom) attrs;
+            if channel = None then
+              adopt_changed h (inside namespace tag) dom inner;
+            Option.iter (h.start dom) channel;
+            if viewport_link tag attrs then h.viewport dom
+      ) else if i < Array.length doms then (
+        Dom.insert_before parent (create h namespace v)
+          (Js.Nullable.return doms.(i));
+        remove_node h parent doms.(i)
+      ) else
+        Dom.append_child parent (create h namespace v)
+    )
+    news;
+  Array.iteri
+    (fun i dom -> if i >= Array.length news then remove_node h parent dom)
+    doms
+
+type adopter = {
+  adopt : 'e. hooks * namespace * Dom.node * 'e vnode array -> unit;
+}
+
+let adopter : adopter option ref = ref None
+
 type 'e t = {
   root : Dom.node;
   hooks : hooks;
@@ -704,7 +757,7 @@ let make ?(hooks = no_hooks) ?(adopt = false) ?(dev = false) ?on_portal root =
 
 let clear t = List.iter (remove_node t.hooks t.root) (children t.root)
 
-let first_paint t nw =
+let hydrate t nw =
   t.adopting <- false;
   if Dom.opt (Dom.first_child t.root) = None then (
     patch_children t.hooks t.namespace t.root [||] nw;
@@ -728,6 +781,16 @@ let first_paint t nw =
           patch_children t.hooks t.namespace t.root [||] nw;
           t.vnodes <- nw
         )
+
+let first_paint t nw =
+  match !adopter with
+  | Some { adopt } ->
+      adopter := None;
+      t.adopting <- false;
+      adopt (t.hooks, t.namespace, t.root, nw);
+      t.vnodes <- nw
+  | None ->
+      hydrate t nw
 
 let portal_parent target =
   match target with

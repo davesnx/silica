@@ -159,10 +159,12 @@ accepted at most 64 connections, so 1000 sessions could not connect.
 
 {1:budgets Budgets}
 
-- Size: [dune test] fails when a production bundle grows over its brotli
-  budget ([test/budget/budgets.json]: the site first load, its lazy chunks and
-  CSS, mini Linear, the keyed rows app). The budgets are the sizes above plus
-  about 2 percent. A debug build ([SILICA_MINIFY=false]) skips the check.
+- Size: [dune test --profile release] fails when a production bundle grows
+  over its brotli budget ([test/budget/budgets.json]: the site first load, its
+  lazy chunks and CSS, mini Linear, the keyed rows app). The budgets are the
+  sizes above plus about 2 percent. A development build carries the hot reload
+  code of [silica dev], so the check runs on the release profile only; a debug
+  build ([SILICA_MINIFY=false]) skips it.
 - Time: [dune build @bench --force] runs the server benchmarks, [wrk] and the
   browser benchmarks of Silica and plain JavaScript, and fails when a number
   is over its budget in [bench/budgets.json]. The time budgets are about three

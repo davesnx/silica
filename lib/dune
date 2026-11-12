@@ -5,3 +5,13 @@
  (flags
   (:standard -w @4))
  (libraries silica.json))
+
+(rule
+ (target silica_interfaces.ml)
+ (deps
+  (glob_files *.mli)
+  optimistic.ml)
+ (action
+  (with-stdout-to
+   %{target}
+   (run gen/interface_digest.exe %{version:melange} %{deps}))))

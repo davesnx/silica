@@ -12,3 +12,6 @@ val of_string : string -> t
 val to_string : t -> string
 (** The empty path prints as ["/"]. Everything except [A-Za-z0-9-._~] is
     percent-encoded. *)
+
+val fingerprint : t Fingerprint.t
+(** The fingerprint of {!t} (see {!Fingerprint}). *)

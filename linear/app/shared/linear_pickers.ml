@@ -6,7 +6,7 @@ type picker =
   | Priority_picker
   | Assignee_picker
   | Labels_picker
-[@@deriving json]
+[@@deriving json, fingerprint]
 
 let assignee_label = function
   | Some user ->

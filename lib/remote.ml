@@ -31,3 +31,11 @@ type request = Endpoint.request =
   | Request : ('i, 'o, 'x) endpoint * 'i -> request
 
 let request endpoint input = Request (endpoint, input)
+
+let error_fingerprint : error Fingerprint.t =
+  Fingerprint (Silica ("Remote.error", []))
+
+let answer_fingerprint (Fingerprint.Fingerprint output : _ Fingerprint.t)
+    (Fingerprint.Fingerprint rejected : _ Fingerprint.t) :
+    (_, _) answer Fingerprint.t =
+  Fingerprint (Silica ("Remote.answer", [ output; rejected ]))

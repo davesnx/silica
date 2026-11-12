@@ -2,6 +2,7 @@ open Silica
 open Linear_model
 
 type request = { number : int; base : int; change : Change.t }
+[@@deriving fingerprint]
 
 let replace (issue : Issue.t) issues =
   List.map
@@ -13,20 +14,25 @@ let replace (issue : Issue.t) issues =
     )
     issues
 
-module Edits = Optimistic.Make (struct
-  type value = Issue.t list
-  type change = request
+module Edits = struct
+  include Optimistic.Make (struct
+    type value = Issue.t list
+    type change = request
 
-  let apply issues (r : request) =
-    List.map
-      (fun (i : Issue.t) ->
-        if i.number = r.number then
-          { (Change.apply i r.change) with version = i.version + 1 }
-        else
-          i
-      )
-      issues
-end)
+    let apply issues (r : request) =
+      List.map
+        (fun (i : Issue.t) ->
+          if i.number = r.number then
+            { (Change.apply i r.change) with version = i.version + 1 }
+          else
+            i
+        )
+        issues
+  end)
+
+  let fingerprint =
+    [%fingerprint Optimistic.fingerprint Issues.fingerprint request_fingerprint]
+end
 
 type t = {
   edits : Edits.t;
@@ -34,6 +40,7 @@ type t = {
   requests : (int * request) list;
   next_id : int;
 }
+[@@deriving fingerprint]
 
 type outcome = Saved | Conflict of Issue.t | Failed of string
 

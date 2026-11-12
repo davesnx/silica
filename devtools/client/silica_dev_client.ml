@@ -16,15 +16,18 @@ type status =
   | Failed of error list
   | Ready
 
+type content
+type socket
+type message
+type restarted = { path : string; machine : string; reason : string }
+
 type state = {
   mutable status : status;
   mutable crash : (string * string) option;
   mutable lost : bool;
+  mutable restarted : restarted list;
+  mutable socket : socket option;
 }
-
-type content
-type socket
-type message
 
 external set_timeout : (unit -> unit) -> int -> unit = "setTimeout"
 external web_socket : string -> socket = "WebSocket" [@@mel.new]
@@ -34,6 +37,7 @@ external listen : socket -> string -> (message -> unit) -> unit
 [@@mel.send]
 
 external data : message -> string = "data" [@@mel.get]
+external send : socket -> string -> unit = "send" [@@mel.send]
 external set_inner_html : content -> string -> unit = "innerHTML" [@@mel.set]
 
 let socket_url : unit -> string =
@@ -67,6 +71,54 @@ let swap_stylesheet : string -> string -> unit =
   });
 }|}]
 
+let hot_swap : string -> (string -> unit) -> (string -> unit) -> unit =
+  [%mel.raw
+    {|function (entry, report, show) {
+  var dev = globalThis.__silica_dev;
+  var reload = function (reason) {
+    report(JSON.stringify({ t: "hot-reload", status: "reloaded", reason: reason }));
+    location.reload();
+  };
+  if (!dev || typeof dev.suspend !== "function") { reload("the page has no hot reload hook"); return }
+  var started = performance.now();
+  var finished = false;
+  var timer = null;
+  var resumed = function (event) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    globalThis.removeEventListener("silica-resumed", resumed);
+    var result = JSON.parse(event.detail);
+    var message = JSON.stringify({
+      t: "hot-reload", status: "kept", ms: Math.round(performance.now() - started),
+      kept: result.kept, restarted: result.restarted
+    });
+    report(message);
+    show(message);
+  };
+  var fail = function (reason) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    globalThis.removeEventListener("silica-resumed", resumed);
+    reload(reason);
+  };
+  timer = setTimeout(function () { fail("the new code did not start within 5 s") }, 5000);
+  globalThis.addEventListener("silica-resumed", resumed);
+  try { globalThis.__silica_handoff = dev.suspend() }
+  catch (error) { fail("suspend failed: " + error); return }
+  globalThis.__silica_swaps = (globalThis.__silica_swaps || 0) + 1;
+  import(entry + "#swap-" + globalThis.__silica_swaps).catch(function (error) { fail("the new code failed to load: " + error) });
+}|}]
+
+let on_close_press : content -> (unit -> unit) -> unit =
+  [%mel.raw
+    {|function (content, close) {
+  content.addEventListener("click", function (event) {
+    if (event.target && event.target.closest && event.target.closest("[data-silica-dev-close]")) close();
+  });
+}|}]
+
 let css =
   {|
 .indicator { position: fixed; right: 12px; bottom: 12px; z-index: 2147483647; font: 12px/1.4 ui-monospace, monospace; background: #1f2328; color: #f0f3f6; padding: 4px 8px; border-radius: 4px; }
@@ -80,6 +132,10 @@ let css =
 .line { white-space: pre; padding: 0 12px; }
 .line[data-error] { background: #4a1d1d; }
 .output { white-space: pre-wrap; background: #0d1117; padding: 8px 12px; margin: 0; }
+.restarted { position: fixed; left: 12px; bottom: 12px; z-index: 2147483647; max-width: 640px; font: 12px/1.5 ui-monospace, monospace; background: #1f2328; color: #f0f3f6; padding: 8px 12px; border-radius: 4px; }
+.restarted h2 { font-size: 12px; margin: 0 0 4px; color: #ffa657; }
+.restarted ul { margin: 0 0 4px; padding-left: 16px; }
+.restarted button { font: inherit; }
 |}
 
 let field name json =
@@ -253,12 +309,65 @@ let view state : unit Node.t =
             [ text_element "pre" [ Attr.string "class" "output" ] output ];
         ]
   in
-  Node.list (status @ crash)
+  let restarted =
+    match state.restarted with
+    | [] ->
+        []
+    | restarted ->
+        [
+          Node.element "div"
+            [
+              Attr.string "class" "restarted";
+              Attr.string "role" "status";
+              Attr.string "data-silica-dev-restarted" "";
+            ]
+            [
+              text_element "h2" [] "Hot reload: started again";
+              Node.element "ul" []
+                (List.map
+                   (fun restarted ->
+                     text_element "li"
+                       [ Attr.string "data-path" restarted.path ]
+                       (restarted.machine ^ " (" ^ restarted.path
+                      ^ ") started again: " ^ restarted.reason
+                       )
+                   )
+                   restarted
+                );
+              text_element "button"
+                [
+                  Attr.string "type" "button";
+                  Attr.string "data-silica-dev-close" "";
+                ]
+                "Close";
+            ];
+        ]
+  in
+  Node.list (status @ crash @ restarted)
 
 let content = lazy (make_content css)
 
 let paint state =
   set_inner_html (Lazy.force content) (Render.to_string (view state))
+
+let restarted_of json =
+  List.filter_map
+    (fun entry ->
+      match
+        ( string_field "path" entry,
+          string_field "machine" entry,
+          string_field "reason" entry
+        )
+      with
+      | Some path, Some machine, Some reason ->
+          Some { path; machine; reason }
+      | _ ->
+          None
+    )
+    (list_field "restarted" json)
+
+let report state text =
+  Option.iter (fun socket -> send socket text) state.socket
 
 let receive state json =
   match (string_field "t" json, string_field "status" json) with
@@ -298,6 +407,29 @@ let receive state json =
                   ()
             )
             (list_field "css" json)
+      | Some "code" -> (
+          List.iter
+            (fun pair ->
+              match (string_field "from" pair, string_field "to" pair) with
+              | Some from, Some target ->
+                  swap_stylesheet from target
+              | _ ->
+                  ()
+            )
+            (list_field "css" json);
+          match string_field "entry" json with
+          | Some entry ->
+              hot_swap entry (report state) (fun text ->
+                  match Json.of_string text with
+                  | Ok result ->
+                      state.restarted <- restarted_of result;
+                      paint state
+                  | Error _ ->
+                      ()
+              )
+          | None ->
+              reload_page ()
+        )
       | _ ->
           reload_page ()
     )
@@ -306,6 +438,7 @@ let receive state json =
 
 let rec connect state =
   let socket = web_socket (socket_url ()) in
+  state.socket <- Some socket;
   listen socket "message" (fun message ->
       match Json.of_string (data message) with
       | Ok json ->
@@ -315,8 +448,23 @@ let rec connect state =
           ()
   );
   listen socket "close" (fun _ ->
+      state.socket <- None;
       state.lost <- true;
       set_timeout (fun () -> connect state) 1000
   )
 
-let () = connect { status = Connecting; crash = None; lost = false }
+let () =
+  let state =
+    {
+      status = Connecting;
+      crash = None;
+      lost = false;
+      restarted = [];
+      socket = None;
+    }
+  in
+  on_close_press (Lazy.force content) (fun () ->
+      state.restarted <- [];
+      paint state
+  );
+  connect state

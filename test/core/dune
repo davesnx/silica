@@ -11,7 +11,8 @@
   test_place
   test_sources
   test_accessibility
-  test_codecs)
+  test_codecs
+  test_handoff)
  (libraries silica silica_test_support alcotest)
  (preprocess
   (pps silica.ppx)))

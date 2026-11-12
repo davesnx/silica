@@ -18,6 +18,7 @@ Make a new app.
   created client/client_main.ml
   created client/dune
   created client/package.json
+  created dune
   created dune-project
   created server/dune
   created server/main.ml

@@ -79,3 +79,10 @@ type request = Endpoint.request =
 
 val request : ('i, 'o, 'x) endpoint -> 'i -> request
 (** [request endpoint input] is [Request (endpoint, input)]. *)
+
+val error_fingerprint : error Fingerprint.t
+(** The fingerprint of {!error} (see {!Fingerprint}). *)
+
+val answer_fingerprint :
+  'o Fingerprint.t -> 'x Fingerprint.t -> ('o, 'x) answer Fingerprint.t
+(** The fingerprint of [('o, 'x) answer] from the ones of ['o] and ['x]. *)

@@ -26,7 +26,7 @@ module Tags :
   sig
     type value = string list
     type change = change/3
-    type t
+    type t = (value, change) Silica.Optimistic.state
     val make : value -> t
     val apply : id:int -> change -> t -> t
     val settle : ?confirmed:value -> id:int -> t -> t

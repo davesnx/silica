@@ -1,3 +1,11 @@
 (test
  (name test_example)
+ (modules test_example)
  (libraries silica silica_test_support silica_example_app_native alcotest))
+
+(test
+ (name test_example_fingerprints)
+ (modules test_example_fingerprints)
+ (build_if
+  (<> %{profile} release))
+ (libraries silica silica_example_app_native alcotest))

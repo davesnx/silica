@@ -690,9 +690,9 @@ function fakeSockets() {
       this.open();
       this.receive('{"t":"hello","v":2}');
     }
-    state(seq, value, actions = []) {
+    state(seq, value, actions = [], ack = 0) {
       this.receive(
-        JSON.stringify({ t: "state", seq, ack: 0, state: value, actions }),
+        JSON.stringify({ t: "state", seq, ack, state: value, actions }),
       );
     }
     drop(code = 1006) {
@@ -1288,6 +1288,18 @@ test("events are dropped while the socket is down; offline attribute; ids contin
   click(w, $("plus"));
   assert.deepEqual(ws.messages().filter((m) => m.t === "event"), [
     { t: "event", id: 2, event: "inc" },
+  ]);
+});
+
+test("a new client of an island the server knows starts its event ids after the server's ack", async () => {
+  const w = setup("http://localhost:8080/");
+  const sockets = fakeSockets();
+  App.mount_live("root");
+  sockets[0].welcome();
+  sockets[0].state(1, 5, [], 3);
+  click(w, $("plus"));
+  assert.deepEqual(sockets[0].messages().filter((m) => m.t === "event"), [
+    { t: "event", id: 4, event: "inc" },
   ]);
 });
 

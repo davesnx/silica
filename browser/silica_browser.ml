@@ -24,7 +24,7 @@ type live_config = Live_client.config = { ping_ms : int; pong_ms : int }
 
 type live = Live : ('s, 'e) Live.t -> live
 
-let sessions : (Dom.node * (unit -> unit)) list ref = ref []
+let sessions = Hot_hook.sessions
 
 let stop_session el =
   match List.find_opt (fun (n, _) -> n == el) !sessions with
@@ -34,7 +34,14 @@ let stop_session el =
   | None ->
       ()
 
-let instance_id () = Web.random_hex 8
+let instance_id root =
+  match Dom.opt (Dom.get_property root "__silica_instance") with
+  | Some instance ->
+      instance
+  | None ->
+      let instance = Web.random_hex 8 in
+      Dom.set_property root "__silica_instance" instance;
+      instance
 
 let rec session :
     'a 'b.
@@ -68,7 +75,7 @@ let rec session :
     Live_client.start ?config:live_config
       ~io:(Web.io ?on_session_gone ())
       ~sub:
-        (Protocol.Island { channel = live.channel; instance = instance_id () })
+        (Protocol.Island { channel = live.channel; instance = instance_id root })
       ~on_state
       ~on_down:(fun () -> Dom.set_attribute root "data-silica-offline" "")
       ~on_fatal:(fun _ -> Js.log "silica: live connection closed")
@@ -113,9 +120,18 @@ let run (type p s e) ?live_config ?on_session_gone ?(dev = false) ?on_error
        (p, s, e) Instance.t
        ) ~(on_route : (Router.event -> e) option) () =
   let root = root_of root in
+  let platform =
+    platform ?live_config ?on_session_gone ~dev ~hydrate ~lives root
+  in
+  let platform, create =
+    match !Hot_hook.current with
+    | Some hot ->
+        hot.wrap platform create
+    | None ->
+        (platform, create)
+  in
   Runtime.start ?live_config ~dev ?on_error ~answers:(read_answers ()) ?on_route
-    ~platform:(platform ?live_config ?on_session_gone ~dev ~hydrate ~lives root)
-    ~create ();
+    ~platform ~create ();
   Dom.set_attribute root "data-silica-ready" ""
 
 let recorder ?capacity ?data ~build () =
@@ -126,7 +142,8 @@ let mount ?live_config ?on_session_gone ?dev ?on_error ?hydrate ?(lives = [])
     ?observe ~root (component : (_, _, _) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error ->
-      Instance.mount ~dev ?on_error ?observe component
+      Instance.mount ~dev ?on_error ?observe ?resume:(Hot_hook.take ())
+        component
     )
     ~on_route:None ()
 
@@ -135,7 +152,8 @@ let mount_app ?live_config ?on_session_gone ?dev ?on_error ?hydrate
     (app : Url.t -> (_, _, Router.event) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error ->
-      Instance.mount ~dev ?on_error ?observe (app (Dom_renderer.current_url ()))
+      Instance.mount ~dev ?on_error ?observe ?resume:(Hot_hook.take ())
+        (app (Dom_renderer.current_url ()))
     )
     ~on_route:(Some Fun.id) ()
 

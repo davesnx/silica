@@ -3,7 +3,7 @@
 (melange.emit
  (target out)
  (alias browser-build)
- (modules app host_app ui_app)
+ (modules app host_app ui_app hot_app_a hot_app_b)
  (module_systems
   (esm mjs))
  (preprocess
@@ -24,6 +24,9 @@
   host.test.mjs
   ui.test.mjs
   devtools.test.mjs
+  hot.test.mjs
+  hot_a.mjs
+  hot_b.mjs
   %{project_root}/devtools/dist/silica-dev.js
   package.json
   (source_tree node_modules))
@@ -34,4 +37,29 @@
    browser.test.mjs
    host.test.mjs
    ui.test.mjs
-   devtools.test.mjs)))
+   devtools.test.mjs
+   hot.test.mjs)))
+
+(rule
+ (targets hot_a.mjs hot_b.mjs)
+ (deps
+  (alias browser-build)
+  (source_tree %{project_root}/example/client/node_modules))
+ (action
+  (progn
+   (run
+    %{project_root}/example/client/node_modules/esbuild/bin/esbuild
+    out/test/browser/hot_app_a.mjs
+    --bundle
+    --format=esm
+    --inject:out/node_modules/silica.browser/hot_reload.mjs
+    --outfile=hot_a.mjs
+    --log-level=warning)
+   (run
+    %{project_root}/example/client/node_modules/esbuild/bin/esbuild
+    out/test/browser/hot_app_b.mjs
+    --bundle
+    --format=esm
+    --inject:out/node_modules/silica.browser/hot_reload.mjs
+    --outfile=hot_b.mjs
+    --log-level=warning))))

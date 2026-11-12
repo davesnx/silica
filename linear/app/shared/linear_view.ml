@@ -43,7 +43,7 @@ type group =
   | Assignee of User.t option
   | Priority of Priority.t
   | All
-[@@deriving json]
+[@@deriving json, fingerprint]
 
 let status_names =
   Issue_status.

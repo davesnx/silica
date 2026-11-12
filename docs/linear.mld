@@ -40,7 +40,7 @@ module Issue = struct
     updated_at : int;
     version : int;
   }
-  [@@deriving json]
+  [@@deriving json, fingerprint]
 ]}
 
 The same file declares the endpoints and the topic. The server and the browser

@@ -92,7 +92,6 @@ let run ~server ~client ~port ~json =
     Filename.concat "_build/default" (Filename.concat client "dist")
   in
   let print_lock = Mutex.create () in
-  let hub = Hub.create () in
   let print event =
     Mutex.protect print_lock (fun () ->
         if json then
@@ -105,6 +104,7 @@ let run ~server ~client ~port ~json =
           Option.iter print_endline (Dev_event.to_text event)
     )
   in
+  let hub = Hub.create ~report:print () in
   let emit event =
     Hub.publish hub event;
     print event

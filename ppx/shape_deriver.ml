@@ -37,7 +37,7 @@ let event =
         );
   }
 
-let prefix name = function "t" -> name | type_name -> type_name ^ "_" ^ name
+let prefix = Type_fingerprint.prefix
 
 let constructor_name kind (constructor : constructor_declaration) =
   match Attribute.get kind.attribute constructor with
@@ -108,7 +108,7 @@ let case kind ~loc ((name, constructor) : string * constructor_declaration) =
       case ~lhs:(lhs (Some pattern)) ~guard:None
         ~rhs:(eapply ~loc name_of (List.map (evar ~loc) variables))
 
-let derive kind ~loc (declaration : type_declaration) =
+let derive kind ~loc ~rec_flag declarations (declaration : type_declaration) =
   match declaration.ptype_kind with
   | Ptype_variant [] ->
       Location.raise_errorf ~loc:declaration.ptype_loc
@@ -146,40 +146,67 @@ let derive kind ~loc (declaration : type_declaration) =
       let name_function =
         pexp_function_cases ~loc (List.map (case kind ~loc) names)
       in
-      [
-        pstr_value ~loc Nonrecursive
+      let fingerprint =
+        if kind.listed && Type_fingerprint.enabled () then
           [
-            value_binding ~loc
-              ~pat:(ppat_var ~loc { txt = shape_value; loc })
-              ~expr:
-                (pexp_constraint ~loc
-                   ( if kind.listed then
-                       [%expr
-                         Silica.Machine.shape ~name:[%e name_function]
-                           ~names:
-                             [%e
-                               elist ~loc
-                                 (List.map
-                                    (fun (name, _) -> estring ~loc name)
-                                    names
-                                 )]
-                           ()]
-                     else
-                       [%expr Silica.Machine.shape ~name:[%e name_function] ()]
-                   )
-                   [%type:
-                     [%t ptyp_constr ~loc { txt = Lident type_name; loc } []]
-                     Silica.Machine.shape]
-                );
-          ];
-      ]
+            Type_fingerprint.binding ~loc ~rec_flag ~group:declarations
+              declaration;
+          ]
+        else
+          []
+      in
+      let fingerprint_argument =
+        match fingerprint with
+        | [] ->
+            []
+        | _ ->
+            [
+              ( Labelled "fingerprint",
+                evar ~loc (Type_fingerprint.value_name declaration)
+              );
+            ]
+      in
+      fingerprint
+      @ [
+          pstr_value ~loc Nonrecursive
+            [
+              value_binding ~loc
+                ~pat:(ppat_var ~loc { txt = shape_value; loc })
+                ~expr:
+                  (pexp_constraint ~loc
+                     ( if kind.listed then
+                         pexp_apply ~loc [%expr Silica.Machine.shape]
+                           ([
+                              (Labelled "name", name_function);
+                              ( Labelled "names",
+                                elist ~loc
+                                  (List.map
+                                     (fun (name, _) -> estring ~loc name)
+                                     names
+                                  )
+                              );
+                            ]
+                           @ fingerprint_argument
+                           @ [ (Nolabel, [%expr ()]) ]
+                           )
+                       else
+                         [%expr
+                           Silica.Machine.shape ~name:[%e name_function] ()]
+                     )
+                     [%type:
+                       [%t ptyp_constr ~loc { txt = Lident type_name; loc } []]
+                       Silica.Machine.shape]
+                  );
+            ];
+        ]
   | Ptype_abstract | Ptype_record _ | Ptype_open ->
       Location.raise_errorf ~loc:declaration.ptype_loc
         "[silica] [@@@@deriving %s] needs a variant type" kind.deriver
 
-let generate kind ~ctxt (_rec_flag, declarations) =
+let generate kind ~ctxt (rec_flag, declarations) =
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-  List.concat_map (derive kind ~loc) declarations
+  Type_fingerprint.use_position := loc.loc_start.pos_cnum;
+  List.concat_map (derive kind ~loc ~rec_flag declarations) declarations
 
 let add kind =
   Deriving.add kind.deriver

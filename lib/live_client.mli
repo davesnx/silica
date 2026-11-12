@@ -41,7 +41,9 @@ val start :
 val send_event : t -> 'e Codec.t -> 'e -> unit
 (** Send the event with the next event id. While the socket is not ready (no
     [Hello_ok] yet, or lost), the event is dropped and uses no id. The ids
-    continue across reconnects. *)
+    continue across reconnects, and never go below the [ack] of a state plus
+    one: a new client for an island that the server already knows, such as after
+    a hot reload, does not reuse ids the server has seen. *)
 
 val stop : t -> unit
 (** Close the socket with code 1000, cancel all timers, and never connect again.

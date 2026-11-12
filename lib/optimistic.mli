@@ -17,10 +17,20 @@ module type CHANGE = sig
   (** [apply value change] is the value with the change on it. *)
 end
 
+type ('value, 'change) state
+(** The confirmed value and the pending changes. *)
+
+val fingerprint :
+  'value Fingerprint.t ->
+  'change Fingerprint.t ->
+  ('value, 'change) state Fingerprint.t
+(** The fingerprint of a {!state} from the ones of the value and the change, for
+    a state type that holds one (see {!Fingerprint}). *)
+
 module type OPTIMISTIC = sig
   type value
   type change
-  type t
+  type t = (value, change) state
 
   val make : value -> t
   (** [make confirmed]: no pending change. *)

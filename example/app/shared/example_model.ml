@@ -2,7 +2,7 @@ open Jsonkit.Primitives
 
 module Item = struct
   type t = { id : int; title : string; price_cents : int; tags : string list }
-  [@@deriving json]
+  [@@deriving json, fingerprint]
 end
 
 module Counter_event = struct

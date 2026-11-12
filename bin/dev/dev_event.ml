@@ -16,7 +16,20 @@ type error = {
   message : string;
 }
 type swap = { from : string; target : string }
-type reload = Page | Stylesheets of swap list
+type reload =
+  | Page
+  | Stylesheets of swap list
+  | Code of { entry : string; css : swap list }
+
+type restarted = { path : string; machine : string; reason : string }
+
+type hot_reload =
+  | Kept of {
+      milliseconds : int;
+      kept : string list;
+      restarted : restarted list;
+    }
+  | Reloaded of { reason : string }
 
 type t =
   | Listening of { url : string }
@@ -27,6 +40,7 @@ type t =
   | Server_started of { pid : int; milliseconds : int; restart : bool }
   | Server_crashed of { code : string; output : string }
   | Reload of reload
+  | Hot_reload of hot_reload
 
 let severity_name = function Error -> "error" | Warning -> "warning"
 
@@ -82,6 +96,9 @@ let error_to_json error =
     @ excerpt
     )
 
+let swap_to_json swap =
+  object_ [ ("from", `String swap.from); ("to", `String swap.target) ]
+
 let to_json = function
   | Listening { url } ->
       object_ [ ("t", `String "dev"); ("url", `String url) ]
@@ -133,18 +150,46 @@ let to_json = function
         [
           ("t", `String "reload");
           ("what", `String "css");
-          ( "css",
+          ("css", `List (List.map swap_to_json swaps));
+        ]
+  | Reload (Code { entry; css }) ->
+      object_
+        [
+          ("t", `String "reload");
+          ("what", `String "code");
+          ("entry", `String entry);
+          ("css", `List (List.map swap_to_json css));
+        ]
+  | Hot_reload (Kept { milliseconds; kept; restarted }) ->
+      object_
+        [
+          ("t", `String "hot-reload");
+          ("status", `String "kept");
+          ("ms", `Int milliseconds);
+          ( "kept",
+            `List (List.map (fun path -> Json.declassify (`String path)) kept)
+          );
+          ( "restarted",
             `List
               (List.map
-                 (fun swap ->
+                 (fun restarted ->
                    object_
                      [
-                       ("from", `String swap.from); ("to", `String swap.target);
+                       ("path", `String restarted.path);
+                       ("machine", `String restarted.machine);
+                       ("reason", `String restarted.reason);
                      ]
                  )
-                 swaps
+                 restarted
               )
           );
+        ]
+  | Hot_reload (Reloaded { reason }) ->
+      object_
+        [
+          ("t", `String "hot-reload");
+          ("status", `String "reloaded");
+          ("reason", `String reason);
         ]
 
 let to_string event = Json.to_string (to_json event)
@@ -216,3 +261,98 @@ let to_text = function
       Some "browser: reload the page"
   | Reload (Stylesheets _) ->
       Some "browser: swap the stylesheets"
+  | Reload (Code { entry; _ }) ->
+      Some ("browser: load " ^ entry ^ " and keep the state")
+  | Hot_reload (Kept { milliseconds; kept; restarted }) ->
+      Some
+        (String.concat "\n"
+           (Printf.sprintf
+              "browser: hot reload in %d ms, %d kept, %d started again"
+              milliseconds (List.length kept) (List.length restarted)
+           :: List.map
+                (fun restarted ->
+                  Printf.sprintf "  %s (%s) started again: %s" restarted.machine
+                    restarted.path restarted.reason
+                )
+                restarted
+           )
+        )
+  | Hot_reload (Reloaded { reason }) ->
+      Some ("browser: the page reloaded: " ^ reason)
+
+let string_field name fields =
+  match Option.map Json.classify (List.assoc_opt name fields) with
+  | Some (`String text) ->
+      Some text
+  | _ ->
+      None
+
+let of_browser text =
+  match Json.of_string text with
+  | Error _ ->
+      None
+  | Ok json -> (
+      match Json.classify json with
+      | `Assoc fields -> (
+          let list name =
+            match Option.map Json.classify (List.assoc_opt name fields) with
+            | Some (`List items) ->
+                Some (List.map Json.classify items)
+            | _ ->
+                None
+          in
+          match (string_field "t" fields, string_field "status" fields) with
+          | Some "hot-reload", Some "kept" -> (
+              let milliseconds =
+                match Option.map Json.classify (List.assoc_opt "ms" fields) with
+                | Some (`Int milliseconds) ->
+                    Some milliseconds
+                | _ ->
+                    None
+              in
+              let kept =
+                Option.map
+                  (List.filter_map (function
+                    | `String path ->
+                        Some path
+                    | _ ->
+                        None
+                    ))
+                  (list "kept")
+              in
+              let restarted =
+                Option.map
+                  (List.filter_map (function
+                    | `Assoc entry -> (
+                        match
+                          ( string_field "path" entry,
+                            string_field "machine" entry,
+                            string_field "reason" entry
+                          )
+                        with
+                        | Some path, Some machine, Some reason ->
+                            Some { path; machine; reason }
+                        | _ ->
+                            None
+                      )
+                    | _ ->
+                        None
+                    ))
+                  (list "restarted")
+              in
+              match (milliseconds, kept, restarted) with
+              | Some milliseconds, Some kept, Some restarted ->
+                  Some (Hot_reload (Kept { milliseconds; kept; restarted }))
+              | _ ->
+                  None
+            )
+          | Some "hot-reload", Some "reloaded" ->
+              Option.map
+                (fun reason -> Hot_reload (Reloaded { reason }))
+                (string_field "reason" fields)
+          | _ ->
+              None
+        )
+      | _ ->
+          None
+    )

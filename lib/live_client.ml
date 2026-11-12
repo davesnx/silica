@@ -84,9 +84,10 @@ let rec connect t =
           wait_ping ()
       | Ok (Protocol.Error { code }) ->
           fail t (Server_error code)
-      | Ok (Protocol.State { seq; state; actions; _ }) ->
+      | Ok (Protocol.State { seq; ack; state; actions }) ->
           if t.ready && seq > !last_seq then (
             last_seq := seq;
+            if ack >= t.next_id then t.next_id <- ack + 1;
             t.attempt <- 0;
             t.down <- false;
             t.on_state ~seq ~state ~actions

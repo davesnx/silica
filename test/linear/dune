@@ -5,6 +5,12 @@
   test_linear_features
   test_linear_memory
   test_linear_trace)
+ (modules
+  test_linear
+  test_linear_server
+  test_linear_features
+  test_linear_memory
+  test_linear_trace)
  (libraries
   silica
   silica_test_support
@@ -16,3 +22,10 @@
   silica-ui
   alcotest
   threads.posix))
+
+(test
+ (name test_linear_fingerprints)
+ (modules test_linear_fingerprints)
+ (build_if
+  (<> %{profile} release))
+ (libraries silica silica_linear_app_native silica-ui alcotest))

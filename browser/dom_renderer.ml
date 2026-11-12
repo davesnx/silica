@@ -252,11 +252,21 @@ let preload_intent ~preload ev =
           ()
     )
 
+let cleanups : ((unit -> unit) -> unit) option ref = ref None
+
+let on_node node name handler =
+  Dom.add_listener node name handler;
+  match !cleanups with
+  | Some register ->
+      register (fun () -> Dom.remove_listener node name handler)
+  | None ->
+      ()
+
 let delegate (type e) (v : e Vdom.t) ~(dispatch : e -> unit)
     ~(link : (replace:bool -> Url.t -> unit) option)
     ~(preload : (Url.t -> unit) option) =
   let root = v.Vdom.root in
-  let on name f = Dom.add_listener root name f in
+  let on name f = on_node root name f in
   let press_handler t =
     first_handler v t (function Node.On_press e -> Some e | _ -> None)
   in
@@ -1009,9 +1019,9 @@ let make (type e) ~dev ~adopt ~hooks ~root
   delegate v ~dispatch ~link ~preload;
   if Option.is_some on_route then (
     Scroll.start ();
-    Dom.add_listener Dom.window "popstate" (fun _ -> popped ());
-    Dom.add_listener Dom.window "pagehide" (fun _ -> Scroll.save ());
-    Dom.add_listener Dom.window "scroll" (fun _ -> Scroll.scrolled ())
+    on_node Dom.window "popstate" (fun _ -> popped ());
+    on_node Dom.window "pagehide" (fun _ -> Scroll.save ());
+    on_node Dom.window "scroll" (fun _ -> Scroll.scrolled ())
   );
   let sources : (string, unit -> unit) Hashtbl.t = Hashtbl.create 4 in
   let stop_source ~id =

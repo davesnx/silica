@@ -156,10 +156,29 @@ val inspect : observed -> inspected
 val cell_path : ('p, 's, 'e) cell -> string
 (** The instance path of a cell. *)
 
+type ('p, 's, 'e) asked
+(** An instance that starts (see {!asked_path}, {!asked_component} and
+    {!asked_props}). *)
+
+val asked_path : ('p, 's, 'e) asked -> string
+(** The instance path of the instance (see {!cell_path}). *)
+
+val asked_component : ('p, 's, 'e) asked -> ('p, 's, 'e) Component.t
+val asked_props : ('p, 's, 'e) asked -> 'p
+
+type resume = {
+  take : 'p 's 'e. ('p, 's, 'e) asked -> ('s * 'e Action.host list) option;
+}
+(** How a tree starts from the snapshots of an earlier run, at a hot reload (see
+    [Handoff.hook]). While the first {!update} runs, each instance that starts
+    asks [take]. [Some (snapshot, actions)] starts it there with those actions
+    (the observer sees [Resumed]); [None] starts it as usual. *)
+
 val mount :
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
   ?observe:observer ->
+  ?resume:resume ->
   (unit, 's, 'e) Component.t ->
   (unit, 's, 'e) t
 (** Create the root and start its machine. The actions are returned by the first
@@ -180,12 +199,16 @@ val mount :
     the held source, the action, the props, the child or the message of the
     host. Give it [Transition.observer] or [Trace.Recorder.observer]. With no
     observer the cost is one test of an option per step. A step that raises is
-    not observed. *)
+    not observed.
+
+    [resume] starts the tree from the snapshots of an earlier run (see
+    {!type-resume}). *)
 
 val mount_with_props :
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
   ?observe:observer ->
+  ?resume:resume ->
   props:'p ->
   ('p, 's, 'e) Component.t ->
   ('p, 's, 'e) t
@@ -246,3 +269,15 @@ val snapshot : ('p, 's, 'e) t -> 's
 
 val count : ('p, 's, 'e) t -> int
 (** The number of instances now mounted, the root included. *)
+
+type running =
+  | Running : {
+      path : string;  (** The instance path (see {!cell_path}). *)
+      machine : ('p, 's, 'e) Machine.t;
+      snapshot : 's;
+    }
+      -> running  (** An instance that is mounted. *)
+
+val running : ('p, 's, 'e) t -> running list
+(** Every mounted instance, parents before their children, with its snapshot. A
+    hot reload hands them to the next run (see [Handoff]). *)

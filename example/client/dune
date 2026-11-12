@@ -50,4 +50,5 @@
    --entry-names=[name]-[hash]
    --metafile=meta.json
    --sourcemap
-   --sources-content=false)))
+   --sources-content=false
+   --inject:out/node_modules/silica.browser/hot_reload.mjs)))

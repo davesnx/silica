@@ -60,10 +60,17 @@ Run every command from this directory.
     `severity`, `message` and `excerpt` (a list of `[line, text]`).
   - `{"t":"server","status":"started"}` or `"restarted"`, with `pid` and
     `ms`; `"crashed"` with `code` and `output`.
-  - `{"t":"reload","what":"page"}` or `"css"`.
+  - `{"t":"reload","what":"code"}` (the page swaps in the new bundle and
+    keeps the state of its machines), `"page"` or `"css"`.
+  - `{"t":"hot-reload","status":"kept","kept":[...],"restarted":[...]}`: each
+    `restarted` entry has `path`, `machine` and `reason`, such as
+    `"its state type changed"`. A machine keeps its state when its state type
+    has a fingerprint: `[@@deriving state_shape]`, and `[@@deriving fingerprint]`
+    on the types of other modules it holds.
 
-  After an edit, wait for `build` `ok` and `server` `restarted`, or for
-  `failed`, and fix each error. Stop it with SIGINT or SIGTERM.
+  After an edit, wait for `build` `ok` and `server` `restarted` (and
+  `hot-reload` when a page is open), or for `failed`, and fix each error.
+  Stop it with SIGINT or SIGTERM.
 
 ## The loop for each change
 
