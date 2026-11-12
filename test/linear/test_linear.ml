@@ -404,9 +404,8 @@ let test_detail_failure_and_new_number () =
   Sim.answer sim issues_endpoint issues;
   has "ready" (Sim.html sim) "First";
   Sim.set_props sim 3;
-  has "reloading for the new number" (Sim.html sim) "Loading issue";
-  Sim.answer sim issues_endpoint issues;
-  has "third" (Sim.html sim) "Third"
+  lacks "no reload for the new number" (Sim.html sim) "Loading issue";
+  has "the new number shows from the loaded issues" (Sim.html sim) "Third"
 
 (* Create *)
 

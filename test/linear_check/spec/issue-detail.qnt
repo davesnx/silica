@@ -36,7 +36,6 @@ module issue_detail {
   action loading_to_not_found_on_loaded_ok = all { state == Loading, enter(NotFound, OnLoadedOk) }
   action loading_to_ready_on_loaded_ok = all { state == Loading, enter(Ready, OnLoadedOk) }
   action not_found_to_loading_on_props = all { state == NotFound, enter(Loading, OnProps) }
-  action ready_to_loading_on_props = all { state == Ready, enter(Loading, OnProps) }
   action ready_stays_on_cancel_edit = all { state == Ready, state' = state, running' = running, last' = OnCancelEdit }
   action ready_stays_on_command = all { state == Ready, state' = state, running' = running, last' = OnCommand }
   action ready_stays_on_create_key = all { state == Ready, state' = state, running' = running, last' = OnCreateKey }
@@ -48,6 +47,7 @@ module issue_detail {
   action ready_stays_on_pick = all { state == Ready, state' = state, running' = running, last' = OnPick }
   action ready_stays_on_picker_closed = all { state == Ready, state' = state, running' = running, last' = OnPickerClosed }
   action ready_stays_on_picker_open = all { state == Ready, state' = state, running' = running, last' = OnPickerOpen }
+  action ready_stays_on_props = all { state == Ready, state' = state, running' = running, last' = OnProps }
   action ready_stays_on_reconnect = all { state == Ready, state' = state, running' = running, last' = OnReconnect }
   action ready_stays_on_reconnected = all { state == Ready, state' = state, running' = running, last' = OnReconnected }
   action ready_stays_on_save = all { state == Ready, state' = state, running' = running, last' = OnSave }
@@ -65,7 +65,6 @@ module issue_detail {
     loading_to_not_found_on_loaded_ok,
     loading_to_ready_on_loaded_ok,
     not_found_to_loading_on_props,
-    ready_to_loading_on_props,
     ready_stays_on_cancel_edit,
     ready_stays_on_command,
     ready_stays_on_create_key,
@@ -77,6 +76,7 @@ module issue_detail {
     ready_stays_on_pick,
     ready_stays_on_picker_closed,
     ready_stays_on_picker_open,
+    ready_stays_on_props,
     ready_stays_on_reconnect,
     ready_stays_on_reconnected,
     ready_stays_on_save,

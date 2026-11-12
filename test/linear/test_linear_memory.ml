@@ -18,7 +18,7 @@ let issue number title : Issue.t =
 
 let issues = [ issue 1 "First"; issue 2 "Second" ]
 
-let answer t =
+let answer_requests requests =
   List.iter
     (fun request ->
       let reply endpoint value =
@@ -36,7 +36,9 @@ let answer t =
       | path ->
           Alcotest.failf "unexpected call %s" path
     )
-    (Memory.pending t)
+    requests
+
+let answer t = answer_requests (Memory.pending t)
 
 let calls t path =
   List.length (List.filter (fun r -> Memory.path r = path) (Memory.requests t))
@@ -213,6 +215,85 @@ let test_row_names_have_spaces () =
     "the row link" (Some "issue-row-2")
     (Memory.attribute row "id")
 
+let updates t =
+  List.filter (fun r -> Memory.path r = "/api/issues/update") (Memory.pending t)
+
+let answer_pages t =
+  List.iter
+    (fun request ->
+      if Memory.path request <> "/api/issues/update" then
+        answer_requests [ request ]
+    )
+    (Memory.pending t)
+
+let run_command t text =
+  Memory.key t (Key.make ~ctrl:true "k");
+  let search = Memory.by_role ~name:"Command menu" t Accessibility.Combobox in
+  Memory.focus search;
+  Memory.input search text;
+  Memory.key t Key.enter
+
+let toasts t = Memory.all_by_role t Accessibility.Alertdialog
+
+let toast_names t = List.map Memory.accessible_name (toasts t)
+
+let test_save_fails_after_moving_on () =
+  let t = Memory.mount_app ~url:"/issue/1" Linear_app.app in
+  answer_pages t;
+  Memory.press (Memory.by_role ~name:"Edit title" t Accessibility.Button);
+  Memory.input (Memory.by_role ~name:"Title" t Accessibility.Textbox) "Renamed";
+  Memory.press (Memory.by_role ~name:"Save" t Accessibility.Button);
+  let save =
+    match updates t with
+    | [ request ] ->
+        request
+    | requests ->
+        Alcotest.failf "%d save calls" (List.length requests)
+  in
+  run_command t "ENG-2";
+  answer_pages t;
+  Alcotest.(check string) "on the other issue" "/issue/2" (Memory.url t);
+  has "the other issue shows" t "Second</h1>";
+  Alcotest.(check int)
+    "the save is still waiting for its answer" 1
+    (List.length (updates t));
+  Memory.network_error save "down";
+  Alcotest.(check (list string))
+    "a toast tells which save failed"
+    [ "Could not save the title of ENG-1" ]
+    (toast_names t)
+
+let test_toast_keys_are_not_reused () =
+  let t = Memory.mount_app ~url:"/issue/1" Linear_app.app in
+  answer_pages t;
+  let fail_next_save () =
+    run_command t "priority: urgent";
+    match updates t with
+    | [ request ] ->
+        Memory.network_error request "down"
+    | requests ->
+        Alcotest.failf "%d save calls" (List.length requests)
+  in
+  let close toast =
+    Memory.press
+      (Memory.by_role ~within:toast ~name:"Close" t Accessibility.Button)
+  in
+  fail_next_save ();
+  fail_next_save ();
+  Alcotest.(check int) "two toasts" 2 (List.length (toasts t));
+  close (List.hd (toasts t));
+  fail_next_save ();
+  let ids =
+    List.filter_map (fun toast -> Memory.attribute toast "id") (toasts t)
+  in
+  Alcotest.(check int)
+    "the two shown toasts have two ids" 2
+    (List.length (List.sort_uniq compare ids));
+  close (List.nth (toasts t) 1);
+  Alcotest.(check int)
+    "closing the newest toast keeps the other one" 1
+    (List.length (toasts t))
+
 let () =
   Alcotest.run "linear_memory"
     [
@@ -226,6 +307,15 @@ let () =
             test_trace_of_a_visit;
           Alcotest.test_case "a row link reads its parts apart" `Quick
             test_row_names_have_spaces;
+        ]
+      );
+      ( "saves",
+        [
+          Alcotest.test_case
+            "a save that fails after the user opened another issue is reported"
+            `Quick test_save_fails_after_moving_on;
+          Alcotest.test_case "a toast key is never used again" `Quick
+            test_toast_keys_are_not_reused;
         ]
       );
     ]

@@ -194,20 +194,35 @@ let shown_view view =
 let toast_shown key (toasts : Silica_ui.Toast.toast list) =
   List.exists (fun (toast : Silica_ui.Toast.toast) -> toast.key = key) toasts
 
+let distinct_keys (toasts : Silica_ui.Toast.toast list) =
+  let keys =
+    List.map (fun (toast : Silica_ui.Toast.toast) -> toast.key) toasts
+  in
+  List.length (List.sort_uniq compare keys) = List.length keys
+
 let list_temporal =
   let open Linear_list in
-  [
-    Check.never_after ~name:"a closed toast never shows again"
-      ~after:(Check.event (( = ) (Toast_closed "toast-0")))
+  let closed_never_shows key =
+    Check.never_after
+      ~name:("a closed toast never shows again: " ^ key)
+      ~after:(Check.event (( = ) (Toast_closed key)))
       ~never:
         (Check.state (function
           | Ready ready ->
-              toast_shown "toast-0" ready.toasts
+              toast_shown key ready.toasts
           | Loading | Failed _ ->
               false
           ))
-      ();
-  ]
+      ()
+  in
+  Check.always ~name:"the shown toasts have distinct keys"
+    (Check.state (function
+      | Ready ready ->
+          distinct_keys ready.toasts
+      | Loading | Failed _ ->
+          true
+      ))
+  :: List.map closed_never_shows [ "toast-0"; "toast-1"; "toast-2"; "toast-3" ]
 
 let detail_temporal =
   let open Linear_detail in
@@ -224,17 +239,6 @@ let detail_temporal =
             )
         )
       ~to_:(Check.event (function Saved _ -> true | _ -> false))
-      ();
-  ]
-
-let detail_allowances =
-  [
-    Check.allow ~rule:"a save leads to saved or failed"
-      ~reason:
-        "Known defect that this property found: new props (the user opens \
-         another issue) re-enter Loading, which stops the call of a save in \
-         flight, so the user never sees if it was saved or failed. Remove this \
-         allowance when the detail keeps the call or reports the save."
       ();
   ]
 
@@ -310,7 +314,7 @@ let list_check () =
       filter = { Linear_view.Filter.none with statuses = [ Issue_status.Done ] };
     }
   in
-  Check.component ~max_states:50_000 ~samples:[ issues; topic; saves ]
+  Check.component ~max_states:100_000 ~samples:[ issues; topic; saves ]
     ~props:[ Linear_view.default; filtered ]
     ~within:(function
       | Ready r ->
@@ -340,6 +344,32 @@ let list_check () =
     Linear_list.component
 
 let list () = Check.run (list_check ())
+
+let list_toasts_check () =
+  let open Linear_list in
+  Check.component ~max_states:400_000
+    ~samples:[ issues; Check.answers update_endpoint [] ]
+    ~props:[ Linear_view.default ]
+    ~within:(function
+      | Ready r ->
+          r.data.next_id <= 4
+          && List.length r.toasts <= 3
+          && r.collapsed = [] && not r.data.stale
+      | Loading | Failed _ ->
+          true
+      )
+    ~inputs:(function
+      | Ready r ->
+          Command "status-done"
+          :: List.map
+               (fun (t : Silica_ui.Toast.toast) -> Toast_closed t.key)
+               r.toasts
+      | Loading | Failed _ ->
+          []
+      )
+    ~properties:list_temporal Linear_list.component
+
+let list_toasts () = Check.run (list_toasts_check ())
 
 let detail_inputs (state : Linear_detail.state) : Linear_detail.event list =
   let open Linear_detail in
@@ -405,8 +435,7 @@ let detail_check ~props () =
     ]
   in
   Check.component ~max_states:400_000 ~props ~within:detail_within
-    ~allow:detail_allowances ~inputs:detail_inputs
-    ~samples:[ issues; topic; saves ]
+    ~inputs:detail_inputs ~samples:[ issues; topic; saves ]
     ~properties:(properties @ detail_temporal)
     Linear_detail.component
 

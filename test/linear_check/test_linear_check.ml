@@ -282,9 +282,13 @@ let test_lint () =
       ]
   in
   Alcotest.(check (list string))
-    "no unreachable state; the only dead end is the ready list, which stays \
-     ready for the life of the page (a lost connection is stale data)"
-    [ "issue-list.ready: non-final dead end" ]
+    "no unreachable state; the only dead ends are the ready list and the ready \
+     detail, which stay ready for the life of the page (a lost connection is \
+     stale data, another issue number is shown in place)"
+    [
+      "issue-list.ready: non-final dead end";
+      "issue-detail.ready: non-final dead end";
+    ]
     (List.map Spec.issue_to_string issues)
 
 let () =
@@ -296,6 +300,9 @@ let () =
           Alcotest.test_case "props from the router" `Quick
             test_props_from_the_router;
           Alcotest.test_case "list alone" `Quick test_list;
+          Alcotest.test_case "list toasts, three saves" `Quick (fun () ->
+              report "list toasts" (list_toasts ())
+          );
           Alcotest.test_case "detail alone" `Quick test_detail;
           Alcotest.test_case "unsaved alone" `Quick (alone "unsaved" unsaved);
           Alcotest.test_case "create alone" `Quick test_create;

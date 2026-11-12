@@ -360,18 +360,17 @@ edge failed -> submitting back 975,115 927,100 787,100 739,114 label 857,96 subm
 edge submitting -> closed back 550,128 502,143 428,143 380,142 302,142 254,142 160,142 112,134 label 465,139 created ok
 edge submitting -> failed 739,128 787,138 927,138 975,122 label 857,134 created error
 linear_check/issue-detail
-machine issue-detail 525 253
-node loading 40,98 143 62 initial
+machine issue-detail 525 239
+node loading 40,84 143 53 initial
 node failed 401,35 72 36
-node not_found 390,111 94 36
-node ready 366,173 143 64
-edge failed -> loading back 401,48 366,48 318,34 231,34 183,110 label 274,30 props, retry
-edge loading -> failed 183,117 231,72 318,72 366,58 401,58 label 274,68 loaded error
-edge loading -> loading 97,98 81,68 141,68 125,98 label 111,66 props
-edge loading -> not_found 183,125 231,110 318,110 366,124 390,124 label 274,106 loaded ok
-edge loading -> ready 183,141 231,186 318,186 366,196 label 274,182 loaded ok
-edge not_found -> loading back 390,134 366,134 318,148 231,148 183,133 label 274,144 props
-edge ready -> loading back 366,214 318,224 231,224 183,148 label 274,220 props
+node not_found 390,107 94 36
+node ready 366,159 143 64
+edge failed -> loading back 401,49 366,49 318,34 231,34 183,95 label 274,30 props, retry
+edge loading -> failed 183,103 231,72 318,72 366,58 401,58 label 274,68 loaded error
+edge loading -> loading 97,84 81,54 141,54 125,84 label 111,52 props
+edge loading -> not_found 183,110 231,110 318,110 366,120 390,120 label 274,106 loaded ok
+edge loading -> ready 183,125 231,186 318,186 366,191 label 274,182 loaded ok
+edge not_found -> loading back 390,129 366,129 318,148 231,148 183,118 label 274,144 props
 linear_check/issue-list
 machine issue-list 525 163
 node loading 40,47 143 50 initial
@@ -410,18 +409,17 @@ linear_check/router+create-issue+create-issue-dialog.router
 machine router 454 68
 node /?new&status&assignee&priority&label&group&order 40,16 398 36 initial
 linear_check/router+issue-detail.issue-detail
-machine issue-detail 525 253
-node loading 40,98 143 62 initial
+machine issue-detail 525 239
+node loading 40,84 143 53 initial
 node failed 401,35 72 36
-node not_found 390,111 94 36
-node ready 366,173 143 64
-edge failed -> loading back 401,48 366,48 318,34 231,34 183,110 label 274,30 props, retry
-edge loading -> failed 183,117 231,72 318,72 366,58 401,58 label 274,68 loaded error
-edge loading -> loading 97,98 81,68 141,68 125,98 label 111,66 props
-edge loading -> not_found 183,125 231,110 318,110 366,124 390,124 label 274,106 loaded ok
-edge loading -> ready 183,141 231,186 318,186 366,196 label 274,182 loaded ok
-edge not_found -> loading back 390,134 366,134 318,148 231,148 183,133 label 274,144 props
-edge ready -> loading back 366,214 318,224 231,224 183,148 label 274,220 props
+node not_found 390,107 94 36
+node ready 366,159 143 64
+edge failed -> loading back 401,49 366,49 318,34 231,34 183,95 label 274,30 props, retry
+edge loading -> failed 183,103 231,72 318,72 366,58 401,58 label 274,68 loaded error
+edge loading -> loading 97,84 81,54 141,54 125,84 label 111,52 props
+edge loading -> not_found 183,110 231,110 318,110 366,120 390,120 label 274,106 loaded ok
+edge loading -> ready 183,125 231,186 318,186 366,191 label 274,182 loaded ok
+edge not_found -> loading back 390,129 366,129 318,148 231,148 183,118 label 274,144 props
 linear_check/router+issue-detail.router
 machine router 741 92
 node /?new&status&assignee&priority&label&group&order 40,35 398 36 initial

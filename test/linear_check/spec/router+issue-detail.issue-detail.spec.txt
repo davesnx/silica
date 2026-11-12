@@ -13,5 +13,4 @@ edge loading -> loading on props
 edge loading -> not_found on "loaded ok"
 edge loading -> ready on "loaded ok"
 edge not_found -> loading on props
-edge ready -> loading on props
-stay ready on cancel_edit create_key edit "menu_open true" "picker open" reconnect reconnected save updated
+stay ready on cancel_edit create_key edit "menu_open true" "picker open" props reconnect reconnected save updated

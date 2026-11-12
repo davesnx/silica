@@ -12,5 +12,4 @@ rankdir=LR;
 "issue-detail.loading" -> "issue-detail.not_found" [label="loaded ok"];
 "issue-detail.loading" -> "issue-detail.ready" [label="loaded ok"];
 "issue-detail.not_found" -> "issue-detail.loading" [label="props"];
-"issue-detail.ready" -> "issue-detail.loading" [label="props"];
 }

@@ -80,9 +80,8 @@ let field_of_change : Change.t -> (text_field * string) option = function
   | Change.Status _ | Change.Priority _ | Change.Assignee _ | Change.Labels _ ->
       None
 
-let add_toast state request outcome =
-  let key = "toast-" ^ string_of_int (List.length state.toasts) in
-  match Linear_data.toast ~key request outcome with
+let add_toast state id request outcome =
+  match Linear_data.toast id request outcome with
   | Some toast ->
       { state with toasts = state.toasts @ [ toast ] }
   | None ->
@@ -108,7 +107,7 @@ let finished state id answer : (state, event) Machine.next =
       Go (Ready state)
   | Some (request, (Linear_data.Conflict current as outcome)) -> (
       match field_of_change request.change with
-      | Some (field, draft) ->
+      | Some (field, draft) when request.number = state.number ->
           Go_with
             ( Ready
                 {
@@ -124,11 +123,11 @@ let finished state id answer : (state, event) Machine.next =
                 },
               [ Action.Focus (input_ref field) ]
             )
-      | None ->
-          Go (Ready (add_toast state request outcome))
+      | Some _ | None ->
+          Go (Ready (add_toast state id request outcome))
     )
   | Some (request, (Linear_data.Failed _ as outcome)) ->
-      Go (Ready (add_toast state request outcome))
+      Go (Ready (add_toast state id request outcome))
 
 let save state (editor : editor) : (state, event) Machine.next =
   match Change.check (change_of editor.field editor.draft) with
@@ -270,6 +269,13 @@ let live (state : view_state) =
   else
     Source.live issues_topic issues_key (fun update -> Updated update)
 
+let page_title number data =
+  match Linear_data.find number data with
+  | Some issue ->
+      Issue.identifier issue ^ " " ^ issue.title
+  | None ->
+      "ENG-" ^ string_of_int number
+
 let machine =
   Machine.make_with_props ~id:"issue-detail" ~init:Loading ~shape:state_shape
     ~events:event_shape
@@ -289,15 +295,31 @@ let machine =
       | Not_found | Failed _ ->
           []
       )
-    ~on_props:(fun previous _ _ ->
-      match previous with Some _ -> Reenter Loading | None -> Ignore
+    ~on_props:(fun previous number state ->
+      match (previous, state) with
+      | None, _ ->
+          Ignore
+      | Some _, Ready ready ->
+          Go_with
+            ( Ready
+                {
+                  ready with
+                  number;
+                  editor = None;
+                  picker = None;
+                  menu_open = false;
+                },
+              [ Action.Set_title (page_title number ready.data) ]
+            )
+      | Some _, (Loading | Not_found | Failed _) ->
+          Reenter Loading
     )
     (fun number state event ->
       match (state, event) with
       | Loading, Loaded (Ok issues) -> (
           let data = Linear_data.loaded issues in
           match Linear_data.find number data with
-          | Some issue ->
+          | Some _ ->
               Go_with
                 ( Ready
                     {
@@ -309,9 +331,7 @@ let machine =
                       toasts = [];
                       menu_open = false;
                     },
-                  [
-                    Action.Set_title (Issue.identifier issue ^ " " ^ issue.title);
-                  ]
+                  [ Action.Set_title (page_title number data) ]
                 )
           | None ->
               Go_with (Not_found, [ Action.Set_status 404 ])

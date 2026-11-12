@@ -119,7 +119,9 @@ let finish id (answer : (Change.answer, string) Remote.answer) t =
           )
     )
 
-let toast ~key (request : request) = function
+let toast id (request : request) outcome =
+  let key = "toast-" ^ string_of_int id in
+  match outcome with
   | Saved ->
       None
   | Conflict (current : Issue.t) ->
@@ -135,7 +137,11 @@ let toast ~key (request : request) = function
       Some
         (Silica_ui.Toast.toast ~key ~priority:High
            ~description:(message ^ ". The old value is back.")
-           ("Could not save the " ^ Change.field request.change)
+           ("Could not save the "
+           ^ Change.field request.change
+           ^ " of ENG-"
+           ^ string_of_int request.number
+           )
         )
 
 let calls t on_answer =

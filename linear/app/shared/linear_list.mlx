@@ -86,9 +86,8 @@ let move view (r : ready) step : (state, event) Machine.next =
   | None ->
       Stay []
 
-let add_toast (r : ready) request outcome =
-  let key = "toast-" ^ string_of_int (List.length r.toasts) in
-  match Linear_data.toast ~key request outcome with
+let add_toast (r : ready) id request outcome =
+  match Linear_data.toast id request outcome with
   | Some toast ->
       { r with toasts = r.toasts @ [ toast ] }
   | None ->
@@ -165,7 +164,7 @@ let ready_event view (r : ready) : event -> (state, event) Machine.next =
       let r = { r with data } in
       match outcome with
       | Some (request, outcome) ->
-          Go (Ready (add_toast r request outcome))
+          Go (Ready (add_toast r id request outcome))
       | None ->
           Go (Ready r)
     )
