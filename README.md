@@ -3,7 +3,7 @@
 > [!WARNING]
 > silica is experimental.
 
-**Statechart-driven UI in OCaml, checked before it runs.**
+**Statechart-driven UI in OCaml**
 
 silica is a view framework for OCaml where all behaviour lives in statecharts, with a model checker built in. A component is a machine and a view, so silica can explore every state that the component can reach and verify its properties, with no browser and before a user finds the bug.
 
@@ -21,10 +21,7 @@ A button that saves a draft: it calls the server, shows the time of the save for
 ```ocaml
 open Silica
 
-(* The endpoint. The browser calls it and the server implements it. *)
-let save =
-  Remote.declare ~path:"/api/save" ~input:Codec.string ~output:Codec.string
-    ~rejected:Codec.string
+let save = (* assume a Api.save http request call here of your fav client *)
 
 (* The events of the machine. *)
 type event = Save | Answer of (string, string) Remote.answer | Reset
@@ -69,7 +66,7 @@ let view (state : state) : event Node.t =
      | Failed -> <button on_press=Save>"Not saved. Try again"</button>)
   </div>
 
-let component = Component.make machine view
+let demo = Component.make machine view
 ```
 
 silica draws the statechart of this component from the code:

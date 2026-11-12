@@ -13,7 +13,7 @@
 
 (package
  (name silica)
- (synopsis "View framework where all behaviour is statecharts")
+ (synopsis "Statechart-driven UI in OCaml")
  (depends
   (ocaml (>= 5.1))
   (melange (>= 7.0))
