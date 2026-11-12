@@ -8,7 +8,6 @@ type toast = {
   description : string option;
   priority : priority;
 }
-[@@deriving fingerprint]
 
 type classes = {
   viewport : string;
@@ -39,7 +38,6 @@ type state =
   | Running of model * int
   | Paused of model
   | Expired of model
-[@@deriving fingerprint]
 
 let name = function
   | Empty _ ->
@@ -79,7 +77,7 @@ let shows (props : props) key =
 let machine =
   Machine.make_with_props ~id:"toast"
     ~init:(Empty { hovered = false; focused = false })
-    ~name ~states ~event_name ~fingerprint:state_fingerprint
+    ~name ~states ~event_name
     ~during:(fun _ -> function
       | Running _ ->
           [ Source.after tick_ms Tick ]

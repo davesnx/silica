@@ -75,10 +75,10 @@ Run every command from this directory.
     keeps the state of its machines), `"page"` or `"css"`.
   - `{"t":"hot-reload","status":"kept","kept":[...],"restarted":[...]}`: each
     `restarted` entry has `path`, `machine` and `reason`, such as
-    `"its state type changed"`. A machine keeps its state when it has a
-    fingerprint: `[@@deriving fingerprint]` on its state type, given as
-    `~fingerprint:state_fingerprint` to `Machine.make`, and
-    `[@@deriving fingerprint]` on the types of other modules it holds.
+    `"its snapshot does not decode: ..."`. A machine keeps its state when
+    `app/shared/codecs.ml` registers a state codec for it with
+    `Machine.register_codecs`, and the old snapshot decodes with the new
+    codec. `client/dev_codecs.ml` calls it in the development bundle only.
 
   After an edit, wait for `build` `ok` and `server` `restarted` (and
   `hot-reload` when a page is open), or for `failed`, and fix each error.
@@ -117,8 +117,8 @@ Run every command from this directory.
    reports the states that no run reached), `?event_name` (the name of each
    event on the edges; an event with no name is labelled by its cause, such
    as `press button "Save"`, `after 2000ms` or `ok /api/save`), `?during`
-   (the timers, calls and sources of each state) and `?fingerprint` (see
-   `hot-reload` above). Write `name` and `event_name` as a `function` over
+   (the timers, calls and sources of each state). Give a new machine a state
+   codec in `app/shared/codecs.ml` (see `hot-reload` above). Write `name` and `event_name` as a `function` over
    every constructor, with no `_` case, so that a new constructor is a compile
    error, and add each new state name to `states`.
 3. Run `silica check --json --traces traces > report.json`.

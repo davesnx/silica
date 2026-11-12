@@ -1,14 +1,13 @@
 open Silica
 open Example_routes
 
-type state = Not_found [@@deriving fingerprint]
+type state = Not_found
 
 let name Not_found = "not_found"
 let states = [ "not_found" ]
 
 let machine =
   Machine.make ~id:"not_found" ~init:Not_found ~name ~states
-    ~fingerprint:state_fingerprint
     ~final:(fun Not_found -> true)
     ~entry:(fun Not_found -> [ Action.Set_title "Not found" ])
     (fun Not_found () -> Ignore)

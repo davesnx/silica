@@ -58,7 +58,6 @@ type error = Silica.Remote.error
 
 let error_to_json error = to_json Silica.Remote.error_codec error
 let error_of_json json = of_json Silica.Remote.error_codec json
-let error_fingerprint = Silica.Remote.error_fingerprint
 
 type ('o, 'x) answer = ('o, 'x) Silica.Remote.answer
 
@@ -68,15 +67,20 @@ let answer_to_json output rejected =
 let answer_of_json output rejected =
   of_json (Silica.Remote.answer_codec (reader output) (reader rejected))
 
-let answer_fingerprint = Silica.Remote.answer_fingerprint
-
 type 'a status = 'a Silica.Status.t
 
 let status_to_json data = to_json (Silica.Status.codec (writer data))
 let status_of_json data = of_json (Silica.Status.codec (reader data))
-let status_fingerprint = Silica.Status.fingerprint
 
 type 's update = 's Silica.Topic.update
 
 let update_to_json state = to_json (Silica.Topic.update_codec (writer state))
 let update_of_json state = of_json (Silica.Topic.update_codec (reader state))
+
+type ('value, 'change) optimistic = ('value, 'change) Silica.Optimistic.state
+
+let optimistic_to_json value change =
+  to_json (Silica.Optimistic.codec (writer value) (writer change))
+
+let optimistic_of_json value change =
+  of_json (Silica.Optimistic.codec (reader value) (reader change))

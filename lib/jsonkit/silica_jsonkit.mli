@@ -19,8 +19,8 @@ val of_json : 'a Silica.Codec.t -> Jsonkit.t -> 'a
 (** {1 Silica types in derived JSON}
 
     [[@@deriving json]] calls [answer_to_json] for a field of type
-    [('o, 'x) Silica_jsonkit.answer], and so on. These aliases let an event type
-    that holds answers or updates derive its JSON:
+    [('o, 'x) Silica_jsonkit.answer], and so on. These aliases let an event or
+    state type that holds answers, updates or optimistic data derive its JSON:
 
     {[
       type event =
@@ -30,16 +30,13 @@ val of_json : 'a Silica.Codec.t -> Jsonkit.t -> 'a
     ]}
 
     The JSON is the one of {!Silica.Remote.error_codec},
-    {!Silica.Remote.answer_codec}, {!Silica.Status.codec} and
-    {!Silica.Topic.update_codec}. *)
+    {!Silica.Remote.answer_codec}, {!Silica.Status.codec},
+    {!Silica.Topic.update_codec} and {!Silica.Optimistic.codec}. *)
 
 type error = Silica.Remote.error
 
 val error_to_json : error -> Jsonkit.t
 val error_of_json : Jsonkit.t -> error
-
-val error_fingerprint : error Silica.Fingerprint.t
-(** For a state type that mentions {!error} (see [Silica.Fingerprint]). *)
 
 type ('o, 'x) answer = ('o, 'x) Silica.Remote.answer
 
@@ -49,22 +46,26 @@ val answer_to_json :
 val answer_of_json :
   (Jsonkit.t -> 'o) -> (Jsonkit.t -> 'x) -> Jsonkit.t -> ('o, 'x) answer
 
-val answer_fingerprint :
-  'o Silica.Fingerprint.t ->
-  'x Silica.Fingerprint.t ->
-  ('o, 'x) answer Silica.Fingerprint.t
-(** For a state type that mentions {!answer}. *)
-
 type 'a status = 'a Silica.Status.t
 
 val status_to_json : ('a -> Jsonkit.t) -> 'a status -> Jsonkit.t
 val status_of_json : (Jsonkit.t -> 'a) -> Jsonkit.t -> 'a status
 
-val status_fingerprint :
-  'a Silica.Fingerprint.t -> 'a status Silica.Fingerprint.t
-(** For a state type that mentions {!status}. *)
-
 type 's update = 's Silica.Topic.update
 
 val update_to_json : ('s -> Jsonkit.t) -> 's update -> Jsonkit.t
 val update_of_json : (Jsonkit.t -> 's) -> Jsonkit.t -> 's update
+
+type ('value, 'change) optimistic = ('value, 'change) Silica.Optimistic.state
+
+val optimistic_to_json :
+  ('value -> Jsonkit.t) ->
+  ('change -> Jsonkit.t) ->
+  ('value, 'change) optimistic ->
+  Jsonkit.t
+
+val optimistic_of_json :
+  (Jsonkit.t -> 'value) ->
+  (Jsonkit.t -> 'change) ->
+  Jsonkit.t ->
+  ('value, 'change) optimistic

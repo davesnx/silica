@@ -982,6 +982,7 @@ type running =
   | Running : {
       path : string;
       machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
       snapshot : 's;
     }
       -> running
@@ -996,6 +997,7 @@ let running tree =
            {
              path = cell_path cell;
              machine = cell.component.machine;
+             props = cell.props;
              snapshot = cell.snapshot;
            }
         :: found

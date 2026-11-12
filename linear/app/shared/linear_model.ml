@@ -1,8 +1,7 @@
 open Jsonkit.Primitives
 
 module Issue_status = struct
-  type t = Backlog | Todo | In_progress | Done | Canceled
-  [@@deriving json, fingerprint]
+  type t = Backlog | Todo | In_progress | Done | Canceled [@@deriving json]
 
   let all = [ Backlog; Todo; In_progress; Done; Canceled ]
 
@@ -27,8 +26,7 @@ module Issue_status = struct
 end
 
 module Priority = struct
-  type t = No_priority | Urgent | High | Medium | Low
-  [@@deriving json, fingerprint]
+  type t = No_priority | Urgent | High | Medium | Low [@@deriving json]
 
   let all = [ No_priority; Urgent; High; Medium; Low ]
 
@@ -48,7 +46,7 @@ module Priority = struct
 end
 
 module User = struct
-  type t = Ada | Ben | Cleo [@@deriving json, fingerprint]
+  type t = Ada | Ben | Cleo [@@deriving json]
 
   let all = [ Ada; Ben; Cleo ]
 
@@ -56,7 +54,7 @@ module User = struct
 end
 
 module Label = struct
-  type t = Bug | Feature | Docs | Chore [@@deriving json, fingerprint]
+  type t = Bug | Feature | Docs | Chore [@@deriving json]
 
   let label = function
     | Bug ->
@@ -82,13 +80,13 @@ module Issue = struct
     updated_at : int;
     version : int;
   }
-  [@@deriving json, fingerprint]
+  [@@deriving json]
 
   let identifier t = "ENG-" ^ string_of_int t.number
 end
 
 module Issues = struct
-  type t = Issue.t list [@@deriving json, fingerprint]
+  type t = Issue.t list [@@deriving json]
 end
 
 module Draft = struct
@@ -98,7 +96,7 @@ module Draft = struct
     status : Issue_status.t;
     priority : Priority.t;
   }
-  [@@deriving json, fingerprint]
+  [@@deriving json]
 
   let empty =
     {
@@ -153,7 +151,7 @@ module Change = struct
     | Priority of Priority.t
     | Assignee of User.t option
     | Labels of Label.t list
-  [@@deriving json, fingerprint]
+  [@@deriving json]
 
   type request = { number : int; base : int; change : t } [@@deriving json]
   type answer = Saved of Issue.t | Conflict of Issue.t [@@deriving json]
@@ -224,7 +222,7 @@ module Comment = struct
     created_at : int;
     edited : bool;
   }
-  [@@deriving json, fingerprint]
+  [@@deriving json]
 
   let max_body = 10_000
 

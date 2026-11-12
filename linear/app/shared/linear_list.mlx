@@ -69,11 +69,11 @@ type ready = {
   filter_open : bool;
   cursor : int option;
   menu_open : bool;
-  toasts : Silica_ui.Toast.toast list;
+  toasts : Linear_data.Toast.t list;
 }
+[@@deriving json]
 
-type state = Loading | Ready of ready | Failed of string
-[@@deriving fingerprint]
+type state = Loading | Ready of ready | Failed of string [@@deriving json]
 
 let name = function
   | Loading ->
@@ -245,7 +245,7 @@ let live (r : ready) =
 
 let machine =
   Machine.make_with_props ~id:"issue-list" ~init:Loading ~name ~states
-    ~event_name ~fingerprint:state_fingerprint
+    ~event_name
     ~entry:(fun _ -> function
       | Loading -> [ Action.Set_title "Issues" ] | Ready _ | Failed _ -> []
       )

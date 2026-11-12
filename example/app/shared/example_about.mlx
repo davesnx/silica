@@ -1,7 +1,7 @@
 open Silica
 
 type event = Go_back [@@deriving json]
-type state = About [@@deriving json, fingerprint]
+type state = About [@@deriving json]
 
 let name About = "about"
 let states = [ "about" ]
@@ -9,7 +9,6 @@ let event_name Go_back = "go back"
 
 let machine =
   Machine.make ~id:"about" ~init:About ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~entry:(fun About -> [ Action.Set_title "About" ])
     (fun About Go_back -> Stay [ Action.Back ])
 

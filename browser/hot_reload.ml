@@ -3,7 +3,7 @@ module Json = Silica_json.Json
 
 type js_handoff
 
-type entry = string * string * string * string * Obj.t
+type entry = string * string * string * string
 
 let take_global : unit -> js_handoff Js.Nullable.t =
   [%mel.raw
@@ -20,9 +20,8 @@ let decode : js_handoff -> entry array * (string * string) array =
   if (handoff && Array.isArray(handoff.instances))
     handoff.instances.forEach(function (entry) {
       if (entry && typeof entry.path === "string" && typeof entry.machine === "string"
-          && (entry.fingerprint === "ok" || entry.fingerprint === "error" || entry.fingerprint === "none")
-          && typeof entry.text === "string" && "snapshot" in entry)
-        entries.push([entry.path, entry.machine, entry.fingerprint, entry.text, entry.snapshot]);
+          && typeof entry.kind === "string" && typeof entry.text === "string")
+        entries.push([entry.path, entry.machine, entry.kind, entry.text]);
     });
   if (handoff && Array.isArray(handoff.islands))
     handoff.islands.forEach(function (island) {
@@ -37,26 +36,11 @@ let encode : entry array -> (string * string) array -> string -> js_handoff =
     {|function (entries, islands, url) {
   return {
     instances: entries.map(function (entry) {
-      return { path: entry[0], machine: entry[1], fingerprint: entry[2], text: entry[3], snapshot: entry[4] };
+      return { path: entry[0], machine: entry[1], kind: entry[2], text: entry[3] };
     }),
     islands: islands.map(function (island) { return { channel: island[0], instance: island[1] } }),
     url: url
   };
-}|}]
-
-let holds_function : Obj.t -> bool =
-  [%mel.raw
-    {|function (value) {
-  var seen = new Set();
-  var walk = function (item) {
-    if (typeof item === "function") return true;
-    if (item === null || typeof item !== "object" || seen.has(item)) return false;
-    seen.add(item);
-    for (var key in item)
-      if (Object.prototype.hasOwnProperty.call(item, key) && walk(item[key])) return true;
-    return false;
-  };
-  return walk(value);
 }|}]
 
 let publish : (unit -> js_handoff) -> unit =
@@ -74,35 +58,34 @@ let report : string -> unit =
 
 let entry_of (path, (entry : Handoff.entry)) : entry =
   let kind, text =
-    match entry.fingerprint with
-    | Some (Ok text) ->
-        ("ok", text)
-    | Some (Error reason) ->
-        ("error", reason)
-    | None ->
-        ("none", "")
+    match entry.snapshot with
+    | Encoded text ->
+        ("encoded", text)
+    | At_start ->
+        ("start", "")
+    | Not_encoded reason ->
+        ("none", reason)
   in
-  (path, entry.machine, kind, text, entry.snapshot)
+  (path, entry.machine, kind, text)
 
 let handoff_of (entries, islands) : Handoff.t =
   {
     instances =
       Array.to_list
         (Array.map
-           (fun (path, machine, kind, text, snapshot) ->
+           (fun (path, machine, kind, text) ->
              ( path,
                {
                  Handoff.machine;
-                 fingerprint =
+                 snapshot =
                    ( match kind with
-                   | "ok" ->
-                       Some (Ok text)
-                   | "error" ->
-                       Some (Error text)
+                   | "encoded" ->
+                       Encoded text
+                   | "start" ->
+                       At_start
                    | _ ->
-                       None
+                       Not_encoded text
                    );
-                 snapshot;
                }
              )
            )
@@ -175,13 +158,39 @@ let close_sessions () =
     )
     all
 
+type router =
+  | Router : 'r Router.routes * (unit, 'r, Router.event) Machine.t -> router
+
+let routers : router list ref = ref []
+
+let codecs =
+  let state (type p s e) (machine : (p, s, e) Machine.t) :
+      (s Codec.t, string) result =
+    let rec find = function
+      | [] ->
+          Machine.state_codec machine
+      | Router (routes, router) :: rest -> (
+          match
+            Type.Id.provably_equal (Machine.type_id machine)
+              (Machine.type_id router)
+          with
+          | Some Type.Equal ->
+              Ok (Router.state_codec routes)
+          | None ->
+              find rest
+        )
+    in
+    find !routers
+  in
+  { Handoff.state }
+
 let resume () =
   match Js.Nullable.toOption (take_global ()) with
   | None ->
       None
   | Some handoff ->
       let handoff = handoff_of (decode handoff) in
-      let hook, outcome = Handoff.hook ~holds_function handoff in
+      let hook, outcome = Handoff.hook ~codecs handoff in
       Vdom.adopter :=
         Some
           {
@@ -299,7 +308,7 @@ let wrap platform create =
       remove_portals ();
       let islands = close_sessions () in
       let handoff =
-        Handoff.of_running ~islands
+        Handoff.of_running ~codecs ~islands
           ~url:(Dom_renderer.current_url ())
           (match !tree with Some tree -> Instance.running tree | None -> [])
       in
@@ -325,5 +334,10 @@ let wrap platform create =
   )
 
 let () =
+  Router.on_make :=
+    {
+      made =
+        (fun routes machine -> routers := Router (routes, machine) :: !routers);
+    };
   Dom_renderer.cleanups := Some (fun cleanup -> cleanups := cleanup :: !cleanups);
   Hot_hook.current := Some { wrap; observe = Inspect_target.observe }

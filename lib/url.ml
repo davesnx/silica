@@ -108,4 +108,3 @@ let to_string { path; query; hash } =
   in
   let hash = match hash with None -> "" | Some h -> "#" ^ encode h in
   path ^ query ^ hash
-let fingerprint : t Fingerprint.t = Fingerprint (Silica ("Url.t", []))

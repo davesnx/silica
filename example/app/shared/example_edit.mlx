@@ -15,7 +15,6 @@ let event_name = function
       "save"
 
 type state = Clean | Dirty of string | Asking of string * Nav.t
-[@@deriving fingerprint]
 
 let name = function
   | Clean ->
@@ -29,7 +28,6 @@ let states = [ "clean"; "dirty"; "asking" ]
 
 let machine =
   Machine.make ~id:"edit" ~init:Clean ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~entry:(function Clean -> [ Action.Set_title "Edit" ] | _ -> [])
     ~during:(function
       | Clean ->

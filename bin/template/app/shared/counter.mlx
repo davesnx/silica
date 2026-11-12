@@ -5,7 +5,6 @@ type state =
   | Saving of int
   | Saved of int
   | Save_failed of int
-[@@deriving fingerprint]
 
 let name = function
   | Counting _ ->
@@ -67,7 +66,7 @@ let during = function
 
 let machine =
   Machine.make ~id:"counter" ~init:(Counting 0) ~name ~states ~event_name
-    ~fingerprint:state_fingerprint ~during update
+    ~during update
 
 let message = function
   | Counting _ ->

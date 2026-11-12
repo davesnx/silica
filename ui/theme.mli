@@ -185,6 +185,11 @@ type state =
       (** The system setting decides: [Some dark] once the media source answers,
           [None] before. Its state name is ["system"]. *)
 
+val state_codec : set -> state Silica.Codec.t
+(** [["Fixed_theme", name]] or [["System_scheme", dark]], with [dark] a boolean
+    or [null], for {!Silica.Machine.register_codecs} on {!val-machine}. A theme
+    name that the set does not have does not decode. *)
+
 val machine : (props, state, event) Silica.Machine.t
 (** In [System_scheme] it holds [Source.media "(prefers-color-scheme: dark)"].
     Each change of choice sets [data-theme]; a change made in the page (a

@@ -3,6 +3,9 @@ open Silica
 let json ~to_json ~of_json = Silica_jsonkit.codec ~to_json ~of_json
 
 let register () =
+  Machine.register_codecs Silica_ui.Theme.machine
+    ~state:(Silica_ui.Theme.state_codec Linear_theme.set)
+    ();
   Machine.register_codecs Linear_me.machine
     ~state:
       (json ~to_json:Linear_me.state_to_json ~of_json:Linear_me.state_of_json)
@@ -50,12 +53,20 @@ let register () =
       )
     ();
   Machine.register_codecs Linear_list.machine
+    ~state:
+      (json ~to_json:Linear_list.state_to_json
+         ~of_json:Linear_list.state_of_json
+      )
     ~event:
       (json ~to_json:Linear_list.event_to_json
          ~of_json:Linear_list.event_of_json
       )
     ();
   Machine.register_codecs Linear_detail.machine
+    ~state:
+      (json ~to_json:Linear_detail.state_to_json
+         ~of_json:Linear_detail.state_of_json
+      )
     ~event:
       (json ~to_json:Linear_detail.event_to_json
          ~of_json:Linear_detail.event_of_json

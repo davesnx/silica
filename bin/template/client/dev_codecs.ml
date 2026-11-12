@@ -1,0 +1,1 @@
+let () = Codecs.register ()

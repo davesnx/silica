@@ -185,6 +185,10 @@ let state_codec routes : 'r Codec.t =
     decode = (fun json -> Result.map (parse routes) (url_codec.decode json));
   }
 
+type made = { made : 'r. 'r routes -> (unit, 'r, event) Machine.t -> unit }
+
+let on_make = ref { made = (fun _ _ -> ()) }
+
 let event_name = function
   | Url_changed _ ->
       "url changed"
@@ -248,8 +252,9 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
       | Redirect other ->
           (other, [ Action.Replace (print routes other) ])
     in
-    Component.make
-      (Machine.make ~id:"router" ~init ~name:(name routes) ~event_name ~exit
-         ~start:(titled init start) update
-      )
-      render
+    let machine =
+      Machine.make ~id:"router" ~init ~name:(name routes) ~event_name ~exit
+        ~start:(titled init start) update
+    in
+    !on_make.made routes machine;
+    Component.make machine render

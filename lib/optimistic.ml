@@ -10,10 +10,25 @@ type ('value, 'change) state = {
   pending : (int * 'change) list;
 }
 
-let fingerprint (Fingerprint.Fingerprint value : 'value Fingerprint.t)
-    (Fingerprint.Fingerprint change : 'change Fingerprint.t) :
-    ('value, 'change) state Fingerprint.t =
-  Fingerprint (Silica ("Optimistic.state", [ value; change ]))
+let codec (value : 'value Codec.t) change : ('value, 'change) state Codec.t =
+  let pending = Codec.list (Codec.pair Codec.int change) in
+  Codec.make
+    ~encode:(fun state ->
+      Silica_json.Json.declassify
+        (`Assoc
+           [
+             ("confirmed", value.encode state.confirmed);
+             ("pending", pending.encode state.pending);
+           ]
+        )
+    )
+    ~decode:(fun json ->
+      Result.bind (Codec.field "confirmed" value json) (fun confirmed ->
+          Result.map
+            (fun pending -> { confirmed; pending })
+            (Codec.field "pending" pending json)
+      )
+    )
 
 module type OPTIMISTIC = sig
   type value

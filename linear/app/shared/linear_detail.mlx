@@ -11,6 +11,7 @@ type editor = {
   base : int;
   note : string option;
 }
+[@@deriving json]
 
 type event =
   | Loaded of (Issues.t, string) Silica_jsonkit.answer
@@ -76,12 +77,13 @@ type view_state = {
   reconnecting : bool;
   editor : editor option;
   picker : Linear_pickers.picker option;
-  toasts : Silica_ui.Toast.toast list;
+  toasts : Linear_data.Toast.t list;
   menu_open : bool;
 }
+[@@deriving json]
 
 type state = Loading | Ready of view_state | Not_found | Failed of string
-[@@deriving fingerprint]
+[@@deriving json]
 
 let name = function
   | Loading ->
@@ -323,7 +325,7 @@ let page_title number data =
 
 let machine =
   Machine.make_with_props ~id:"issue-detail" ~init:Loading ~name ~states
-    ~event_name ~fingerprint:state_fingerprint
+    ~event_name
     ~entry:(fun number -> function
       | Loading ->
           [ Action.Set_title ("ENG-" ^ string_of_int number) ]

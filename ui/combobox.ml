@@ -59,7 +59,6 @@ type event =
   | Focus_out
 
 type state = Closed of data | Open of data | Inline of data
-[@@deriving fingerprint]
 
 let name = function
   | Closed _ ->
@@ -204,7 +203,7 @@ let settle (props : props) data : (state, event) Machine.next =
 let machine =
   Machine.make_with_props ~id:"combobox"
     ~init:(Closed { query = ""; highlighted = None; selected = None })
-    ~name ~states ~event_name ~fingerprint:state_fingerprint
+    ~name ~states ~event_name
     ~during:(fun props -> function
       | Open _ ->
           Popup.layer ~outside:Outside_press ~focus_out:Focus_out (parts props)

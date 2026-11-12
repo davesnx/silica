@@ -927,89 +927,31 @@ val error_codec : error Codec.t
 val answer_codec : 'o Codec.t -> 'x Codec.t -> ('o, 'x) answer Codec.t
 ```
 
-## Silica.Fingerprint
-
-*For development tools only: hot reload under `silica dev` uses it. App code and tests do not call it.*
-
-The fingerprint of a type: what a hot reload compares before it gives a snapshot of the old page to the new code (see `Handoff`).
-
-Two equal fingerprints mean that the two builds compiled the same declarations, with the same compiler, for the type and every type it mentions. The deriver `[@@deriving fingerprint]` of `silica.ppx` makes them: on a state type it gives `state_fingerprint`, which the machine passes to `Machine.make` as `~fingerprint:state_fingerprint`; on any other type it gives one so that a state type in another file can mention it. A type with no fingerprint can not be handed over: a machine whose state mentions it starts again at a hot reload, and the reason names the type. A machine with no `~fingerprint` starts again at each hot reload, unless its initial snapshot equals the old one (see `Handoff.hook`).
-
-A fingerprint written by hand, such as the one of a type made by a functor, goes in `[%fingerprint ...]`: the expression in a development build, `off` in a release build, so a release bundle computes nothing.
-
-The deriver gives fingerprints only in a development build: the release profile of a project sets `SILICA_FINGERPRINTS=false` for it (see the root `dune` file), so a release bundle holds none; there `[@@deriving fingerprint]` gives `off`.
-
-```ocaml
-type part =
-  | Declared of string * part list
-      (** The digest of the printed declarations that a deriver saw, with the
-          fingerprints of the types from other modules that they mention. *)
-  | Silica of string * part list
-      (** A type of Silica, named as in ["Remote.error"], with the fingerprints
-          of its parameters. It stands for the interfaces of this build of
-          Silica and the Melange version. *)
-  | Unknown of string
-      (** A type that has no fingerprint, named as it is written. *)
-  | Refused of string
-```
-
-```ocaml
-type 'a t = Fingerprint of part [@@unboxed]
-```
-
-The fingerprint of the type `'a`. The type parameter lets the compiler check that a fingerprint found by name is the one of the type with that name.
-
-```ocaml
-val part : 'a t -> part
-```
-
-The fingerprint with no type, as a part of another one.
-
-```ocaml
-val declared : string -> part list -> 'a t
-```
-
-`declared digest parts`, for the derivers.
-
-```ocaml
-val unknown : string -> 'a t
-```
-
-The fingerprint of a type that has none, named as it is written.
-
-```ocaml
-val refused : string -> 'a t
-```
-
-The fingerprint of a type that can not be handed over, such as a function. The text says why, as in `"its state type holds a function"`.
-
-```ocaml
-val off : 'a t
-```
-
-What `[@@deriving fingerprint]` gives in a release build, where fingerprints are off: it gives no digest. A machine can then pass `~fingerprint:state_fingerprint` in every build.
-
-```ocaml
-val digest : 'a t -> (string, string) result
-```
-
-The text that two builds compare, or the reason there is none, as in `"its state type mentions Issue.t, which has no fingerprint"`.
-
 ## Silica.Handoff
 
 *For development tools only: hot reload under `silica dev` uses it. App code and tests do not call it.*
 
-What a hot reload hands from the running page to the new code: the snapshot of each mounted instance, by its instance path, with the fingerprint of its state type (see `Fingerprint`), the instance ids of the Live islands, and the URL.
+What a hot reload hands from the running page to the new code: the snapshot of each mounted instance as JSON text, by its instance path, the instance ids of the Live islands, and the URL.
+
+The old code encodes each snapshot with the state codec registered for its machine (see `Machine.register_codecs`); the new code decodes it with its own. No value of the old code goes to the new code: a snapshot that does not decode, such as one of a state type that changed, starts again.
 
 Only development code uses this module: `silica dev` and its browser hook, and tests. A release bundle does not reference it.
 
 ```ocaml
+type snapshot =
+  | Encoded of string
+      (** The JSON text of the snapshot, from the state codec of the old code.
+      *)
+  | At_start
+      (** The machine has no state codec, and the snapshot is the one that
+          {!Machine.start} gives for its props. *)
+  | Not_encoded of string
+```
+
+```ocaml
 type entry = {
   machine : string;  (** The {!Machine.id}. *)
-  fingerprint : (string, string) result option;
-      (** The {!Fingerprint.digest} of the state type, or [None] when the
-          machine has no fingerprint. *)
-  snapshot : Obj.t;  (** The snapshot, as the old code made it. *)
+  snapshot : snapshot;
 }
 ```
 
@@ -1023,23 +965,40 @@ type t = {
 ```
 
 ```ocaml
-val of_running :
-  islands:(string * string) list -> url:Url.t -> Instance.running list -> t
+type codecs = {
+  state : 'p 's 'e. ('p, 's, 'e) Machine.t -> ('s Codec.t, string) result;
+}
 ```
 
-The handoff of the instances that `Instance.running` gives.
+How a hot reload finds the state codec of a machine.
+
+```ocaml
+val registered : codecs
+```
+
+`Machine.state_codec`: the codecs given to `Machine.register_codecs`.
+
+```ocaml
+val of_running :
+  ?codecs:codecs ->
+  islands:(string * string) list ->
+  url:Url.t ->
+  Instance.running list ->
+  t
+```
+
+The handoff of the instances that `Instance.running` gives, each snapshot encoded by its state codec from `codecs` (default `registered`).
 
 ```ocaml
 type reason =
   | Other_machine of string
       (** Another machine, with this id, ran at the path before. *)
-  | No_fingerprint  (** The machine has no fingerprint. *)
-  | Not_handed_over of string
-      (** The fingerprint of the new code gives this reason (see
-          {!Fingerprint.digest}). *)
-  | Changed  (** The fingerprints differ: the state type changed. *)
-  | Holds_function
-      (** The snapshot holds a function, which would run the old code. *)
+  | No_codec of string
+      (** The old or the new code has no state codec for the machine, with the
+          reason from {!Machine.state_codec}. *)
+  | Not_decoded of string
+      (** The state codec of the new code does not decode the snapshot, with the
+          error: the state type changed. *)
   | Render_failed of string
 ```
 
@@ -1047,20 +1006,7 @@ type reason =
 val reason_text : reason -> string
 ```
 
-As in `"its state type changed"`.
-
-```ocaml
-val take :
-  holds_function:(Obj.t -> bool) ->
-  t ->
-  path:string ->
-  ('p, 's, 'e) Machine.t ->
-  ('s, reason) result option
-```
-
-`take ~holds_function handoff ~path machine` is the snapshot that the instance at `path` had, for `machine` in the new code: `None` when no instance ran at the path, `Error` when the snapshot can not be given.
-
-This function holds the only cast of a hot reload, from `Obj.t` to `'s`. It happens only when the machine id at the path is the same, both fingerprints are `Ok` and equal, and `holds_function` finds no function in the snapshot. Why that is safe: an equal fingerprint is the same digest of the same printed declarations of the state type and of every type it mentions, transitively, made by the same deriver with the same Melange and OCaml versions (see `Fingerprint`). The deriver prints the types declared in the same file, and checks at compile time, with a re-export, that each one is the type with that name where the state type is declared; it takes the fingerprint of a type of another module from that module, found by name and checked by the type parameter of `Fingerprint.t`; a type of Silica counts by the digest of the interfaces of Silica. A type that it can not see (abstract, extensible, from an `open`, or from a module with no fingerprint for it), and functions, objects, `exn` and `lazy`, give no digest, so their machines are never given a snapshot. Two builds that compiled the same declarations with the same compiler give the values of that type the same JavaScript representation, so the snapshot of the old build is a valid value of `'s` in the new one. A function inside it would still be code of the old build, which `holds_function` refuses.
+As in `"its snapshot does not decode: ..."`.
 
 ```ocaml
 type restarted = { path : string; machine : string; reason : reason }
@@ -1073,13 +1019,12 @@ type outcome = { kept : string list; restarted : restarted list }
 The instances that resumed, by path, and the ones that started again. An instance with no entry in the handoff is in neither list.
 
 ```ocaml
-val hook :
-  holds_function:(Obj.t -> bool) -> t -> Instance.resume * (unit -> outcome)
+val hook : ?codecs:codecs -> t -> Instance.resume * (unit -> outcome)
 ```
 
 The `Instance.resume` of the handoff, and what it did so far. An instance whose path is not in the handoff takes the entry of the same machine id when the handoff has exactly one, not taken yet: a view edit that moves a component keeps its state.
 
-When a snapshot can not be given because the machine has no fingerprint, or its fingerprint gives a reason, the instance starts from its initial snapshot (with `Machine.start` on its props, as for a new instance); when that snapshot is structurally equal to the old one, the instance counts as kept and resumes there, with no entry. The old value is only compared, never used: a router, whose state comes from the URL, keeps its route.
+An `Encoded` snapshot resumes when the state codec of the new code, from `codecs` (default `registered`), decodes it. An `At_start` snapshot resumes at the snapshot that `Machine.start` gives in the new code, with no entry: a closed popup with no codec keeps being closed. Any other instance starts again from its initial snapshot, and the outcome says why.
 
 ## Silica.Inspect
 
@@ -1581,6 +1526,7 @@ type running =
   | Running : {
       path : string;  (** The instance path (see {!cell_path}). *)
       machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
       snapshot : 's;
     }
       -> running
@@ -1841,7 +1787,6 @@ val make :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?fingerprint:'s Fingerprint.t ->
   ?during:('s -> 'e Source.t list) ->
   ?entry:('s -> 'e Action.t list) ->
   ?exit:('s -> 'e Action.t list) ->
@@ -1859,8 +1804,6 @@ val make :
 
 `event_name` names an event on the edges of the spec, in the checker and in traces, and `Check.event` finds an event by it. With no `event_name`, the tools label an event by its cause, such as `press button "Save"`, `after 2000ms` or `ok /api/save` (see `Transition.cause_label`).
 
-`fingerprint` lets a hot reload keep the snapshots of the machine: pass the one of `[@@deriving fingerprint]` on the state type (see `Fingerprint`). A machine with none starts again at each hot reload, unless its initial snapshot equals the old one.
-
 `during` lists the timers (`Source.after`), calls (`Remote.call`) and sources that run during a snapshot (see `Source.key`). `entry` and `exit` give the actions of entering and leaving a state. A `final` snapshot handles no event. `start` are actions that run once, before the entry of `init`.
 
 The update ends with `| _ -> Ignore` in most machines; the checker reports an event that the view offers and the machine ignores (see `Check`).
@@ -1872,7 +1815,6 @@ val make_with_props :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?fingerprint:'s Fingerprint.t ->
   ?during:('p -> 's -> 'e Source.t list) ->
   ?entry:('p -> 's -> 'e Action.t list) ->
   ?exit:('p -> 's -> 'e Action.t list) ->
@@ -1910,12 +1852,6 @@ val states : ('p, 's, 'e) t -> string list option
 The `states` given to `make`.
 
 ```ocaml
-val fingerprint : ('p, 's, 'e) t -> 's Fingerprint.t option
-```
-
-The `fingerprint` given to `make`.
-
-```ocaml
 val event_name : ('p, 's, 'e) t -> 'e -> string option
 ```
 
@@ -1932,6 +1868,8 @@ val register_codecs :
 ```
 
 `register_codecs machine ?props ?state ?event ()` gives the machine JSON codecs of its props, snapshots and events, for traces, replay and development tools. A second call for the same machine replaces the first.
+
+The state codec also lets a machine keep its snapshot across a hot reload and a restart of the server under `silica dev`: the old code encodes the snapshot and the new code decodes it (see `Handoff`). A machine with no state codec starts again, unless it is at the snapshot it starts in.
 
 The codecs are not part of the machine definition on purpose: only the code that calls `register_codecs` references them. Call it from development entry points (tests, the checker suite, a development client), and a release bundle that never calls it carries no codec. Leave out a codec when the values hold closures or other data that is not plain data.
 
@@ -2060,12 +1998,6 @@ type t =
       (** A replace link or {!Action.Replace}: the current entry changes. *)
   | Traverse of { delta : int; url : Url.t }
 ```
-
-```ocaml
-val fingerprint : t Fingerprint.t
-```
-
-The fingerprint of `t` (see `Fingerprint`).
 
 ## Silica.Node
 
@@ -2280,13 +2212,10 @@ type ('value, 'change) state
 The confirmed value and the pending changes.
 
 ```ocaml
-val fingerprint :
-  'value Fingerprint.t ->
-  'change Fingerprint.t ->
-  ('value, 'change) state Fingerprint.t
+val codec : 'value Codec.t -> 'change Codec.t -> ('value, 'change) state Codec.t
 ```
 
-The fingerprint of a `state` from the ones of the value and the change, for a state type that holds one (see `Fingerprint`).
+`{"confirmed": value, "pending": [[id, change], ...]}`, for the state codec of a machine that holds one (see `Machine.register_codecs`).
 
 ```ocaml
 module type OPTIMISTIC = sig
@@ -2851,19 +2780,6 @@ val request : ('i, 'o, 'x) endpoint -> 'i -> request
 
 `request endpoint input` is `Request (endpoint, input)`.
 
-```ocaml
-val error_fingerprint : error Fingerprint.t
-```
-
-The fingerprint of `error` (see `Fingerprint`).
-
-```ocaml
-val answer_fingerprint :
-  'o Fingerprint.t -> 'x Fingerprint.t -> ('o, 'x) answer Fingerprint.t
-```
-
-The fingerprint of `('o, 'x) answer` from the ones of `'o` and `'x`.
-
 ## Silica.Remote_machine
 
 A ready-made machine for one Remote endpoint. Its states hold the input of the last `Load`, so `Retry` can use it, and the data from before. A parent reads the state through function props (see `Component`).
@@ -3268,6 +3184,16 @@ val event_codec : event Codec.t
 ```
 
 `["Url_changed", url]` or `["Preload", url]`.
+
+```ocaml
+type made = { made : 'r. 'r routes -> (unit, 'r, event) Machine.t -> unit }
+```
+
+```ocaml
+val on_make : made ref
+```
+
+Development code that sets it sees each router machine that `make` makes, with its routes. The hot reload of `silica dev` hands the route over with `state_codec` (see `Handoff.codecs`), so the router keeps its route, with no codec in the registry of `Machine.register_codecs`. A release bundle keeps the default, which does nothing.
 
 ```ocaml
 val make :
@@ -3844,12 +3770,6 @@ val codec : 'a Codec.t -> 'a t Codec.t
 
 The status as `[@@deriving json]` writes a variant, with the codec of the data: `["Idle"]`, `["Loading", old]`, `["Ready", {"data": .., "stale": ..}]` or `["Failed", {"error": .., "last": ..}]`. A missing `last` or `old` is `null`.
 
-```ocaml
-val fingerprint : 'a Fingerprint.t -> 'a t Fingerprint.t
-```
-
-The fingerprint of `'a t` from the one of `'a` (see `Fingerprint`).
-
 ## Silica.Topic
 
 A named, keyed piece of server data with a state type. The server publishes the full state under a key; every subscriber of that name and key gets it with a sequence number. The server holds no machine for a topic.
@@ -4225,12 +4145,6 @@ val to_string : t -> string
 ```
 
 The empty path prints as `"/"`. Everything except `A-Za-z0-9-._~` is percent-encoded.
-
-```ocaml
-val fingerprint : t Fingerprint.t
-```
-
-The fingerprint of `t` (see `Fingerprint`).
 
 ## Silica.View_text
 

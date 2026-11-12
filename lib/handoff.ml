@@ -1,8 +1,5 @@
-type entry = {
-  machine : string;
-  fingerprint : (string, string) result option;
-  snapshot : Obj.t;
-}
+type snapshot = Encoded of string | At_start | Not_encoded of string
+type entry = { machine : string; snapshot : snapshot }
 
 type t = {
   instances : (string * entry) list;
@@ -10,18 +7,35 @@ type t = {
   url : Url.t;
 }
 
-let of_running ~islands ~url running =
+type codecs = {
+  state : 'p 's 'e. ('p, 's, 'e) Machine.t -> ('s Codec.t, string) result;
+}
+
+let registered = { state = Machine.state_codec }
+
+let at_start machine props snapshot =
+  match fst (Machine.start machine props) = snapshot with
+  | equal ->
+      equal
+  | exception Invalid_argument _ ->
+      false
+
+let encode codecs (Instance.Running { machine; props; snapshot; _ }) =
+  match codecs.state machine with
+  | Ok codec ->
+      Encoded (Codec.to_string codec snapshot)
+  | Error _ when at_start machine props snapshot ->
+      At_start
+  | Error reason ->
+      Not_encoded reason
+
+let of_running ?(codecs = registered) ~islands ~url running =
   {
     instances =
       List.map
-        (fun (Instance.Running { path; machine; snapshot }) ->
+        (fun (Instance.Running { path; machine; _ } as instance) ->
           ( path,
-            {
-              machine = Machine.id machine;
-              fingerprint =
-                Option.map Fingerprint.digest (Machine.fingerprint machine);
-              snapshot = Obj.repr snapshot;
-            }
+            { machine = Machine.id machine; snapshot = encode codecs instance }
           )
         )
         running;
@@ -31,68 +45,44 @@ let of_running ~islands ~url running =
 
 type reason =
   | Other_machine of string
-  | No_fingerprint
-  | Not_handed_over of string
-  | Changed
-  | Holds_function
+  | No_codec of string
+  | Not_decoded of string
   | Render_failed of string
 
 let reason_text = function
   | Other_machine id ->
       "another machine (" ^ id ^ ") ran here before"
-  | No_fingerprint ->
-      "its shape has no fingerprint"
-  | Not_handed_over reason ->
+  | No_codec reason ->
       reason
-  | Changed ->
-      "its state type changed"
-  | Holds_function ->
-      "its state holds a function"
+  | Not_decoded error ->
+      "its snapshot does not decode: " ^ error
   | Render_failed exn ->
       "its view raised after the reload (" ^ exn ^ ")"
 
-let check (type p s e) ~holds_function entry (machine : (p, s, e) Machine.t) :
+let decode (type p s e) codecs entry (machine : (p, s, e) Machine.t) props :
     (s, reason) result =
   if entry.machine <> Machine.id machine then
     Error (Other_machine entry.machine)
   else
-    match
-      ( entry.fingerprint,
-        Option.map Fingerprint.digest (Machine.fingerprint machine)
+    match entry.snapshot with
+    | Not_encoded reason ->
+        Error (No_codec reason)
+    | At_start ->
+        Ok (fst (Machine.start machine props))
+    | Encoded text -> (
+        match codecs.state machine with
+        | Error reason ->
+            Error (No_codec reason)
+        | Ok codec ->
+            Result.map_error
+              (fun error -> Not_decoded error)
+              (Codec.of_string codec text)
       )
-    with
-    | _, None ->
-        Error No_fingerprint
-    | _, Some (Error reason) ->
-        Error (Not_handed_over reason)
-    | Some (Ok before), Some (Ok now) when String.equal before now ->
-        if holds_function entry.snapshot then
-          Error Holds_function
-        else
-          Ok (Obj.obj entry.snapshot : s)
-    | (None | Some (Ok _ | Error _)), Some (Ok _) ->
-        Error Changed
-
-let take ~holds_function handoff ~path machine =
-  Option.map
-    (fun entry -> check ~holds_function entry machine)
-    (List.assoc_opt path handoff.instances)
-
-let same_as_fresh (type p s e) entry (machine : (p, s, e) Machine.t) props :
-    s option =
-  let fresh, _ = Machine.start machine props in
-  match Obj.repr fresh = entry.snapshot with
-  | true ->
-      Some fresh
-  | false ->
-      None
-  | exception Invalid_argument _ ->
-      None
 
 type restarted = { path : string; machine : string; reason : reason }
 type outcome = { kept : string list; restarted : restarted list }
 
-let hook ~holds_function handoff =
+let hook ?(codecs = registered) handoff =
   let taken = Hashtbl.create 16 in
   let kept = ref [] and restarted = ref [] in
   let unique_untaken id =
@@ -127,34 +117,22 @@ let hook ~holds_function handoff =
       restarted := { path; machine = Machine.id machine; reason } :: !restarted;
       None
     in
-    let resume snapshot =
-      match component.view props snapshot with
-      | _ ->
-          kept := path :: !kept;
-          Some (snapshot, Machine.resume machine props snapshot)
-      | exception exn ->
-          restart (Render_failed (Printexc.to_string exn))
-    in
     match found with
     | None ->
         None
     | Some (old_path, entry) -> (
         Hashtbl.replace taken old_path ();
-        match check ~holds_function entry machine with
-        | Ok snapshot ->
-            resume snapshot
-        | Error ((No_fingerprint | Not_handed_over _) as reason) -> (
-            match same_as_fresh entry machine props with
-            | Some fresh ->
-                resume fresh
-            | None ->
-                restart reason
-          )
-        | Error
-            ( (Other_machine _ | Changed | Holds_function | Render_failed _) as
-              reason
-            ) ->
+        match decode codecs entry machine props with
+        | Error reason ->
             restart reason
+        | Ok snapshot -> (
+            match component.view props snapshot with
+            | _ ->
+                kept := path :: !kept;
+                Some (snapshot, Machine.resume machine props snapshot)
+            | exception exn ->
+                restart (Render_failed (Printexc.to_string exn))
+          )
       )
   in
   ( { Instance.take },

@@ -34,15 +34,6 @@ changes. The optional `~states` lists every name, so that the checker can
 report the states that no run reached.
 _Avoid_: tag, mode
 
-**Fingerprint**:
-The digest of a state type and every type it mentions, made by
-`[@@deriving fingerprint]` in a development build and given to `Machine.make`
-as `~fingerprint`. Two equal fingerprints
-mean the two builds compiled the same declarations, so a hot reload may give the
-old snapshot to the new code. A type the deriver cannot see gives no
-fingerprint, only a reason.
-_Avoid_: type hash, version
-
 **Instance path**:
 The name of an instance in its tree: the slots from the root, as in
 `router/:home/2:todo` (`Instance.cell_path`). The transition log, the handoff
@@ -51,9 +42,10 @@ _Avoid_: instance id (the number in timer ids)
 
 **Handoff**:
 What a hot reload carries from the running page to the new code: the snapshot of
-each instance by instance path, with its fingerprint, and the instance ids of
-the Live islands (`Silica.Handoff`). An instance with an equal fingerprint
-resumes (`Machine.resume`); another one starts again, with the reason shown.
+each instance by instance path, encoded as JSON by the state codec of its
+machine (`Machine.register_codecs`), and the instance ids of the Live islands
+(`Silica.Handoff`). An instance whose snapshot the new code decodes resumes
+(`Machine.resume`); another one starts again, with the reason shown.
 _Avoid_: saved state, hot state
 
 **Event name**:

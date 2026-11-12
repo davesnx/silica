@@ -31,7 +31,6 @@ type ('p, 's, 'e) t = {
   name : 's -> string;
   states : string list option;
   event_name : ('e -> string) option;
-  fingerprint : 's Fingerprint.t option;
   final : 's -> bool;
   during : 'p -> 's -> 'e Source.t list;
   entry : 'p -> 's -> 'e Action.t list;
@@ -47,7 +46,6 @@ let id machine = machine.id
 let init machine = machine.init
 let name machine = machine.name
 let states machine = machine.states
-let fingerprint machine = machine.fingerprint
 
 let event_name machine event =
   Option.map (fun event_name -> event_name event) machine.event_name
@@ -268,7 +266,7 @@ let during_nothing _ _ = []
 let never _ = false
 let ignore_props _ _ _ = Ignore
 
-let make_with_props ~id ~init ~name ?states ?event_name ?fingerprint
+let make_with_props ~id ~init ~name ?states ?event_name
     ?(during = during_nothing) ?(entry = no_actions) ?(exit = no_actions)
     ?(final = never) ?(start = []) ?(on_props = ignore_props) update =
   {
@@ -277,7 +275,6 @@ let make_with_props ~id ~init ~name ?states ?event_name ?fingerprint
     name;
     states;
     event_name;
-    fingerprint;
     final;
     during;
     entry;
@@ -289,11 +286,11 @@ let make_with_props ~id ~init ~name ?states ?event_name ?fingerprint
     type_id = Type.Id.make ();
   }
 
-let make ~id ~init ~name ?states ?event_name ?fingerprint ?during ?entry ?exit
-    ?final ?start update =
+let make ~id ~init ~name ?states ?event_name ?during ?entry ?exit ?final ?start
+    update =
   let without_props f = Option.map (fun f () state -> f state) f in
   {
-    (make_with_props ~id ~init ~name ?states ?event_name ?fingerprint
+    (make_with_props ~id ~init ~name ?states ?event_name
        ?during:(without_props during) ?entry:(without_props entry)
        ?exit:(without_props exit) ?final ?start (fun () state event ->
          update state event

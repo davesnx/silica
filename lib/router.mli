@@ -160,6 +160,15 @@ val state_codec : 'r routes -> 'r Codec.t
 val event_codec : event Codec.t
 (** [["Url_changed", url]] or [["Preload", url]]. *)
 
+type made = { made : 'r. 'r routes -> (unit, 'r, event) Machine.t -> unit }
+
+val on_make : made ref
+(** Development code that sets it sees each router machine that {!make} makes,
+    with its routes. The hot reload of [silica dev] hands the route over with
+    {!state_codec} (see {!Handoff.codecs}), so the router keeps its route, with
+    no codec in the registry of {!Machine.register_codecs}. A release bundle
+    keeps the default, which does nothing. *)
+
 val make :
   'r routes ->
   ?guard:(from:'r option -> target:'r -> 'r decision) ->

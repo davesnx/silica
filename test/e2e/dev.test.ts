@@ -110,10 +110,10 @@ const processesIn = (directory: string): number[] =>
     .map(Number);
 
 const hotComponent = `open Silica
+open Jsonkit.Primitives
 
-type state = Idle of int * string | Waiting of int * string
-[@@deriving fingerprint]
-
+type model = { count : int; text : string } [@@deriving json]
+type state = Idle of model | Waiting of model [@@deriving json]
 type event = Bump | Wait | Done | Typed of string
 
 let name = function Idle _ -> "idle" | Waiting _ -> "waiting"
@@ -125,47 +125,54 @@ let event_name = function
   | Done -> "done"
   | Typed _ -> "typed"
 
+let start = { count = 0; text = "" }
+
 let machine =
-  Machine.make ~id:"hot" ~init:(Idle (0, "")) ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
+  Machine.make ~id:"hot" ~init:(Idle start) ~name ~states ~event_name
     ~during:(function Waiting _ -> [ Source.after 2500 Done ] | _ -> [])
     (fun state event ->
       match (state, event) with
-      | Idle (count, text), Bump ->
-          Go (Idle (count + 1, text))
-      | Waiting (count, text), Bump ->
-          Go (Waiting (count + 1, text))
-      | Idle (count, text), Wait ->
-          Go (Waiting (count, text))
-      | Waiting (count, text), Done ->
-          Go (Idle (count + 100, text))
-      | Idle (count, _), Typed text ->
-          Go (Idle (count, text))
-      | Waiting (count, _), Typed text ->
-          Go (Waiting (count, text))
+      | Idle model, Bump ->
+          Go (Idle { model with count = model.count + 1 })
+      | Waiting model, Bump ->
+          Go (Waiting { model with count = model.count + 1 })
+      | Idle model, Wait ->
+          Go (Waiting model)
+      | Waiting model, Done ->
+          Go (Idle { model with count = model.count + 100 })
+      | Idle model, Typed text ->
+          Go (Idle { model with text })
+      | Waiting model, Typed text ->
+          Go (Waiting { model with text })
       | _ ->
           Ignore
     )
 
 let parts = function
-  | Idle (count, text) ->
-      (count, text, "idle")
-  | Waiting (count, text) ->
-      (count, text, "waiting")
+  | Idle model ->
+      (model, "idle")
+  | Waiting model ->
+      (model, "waiting")
 
 let view state : event Node.t =
-  let count, text, status = parts state in
+  let model, status = parts state in
   <section id="hot">
     <div style="height: 3000px" />
     <p id="hot-label">"Hot count"</p>
-    <button id="hot-bump" on_press=Bump>(Node.text (string_of_int count))</button>
+    <button id="hot-bump" on_press=Bump>(Node.text (string_of_int model.count))</button>
     <button id="hot-wait" on_press=Wait>"Wait"</button>
-    <input id="hot-input" aria_label="Hot draft" value=text on_input=(fun v -> Typed v) />
+    <input id="hot-input" aria_label="Hot draft" value=model.text on_input=(fun v -> Typed v) />
     <span id="hot-status">(Node.text status)</span>
   </section>
 
 let component = Component.make machine view
 let make ?key () = Component.node ?key component
+`;
+
+const hotCodec = `let register () =
+  Machine.register_codecs Example_hot.machine
+    ~state:(json ~to_json:Example_hot.state_to_json ~of_json:Example_hot.state_of_json)
+    ();
 `;
 
 const makeProject = (): string => {
@@ -175,6 +182,8 @@ const makeProject = (): string => {
   for (const directory of ["lib", "browser", "server", "ppx"]) symlinkSync(join(root, directory), join(project, directory));
   cpSync(join(root, "example"), join(project, "example"), { recursive: true, verbatimSymlinks: true });
   writeFileSync(join(project, "example/app/shared/example_hot.mlx"), hotComponent);
+  const codecs = join(project, "example/app/shared/example_codecs.ml");
+  writeFileSync(codecs, readFileSync(codecs, "utf8").replace("let register () =\n", hotCodec));
   const home = join(project, "example/app/shared/example_home.mlx");
   writeFileSync(
     home,
@@ -283,7 +292,7 @@ const leaks = (page: Page): Promise<Counts> =>
   page.evaluate(() => (window as unknown as { leaks: () => Counts }).leaks());
 
 describe("hot reload", () => {
-  test("a view edit keeps every machine, the timers, the island, focus and scroll; a state type edit restarts that machine only", async (context) => {
+  test("a view edit keeps every machine, the timers, the island, focus and scroll; a state type edit that the codec does not decode restarts that machine only", async (context) => {
     const page = await browser.newPage();
     page.setDefaultTimeout(30000);
     await page.addInitScript(countLeaks);
@@ -363,22 +372,22 @@ describe("hot reload", () => {
       writeFileSync(
         hot(),
         readFileSync(hot(), "utf8")
-          .replace("| Waiting of int * string\n", "| Waiting of int * string\n  | Paused\n")
-          .replace('| Waiting _ -> "waiting"', '| Waiting _ -> "waiting" | Paused -> "paused"')
-          .replace('[ "idle"; "waiting" ]', '[ "idle"; "waiting"; "paused" ]')
-          .replace('(count, text, "waiting")', '(count, text, "waiting")\n  | Paused ->\n      (0, "", "paused")'),
+          .replace("type model = { count : int; text : string }", "type model = { count : int; text : string; note : string }")
+          .replace('let start = { count = 0; text = "" }', 'let start = { count = 0; text = ""; note = "" }'),
       );
       const changed = await dev.waitFor((event) => event.t === "hot-reload", before);
       const restarted = changed["restarted"] as { path: string; machine: string; reason: string }[];
       assert.deepEqual(
-        restarted.map((entry) => [entry.machine, entry.reason]),
-        [["hot", "its state type changed"]],
+        restarted.map((entry) => entry.machine),
+        ["hot"],
+        JSON.stringify(changed),
       );
+      assert.match(restarted[0]?.reason ?? "", /^its snapshot does not decode: /, "the old snapshot has no note field");
       assert.equal(await page.locator("#hot-bump").textContent(), "0", "the changed machine started again");
       assert.equal(await page.locator("[data-silica-live=counter] span").textContent(), "5", "the others keep their state");
       const overlay = page.locator("[data-silica-dev-restarted]");
       await overlay.waitFor();
-      assert.match((await overlay.textContent()) ?? "", /hot \(router\/[^)]*:hot\) started again: its state type changed/);
+      assert.match((await overlay.textContent()) ?? "", /hot \(router\/[^)]*:hot\) started again: its snapshot does not decode: /);
     } finally {
       const from = dev.events.length;
       const changed = readFileSync(hot(), "utf8") !== originals.hot || readFileSync(home(), "utf8") !== originals.home;
@@ -462,16 +471,16 @@ describe("silica dev", () => {
       const errors = failed["errors"] as { file: string; line: number; message: string; excerpt: [number, string][] }[];
       assert.equal(errors.length, 1, "one error, not one for each copy of the file");
       assert.equal(errors[0]?.file, "example/app/shared/example_about.mlx");
-      assert.equal(errors[0]?.line, 25);
+      assert.equal(errors[0]?.line, 24);
       assert.match(errors[0]?.message ?? "", /Unbound constructor About_broken/);
       assert.deepEqual(
         errors[0]?.excerpt.map(([line]) => line),
-        [23, 24, 25, 26, 27],
+        [22, 23, 24, 25, 26],
       );
       const overlay = page.locator("[data-silica-dev-overlay]");
       await overlay.waitFor();
-      assert.match((await overlay.textContent()) ?? "", /example\/app\/shared\/example_about\.mlx:25:/);
-      assert.match((await page.locator('#silica-dev .line[data-error]').textContent()) ?? "", /25 \|\s+\[ Node.text About_broken \]/);
+      assert.match((await overlay.textContent()) ?? "", /example\/app\/shared\/example_about\.mlx:24:/);
+      assert.match((await page.locator('#silica-dev .line[data-error]').textContent()) ?? "", /24 \|\s+\[ Node.text About_broken \]/);
       assert.equal(await page.locator("h1", { hasText: "About" }).first().isVisible(), true, "the old page still runs under the overlay");
     } finally {
       writeFileSync(about(), original);

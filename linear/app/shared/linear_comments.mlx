@@ -18,7 +18,7 @@ let event_name = function
   | Retry ->
       "retry"
 
-type state = Loading | Ready of ready | Failed [@@deriving json, fingerprint]
+type state = Loading | Ready of ready | Failed [@@deriving json]
 
 let name = function
   | Loading ->
@@ -32,7 +32,6 @@ let states = [ "loading"; "ready"; "failed" ]
 
 let machine =
   Machine.make_with_props ~id:"comments" ~init:Loading ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~during:(fun number -> function
       | Loading ->
           [ Remote.call comments_endpoint number (fun answer -> Loaded answer) ]

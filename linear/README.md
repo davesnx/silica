@@ -22,8 +22,8 @@ and gets a new session.
 ## Traces in development
 
 `linear/client_dev` is a second client for development: the same app, which
-also registers the codecs of `Linear_codecs` and records a trace with
-`Silica.Trace.Recorder`, with data. Run it with
+also registers the codecs of `Linear_codecs` (so a hot reload keeps the state
+of the machines) and records a trace with `Silica.Trace.Recorder`, with data. Run it with
 
 ```sh
 dune exec -- silica dev --server linear/server/main.exe --client linear/client_dev

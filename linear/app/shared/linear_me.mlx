@@ -7,7 +7,7 @@ type event = Loaded of (User.t, string) Silica_jsonkit.answer
 
 let event_name (Loaded answer) = answer_name "loaded" answer
 
-type state = Loading | Ready of User.t | Failed [@@deriving json, fingerprint]
+type state = Loading | Ready of User.t | Failed [@@deriving json]
 
 let name = function
   | Loading ->
@@ -21,7 +21,6 @@ let states = [ "loading"; "ready"; "failed" ]
 
 let machine =
   Machine.make ~id:"me" ~init:Loading ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~final:(function Ready _ | Failed -> true | Loading -> false)
     ~during:(function
       | Loading ->

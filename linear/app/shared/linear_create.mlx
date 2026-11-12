@@ -36,7 +36,7 @@ type state =
   | Editing of form
   | Submitting of Draft.t
   | Failed of { draft : Draft.t; message : string }
-[@@deriving json, fingerprint]
+[@@deriving json]
 
 let name = function
   | Closed ->
@@ -70,7 +70,7 @@ let edited (draft : Draft.t) = function
 
 let machine =
   Machine.make_with_props ~id:"create-issue" ~init:Closed ~name ~states
-    ~event_name ~fingerprint:state_fingerprint
+    ~event_name
     ~during:(fun _ -> function
       | Submitting draft ->
           [ Remote.call create_endpoint draft (fun answer -> Created answer) ]

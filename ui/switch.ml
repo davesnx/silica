@@ -14,7 +14,7 @@ type props = {
 }
 
 type event = Toggle
-type state = Unchecked | Checked [@@deriving fingerprint]
+type state = Unchecked | Checked
 
 let name = function Unchecked -> "unchecked" | Checked -> "checked"
 let states = [ "unchecked"; "checked" ]
@@ -28,7 +28,6 @@ let of_props (props : props) =
 
 let machine =
   Machine.make_with_props ~id:"switch" ~init:Unchecked ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~on_props:(fun previous props _ ->
       match previous with
       | Some (previous : props) when previous.checked = props.checked ->

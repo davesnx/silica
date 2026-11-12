@@ -276,6 +276,7 @@ type running =
   | Running : {
       path : string;  (** The instance path (see {!cell_path}). *)
       machine : ('p, 's, 'e) Machine.t;
+      props : 'p;
       snapshot : 's;
     }
       -> running  (** An instance that is mounted. *)

@@ -27,9 +27,10 @@ let on_hidden : (unit -> unit) -> unit =
   });
 }|}]
 
+let () = Linear_codecs.register ()
+
 let observe =
   if has_meta Linear_trace.meta then (
-    Linear_codecs.register ();
     let recorder = Silica_browser.recorder ~data:true ~build:"dev" () in
     on_hidden (fun () ->
         post

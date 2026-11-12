@@ -24,8 +24,6 @@
   threads.posix))
 
 (test
- (name test_linear_fingerprints)
- (modules test_linear_fingerprints)
- (build_if
-  (<> %{profile} release))
+ (name test_linear_state_codecs)
+ (modules test_linear_state_codecs)
  (libraries silica silica_linear_app_native silica-ui alcotest))

@@ -26,7 +26,7 @@ type state =
   | Drafting of string
   | Sending of string
   | Failed of { body : string; message : string }
-[@@deriving json, fingerprint]
+[@@deriving json]
 
 let name = function
   | Empty ->
@@ -48,7 +48,7 @@ let typed draft : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"comment-composer" ~init:Empty ~name ~states
-    ~event_name ~fingerprint:state_fingerprint
+    ~event_name
     ~during:(fun number -> function
       | Sending body ->
           [

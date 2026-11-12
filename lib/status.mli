@@ -29,6 +29,3 @@ val codec : 'a Codec.t -> 'a t Codec.t
     data: [["Idle"]], [["Loading", old]], [["Ready", {"data": .., "stale": ..}]]
     or [["Failed", {"error": .., "last": ..}]]. A missing [last] or [old] is
     [null]. *)
-
-val fingerprint : 'a Fingerprint.t -> 'a t Fingerprint.t
-(** The fingerprint of ['a t] from the one of ['a] (see {!Fingerprint}). *)

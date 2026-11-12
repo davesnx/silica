@@ -35,7 +35,7 @@ type event =
   | Close of Popup.reason
   | Elapsed of delay
 
-type state = Closed | Opening | Open | Closing [@@deriving fingerprint]
+type state = Closed | Opening | Open | Closing
 
 let name = function
   | Closed ->
@@ -73,7 +73,6 @@ let layer (props : props) =
 
 let machine =
   Machine.make_with_props ~id:"tooltip" ~init:Closed ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~during:(fun (props : props) -> function
       | Closed ->
           []

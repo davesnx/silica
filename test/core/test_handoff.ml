@@ -4,46 +4,43 @@ let echo =
   Remote.declare ~path:"/api/echo" ~input:Codec.int ~output:Codec.int
     ~rejected:Codec.string
 
-let rec holds_function value =
-  if Obj.is_int value then
-    false
-  else
-    let tag = Obj.tag value in
-    if tag = Obj.closure_tag || tag = Obj.infix_tag then
-      true
-    else if tag < Obj.no_scan_tag then
-      List.exists
-        (fun index -> holds_function (Obj.field value index))
-        (List.init (Obj.size value) Fun.id)
-    else
-      false
-
 type event = Bump | Tick | Answer of int
 
-let counter ?(id = "counter") ?fingerprint () =
-  Machine.make ~id ~init:0
-    ~name:(fun _ -> "counting")
-    ?fingerprint
-    ~during:(fun count ->
-      if count > 0 then
-        [
-          Source.after 1000 Tick;
-          Remote.call echo count (function
-            | Remote.Ok value ->
-                Answer value
-            | Remote.Rejected _ | Remote.Failed _ ->
-                Answer (-1)
-            );
-        ]
-      else
-        []
-    )
-    ~entry:(fun count -> [ Action.Set_title ("count " ^ string_of_int count) ])
-    (fun count -> function
-      | Bump -> Machine.Go (count + 1) | Tick | Answer _ -> Machine.Ignore
-      )
+let registered ?state machine =
+  Option.iter (fun state -> Machine.register_codecs machine ~state ()) state;
+  machine
 
-let int_fingerprint : int Fingerprint.t = Fingerprint.declared "int" []
+let counter ?(id = "counter") ?state () =
+  registered ?state
+  @@ Machine.make ~id ~init:0
+       ~name:(fun _ -> "counting")
+       ~during:(fun count ->
+         if count > 0 then
+           [
+             Source.after 1000 Tick;
+             Remote.call echo count (function
+               | Remote.Ok value ->
+                   Answer value
+               | Remote.Rejected _ | Remote.Failed _ ->
+                   Answer (-1)
+               );
+           ]
+         else
+           []
+       )
+       ~entry:(fun count ->
+         [ Action.Set_title ("count " ^ string_of_int count) ]
+       )
+       (fun count -> function
+         | Bump -> Machine.Go (count + 1) | Tick | Answer _ -> Machine.Ignore
+         )
+
+let as_object : int Codec.t =
+  Codec.make
+    ~encode:(fun count ->
+      Silica_json.Json.declassify (`Assoc [ ("count", Codec.int.encode count) ])
+    )
+    ~decode:(Codec.field "count" Codec.int)
 
 let view count : event Node.t =
   Node.element "button"
@@ -82,7 +79,7 @@ let handoff_of tree =
   Handoff.of_running ~islands:[] ~url:(Url.of_string "/") (Instance.running tree)
 
 let resume machine handoff =
-  let hook, outcome = Handoff.hook ~holds_function handoff in
+  let hook, outcome = Handoff.hook handoff in
   let tree = Instance.mount ~resume:hook (Component.make machine view) in
   let _, actions = Instance.update tree None in
   (tree, actions, outcome ())
@@ -117,17 +114,46 @@ let bumped machine times =
 
 let restart = Alcotest.(pair string string)
 
+let starts_with prefix text =
+  String.length text >= String.length prefix
+  && String.sub text 0 (String.length prefix) = prefix
+
+let check_reason path prefix outcome =
+  match reasons outcome with
+  | [ (restarted, reason) ] ->
+      Alcotest.(check string) "path" path restarted;
+      Alcotest.(check bool)
+        (reason ^ " starts with " ^ prefix)
+        true
+        (starts_with prefix reason)
+  | other ->
+      Alcotest.failf "one restart expected, got %d" (List.length other)
+
+let given_codec (known : (unit, int, event) Machine.t) : Handoff.codecs =
+  let state (type p s e) (machine : (p, s, e) Machine.t) :
+      (s Codec.t, string) result =
+    match
+      Type.Id.provably_equal (Machine.type_id machine) (Machine.type_id known)
+    with
+    | Some Type.Equal ->
+        Ok Codec.int
+    | None ->
+        Machine.state_codec machine
+  in
+  { state }
+
+let no_codec = "the machine \"counter\" has no registered codecs"
+
 let resume_tests =
   let open Alcotest in
   [
     test_case
-      "an equal fingerprint keeps the snapshot and starts its timer and call \
-       again, with no entry"
+      "a state codec in both builds keeps the snapshot and starts its timer \
+       and call again, with no entry"
       `Quick (fun () ->
-        let machine = counter ~fingerprint:int_fingerprint () in
-        let before = bumped machine 3 in
+        let before = bumped (counter ~state:Codec.int ()) 3 in
         let tree, actions, outcome =
-          resume (counter ~fingerprint:int_fingerprint ()) (handoff_of before)
+          resume (counter ~state:Codec.int ()) (handoff_of before)
         in
         check int "snapshot" 3 (Instance.snapshot tree);
         check (list string) "starts only" [ "timer 1000"; "call" ]
@@ -136,35 +162,45 @@ let resume_tests =
         check (list restart) "restarted" [] (reasons outcome)
     );
     test_case "a resumed tree steps on from the snapshot" `Quick (fun () ->
-        let machine = counter ~fingerprint:int_fingerprint () in
-        let tree, _, _ = resume machine (handoff_of (bumped machine 2)) in
+        let before = bumped (counter ~state:Codec.int ()) 2 in
+        let tree, _, _ =
+          resume (counter ~state:Codec.int ()) (handoff_of before)
+        in
         press tree;
         check int "snapshot" 3 (Instance.snapshot tree)
     );
-    test_case "another fingerprint starts again" `Quick (fun () ->
-        let before = bumped (counter ~fingerprint:int_fingerprint ()) 3 in
+    test_case
+      "a snapshot that the new state codec does not decode starts again, with \
+       the decode error"
+      `Quick (fun () ->
+        let before = bumped (counter ~state:Codec.int ()) 3 in
         let tree, actions, outcome =
-          resume
-            (counter ~fingerprint:(Fingerprint.declared "int2" []) ())
-            (handoff_of before)
+          resume (counter ~state:as_object ()) (handoff_of before)
         in
         check int "fresh" 0 (Instance.snapshot tree);
         check (list string) "entry" [ "title count 0" ] (kinds actions);
-        check (list restart) "reason"
-          [ ("counter", "its state type changed") ]
-          (reasons outcome)
+        check (list string) "kept" [] outcome.kept;
+        check_reason "counter" "its snapshot does not decode: " outcome
     );
-    test_case "a shape with no fingerprint starts again" `Quick (fun () ->
-        let before = bumped (counter ~fingerprint:int_fingerprint ()) 1 in
+    test_case "a machine with no state codec in the old code starts again"
+      `Quick (fun () ->
+        let before = bumped (counter ()) 1 in
+        let tree, _, outcome =
+          resume (counter ~state:Codec.int ()) (handoff_of before)
+        in
+        check int "fresh" 0 (Instance.snapshot tree);
+        check_reason "counter" no_codec outcome
+    );
+    test_case "a machine with no state codec in the new code starts again"
+      `Quick (fun () ->
+        let before = bumped (counter ~state:Codec.int ()) 1 in
         let tree, _, outcome = resume (counter ()) (handoff_of before) in
         check int "fresh" 0 (Instance.snapshot tree);
-        check (list restart) "reason"
-          [ ("counter", "its shape has no fingerprint") ]
-          (reasons outcome)
+        check_reason "counter" no_codec outcome
     );
     test_case
-      "a machine with no fingerprint whose fresh snapshot equals the old one \
-       is kept, with no entry"
+      "a machine with no state codec at its start snapshot is kept there, with \
+       no entry"
       `Quick (fun () ->
         let before = bumped (counter ()) 0 in
         let tree, actions, outcome = resume (counter ()) (handoff_of before) in
@@ -172,33 +208,8 @@ let resume_tests =
         check (list string) "no entry" [] (kinds actions);
         check (list string) "kept" [ "counter" ] outcome.kept
     );
-    test_case "an old snapshot with no fingerprint is not taken" `Quick
-      (fun () ->
-        let before = bumped (counter ()) 1 in
-        let tree, _, outcome =
-          resume (counter ~fingerprint:int_fingerprint ()) (handoff_of before)
-        in
-        check int "fresh" 0 (Instance.snapshot tree);
-        check (list restart) "reason"
-          [ ("counter", "its state type changed") ]
-          (reasons outcome)
-    );
-    test_case "a fingerprint with a reason gives that reason" `Quick (fun () ->
-        let refused = Fingerprint.unknown "Issue.t" in
-        let before = bumped (counter ~fingerprint:refused ()) 1 in
-        let _, _, outcome =
-          resume (counter ~fingerprint:refused ()) (handoff_of before)
-        in
-        check (list restart) "reason"
-          [
-            ( "counter",
-              "its state type mentions Issue.t, which has no fingerprint"
-            );
-          ]
-          (reasons outcome)
-    );
     test_case "another machine at the path starts again" `Quick (fun () ->
-        let before = bumped (counter ~fingerprint:int_fingerprint ()) 1 in
+        let before = bumped (counter ~state:Codec.int ()) 1 in
         let handoff = handoff_of before in
         let moved =
           {
@@ -211,41 +222,30 @@ let resume_tests =
                 handoff.instances;
           }
         in
-        let tree, _, outcome =
-          resume (counter ~fingerprint:int_fingerprint ()) moved
-        in
+        let tree, _, outcome = resume (counter ~state:Codec.int ()) moved in
         check int "fresh" 0 (Instance.snapshot tree);
         check (list restart) "reason"
           [ ("counter", "another machine (other) ran here before") ]
           (reasons outcome)
     );
-    test_case "a snapshot that holds a function starts again" `Quick (fun () ->
-        let fingerprint : (int -> int) Fingerprint.t =
-          Fingerprint.declared "function" []
+    test_case "codecs given to the hook keep a machine that has none registered"
+      `Quick (fun () ->
+        let machine = counter () in
+        let codecs = given_codec machine in
+        let before = bumped machine 3 in
+        let handoff =
+          Handoff.of_running ~codecs ~islands:[] ~url:(Url.of_string "/")
+            (Instance.running before)
         in
-        let machine =
-          Machine.make ~id:"closure" ~init:succ
-            ~name:(fun _ -> "holding")
-            ~fingerprint
-            (fun _ () -> Machine.Ignore)
-        in
-        let component =
-          Component.make machine (fun _ : unit Node.t -> Node.text "f")
-        in
-        let before = Instance.mount component in
-        ignore (Instance.update before None);
-        let hook, outcome = Handoff.hook ~holds_function (handoff_of before) in
-        let tree = Instance.mount ~resume:hook component in
+        let hook, outcome = Handoff.hook ~codecs handoff in
+        let tree = Instance.mount ~resume:hook (Component.make machine view) in
         ignore (Instance.update tree None);
-        check (list restart) "reason"
-          [ ("closure", "its state holds a function") ]
-          (reasons (outcome ()))
+        check int "snapshot" 3 (Instance.snapshot tree);
+        check (list string) "kept" [ "counter" ] (outcome ()).kept
     );
     test_case "the hook is used by the first update only" `Quick (fun () ->
-        let machine = counter ~fingerprint:int_fingerprint () in
-        let hook, _ =
-          Handoff.hook ~holds_function (handoff_of (bumped machine 2))
-        in
+        let machine = counter ~state:Codec.int () in
+        let hook, _ = Handoff.hook (handoff_of (bumped machine 2)) in
         let tree = Instance.mount ~resume:hook (Component.make machine view) in
         ignore (Instance.update tree None);
         check int "resumed" 2 (Instance.snapshot tree);
@@ -257,28 +257,28 @@ let resume_tests =
 
 type child_event = Child_bump
 
-let child_machine fingerprint =
-  Machine.make ~id:"child" ~init:0
-    ~name:(fun _ -> "child")
-    ~fingerprint
-    (fun count Child_bump -> Machine.Go (count + 1))
+let child_machine () =
+  registered ~state:Codec.int
+  @@ Machine.make ~id:"child" ~init:0
+       ~name:(fun _ -> "child")
+       (fun count Child_bump -> Machine.Go (count + 1))
 
 let child_view count : child_event Node.t =
   Node.element "button"
     [ Attr.on_press Child_bump ]
     [ Node.text (string_of_int count) ]
 
-let parent_machine ?fingerprint () =
-  Machine.make ~id:"parent" ~init:0
-    ~name:(fun _ -> "parent")
-    ?fingerprint
-    (fun count () -> Machine.Go (count + 1))
+let parent_machine state =
+  registered ~state
+  @@ Machine.make ~id:"parent" ~init:0
+       ~name:(fun _ -> "parent")
+       (fun count () -> Machine.Go (count + 1))
 
 let tree_tests =
   let open Alcotest in
-  let child = Component.make (child_machine int_fingerprint) child_view in
-  let parent ~wrapped fingerprint =
-    Component.make (parent_machine ?fingerprint ()) (fun _ : unit Node.t ->
+  let child = Component.make (child_machine ()) child_view in
+  let parent ~wrapped state =
+    Component.make (parent_machine state) (fun _ : unit Node.t ->
         if wrapped then
           Node.element "div" [] [ Node.text "new"; Component.node child ]
         else
@@ -288,23 +288,17 @@ let tree_tests =
   [
     test_case "the child of a parent that starts again keeps its state" `Quick
       (fun () ->
-        let before =
-          Instance.mount
-            (parent ~wrapped:false (Some (Fingerprint.declared "old" [])))
-        in
+        let before = Instance.mount (parent ~wrapped:false Codec.int) in
         press before;
         press before;
-        let hook, outcome = Handoff.hook ~holds_function (handoff_of before) in
+        let hook, outcome = Handoff.hook (handoff_of before) in
         let tree =
-          Instance.mount ~resume:hook
-            (parent ~wrapped:false (Some (Fingerprint.declared "new" [])))
+          Instance.mount ~resume:hook (parent ~wrapped:false as_object)
         in
         ignore (Instance.update tree None);
         let result = outcome () in
         check (list string) "kept" [ "parent/0:child" ] result.kept;
-        check (list restart) "restarted"
-          [ ("parent", "its state type changed") ]
-          (reasons result);
+        check_reason "parent" "its snapshot does not decode: " result;
         let running =
           List.map
             (fun (Instance.Running { path; _ }) -> path)
@@ -313,14 +307,11 @@ let tree_tests =
         check (list string) "paths" [ "parent"; "parent/0:child" ] running
     );
     test_case "a child that moved in the view keeps its state" `Quick (fun () ->
-        let before =
-          Instance.mount (parent ~wrapped:false (Some int_fingerprint))
-        in
+        let before = Instance.mount (parent ~wrapped:false Codec.int) in
         press before;
-        let hook, outcome = Handoff.hook ~holds_function (handoff_of before) in
+        let hook, outcome = Handoff.hook (handoff_of before) in
         let tree =
-          Instance.mount ~resume:hook
-            (parent ~wrapped:true (Some int_fingerprint))
+          Instance.mount ~resume:hook (parent ~wrapped:true Codec.int)
         in
         let node, _ = Instance.update tree None in
         check (list string) "kept"
@@ -335,15 +326,14 @@ exception New_view_broke
 
 let guard_tests =
   let open Alcotest in
-  let other = Component.make (child_machine int_fingerprint) child_view in
+  let other = Component.make (child_machine ()) child_view in
   let page counter =
-    Component.make (parent_machine ~fingerprint:int_fingerprint ())
-      (fun _ : unit Node.t ->
+    Component.make (parent_machine Codec.int) (fun _ : unit Node.t ->
         Node.element "div" [] [ Component.node counter; Component.node other ]
     )
   in
   let breaks_above limit =
-    Component.make (counter ~fingerprint:int_fingerprint ()) (fun count ->
+    Component.make (counter ~state:Codec.int ()) (fun count ->
         if count > limit then
           raise New_view_broke
         else
@@ -360,9 +350,7 @@ let guard_tests =
     test_case
       "a view that raises on a resumed snapshot restarts that instance only"
       `Quick (fun () ->
-        let hook, outcome =
-          Handoff.hook ~holds_function (handoff_of (before ()))
-        in
+        let hook, outcome = Handoff.hook (handoff_of (before ())) in
         let tree = Instance.mount ~resume:hook (page (breaks_above 1)) in
         let node, _ = Instance.update tree None in
         let result = outcome () in
@@ -381,7 +369,7 @@ let guard_tests =
     );
     test_case "a view that raises again after the restart raises" `Quick
       (fun () ->
-        let hook, _ = Handoff.hook ~holds_function (handoff_of (before ())) in
+        let hook, _ = Handoff.hook (handoff_of (before ())) in
         let tree = Instance.mount ~resume:hook (page (breaks_above (-1))) in
         check bool "raises" true
           ( match Instance.update tree None with

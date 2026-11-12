@@ -14,7 +14,7 @@ let event_name = function
   | Keep ->
       "keep"
 
-type state = Held | Asking of Nav.t [@@deriving fingerprint]
+type state = Held | Asking of Nav.t
 
 let name = function Held -> "held" | Asking _ -> "asking"
 let states = [ "held"; "asking" ]
@@ -23,7 +23,6 @@ let keep_button = Ref.make "unsaved-keep"
 
 let machine =
   Machine.make ~id:"unsaved" ~init:Held ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~during:(fun _ -> [ Source.block (fun nav -> Attempt nav) ])
     (fun state event ->
       match (state, event) with

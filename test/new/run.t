@@ -7,6 +7,7 @@ Make a new app.
   created app/melange/dune
   created app/native/dune
   created app/shared/api.ml
+  created app/shared/codecs.ml
   created app/shared/counter.mlx
   created check/checks.ml
   created check/dune
@@ -17,9 +18,9 @@ Make a new app.
   created check/spec/counter.spec.txt
   created check/spec/counter.views.txt
   created client/client_main.ml
+  created client/dev_codecs.ml
   created client/dune
   created client/package.json
-  created dune
   created dune-project
   created server/dune
   created server/main.ml

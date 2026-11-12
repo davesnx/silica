@@ -5,7 +5,7 @@
 (melange.emit
  (target out)
  (alias client-js)
- (modules client_main)
+ (modules client_main dev_codecs)
  (module_systems
   (esm mjs))
  (libraries silica_example_app_melange silica.browser silica.json-melange))
@@ -51,4 +51,5 @@
    --metafile=meta.json
    --sourcemap
    --sources-content=false
-   --inject:out/node_modules/silica.browser/hot_reload.mjs)))
+   --inject:out/node_modules/silica.browser/hot_reload.mjs
+   --inject:out/example/client/dev_codecs.mjs)))

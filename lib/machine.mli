@@ -77,7 +77,6 @@ val make :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?fingerprint:'s Fingerprint.t ->
   ?during:('s -> 'e Source.t list) ->
   ?entry:('s -> 'e Action.t list) ->
   ?exit:('s -> 'e Action.t list) ->
@@ -101,11 +100,6 @@ val make :
     tools label an event by its cause, such as [press button "Save"],
     [after 2000ms] or [ok /api/save] (see {!Transition.cause_label}).
 
-    [fingerprint] lets a hot reload keep the snapshots of the machine: pass the
-    one of [[@@deriving fingerprint]] on the state type (see {!Fingerprint}). A
-    machine with none starts again at each hot reload, unless its initial
-    snapshot equals the old one.
-
     [during] lists the timers ({!Source.after}), calls ({!Remote.call}) and
     sources that run during a snapshot (see {!Source.key}). [entry] and [exit]
     give the actions of entering and leaving a state. A [final] snapshot handles
@@ -120,7 +114,6 @@ val make_with_props :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?fingerprint:'s Fingerprint.t ->
   ?during:('p -> 's -> 'e Source.t list) ->
   ?entry:('p -> 's -> 'e Action.t list) ->
   ?exit:('p -> 's -> 'e Action.t list) ->
@@ -149,9 +142,6 @@ val name : ('p, 's, 'e) t -> 's -> string
 val states : ('p, 's, 'e) t -> string list option
 (** The [states] given to {!make}. *)
 
-val fingerprint : ('p, 's, 'e) t -> 's Fingerprint.t option
-(** The [fingerprint] given to {!make}. *)
-
 val event_name : ('p, 's, 'e) t -> 'e -> string option
 (** The name of the event by the [event_name] given to {!make}, or [None] when
     the machine has none. *)
@@ -166,6 +156,11 @@ val register_codecs :
 (** [register_codecs machine ?props ?state ?event ()] gives the machine JSON
     codecs of its props, snapshots and events, for traces, replay and
     development tools. A second call for the same machine replaces the first.
+
+    The state codec also lets a machine keep its snapshot across a hot reload
+    and a restart of the server under [silica dev]: the old code encodes the
+    snapshot and the new code decodes it (see {!Handoff}). A machine with no
+    state codec starts again, unless it is at the snapshot it starts in.
 
     The codecs are not part of the machine definition on purpose: only the code
     that calls [register_codecs] references them. Call it from development entry

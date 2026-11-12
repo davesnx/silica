@@ -18,7 +18,7 @@ type move = Next | Previous | First | Last
 type event = Select of string | Move of move
 
 type model = { selected : string; focused : string }
-type state = Ready of model [@@deriving fingerprint]
+type state = Ready of model
 
 let name = function Ready _ -> "ready"
 let states = [ "ready" ]
@@ -95,7 +95,7 @@ let target props model move =
 let machine =
   Machine.make_with_props ~id:"tabs"
     ~init:(Ready { selected = ""; focused = "" })
-    ~name ~states ~event_name ~fingerprint:state_fingerprint
+    ~name ~states ~event_name
     ~on_props:(fun previous (props : props) _ ->
       match previous with
       | Some (previous : props) when previous.value = props.value ->

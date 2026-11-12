@@ -1,8 +1,8 @@
 open Silica
+open Jsonkit.Primitives
 open Linear_model
 
-type request = { number : int; base : int; change : Change.t }
-[@@deriving fingerprint]
+type request = { number : int; base : int; change : Change.t } [@@deriving json]
 
 let replace (issue : Issue.t) issues =
   List.map
@@ -29,18 +29,27 @@ module Edits = struct
         )
         issues
   end)
+end
 
-  let fingerprint =
-    [%fingerprint Optimistic.fingerprint Issues.fingerprint request_fingerprint]
+module Toast = struct
+  type priority = Silica_ui.Toast.priority = Low | High [@@deriving json]
+
+  type t = Silica_ui.Toast.toast = {
+    key : string;
+    title : string;
+    description : string option;
+    priority : priority;
+  }
+  [@@deriving json]
 end
 
 type t = {
-  edits : Edits.t;
+  edits : (Issues.t, request) Silica_jsonkit.optimistic;
   stale : bool;
   requests : (int * request) list;
   next_id : int;
 }
-[@@deriving fingerprint]
+[@@deriving json]
 
 type outcome = Saved | Conflict of Issue.t | Failed of string
 

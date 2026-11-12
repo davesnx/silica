@@ -86,7 +86,3 @@ let codec (data : 'a Codec.t) : 'a t Codec.t =
       | name, _ ->
           Error ("unknown constructor " ^ name)
     )
-
-let fingerprint (Fingerprint.Fingerprint data : _ Fingerprint.t) :
-    _ t Fingerprint.t =
-  Fingerprint (Silica ("Status.t", [ data ]))

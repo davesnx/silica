@@ -25,7 +25,7 @@ type 'ce event =
   | Close_request of Popup.reason
   | Content of 'ce
 
-type state = Closed | Open [@@deriving fingerprint]
+type state = Closed | Open
 
 let name = function Closed -> "closed" | Open -> "open"
 let states = [ "closed"; "open" ]
@@ -49,7 +49,7 @@ let event_name content_name = function
 
 let machine ~id ~closes ?event_name:content_name () =
   Machine.make_with_props ~id ~init:Closed ~name ~states
-    ~event_name:(event_name content_name) ~fingerprint:state_fingerprint
+    ~event_name:(event_name content_name)
     ~during:(fun props -> function
       | Open ->
           Popup.layer ~escape:(Close_request Popup.Escape_key)

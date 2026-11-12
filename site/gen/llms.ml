@@ -741,7 +741,7 @@ let api_module ~prefix path =
   let name = module_name path in
   let note =
     match name with
-    | "Fingerprint" | "Handoff" ->
+    | "Handoff" ->
         [
           "*For development tools only: hot reload under `silica dev` uses it. \
            App code and tests do not call it.*";

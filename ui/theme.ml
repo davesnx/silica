@@ -330,7 +330,6 @@ type current = { choice : choice; theme : t }
 type event = Choose of string | System_dark of bool
 
 type state = Fixed_theme of t | System_scheme of bool option
-[@@deriving fingerprint]
 
 let state_name = function
   | Fixed_theme _ ->
@@ -377,9 +376,37 @@ let current_name = function
   | System_scheme _ ->
       "system"
 
+let state_codec set =
+  let dark = Codec.option Codec.bool in
+  Codec.make
+    ~encode:(function
+      | Fixed_theme theme ->
+          Codec.constructor "Fixed_theme" [ Codec.string.encode (name theme) ]
+      | System_scheme scheme ->
+          Codec.constructor "System_scheme" [ dark.encode scheme ]
+      )
+    ~decode:(fun json ->
+      Result.bind (Codec.constructor_of json) (function
+        | "Fixed_theme", [ value ] ->
+            Result.bind (Codec.string.decode value) (fun wanted ->
+                match
+                  List.find_opt (fun theme -> name theme = wanted) (themes set)
+                with
+                | Some theme ->
+                    Ok (Fixed_theme theme)
+                | None ->
+                    Error ("no theme named " ^ wanted)
+            )
+        | "System_scheme", [ value ] ->
+            Result.map (fun scheme -> System_scheme scheme) (dark.decode value)
+        | constructor, _ ->
+            Error ("unknown constructor " ^ constructor)
+        )
+    )
+
 let machine =
   Machine.make_with_props ~id:"theme" ~init:(Fixed_theme light) ~name:state_name
-    ~states ~event_name ~fingerprint:state_fingerprint
+    ~states ~event_name
     ~during:(fun _ -> function
       | System_scheme _ ->
           [

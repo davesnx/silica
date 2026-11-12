@@ -12,37 +12,8 @@
  (libraries silica.ppx))
 
 (test
- (name fingerprint_test)
- (build_if
-  (<> %{profile} release))
- (modules
-  fingerprint_test
-  boxes
-  followed_one
-  followed_same
-  followed_two
-  mel_as_one
-  mel_as_two
-  placeholder_one
-  placeholder_two)
- (libraries silica)
- (flags
-  (:standard -w -34-37-69))
- (preprocess
-  (pps silica.ppx)))
-
-(test
  (name routes_test)
  (modules routes_test)
- (libraries silica)
- (preprocess
-  (pps silica.ppx)))
-
-(test
- (name release_fingerprint_test)
- (build_if
-  (= %{profile} release))
- (modules release_fingerprint_test)
  (libraries silica)
  (preprocess
   (pps silica.ppx)))

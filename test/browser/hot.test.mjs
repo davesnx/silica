@@ -98,7 +98,7 @@ async function swap(w, name) {
   return report;
 }
 
-test("a hot reload keeps state, DOM nodes and focus, restarts a changed state type, and leaves no listener or timer", async () => {
+test("a hot reload keeps state through codecs, DOM nodes and focus, restarts a snapshot that does not decode or has no codec, and leaves no listener or timer", async () => {
   const w = setup();
   const listeners = trackListeners(w);
   const timers = trackTimers();
@@ -109,6 +109,8 @@ test("a hot reload keeps state, DOM nodes and focus, restarts a changed state ty
     click(w, $("bump"));
     click(w, $("bump"));
     type(w, $("draft"), "abc");
+    click(w, $("note"));
+    assert.equal($("note").textContent, "shown");
     assert.equal($("bump").textContent, "2");
     assert.equal($("echo").textContent, "abc");
     const nodes = { bump: $("bump"), label: $("label"), draft: $("draft"), labelText: $("label").firstChild };
@@ -129,9 +131,15 @@ test("a hot reload keeps state, DOM nodes and focus, restarts a changed state ty
     const outcome = await report;
 
     assert.deepEqual([...outcome.kept].sort(), ["router", "router/0:counter"]);
-    assert.deepEqual(outcome.restarted, [
-      { path: "router/1:draft", machine: "draft", reason: "its state type changed" },
-    ]);
+    assert.deepEqual(
+      outcome.restarted.map(({ path, machine }) => ({ path, machine })),
+      [
+        { path: "router/1:draft", machine: "draft" },
+        { path: "router/2:note", machine: "note" },
+      ],
+    );
+    assert.match(outcome.restarted[0].reason, /^its snapshot does not decode: /, "the renamed constructor does not decode");
+    assert.match(outcome.restarted[1].reason, /^the machine "note" has no registered codecs/, "the note has no codec");
     assert.equal($("label").textContent, "Counter, edited", "the new view shows");
     assert.equal($("bump").textContent, "2", "the counter kept its state");
     assert.equal($("bump"), nodes.bump, "the button is the same DOM node");
@@ -139,6 +147,7 @@ test("a hot reload keeps state, DOM nodes and focus, restarts a changed state ty
     assert.equal($("label").firstChild, nodes.labelText, "the text node is the same");
     assert.equal(document.activeElement, nodes.draft, "the focused input keeps the focus");
     assert.equal($("echo").textContent, "", "the draft machine started again");
+    assert.equal($("note").textContent, "hidden", "the note machine started again");
     assert.deepEqual(listeners.describe(), mounted, "the new code added the same listeners");
     assert.equal(timers.count(), 1, "the timer of the kept state started again");
     await wait(80);
@@ -150,6 +159,7 @@ test("a hot reload keeps state, DOM nodes and focus, restarts a changed state ty
 
     const second = await swap(w, "a");
     assert.deepEqual(second.restarted.map((entry) => entry.path), ["router/1:draft"]);
+    assert.ok(second.kept.includes("router/2:note"), "the note at its start snapshot is kept with no codec");
     assert.equal($("bump").textContent, "103");
     assert.equal($("label").textContent, "Counter");
     assert.equal($("echo").textContent, "", "the draft type changed back, so it started again");
@@ -158,7 +168,7 @@ test("a hot reload keeps state, DOM nodes and focus, restarts a changed state ty
     assert.deepEqual(listeners.describe(), mounted, "a second swap leaves the same listeners");
     const third = await swap(w, "a");
     assert.deepEqual(third.restarted, [], "the same code keeps every machine");
-    assert.deepEqual([...third.kept].sort(), ["router", "router/0:counter", "router/1:draft"]);
+    assert.deepEqual([...third.kept].sort(), ["router", "router/0:counter", "router/1:draft", "router/2:note"]);
     assert.deepEqual(listeners.describe(), mounted, "a third swap leaves the same listeners");
     assert.equal(timers.count(), 0, "no timer is left");
     click(w, $("bump"));

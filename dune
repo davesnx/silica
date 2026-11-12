@@ -1,7 +1,4 @@
 (env
  (dev
   (odoc
-   (warnings fatal)))
- (release
-  (env-vars
-   (SILICA_FINGERPRINTS false))))
+   (warnings fatal))))

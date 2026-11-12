@@ -4,8 +4,6 @@
  (libraries silica silica_test_support silica_example_app_native alcotest))
 
 (test
- (name test_example_fingerprints)
- (modules test_example_fingerprints)
- (build_if
-  (<> %{profile} release))
+ (name test_example_state_codecs)
+ (modules test_example_state_codecs)
  (libraries silica silica_example_app_native alcotest))

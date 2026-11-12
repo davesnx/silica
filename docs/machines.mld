@@ -169,6 +169,15 @@ check with {!Silica.Machine.registered_codecs} that the codec module lists
 every machine whose events derive JSON, as the tests of mini Linear, the
 example app and the site do.
 
+Under [silica dev], the state codec also keeps the snapshot of a machine
+across a hot reload of the page and a restart of the server: the old code
+encodes the snapshot and the new code decodes it with its own codec. A
+snapshot that does not decode, because the state type changed, starts again,
+and [silica dev] says why; so does the snapshot of a machine with no state
+codec, unless it is the snapshot that the machine starts in. Register the
+codecs in the development client for it, as [linear/client_dev] and the client
+of [silica new] do.
+
 {1:make Make a machine}
 
 [Machine.make ~id ~init ~name update] makes the machine. [id] names the
@@ -181,7 +190,6 @@ machine in the spec, in the checker and in the ids of timers and sources.
 |--------|---------|
 | [states] | The list of every name that [name] gives. The checker uses it to report the states that no run reached. |
 | [event_name] | The names of the events (see {!section-events}). |
-| [fingerprint] | Lets a hot reload keep the snapshots of the machine (see below). |
 | [during] | The timers, calls and sources that run during a snapshot (see {!section-during}). |
 | [entry], [exit] | The actions to run when the machine enters or leaves a state. They get the snapshot. |
 | [final] | The snapshots where the machine stops: a final state handles no event. |
@@ -199,13 +207,6 @@ let states = [ "empty"; "typing"; "settled" ]
 let machine =
   Machine.make ~id:"debounce" ~init:Empty ~name ~states ~during update
 ]}
-
-At a hot reload, a machine keeps its snapshot only when it has a
-[fingerprint] and the state type did not change. [[@@deriving fingerprint]] on
-the state type gives [state_fingerprint] ([fingerprint] for a type [t]); pass
-it as [~fingerprint:state_fingerprint] (see {!Silica.Fingerprint}). A machine
-with no [fingerprint] starts again at each hot reload, unless its initial
-snapshot is equal to the old one.
 
 The last argument is the update: a function of the snapshot and the event that
 gives the next step. Most updates match on the pair and end with

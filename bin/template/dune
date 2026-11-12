@@ -1,4 +1,0 @@
-(env
- (release
-  (env-vars
-   (SILICA_FINGERPRINTS false))))

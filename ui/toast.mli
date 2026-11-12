@@ -29,7 +29,6 @@ type toast = {
   priority : priority;
       (** [High]: [role="alertdialog"]; [Low]: [role="dialog"]. *)
 }
-[@@deriving fingerprint]
 
 type classes = {
   viewport : string;

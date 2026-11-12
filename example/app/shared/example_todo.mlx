@@ -4,7 +4,7 @@ open Jsonkit.Primitives
 type todo = { id : int; text : string; completed : bool } [@@deriving json]
 
 type state = { todos : todo list; draft : string; next_id : int }
-[@@deriving json, fingerprint]
+[@@deriving json]
 
 type event = Draft of string | Add | Toggle of int | Delete of int
 [@@deriving json]
@@ -25,7 +25,7 @@ let input_ref = Ref.make "todo-input"
 let machine =
   Machine.make ~id:"todo" ~init
     ~name:(fun _ -> "todo")
-    ~states:[ "todo" ] ~event_name ~fingerprint:state_fingerprint
+    ~states:[ "todo" ] ~event_name
     (fun state event ->
       match event with
       | Draft draft ->

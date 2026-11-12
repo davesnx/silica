@@ -20,12 +20,9 @@ end
 type ('value, 'change) state
 (** The confirmed value and the pending changes. *)
 
-val fingerprint :
-  'value Fingerprint.t ->
-  'change Fingerprint.t ->
-  ('value, 'change) state Fingerprint.t
-(** The fingerprint of a {!state} from the ones of the value and the change, for
-    a state type that holds one (see {!Fingerprint}). *)
+val codec : 'value Codec.t -> 'change Codec.t -> ('value, 'change) state Codec.t
+(** [{"confirmed": value, "pending": [[id, change], ...]}], for the state codec
+    of a machine that holds one (see {!Machine.register_codecs}). *)
 
 module type OPTIMISTIC = sig
   type value

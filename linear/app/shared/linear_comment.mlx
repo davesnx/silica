@@ -31,7 +31,7 @@ type state =
   | Editing of editing
   | Saving of string
   | Edited of Comment.t
-[@@deriving json, fingerprint]
+[@@deriving json]
 
 let name = function
   | Viewing ->
@@ -53,7 +53,6 @@ let editing (props : props) draft error : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"comment" ~init:Viewing ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~during:(fun props -> function
       | Saving body ->
           [

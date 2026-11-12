@@ -8,6 +8,3 @@ type t =
   | Traverse of { delta : int; url : Url.t }
       (** Back ([delta < 0]) or forward ([delta > 0]) by [delta] history
           entries, to the entry with the URL [url]. *)
-
-val fingerprint : t Fingerprint.t
-(** The fingerprint of {!t} (see {!Fingerprint}). *)

@@ -38,7 +38,7 @@ type event =
   | Choose of int
   | Close of Popup.reason
 
-type state = Closed | Open of int option [@@deriving fingerprint]
+type state = Closed | Open of int option
 
 let name = function Closed -> "closed" | Open _ -> "open"
 let states = [ "closed"; "open" ]
@@ -111,7 +111,6 @@ let close ?focus props : (state, event) Machine.next =
 
 let machine =
   Machine.make_with_props ~id:"menu" ~init:Closed ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~during:(fun props -> function
       | Open _ ->
           Popup.layer ~escape:(Close Popup.Escape_key)

@@ -18,7 +18,7 @@ type state =
   | Loaded of Item.t
   | Missing of string
   | Failed of Silica_jsonkit.error
-[@@deriving json, fingerprint]
+[@@deriving json]
 
 let name = function
   | Loading ->
@@ -34,7 +34,6 @@ let states = [ "loading"; "loaded"; "missing"; "failed" ]
 
 let machine =
   Machine.make_with_props ~id:"item" ~init:Loading ~name ~states ~event_name
-    ~fingerprint:state_fingerprint
     ~entry:(fun _ -> function
       | Loaded item ->
           [ Action.Set_title item.title ]
