@@ -19,12 +19,11 @@ let fruits =
       item "plum" "Plum";
     ]
 
-type event = Chose of string * string [@@deriving event_shape]
+type event = Chose of string * string
 
 let machine =
   Machine.make ~id:"combobox-events" ~init:[]
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun events event ->
       match event with Chose (id, value) -> Go (events @ [ id ^ " " ^ value ])
     )

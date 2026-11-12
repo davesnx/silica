@@ -217,8 +217,8 @@ let rules =
          returns Ignore.";
       hint =
         "Handle {event} in state {state}, or do not offer it there: disable \
-         the element with Machine.can, or leave its timer or call out of owns \
-         of {state}.";
+         the element with Machine.can, or leave its timer or call out of \
+         during of {state}.";
       applies_to = "step";
     };
     {
@@ -240,11 +240,11 @@ let rules =
     {
       id = "live-uses-client-source";
       message =
-        "In state {state}, the Live component owns the client-only source \
+        "In state {state}, the Live component runs the client-only source \
          {source}, but a Live machine runs on the server.";
       hint =
         "Move the {source} source into a client component, or remove it from \
-         owns of {state}.";
+         during of {state}.";
       applies_to = "state";
     };
     {
@@ -334,6 +334,12 @@ type finding = {
   values : (string * string) list;
   custom : (string * string) option;
 }
+
+let unlisted_message machine =
+  Printf.sprintf
+    "Unreached states cannot be reported for the machine %s because it gives \
+     no ~states to Machine.make."
+    machine
 
 let finding ?element ?(values = []) rule =
   { rule; element; values; custom = None }

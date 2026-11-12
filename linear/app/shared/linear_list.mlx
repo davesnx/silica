@@ -5,13 +5,11 @@ open Linear_routes
 
 type event =
   | Loaded of (Issues.t, string) Silica_jsonkit.answer
-      [@event_name_of answer_name "loaded"]
   | Updated of Issues.t Silica_jsonkit.update
   | Retry
   | Reconnect
   | Reconnected
   | Filter_open of bool
-      [@event_name_of fun opened -> "filter_open " ^ string_of_bool opened]
   | Filter_changed of Linear_view.filter
   | Grouping_picked of string
   | Ordering_picked of string
@@ -20,13 +18,49 @@ type event =
   | Cursor_previous
   | Row_focused of int
   | Menu_open of bool
-      [@event_name_of fun opened -> "menu_open " ^ string_of_bool opened]
   | Command of string
   | Create_key
   | Saved of int * (Change.answer, string) Silica_jsonkit.answer
-      [@event_name_of saved_name]
   | Toast_closed of string
-[@@deriving json, event_shape]
+[@@deriving json]
+
+let event_name = function
+  | Loaded answer ->
+      answer_name "loaded" answer
+  | Updated _ ->
+      "updated"
+  | Retry ->
+      "retry"
+  | Reconnect ->
+      "reconnect"
+  | Reconnected ->
+      "reconnected"
+  | Filter_open opened ->
+      "filter_open " ^ string_of_bool opened
+  | Filter_changed _ ->
+      "filter_changed"
+  | Grouping_picked _ ->
+      "grouping_picked"
+  | Ordering_picked _ ->
+      "ordering_picked"
+  | Toggle_group _ ->
+      "toggle_group"
+  | Cursor_next ->
+      "cursor_next"
+  | Cursor_previous ->
+      "cursor_previous"
+  | Row_focused _ ->
+      "row_focused"
+  | Menu_open opened ->
+      "menu_open " ^ string_of_bool opened
+  | Command _ ->
+      "command"
+  | Create_key ->
+      "create_key"
+  | Saved (_, answer) ->
+      saved_name answer
+  | Toast_closed _ ->
+      "toast_closed"
 
 type ready = {
   data : Linear_data.t;
@@ -39,7 +73,17 @@ type ready = {
 }
 
 type state = Loading | Ready of ready | Failed of string
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function
+  | Loading ->
+      "loading"
+  | Ready _ ->
+      "ready"
+  | Failed _ ->
+      "failed"
+
+let states = [ "loading"; "ready"; "failed" ]
 
 let show view = Router.replace routes (Issues { create = false; view })
 let row_ref number = Ref.make ("issue-row-" ^ string_of_int number)
@@ -200,12 +244,12 @@ let live (r : ready) =
     Source.live issues_topic issues_key (fun update -> Updated update)
 
 let machine =
-  Machine.make_with_props ~id:"issue-list" ~init:Loading ~shape:state_shape
-    ~events:event_shape
+  Machine.make_with_props ~id:"issue-list" ~init:Loading ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
     ~entry:(fun _ -> function
       | Loading -> [ Action.Set_title "Issues" ] | Ready _ | Failed _ -> []
       )
-    ~owns:(fun _ -> function
+    ~during:(fun _ -> function
       | Loading ->
           [ Remote.call issues_endpoint () (fun answer -> Loaded answer) ]
       | Ready r ->

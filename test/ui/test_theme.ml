@@ -32,7 +32,7 @@ module Host = struct
 
   let machine choice =
     Machine.make ~id:"theme-host" ~init:(choice, [])
-      ~shape:(Machine.shape ~name:(fun _ -> "show") ())
+      ~name:(fun _ -> "show")
       (fun (choice, seen) event ->
         match event with
         | Changed current ->

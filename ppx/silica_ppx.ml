@@ -536,11 +536,6 @@ let () =
       Type_fingerprint.scan (rewrite_jsx#structure structure)
   )
 
-let () =
-  ignore
-    ( (Shape_deriver.state_deriver, Shape_deriver.event_deriver)
-      : Deriving.t * Deriving.t
-      )
 let () = ignore (Routes.deriver : Deriving.t)
 let () = ignore (Type_fingerprint.deriver : Deriving.t)
 

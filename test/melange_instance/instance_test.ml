@@ -3,7 +3,7 @@ open Silica
 let counter id label =
   Component.make
     (Machine.make ~id ~init:0
-       ~shape:(Machine.shape ~name:(fun _ -> "counting") ())
+       ~name:(fun _ -> "counting")
        (fun count () -> Machine.Go (count + 1))
     )
     (fun count ->
@@ -18,7 +18,7 @@ let other = counter "other" "other"
 let same_text =
   Component.make
     (Machine.make ~id:"same" ~init:"text"
-       ~shape:(Machine.shape ~name:(fun _ -> "text") ())
+       ~name:(fun _ -> "text")
        (fun text () -> Machine.Go text)
     )
     (fun text -> Node.text text)
@@ -29,7 +29,7 @@ type event = Show of shown | Redraw
 let root =
   Component.make
     (Machine.make ~id:"root" ~init:(Count, 0)
-       ~shape:(Machine.shape ~name:(fun _ -> "showing") ())
+       ~name:(fun _ -> "showing")
        (fun (shown, draws) -> function
          | Show next ->
              Machine.Go (next, draws)

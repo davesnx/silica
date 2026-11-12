@@ -79,12 +79,11 @@ let items =
   )
 
 type state = string
-type event = Query of string [@@deriving event_shape]
+type event = Query of string
 
 let machine =
   Machine.make ~id:"filter" ~init:""
-    ~shape:(Machine.shape ~name:(fun _ -> "ready") ~names:[ "ready" ] ())
-    ~events:event_shape
+    ~name:(fun _ -> "ready")
     (fun _ (Query query) -> Go query)
 
 let contains ~sub s =

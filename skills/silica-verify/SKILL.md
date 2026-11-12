@@ -27,7 +27,10 @@ is red, then green: a check fails on the bug, then passes on the fix.
    Look up the rule in the table in
    [references/verification.md](references/verification.md) (section "The
    rules"). Also read `unreached`, `vacuous`, `unchecked`, `golden` and
-   `errors`.
+   `errors`. `unlisted` names each machine that gives no `~states` to
+   `Machine.make`: `unreached` cannot cover it, so give it `~states`. An
+   `event` is the `~event_name` of the machine, or, when it has none, the
+   label of the cause, such as `press button "Save"` or `after 2000ms`.
 5. Make it red, one test for each violation you fix: each violation has a
    `trace_file` (`traces/<id>_<rule>_<state>.jsonl`) and a `test_file`;
    `silica script ID TRACE_FILE --output TEST_FILE` (no file when it exits

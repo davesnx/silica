@@ -73,16 +73,7 @@ let versions =
 
 let hash text = Digest.to_hex (Digest.string (versions ^ "\n" ^ text))
 
-let stripped =
-  [
-    "ocaml.doc";
-    "ocaml.text";
-    "doc";
-    "deriving";
-    "state_name";
-    "event_name";
-    "event_name_of";
-  ]
+let stripped = [ "ocaml.doc"; "ocaml.text"; "doc"; "deriving" ]
 
 let allowed_predefined =
   [

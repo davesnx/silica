@@ -77,23 +77,33 @@ type search_event =
   | Found of (int, string) Remote.answer
 
 type search = Idle | Typing of string | Searching | Results of int | Error
-[@@deriving state_shape]
 
-let search_events =
-  Machine.shape
-    ~name:(function
-      | Typed text ->
-          "typed " ^ text
-      | Fire ->
-          "fire"
-      | Found answer ->
-          "found " ^ answer_name answer
-      )
-    ()
+let search_name = function
+  | Idle ->
+      "idle"
+  | Typing _ ->
+      "typing"
+  | Searching ->
+      "searching"
+  | Results _ ->
+      "results"
+  | Error ->
+      "error"
+
+let search_states = [ "idle"; "typing"; "searching"; "results"; "error" ]
+
+let search_event_name = function
+  | Typed text ->
+      "typed " ^ text
+  | Fire ->
+      "fire"
+  | Found answer ->
+      "found " ^ answer_name answer
 
 let debounce =
-  Machine.make ~id:"search" ~init:Idle ~shape:search_shape ~events:search_events
-    ~owns:(function
+  Machine.make ~id:"search" ~init:Idle ~name:search_name ~states:search_states
+    ~event_name:search_event_name
+    ~during:(function
       | Typing _ ->
           [ Source.after 300 Fire ]
       | Searching ->
@@ -134,19 +144,31 @@ let test_debounce_holds () =
   if not (Check.passed report) then Alcotest.fail (print report)
 
 type save_event = Save | Answer of (int, string) Remote.answer
-type save = Editing | Saving | Saved | Failed [@@deriving state_shape]
+type save = Editing | Saving | Saved | Failed
 
-let save_events =
-  Machine.shape
-    ~name:(function
-      | Save -> "save" | Answer answer -> "answer " ^ answer_name answer
-      )
-    ()
+let save_name = function
+  | Editing ->
+      "editing"
+  | Saving ->
+      "saving"
+  | Saved ->
+      "saved"
+  | Failed ->
+      "failed"
+
+let save_states = [ "editing"; "saving"; "saved"; "failed" ]
+
+let save_event_name = function
+  | Save ->
+      "save"
+  | Answer answer ->
+      "answer " ^ answer_name answer
 
 let saver ~lost =
-  Machine.make ~id:"saver" ~init:Editing ~shape:save_shape ~events:save_events
+  Machine.make ~id:"saver" ~init:Editing ~name:save_name ~states:save_states
+    ~event_name:save_event_name
     ~final:(function Saved -> true | Editing | Saving | Failed -> false)
-    ~owns:(function
+    ~during:(function
       | Saving ->
           [ Remote.call save_endpoint () (fun answer -> Answer answer) ]
       | Editing | Saved | Failed ->
@@ -225,19 +247,31 @@ let test_lost_answer_loops () =
       Alcotest.failf "expected a loop:\n%s" (print report)
 
 type sync_event = Sync | Synced_answer of (int, string) Remote.answer
-type sync = Unsynced | Syncing | Synced | Offline [@@deriving state_shape]
+type sync = Unsynced | Syncing | Synced | Offline
 
-let sync_events =
-  Machine.shape
-    ~name:(function
-      | Sync -> "sync" | Synced_answer answer -> "answer " ^ answer_name answer
-      )
-    ()
+let sync_name = function
+  | Unsynced ->
+      "unsynced"
+  | Syncing ->
+      "syncing"
+  | Synced ->
+      "synced"
+  | Offline ->
+      "offline"
+
+let sync_states = [ "unsynced"; "syncing"; "synced"; "offline" ]
+
+let sync_event_name = function
+  | Sync ->
+      "sync"
+  | Synced_answer answer ->
+      "answer " ^ answer_name answer
 
 let syncer =
-  Machine.make ~id:"sync" ~init:Unsynced ~shape:sync_shape ~events:sync_events
+  Machine.make ~id:"sync" ~init:Unsynced ~name:sync_name ~states:sync_states
+    ~event_name:sync_event_name
     ~final:(function Synced -> true | Unsynced | Syncing | Offline -> false)
-    ~owns:(function
+    ~during:(function
       | Syncing ->
           [ Remote.call save_endpoint () (fun answer -> Synced_answer answer) ]
       | Unsynced | Synced | Offline ->
@@ -296,23 +330,23 @@ let test_missing_retry_waits () =
     (contains (print report) "the app waits for the user")
 
 type list_event = Delete of int | Refresh
-type items = Items of int list [@@deriving state_shape]
+type items = Items of int list
+
+let items_name = function Items _ -> "items"
+
+let items_states = [ "items" ]
 
 let lister ~stale =
   Machine.make ~id:"items"
     ~init:(Items [ 1; 2 ])
-    ~shape:items_shape
-    ~events:
-      (Machine.shape
-         ~name:(function
-           | Delete number ->
-               Printf.sprintf "delete %d" number
-           | Refresh ->
-               "refresh"
-           )
-         ()
+    ~name:items_name ~states:items_states
+    ~event_name:(function
+      | Delete number ->
+          Printf.sprintf "delete %d" number
+      | Refresh ->
+          "refresh"
       )
-    ~owns:(fun _ -> [ Source.after 1000 Refresh ])
+    ~during:(fun _ -> [ Source.after 1000 Refresh ])
     (fun (Items numbers) -> function
       | Delete number ->
           Go (Items (List.filter (( <> ) number) numbers))
@@ -372,14 +406,18 @@ let test_never_after_holds () =
   if not (Check.passed report) then Alcotest.fail (print report)
 
 type heartbeat_event = Beat | Timeout
-type heartbeat = Connected | Expired [@@deriving state_shape]
+type heartbeat = Connected | Expired
+
+let heartbeat_name = function Connected -> "connected" | Expired -> "expired"
+
+let heartbeat_states = [ "connected"; "expired" ]
 
 let heartbeat =
-  Machine.make ~id:"heartbeat" ~init:Connected ~shape:heartbeat_shape
-    ~events:
-      (Machine.shape ~name:(function Beat -> "beat" | Timeout -> "timeout") ())
+  Machine.make ~id:"heartbeat" ~init:Connected ~name:heartbeat_name
+    ~states:heartbeat_states
+    ~event_name:(function Beat -> "beat" | Timeout -> "timeout")
     ~final:(function Expired -> true | Connected -> false)
-    ~owns:(function
+    ~during:(function
       | Connected ->
           [ Source.after 1000 Beat; Source.after 5000 Timeout ]
       | Expired ->
@@ -411,14 +449,20 @@ let test_restart_loop_is_unfair () =
   in
   if not (Check.passed report) then Alcotest.fail (print report)
 
-type counting = Counting of int | Done [@@deriving state_shape]
+type counting = Counting of int | Done
+
+let counting_name = function Counting _ -> "counting" | Done -> "done"
+
+let counting_states = [ "counting"; "done" ]
+
 type tick = Tick
 
 let counter =
-  Machine.make ~id:"counter" ~init:(Counting 0) ~shape:counting_shape
-    ~events:(Machine.shape ~name:(fun Tick -> "tick") ())
+  Machine.make ~id:"counter" ~init:(Counting 0) ~name:counting_name
+    ~states:counting_states
+    ~event_name:(fun Tick -> "tick")
     ~final:(function Done -> true | Counting _ -> false)
-    ~owns:(function Counting _ -> [ Source.after 100 Tick ] | Done -> [])
+    ~during:(function Counting _ -> [ Source.after 100 Tick ] | Done -> [])
     (fun state Tick ->
       match state with
       | Counting count when count >= 10 ->
@@ -533,17 +577,19 @@ let test_step_conditions () =
     (events (Check.steps entered.counterexample))
 
 type reset_event = Increment | Reset
-type count = Count of int [@@deriving state_shape]
+type count = Count of int
 
-let reset_events =
-  Machine.shape
-    ~name:(function Increment -> "increment" | Reset -> "reset")
-    ()
+let count_name = function Count _ -> "count"
+
+let count_states = [ "count" ]
+
+let reset_event_name = function Increment -> "increment" | Reset -> "reset"
 
 let resetting ~keeps =
   Component.make
-    (Machine.make ~id:"reset" ~init:(Count 0) ~shape:count_shape
-       ~events:reset_events (fun (Count count) event ->
+    (Machine.make ~id:"reset" ~init:(Count 0) ~name:count_name
+       ~states:count_states ~event_name:reset_event_name
+       (fun (Count count) event ->
          match event with
          | Increment ->
              Machine.Go (Count (count + 1))
@@ -594,8 +640,9 @@ let test_always_reads_every_step () =
 
 let adding ~skips =
   Component.make
-    (Machine.make ~id:"adding" ~init:(Count 0) ~shape:count_shape
-       ~events:reset_events (fun (Count count) event ->
+    (Machine.make ~id:"adding" ~init:(Count 0) ~name:count_name
+       ~states:count_states ~event_name:reset_event_name
+       (fun (Count count) event ->
          match event with
          | Increment ->
              Machine.Go
@@ -649,8 +696,9 @@ let test_transition_reads_both_states () =
 let test_shows_reads_plain_text () =
   let message ~shown =
     Component.make
-      (Machine.make ~id:"message" ~init:(Count 0) ~shape:count_shape
-         ~events:reset_events (fun (Count count) event ->
+      (Machine.make ~id:"message" ~init:(Count 0) ~name:count_name
+         ~states:count_states ~event_name:reset_event_name
+         (fun (Count count) event ->
            match event with
            | Increment ->
                Machine.Go (Count (min 2 (count + 1)))

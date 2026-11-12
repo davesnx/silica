@@ -75,9 +75,10 @@ Run every command from this directory.
     keeps the state of its machines), `"page"` or `"css"`.
   - `{"t":"hot-reload","status":"kept","kept":[...],"restarted":[...]}`: each
     `restarted` entry has `path`, `machine` and `reason`, such as
-    `"its state type changed"`. A machine keeps its state when its state type
-    has a fingerprint: `[@@deriving state_shape]`, and `[@@deriving fingerprint]`
-    on the types of other modules it holds.
+    `"its state type changed"`. A machine keeps its state when it has a
+    fingerprint: `[@@deriving fingerprint]` on its state type, given as
+    `~fingerprint:state_fingerprint` to `Machine.make`, and
+    `[@@deriving fingerprint]` on the types of other modules it holds.
 
   After an edit, wait for `build` `ok` and `server` `restarted` (and
   `hot-reload` when a page is open), or for `failed`, and fix each error.
@@ -110,7 +111,16 @@ Run every command from this directory.
    the verification reference.
 2. Put behaviour in the machine. A view only reads the state and names
    events. Disable an element when its event does nothing in a state:
-   `disabled=(not (Machine.can machine () state Event))`.
+   `disabled=(not (Machine.can machine () state Event))`. `Machine.make`
+   takes `~name` (the name of each state in the spec, the checker and the
+   traces), `?states` (every name that `name` gives, so that the checker
+   reports the states that no run reached), `?event_name` (the name of each
+   event on the edges; an event with no name is labelled by its cause, such
+   as `press button "Save"`, `after 2000ms` or `ok /api/save`), `?during`
+   (the timers, calls and sources of each state) and `?fingerprint` (see
+   `hot-reload` above). Write `name` and `event_name` as a `function` over
+   every constructor, with no `_` case, so that a new constructor is a compile
+   error, and add each new state name to `states`.
 3. Run `silica check --json --traces traces > report.json`.
 4. For each item of `entries[].violations` in the report, read `rule`,
    `hint`, `state.name`, `view` (the view as text at the failing step) and

@@ -1,15 +1,37 @@
 open Silica
 
 type event = Draft of string | Attempt of Nav.t | Leave | Stay | Save
-[@@deriving event_shape]
+
+let event_name = function
+  | Draft _ ->
+      "draft"
+  | Attempt _ ->
+      "attempt"
+  | Leave ->
+      "leave"
+  | Stay ->
+      "stay"
+  | Save ->
+      "save"
 
 type state = Clean | Dirty of string | Asking of string * Nav.t
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function
+  | Clean ->
+      "clean"
+  | Dirty _ ->
+      "dirty"
+  | Asking _ ->
+      "asking"
+
+let states = [ "clean"; "dirty"; "asking" ]
 
 let machine =
-  Machine.make ~id:"edit" ~init:Clean ~shape:state_shape ~events:event_shape
+  Machine.make ~id:"edit" ~init:Clean ~name ~states ~event_name
+    ~fingerprint:state_fingerprint
     ~entry:(function Clean -> [ Action.Set_title "Edit" ] | _ -> [])
-    ~owns:(function
+    ~during:(function
       | Clean ->
           []
       | Dirty _ | Asking _ ->

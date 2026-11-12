@@ -13,8 +13,7 @@ let machine ~id ~init ?final step =
   let states =
     match final with None -> [ "active" ] | Some _ -> [ "active"; "final" ]
   in
-  Machine.make ~id ~init ~shape:(Machine.shape ~name ~names:states ())
-    ~final:is_final (fun data event ->
+  Machine.make ~id ~init ~name ~states ~final:is_final (fun data event ->
       match step data event with
       | None ->
           Machine.Ignore

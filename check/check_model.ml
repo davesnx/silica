@@ -596,7 +596,7 @@ let see recorder machine props state =
             );
       }
 
-let record recorder machine ~from ~props state event (how : Machine.how) =
+let record recorder machine ~from ~props state label (how : Machine.how) =
   see recorder machine props state;
   match how with
   | Entered | Kept ->
@@ -604,19 +604,25 @@ let record recorder machine ~from ~props state event (how : Machine.how) =
         {
           Spec.from = Machine.name machine from;
           target = Machine.name machine state;
-          event;
+          event = label ();
           kept = how = Kept;
         }
         ()
   | Unhandled ->
       ()
 
-let send ?finished recorder machine world event =
+let send ?finished ~label recorder machine world event =
   let state, actions, how =
     Machine.step ?finished machine world.props world.s event
   in
   record recorder machine ~from:world.s ~props:world.props state
-    (Machine.event_name machine event)
+    (fun () ->
+      match Machine.event_name machine event with
+      | Some name ->
+          name
+      | None ->
+          label ()
+    )
     how;
   (state, actions, how)
 
@@ -624,7 +630,7 @@ let change_props recorder machine world props =
   let state, actions, how =
     Machine.set_props machine ~previous:world.props props world.s
   in
-  record recorder machine ~from:world.s ~props state "props" how;
+  record recorder machine ~from:world.s ~props state (fun () -> "props") how;
   (state, actions, how)
 
 let spec_of recorder machine =
@@ -647,6 +653,13 @@ let spec_of recorder machine =
       Hashtbl.fold (fun edge () acc -> edge :: acc) recorder.taken []
       |> List.sort_uniq compare;
   }
+
+let unlisted_of machine =
+  match Machine.states machine with
+  | Some _ ->
+      []
+  | None ->
+      [ Machine.id machine ]
 
 let unreached_of recorder machine =
   List.filter
@@ -688,7 +701,7 @@ type ('n, 's, 'ev, 'e) model = {
   final : 'n -> bool;
   name : 'n -> string;
   snapshot : 'n -> 's;
-  event_name : 'ev -> string;
+  event_name : 'ev -> string option;
   event_of : 'ev -> 'e option;
   cause : 'n -> 'e Node.t -> 'ev move -> cause;
   state_rules : 'n -> 'e Node.t -> Check_rules.finding list;
@@ -700,6 +713,7 @@ type ('n, 's, 'ev, 'e) model = {
   setup_findings : unit -> Check_rules.finding list;
   specs : unit -> Spec.t list;
   unreached : unit -> string list;
+  unlisted : unit -> string list;
   answer : 'n -> 'ev move -> Silica_json.Json.t option;
   props_json : 'n -> Silica_json.Json.t option;
   tree : ('n, 'ev, 'e) tree;
@@ -824,6 +838,53 @@ let describe_cause = function
   | Address url ->
       "the user opens " ^ url
 
+let transition_cause ~answer ~url : cause -> Transition.cause = function
+  | View { handler; element; role; name } ->
+      let handler, value =
+        match String.index_opt handler ' ' with
+        | Some space ->
+            ( String.sub handler 0 space,
+              Some
+                (String.sub handler (space + 1)
+                   (String.length handler - space - 1)
+                )
+            )
+        | None ->
+            (handler, None)
+      in
+      Element { handler; role; name; element; value }
+  | Input ->
+      Message
+  | Timer { id; ms } ->
+      Timer { id; ms }
+  | Answer { id; path } ->
+      Answer { id; path; answer }
+  | Live { id; topic } ->
+      Live { id; topic; update = None }
+  | Held { id; source } ->
+      Held { id; source }
+  | Action_result action ->
+      Action_result { action }
+  | Props ->
+      Props
+  | Child { instance; _ } ->
+      Child { instance }
+  | Navigation ->
+      Url (Option.value url ~default:"")
+  | Address url ->
+      Url url
+
+let cause_label ~answer cause =
+  Transition.cause_label (transition_cause ~answer ~url:None cause)
+
+let move_label model node view move =
+  match model.event_name move.event with
+  | Some name ->
+      name
+  | None ->
+      cause_label ~answer:(model.answer node move)
+        (model.cause node (Lazy.force view) move)
+
 let view_cause ~keys ~texts view event =
   match Check_rules.locate ~keys ~texts view (fun other -> other = event) with
   | Some { handler; element; role; name } ->
@@ -848,7 +909,16 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
       )
       all_props
   in
-  let view world = component.view world.props world.s in
+  let rendered = ref None in
+  let view world =
+    match !rendered with
+    | Some (seen, view) when seen == world ->
+        view
+    | Some _ | None ->
+        let view = component.view world.props world.s in
+        rendered := Some (world, view);
+        view
+  in
   let enabled world view =
     Check_rules.dedup
       (List.map
@@ -877,20 +947,6 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
           (resource_moves host world)
       )
   in
-  let step world move =
-    let world = consume world move.via in
-    match (move.event : (_, _) input) with
-    | Event event ->
-        let s, actions, how =
-          send ?finished:(finished move.via) recorder machine world event
-        in
-        (exec { world with s } actions, actions, how)
-    | Props props ->
-        let s, actions, how = change_props recorder machine world props in
-        (exec { world with s; props } actions, actions, how)
-    | In_child _ ->
-        not_in_child ()
-  in
   let cause world view move =
     match (move.event : (_, _) input) with
     | Props _ ->
@@ -904,6 +960,30 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
         | via ->
             resource_cause machine world via event
       )
+  in
+  let answer world move =
+    match (move.event : (_, _) input) with
+    | Event event ->
+        answer_json host world move.via event
+    | Props _ | In_child _ ->
+        None
+  in
+  let step world move =
+    let label () =
+      cause_label ~answer:(answer world move) (cause world (view world) move)
+    in
+    let world = consume world move.via in
+    match (move.event : (_, _) input) with
+    | Event event ->
+        let s, actions, how =
+          send ?finished:(finished move.via) ~label recorder machine world event
+        in
+        (exec { world with s } actions, actions, how)
+    | Props props ->
+        let s, actions, how = change_props recorder machine world props in
+        (exec { world with s; props } actions, actions, how)
+    | In_child _ ->
+        not_in_child ()
   in
   {
     machine = Machine.id machine;
@@ -921,7 +1001,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
       | Event event ->
           Machine.event_name machine event
       | Props _ ->
-          "props"
+          Some "props"
       | In_child _ ->
           not_in_child ()
       );
@@ -960,14 +1040,8 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
     setup_findings = (fun () -> []);
     specs = (fun () -> [ spec_of recorder machine ]);
     unreached = (fun () -> unreached_of recorder machine);
-    answer =
-      (fun world move ->
-        match (move.event : (_, _) input) with
-        | Event event ->
-            answer_json host world move.via event
-        | Props _ | In_child _ ->
-            None
-      );
+    unlisted = (fun () -> unlisted_of machine);
+    answer;
     props_json =
       (fun world ->
         Result.to_option
@@ -1052,7 +1126,11 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
         let nav hist idx url =
           if depth > 50 then failwith "navigation loop: actions keep navigating";
           let world = { world with hist; idx } in
-          let s, more, _ = send recorder machine world (url_event url) in
+          let s, more, _ =
+            send
+              ~label:(fun () -> "url " ^ Url.to_string url)
+              recorder machine world (url_event url)
+          in
           apply (depth + 1) ({ world with s }, acc @ more) more
         in
         match action with
@@ -1081,7 +1159,16 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       )
       (world, acc) actions
   in
-  let view world = component.view world.props world.s in
+  let rendered = ref None in
+  let view world =
+    match !rendered with
+    | Some (seen, view) when seen == world ->
+        view
+    | Some _ | None ->
+        let view = component.view world.props world.s in
+        rendered := Some (world, view);
+        view
+  in
   let to_state world =
     { router = world.s; history = world.hist; index = world.idx }
   in
@@ -1126,28 +1213,6 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       @ List.map (fun url -> user (Open (Url.of_string url))) urls
       )
   in
-  let step world move =
-    let navigate actions =
-      let world, actions = apply 0 (world, []) actions in
-      (world, actions, Machine.Kept)
-    in
-    match move.event with
-    | Event event ->
-        let world = consume world move.via in
-        let s, actions, how =
-          send ?finished:(finished move.via) recorder machine world event
-        in
-        let world, actions = apply 0 ({ world with s }, actions) actions in
-        (world, actions, how)
-    | Link url | Open url ->
-        navigate [ Action.Run (Action.Navigate url) ]
-    | Browser_back ->
-        navigate [ Action.Run Action.Back ]
-    | Browser_forward ->
-        navigate [ Action.Run Action.Forward ]
-    | In_child _ ->
-        not_in_child ()
-  in
   let cause world view move =
     match move.event with
     | Event event -> (
@@ -1168,6 +1233,33 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
         Address (Url.to_string url)
     | Browser_back | Browser_forward ->
         Navigation
+    | In_child _ ->
+        not_in_child ()
+  in
+  let step world move =
+    let navigate actions =
+      let world, actions = apply 0 (world, []) actions in
+      (world, actions, Machine.Kept)
+    in
+    match move.event with
+    | Event event ->
+        let label () =
+          cause_label
+            ~answer:(answer_json host world move.via event)
+            (cause world (view world) move)
+        in
+        let world = consume world move.via in
+        let s, actions, how =
+          send ?finished:(finished move.via) ~label recorder machine world event
+        in
+        let world, actions = apply 0 ({ world with s }, actions) actions in
+        (world, actions, how)
+    | Link url | Open url ->
+        navigate [ Action.Run (Action.Navigate url) ]
+    | Browser_back ->
+        navigate [ Action.Run Action.Back ]
+    | Browser_forward ->
+        navigate [ Action.Run Action.Forward ]
     | In_child _ ->
         not_in_child ()
   in
@@ -1213,13 +1305,13 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       | Event event ->
           Machine.event_name machine event
       | Link url ->
-          "link " ^ Url.to_string url
+          Some ("link " ^ Url.to_string url)
       | Open url ->
-          "open " ^ Url.to_string url
+          Some ("open " ^ Url.to_string url)
       | Browser_back ->
-          "back"
+          Some "back"
       | Browser_forward ->
-          "forward"
+          Some "forward"
       | In_child _ ->
           not_in_child ()
       );
@@ -1251,6 +1343,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       );
     specs = (fun () -> [ spec_of recorder machine ]);
     unreached = (fun () -> unreached_of recorder machine);
+    unlisted = (fun () -> unlisted_of machine);
     answer =
       (fun world move ->
         match move.event with

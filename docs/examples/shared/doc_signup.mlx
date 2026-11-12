@@ -5,10 +5,7 @@ let subscribe =
     ~rejected:Codec.string
 
 type event = Typed of string | Send | Answer of (string, string) Remote.answer
-[@@deriving event_shape]
-
 type phase = Editing | Sending | Sent of string | Failed of string
-[@@deriving state_shape]
 
 type state = { email : string; phase : phase }
 
@@ -37,14 +34,18 @@ let update state event : (state, event) Machine.next =
 let machine =
   Machine.make ~id:"signup"
     ~init:{ email = ""; phase = Editing }
-    ~shape:
-      (Machine.shape
-         ~name:(fun state -> Machine.shape_name phase_shape state.phase)
-         ~names:(Machine.shape_names phase_shape)
-         ()
-      )
-    ~events:event_shape
-    ~owns:(fun state ->
+    ~name:(fun state ->
+      match state.phase with
+      | Editing ->
+          "editing"
+      | Sending ->
+          "sending"
+      | Sent _ ->
+          "sent"
+      | Failed _ ->
+          "failed"
+    )
+    ~during:(fun state ->
       match state.phase with
       | Sending ->
           [ Remote.call subscribe state.email (fun answer -> Answer answer) ]

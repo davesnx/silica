@@ -390,6 +390,68 @@ let describe : type m. m Action.host -> string = function
   | Action.Stop id ->
       "stop " ^ id
 
+let cause_label = function
+  | Start ->
+      "start"
+  | Element { handler; role; name; value; _ } ->
+      String.concat " "
+        (List.filter
+           (fun part -> part <> "")
+           [
+             handler;
+             ( match (handler, value) with
+             | ("key_down" | "key_up"), Some key ->
+                 key
+             | _ ->
+                 ""
+             );
+             Option.value role ~default:"";
+             ( if name = "" then
+                 ""
+               else
+                 "\"" ^ name ^ "\""
+             );
+           ]
+        )
+  | Timer { ms; _ } ->
+      "after " ^ string_of_int ms ^ "ms"
+  | Answer { path; answer; _ } ->
+      let outcome =
+        match Option.map Codec.constructor_of answer with
+        | Some (Ok (constructor, _)) ->
+            String.lowercase_ascii constructor
+        | Some (Error _) | None ->
+            "answer"
+      in
+      outcome ^ " " ^ path
+  | Live { topic; _ } ->
+      "live " ^ topic
+  | Held { source; _ } ->
+      source
+  | Action_result { action } ->
+      "result " ^ action
+  | Props ->
+      "props"
+  | Child { instance } ->
+      "child " ^ instance
+  | Url url ->
+      "url " ^ url
+  | Preload url ->
+      "preload " ^ url
+  | Message ->
+      "message"
+  | Ended ->
+      "end"
+
+let label record =
+  match (record.change, record.event) with
+  | (Started | Resumed | Ended), _ ->
+      ""
+  | (Unhandled | Kept | Entered), "" ->
+      cause_label record.cause
+  | (Unhandled | Kept | Entered), event ->
+      event
+
 let strip record =
   let cause =
     match record.cause with
@@ -814,7 +876,7 @@ let make ~seq ~time_ms observed =
         event =
           ( match event with
           | Some event ->
-              Machine.event_name machine event
+              Option.value ~default:"" (Machine.event_name machine event)
           | None ->
               ""
           );

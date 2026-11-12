@@ -7,7 +7,7 @@ type event = Changed of bool | Set_checked of bool | Set_disabled of bool
 let machine =
   Machine.make ~id:"switch-page"
     ~init:{ checked = false; disabled = false; log = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Changed checked ->

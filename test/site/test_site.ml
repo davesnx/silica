@@ -411,12 +411,14 @@ let test_landing_chart () =
   in
   Alcotest.(check (list string))
     "every state of the save machine"
-    (List.sort compare (Silica.Machine.shape_names Landing_save.state_shape))
+    (List.sort compare
+       (Option.value ~default:[] (Silica.Machine.states Landing_save.machine))
+    )
     (List.sort compare names);
   Alcotest.(check (list string))
     "the initial state"
     [
-      (Silica.Machine.shape_name Landing_save.state_shape)
+      Silica.Machine.name Landing_save.machine
         (Silica.Machine.init Landing_save.machine);
     ]
     (List.filter_map

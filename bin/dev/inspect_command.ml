@@ -343,7 +343,7 @@ let observed_labels machine transitions =
             {
               Spec.from = record.from;
               target = record.target;
-              event = record.event;
+              event = Transition.label record;
               kept = false;
             }
       | Kept ->
@@ -351,12 +351,7 @@ let observed_labels machine transitions =
             {
               Spec.from = record.from;
               target = record.target;
-              event =
-                ( if record.event = "" then
-                    "props"
-                  else
-                    record.event
-                );
+              event = Transition.label record;
               kept = true;
             }
       | Started | Resumed | Unhandled | Ended ->

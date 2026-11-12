@@ -55,15 +55,13 @@ type event =
   | Changed of bool * Popup.reason
   | Edited of rename_event
   | Open_from_outside
-[@@deriving event_shape]
 
 let note page line = { page with events = page.events @ [ line ] }
 
 let machine =
   Machine.make ~id:"dialog-events"
     ~init:{ name = "Ada"; saved = "Ada"; events = []; open_ = None }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Changed (opened, reason) ->

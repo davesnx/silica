@@ -34,10 +34,10 @@ let log_line = function
   | Ran value ->
       "run " ^ value
 
-let page_machine ~id ~owns =
+let page_machine ~id ~during =
   Machine.make ~id ~init:(None, [])
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~owns:(fun _ -> owns)
+    ~name:(fun _ -> "page")
+    ~during:(fun _ -> during)
     (fun (open_, log) event ->
       let log = log @ [ log_line event ] in
       match event with
@@ -55,7 +55,7 @@ let log_view log =
     [ Node.text (String.concat "; " log) ]
 
 let combobox_page =
-  Component.make (page_machine ~id:"combobox-page" ~owns:[]) (fun (_, log) ->
+  Component.make (page_machine ~id:"combobox-page" ~during:[]) (fun (_, log) ->
       Node.element "main" []
         [
           log_view log;
@@ -75,7 +75,7 @@ let shortcut =
     ]
 
 let menu_page =
-  Component.make (page_machine ~id:"menu-page" ~owns:[ shortcut ])
+  Component.make (page_machine ~id:"menu-page" ~during:[ shortcut ])
     (fun (open_, log) ->
       Node.element "main" []
         [

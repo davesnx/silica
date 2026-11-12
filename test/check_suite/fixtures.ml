@@ -3,13 +3,35 @@ open Silica
 let button label event =
   Node.element "button" [ Attr.on_press event ] [ Node.text label ]
 
-type door_event = Open | Close | Lock | Unlock [@@deriving event_shape]
-type door_state = Closed | Opened | Locked [@@deriving state_shape]
+type door_event = Open | Close | Lock | Unlock
+
+let door_event_event_name = function
+  | Open ->
+      "open"
+  | Close ->
+      "close"
+  | Lock ->
+      "lock"
+  | Unlock ->
+      "unlock"
+
+type door_state = Closed | Opened | Locked
+
+let door_state_name = function
+  | Closed ->
+      "closed"
+  | Opened ->
+      "opened"
+  | Locked ->
+      "locked"
+
+let door_state_states = [ "closed"; "opened"; "locked" ]
 
 let door ~unlock_to =
   let machine =
-    Machine.make ~id:"door" ~init:Closed ~shape:door_state_shape
-      ~events:door_event_shape (fun state event ->
+    Machine.make ~id:"door" ~init:Closed ~name:door_state_name
+      ~states:door_state_states ~event_name:door_event_event_name
+      (fun state event ->
         match (state, event) with
         | Closed, Open ->
             Machine.Go Opened
@@ -32,13 +54,21 @@ let door ~unlock_to =
         button "Unlock" Unlock
     )
 
-type save_event = Edit | Save [@@deriving event_shape]
-type save_state = Editing of int | Saved [@@deriving state_shape]
+type save_event = Edit | Save
+
+let save_event_event_name = function Edit -> "edit" | Save -> "save"
+
+type save_state = Editing of int | Saved
+
+let save_state_name = function Editing _ -> "editing" | Saved -> "saved"
+
+let save_state_states = [ "editing"; "saved" ]
 
 let make_save ~handled ~offered =
   let machine =
-    Machine.make ~id:"save" ~init:(Editing 0) ~shape:save_state_shape
-      ~events:save_event_shape (fun state event ->
+    Machine.make ~id:"save" ~init:(Editing 0) ~name:save_state_name
+      ~states:save_state_states ~event_name:save_event_event_name
+      (fun state event ->
         match (state, event) with
         | Editing count, Edit ->
             Machine.Go (Editing ((count + 1) mod 2))
@@ -110,14 +140,21 @@ let make_save ~handled ~offered =
 
 let save = make_save ~handled:false ~offered:true
 
-type count_event = Increment [@@deriving event_shape]
-type count_state = Counting of int [@@deriving state_shape]
+type count_event = Increment
+
+let count_event_event_name = function Increment -> "increment"
+
+type count_state = Counting of int
+
+let count_state_name = function Counting _ -> "counting"
+
+let count_state_states = [ "counting" ]
 
 let counter =
   Component.make
-    (Machine.make ~id:"counter" ~init:(Counting 0) ~shape:count_state_shape
-       ~events:count_event_shape (fun (Counting count) Increment ->
-         Machine.Go (Counting (count + 1))
+    (Machine.make ~id:"counter" ~init:(Counting 0) ~name:count_state_name
+       ~states:count_state_states ~event_name:count_event_event_name
+       (fun (Counting count) Increment -> Machine.Go (Counting (count + 1))
      )
     )
     (fun (Counting count) ->
@@ -128,13 +165,21 @@ let counter =
         ]
     )
 
-type shell_event = Noop [@@deriving event_shape]
-type shell_state = Showing [@@deriving state_shape]
+type shell_event = Noop
+
+let shell_event_event_name = function Noop -> "noop"
+
+type shell_state = Showing
+
+let shell_state_name = function Showing -> "showing"
+
+let shell_state_states = [ "showing" ]
 
 let shell =
   Component.make
-    (Machine.make ~id:"shell" ~init:Showing ~shape:shell_state_shape
-       ~events:shell_event_shape (fun Showing Noop -> Machine.Stay []
+    (Machine.make ~id:"shell" ~init:Showing ~name:shell_state_name
+       ~states:shell_state_states ~event_name:shell_event_event_name
+       (fun Showing Noop -> Machine.Stay []
      )
     )
     (fun Showing ->
@@ -142,13 +187,21 @@ let shell =
         [ Node.component (door ~unlock_to:Closed); button "Wait" Noop ]
     )
 
-type twice_event = Go | Wait [@@deriving event_shape]
-type twice_state = First | Second [@@deriving state_shape]
+type twice_event = Go | Wait
+
+let twice_event_event_name = function Go -> "go" | Wait -> "wait"
+
+type twice_state = First | Second
+
+let twice_state_name = function First -> "first" | Second -> "second"
+
+let twice_state_states = [ "first"; "second" ]
 
 let twice =
   Component.make
-    (Machine.make ~id:"twice" ~init:First ~shape:twice_state_shape
-       ~events:twice_event_shape (fun state event ->
+    (Machine.make ~id:"twice" ~init:First ~name:twice_state_name
+       ~states:twice_state_states ~event_name:twice_event_event_name
+       (fun state event ->
          match (state, event) with
          | First, Go ->
              Machine.Go Second

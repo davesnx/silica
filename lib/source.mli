@@ -1,12 +1,11 @@
-(** Timers and sources of events that a state owns: the [owns] list of
-    {!Machine.make}. A source starts when a state starts to own it and stops
-    when the state no longer owns it.
+(** Timers and sources of events that run during a state: the [during] list of
+    {!Machine.make}. A source starts when it comes into the list and stops when
+    it goes out of the list.
 
     Each source has a {!key}. After each step the machine compares the keys of
-    the old and the new [owns] list: it stops the sources whose key went away
-    and starts the new ones, and the others keep running. So one state can own a
-    set of calls that changes with its data. Calls are made with {!Remote.call}.
-*)
+    the old and the new [during] list: it stops the sources whose key went away
+    and starts the new ones, and the others keep running. So the calls of one
+    state can change with its data. Calls are made with {!Remote.call}. *)
 
 type 'e t
 (** A timer or a source that raises events ['e]. *)
@@ -85,11 +84,11 @@ val map_refs : (Ref.t -> Ref.t) -> 'e t -> 'e t
     unchanged. *)
 
 val key : 'e t -> string
-(** The identity of the source in an [owns] list: the path and encoded input of
+(** The identity of the source in a [during] list: the path and encoded input of
     a call, the topic and key of a subscription, ["after <ms>ms"] for a timer,
     the kind and refs of a held source, and the place of an {!anchor}. When an
-    [owns] list holds two sources with the same key, the second one gets ["#2"]
-    after its key, and so on. *)
+    [during] list holds two sources with the same key, the second one gets
+    ["#2"] after its key, and so on. *)
 
 val same : 'e t -> 'e t -> bool
 (** Two sources with the same key also have the same data: the event of a timer,
@@ -99,10 +98,10 @@ val same : 'e t -> 'e t -> bool
 
     The rule after a step that keeps the state: a source whose key went away
     stops, a new key starts, and a source whose key stays but whose data is not
-    {!same} stops and starts again, so it raises the event of the current [owns]
-    list. A function, such as the answer function of a call, is the one of its
-    first start while the key and the data stay: put the data it needs in the
-    state, or in the input of the call. *)
+    {!same} stops and starts again, so it raises the event of the current
+    [during] list. A function, such as the answer function of a call, is the one
+    of its first start while the key and the data stay: put the data it needs in
+    the state, or in the input of the call. *)
 
 val name : 'e t -> string
 (** The endpoint path of a call, ["live:" ^ topic name] for a {!live},

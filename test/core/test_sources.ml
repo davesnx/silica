@@ -3,13 +3,19 @@ module Sim = Silica_test_support.Sim
 
 let strings = Alcotest.(list string)
 
-type poll = Polling of int [@@deriving state_shape]
+type poll = Polling of int
+
+let poll_name = function Polling _ -> "polling"
+
+let poll_states = [ "polling" ]
+
 type tick = Tick
 
 let poller =
   Component.make
-    (Machine.make ~id:"poll" ~init:(Polling 0) ~shape:poll_shape
-       ~owns:(fun _ -> [ Source.after 1000 Tick ])
+    (Machine.make ~id:"poll" ~init:(Polling 0) ~name:poll_name
+       ~states:poll_states
+       ~during:(fun _ -> [ Source.after 1000 Tick ])
        (fun (Polling n) Tick -> Go (Polling (n + 1)))
     )
     (fun (Polling n) -> Node.text (string_of_int n))
@@ -27,13 +33,21 @@ let fetch =
   Remote.declare ~path:"/api/fetch" ~input:Codec.unit ~output:Codec.int
     ~rejected:Codec.string
 
-type watch = Watching of int [@@deriving state_shape]
+type watch = Watching of int
+
+let watch_name = function Watching _ -> "watching"
+
+let watch_states = [ "watching" ]
+
 type answered = Answered of (int, string) Remote.answer
 
 let watcher =
   Component.make
-    (Machine.make ~id:"watch" ~init:(Watching 0) ~shape:watch_shape
-       ~owns:(fun _ -> [ Remote.call fetch () (fun answer -> Answered answer) ])
+    (Machine.make ~id:"watch" ~init:(Watching 0) ~name:watch_name
+       ~states:watch_states
+       ~during:(fun _ ->
+         [ Remote.call fetch () (fun answer -> Answered answer) ]
+       )
        (fun (Watching n) (Answered _) -> Go (Watching (n + 1)))
     )
     (fun (Watching n) -> Node.text (string_of_int n))
@@ -48,14 +62,17 @@ let test_answered_call_starts_again () =
 
 type pair_event = A | B | Drop
 type pair = Timers of pair_event list * pair_event option
-[@@deriving state_shape]
+
+let pair_name = function Timers _ -> "timers"
+
+let pair_states = [ "timers" ]
 
 let pair =
   Component.make
     (Machine.make ~id:"pair"
        ~init:(Timers ([ A; B ], None))
-       ~shape:pair_shape
-       ~owns:(fun (Timers (events, _)) ->
+       ~name:pair_name ~states:pair_states
+       ~during:(fun (Timers (events, _)) ->
          List.map (fun event -> Source.after 1000 event) events
        )
        (fun (Timers (events, last)) -> function
@@ -67,13 +84,19 @@ let pair =
     )
     (fun _ -> Node.text "pair")
 
-type table = Table of pair_event [@@deriving state_shape]
+type table = Table of pair_event
+
+let table_name = function Table _ -> "table"
+
+let table_states = [ "table" ]
+
 type table_event = Pressed of pair_event | Switch
 
 let table =
   Component.make
-    (Machine.make ~id:"table" ~init:(Table A) ~shape:table_shape
-       ~owns:(fun (Table event) ->
+    (Machine.make ~id:"table" ~init:(Table A) ~name:table_name
+       ~states:table_states
+       ~during:(fun (Table event) ->
          [ Source.keys [ (Key.enter, Pressed event) ] ]
        )
        (fun (Table _) -> function
@@ -84,13 +107,19 @@ let table =
       Node.text (match event with A -> "a" | B -> "b" | Drop -> "drop")
     )
 
-type kept = Keep of string [@@deriving state_shape]
+type kept = Keep of string
+
+let kept_name = function Keep _ -> "keep"
+
+let kept_states = [ "keep" ]
+
 type kept_event = Fired of string | Rename of string
 
 let renamer =
   Component.make
-    (Machine.make ~id:"rename" ~init:(Keep "first") ~shape:kept_shape
-       ~owns:(fun (Keep label) -> [ Source.after 1000 (Fired label) ])
+    (Machine.make ~id:"rename" ~init:(Keep "first") ~name:kept_name
+       ~states:kept_states
+       ~during:(fun (Keep label) -> [ Source.after 1000 (Fired label) ])
        (fun (Keep _) -> function
          | Rename label ->
              Go (Keep label)

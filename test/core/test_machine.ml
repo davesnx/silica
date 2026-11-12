@@ -13,7 +13,20 @@ type state =
   | Searching of string
   | Shown of string * string list
   | Failed of string * Remote.error
-[@@deriving state_shape]
+
+let name = function
+  | Idle ->
+      "idle"
+  | Typing _ ->
+      "typing"
+  | Searching _ ->
+      "searching"
+  | Shown _ ->
+      "shown"
+  | Failed _ ->
+      "failed"
+
+let states = [ "idle"; "typing"; "searching"; "shown"; "failed" ]
 
 let endpoint =
   Remote.declare ~path:"/api/search" ~input:Codec.string
@@ -39,8 +52,8 @@ let described : type e. e Action.host list -> string list =
 let strings = Alcotest.(list string)
 
 let search =
-  Machine.make ~id:"search" ~init:Idle ~shape:state_shape
-    ~owns:(function
+  Machine.make ~id:"search" ~init:Idle ~name ~states
+    ~during:(function
       | Typing _ ->
           [ Source.after 300 Fire ]
       | Searching query ->
@@ -79,29 +92,23 @@ let start () = fst (Machine.start search ())
 
 let test_start () =
   let snapshot, actions = Machine.start search () in
-  Alcotest.(check string) "init" "idle" (Machine.shape_name state_shape snapshot);
+  Alcotest.(check string) "init" "idle" (name snapshot);
   Alcotest.check strings "no entry" [] (described actions);
   Alcotest.(check string) "id" "search" (Machine.id search);
   Alcotest.(check bool) "not final" false (Machine.is_final search snapshot);
   Alcotest.(check (option strings))
-    "states"
-    (Some (Machine.shape_names state_shape))
-    (Machine.states search)
+    "states" (Some states) (Machine.states search)
 
 let test_timer_starts_on_entry () =
   let snapshot, actions, how = send (start ()) (Input "ab") in
-  Alcotest.(check string)
-    "state" "typing"
-    (Machine.shape_name state_shape snapshot);
+  Alcotest.(check string) "state" "typing" (name snapshot);
   Alcotest.(check bool) "entered" true (how = Machine.Entered);
   Alcotest.check strings "start" [ "start " ^ typing_id ^ " 300ms" ] actions
 
 let test_timer_stops_on_exit () =
   let snapshot, _, _ = send (start ()) (Input "ab") in
   let snapshot, actions, _ = send snapshot Fire in
-  Alcotest.(check string)
-    "state" "searching"
-    (Machine.shape_name state_shape snapshot);
+  Alcotest.(check string) "state" "searching" (name snapshot);
   Alcotest.check strings "stop then call"
     [ "stop " ^ typing_id; "call " ^ searching_id "ab" ^ " /api/search" ]
     actions;
@@ -112,9 +119,7 @@ let test_timer_stops_on_exit () =
 let test_reenter_restarts () =
   let snapshot, _, _ = send (start ()) (Input "a") in
   let snapshot, actions, how = send snapshot (Input "ab") in
-  Alcotest.(check string)
-    "state" "typing"
-    (Machine.shape_name state_shape snapshot);
+  Alcotest.(check string) "state" "typing" (name snapshot);
   Alcotest.(check bool) "entered" true (how = Machine.Entered);
   Alcotest.check strings "debounce"
     [ "stop " ^ typing_id; "start " ^ typing_id ^ " 300ms" ]
@@ -125,9 +130,7 @@ let test_source_stops_on_exit () =
   let snapshot, _, _ = send (start ()) (Input "q") in
   let snapshot, _, _ = send snapshot Fire in
   let snapshot, actions, _ = send snapshot (Got (Remote.Ok [ "hit" ])) in
-  Alcotest.(check string)
-    "state" "shown"
-    (Machine.shape_name state_shape snapshot);
+  Alcotest.(check string) "state" "shown" (name snapshot);
   Alcotest.check strings "stop" [ "stop " ^ searching_id "q" ] actions;
   let snapshot, _, _ = send (start ()) (Input "q") in
   let snapshot, _, _ = send snapshot Fire in
@@ -198,7 +201,7 @@ let test_active_follows_actions () =
       snapshot := next;
       apply actions;
       Alcotest.check strings
-        (Machine.shape_name state_shape next ^ " resources")
+        (name next ^ " resources")
         (List.sort compare (resource_ids search () next))
         !running
     )
@@ -216,14 +219,18 @@ let test_active_follows_actions () =
       Clear;
     ]
 
-type pair = A | B [@@deriving state_shape]
+type pair = A | B
+
+let pair_name = function A -> "a" | B -> "b"
 
 let test_entry_exit_order () =
   let machine =
-    Machine.make ~id:"pair" ~init:A ~shape:pair_shape
+    Machine.make ~id:"pair" ~init:A ~name:pair_name
       ~entry:(function A -> [ note "enter a" ] | B -> [ note "enter b" ])
       ~exit:(function A -> [ note "exit a" ] | B -> [])
-      ~owns:(function A -> [ Source.after 5 () ] | B -> [ Source.after 7 () ])
+      ~during:(function
+        | A -> [ Source.after 5 () ] | B -> [ Source.after 7 () ]
+        )
       (fun state () ->
         match state with
         | A ->
@@ -264,14 +271,15 @@ let test_entry_exit_order () =
     [ "exit a"; "stop pair/a/after 5ms" ]
     (describe (Machine.exit machine () snapshot))
 
-type counter = Count of int [@@deriving state_shape]
+type counter = Count of int
 
 let test_self_goto_keeps_resources () =
   let machine =
-    Machine.make ~id:"counter" ~init:(Count 0) ~shape:counter_shape
+    Machine.make ~id:"counter" ~init:(Count 0)
+      ~name:(function Count _ -> "count")
       ~entry:(fun _ -> [ note "enter" ])
       ~exit:(fun _ -> [ note "exit" ])
-      ~owns:(fun _ -> [ Source.after 10 `Tick ])
+      ~during:(fun _ -> [ Source.after 10 `Tick ])
       (fun (Count n) -> function
         | `Tick ->
             Machine.Go (Count (n + 1))
@@ -296,7 +304,7 @@ let test_self_goto_keeps_resources () =
   Alcotest.(check bool) "stay: kept" true (how = Machine.Kept);
   Alcotest.(check bool) "stay: same data" true (stayed = snapshot)
 
-type list_state = Watching of string list [@@deriving state_shape]
+type list_state = Watching of string list
 
 let list_endpoint =
   Remote.declare ~path:"/api/item" ~input:Codec.string ~output:Codec.int
@@ -305,8 +313,8 @@ let list_endpoint =
 let watcher =
   Machine.make ~id:"watch"
     ~init:(Watching [ "a"; "b" ])
-    ~shape:list_state_shape
-    ~owns:(fun (Watching items) ->
+    ~name:(function Watching _ -> "watching")
+    ~during:(fun (Watching items) ->
       List.map
         (fun item -> Remote.call list_endpoint item (fun _ -> `Answer))
         items
@@ -378,8 +386,8 @@ let test_anchor_place_is_in_key () =
   in
   let machine =
     Machine.make ~id:"anchored" ~init:Place.Bottom
-      ~shape:(Machine.shape ~name:(fun _ -> "open") ())
-      ~owns:(fun side -> [ anchored side ])
+      ~name:(fun _ -> "open")
+      ~during:(fun side -> [ anchored side ])
       (fun _ side -> Machine.Go side)
   in
   let snapshot, _ = Machine.start machine () in
@@ -394,26 +402,51 @@ let test_anchor_place_is_in_key () =
 let test_state_names () =
   Alcotest.check strings "every constructor, in order"
     [ "idle"; "typing"; "searching"; "shown"; "failed" ]
-    (Machine.shape_names state_shape);
+    (Option.value ~default:[] (Machine.states search));
   List.iter
     (fun state ->
       Alcotest.(check bool)
-        (Machine.shape_name state_shape state ^ " listed")
+        (Machine.name search state ^ " listed")
         true
-        (List.mem
-           (Machine.shape_name state_shape state)
-           (Machine.shape_names state_shape)
-        )
+        (List.mem (Machine.name search state) states)
     )
     [
       Idle; Typing ""; Searching ""; Shown ("", []); Failed ("", Remote.Http 1);
     ]
 
-type gate = Open | Closed [@@deriving state_shape]
+let test_event_name () =
+  Alcotest.(check (option string))
+    "no event_name: None" None
+    (Machine.event_name search Fire);
+  let named =
+    Machine.make ~id:"named" ~init:Idle ~name
+      ~event_name:(function
+        | Input _ ->
+            "input"
+        | Clear ->
+            "clear"
+        | Fire ->
+            "fire"
+        | Got _ ->
+            "got"
+        | Retry ->
+            "retry"
+        )
+      (fun _ _ -> Machine.Ignore)
+  in
+  Alcotest.(check (option string))
+    "event_name: Some" (Some "input")
+    (Machine.event_name named (Input "a"));
+  Alcotest.(check (option string))
+    "event_name of data" (Some "got")
+    (Machine.event_name named (Got (Remote.Ok [])))
+
+type gate = Open | Closed
 
 let test_final_ignores_events () =
   let machine =
-    Machine.make ~id:"gate" ~init:Open ~shape:gate_shape
+    Machine.make ~id:"gate" ~init:Open
+      ~name:(function Open -> "open" | Closed -> "closed")
       ~final:(function Closed -> true | Open -> false)
       (fun state event ->
         match (state, event) with
@@ -518,15 +551,16 @@ let test_map_next () =
        (Machine.map_next (into_form true) (Machine.Go_with (Editing "abc", [])))
     )
 
-type item_state = Showing | Loading_item of int [@@deriving state_shape]
+type item_state = Showing | Loading_item of int
 
 let item_endpoint =
   Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
     ~rejected:Codec.string
 
 let item_machine on_props =
-  Machine.make_with_props ~id:"item" ~init:Showing ~shape:item_state_shape
-    ~owns:(fun number -> function
+  Machine.make_with_props ~id:"item" ~init:Showing
+    ~name:(function Showing -> "showing" | Loading_item _ -> "loading_item")
+    ~during:(fun number -> function
       | Showing ->
           [ Source.after (number * 10) `Tick ]
       | Loading_item n ->
@@ -768,12 +802,13 @@ let test_remote_machine () =
   let reset, _, _ = Machine.step machine () loaded Remote_machine.Reset in
   Alcotest.(check bool) "reset" true (reset = Remote_machine.Idle)
 
-type slow = Waiting | Done [@@deriving state_shape]
+type slow = Waiting | Done
 
 let test_call_timeout () =
   let machine =
-    Machine.make ~id:"slow" ~init:Waiting ~shape:slow_shape
-      ~owns:(function
+    Machine.make ~id:"slow" ~init:Waiting
+      ~name:(function Waiting -> "waiting" | Done -> "done")
+      ~during:(function
         | Waiting ->
             [
               Remote.call ~timeout_ms:250 double 1 Fun.id;
@@ -840,6 +875,7 @@ let () =
           t "self goto keeps resources" test_self_goto_keeps_resources;
           t "keyed sources" test_keyed_sources;
           t "state names cover every state" test_state_names;
+          t "event_name" test_event_name;
           t "final ignores events" test_final_ignores_events;
           t "anchor place is in the key" test_anchor_place_is_in_key;
           t "can" test_can;

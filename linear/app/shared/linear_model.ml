@@ -290,7 +290,7 @@ let answer_name prefix : (_, _) Silica.Remote.answer -> string = function
   | Rejected _ | Failed _ ->
       prefix ^ " error"
 
-let saved_name _ : (Change.answer, _) Silica.Remote.answer -> string = function
+let saved_name : (Change.answer, _) Silica.Remote.answer -> string = function
   | Ok (Change.Saved _) ->
       "saved ok"
   | Ok (Change.Conflict _) ->

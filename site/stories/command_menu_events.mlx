@@ -15,7 +15,6 @@ let commands =
 type page = { open_ : bool option; events : string list }
 
 type event = Open_menu | Changed of bool * Popup.reason | Ran of string
-[@@deriving event_shape]
 
 let shortcut =
   Source.keys ~prevent:true
@@ -26,9 +25,8 @@ let shortcut =
 let machine =
   Machine.make ~id:"command-menu-events"
     ~init:{ open_ = None; events = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
-    ~owns:(fun _ -> [ shortcut ])
+    ~name:(fun _ -> "page")
+    ~during:(fun _ -> [ shortcut ])
     (fun page event ->
       match event with
       | Open_menu ->

@@ -110,7 +110,27 @@ type phase =
   | Ghosting of int
   | Waiting of int
   | Slowing of int
-[@@deriving state_shape]
+
+let phase_name = function
+  | Resting _ ->
+      "resting"
+  | Mixing _ ->
+      "mixing"
+  | Doubling _ ->
+      "doubling"
+  | Booming _ ->
+      "booming"
+  | Ghosting _ ->
+      "ghosting"
+  | Waiting _ ->
+      "waiting"
+  | Slowing _ ->
+      "slowing"
+
+let phase_states =
+  [
+    "resting"; "mixing"; "doubling"; "booming"; "ghosting"; "waiting"; "slowing";
+  ]
 
 let count = function
   | Resting n
@@ -140,8 +160,9 @@ let with_count phase n =
       Slowing n
 
 let machine =
-  Machine.make ~id:"counter" ~init:(Resting 0) ~shape:phase_shape
-    ~owns:(function
+  Machine.make ~id:"counter" ~init:(Resting 0) ~name:phase_name
+    ~states:phase_states
+    ~during:(function
       | Resting _ ->
           []
       | Mixing n ->
@@ -223,7 +244,7 @@ let routes =
 
 let titled ~id title =
   Machine.make_with_props ~id ~init:0
-    ~shape:(Machine.shape ~name:(fun _ -> "active") ())
+    ~name:(fun _ -> "active")
     ~on_props:(fun _ n _ -> Machine.Go_with (n, [ Action.Set_title (title n) ]))
     (fun _ _ (_ : ev) -> Machine.Ignore)
 

@@ -3,13 +3,14 @@ open Silica
 type event = Pick
 type state = Shown
 
-let shape = Machine.shape ~name:(fun Shown -> "shown") ~names:[ "shown" ] ()
-let events = Machine.shape ~name:(fun Pick -> "pick") ()
+let name Shown = "shown"
+let states = [ "shown" ]
+let event_name Pick = "pick"
 
 let numbered =
   Component.make_with_props
-    (Machine.make_with_props ~id:"numbered" ~init:Shown ~shape ~events
-       (fun _ Shown Pick -> Machine.Stay []
+    (Machine.make_with_props ~id:"numbered" ~init:Shown ~name ~states
+       ~event_name (fun _ Shown Pick -> Machine.Stay []
      )
     )
     (fun number Shown ->
@@ -31,7 +32,7 @@ type row = { title : string; count : int }
 
 let titled =
   Component.make_with_props
-    (Machine.make_with_props ~id:"titled" ~init:Shown ~shape ~events
+    (Machine.make_with_props ~id:"titled" ~init:Shown ~name ~states ~event_name
        (fun _ Shown Pick -> Machine.Stay []
      )
     )
@@ -53,8 +54,8 @@ type changes = Changes of int
 let changing ~counts =
   Component.make_with_props
     (Machine.make_with_props ~id:"changing" ~init:(Changes 0)
-       ~shape:(Machine.shape ~name:(fun _ -> "shown") ~names:[ "shown" ] ())
-       ~events
+       ~name:(fun _ -> "shown")
+       ~states:[ "shown" ] ~event_name
        ~on_props:(fun previous _ (Changes count) ->
          match previous with
          | Some _ when counts ->

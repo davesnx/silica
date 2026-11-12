@@ -10,12 +10,11 @@ let commands =
       item ~keywords:[ "quit" ] "close" "Close window";
     ]
 
-type event = Open | Changed of bool [@@deriving event_shape]
+type event = Open | Changed of bool
 
 let machine =
   Machine.make_with_props ~id:"command-menu-basic" ~init:None
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun _ _ event ->
       match event with
       | Open ->

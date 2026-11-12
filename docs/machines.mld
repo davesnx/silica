@@ -12,18 +12,11 @@ constructor carries the data of its state. A value of this type is a
 {e snapshot}: one state and its data.
 
 Each state has a name. The machine uses the name to know when it enters a new
-state, and the checker, the spec and the ids of timers use it too. The
-{e shape} of the state type holds the name of each state and the list of all
-names: a value of type {!Silica.Machine.type-shape}, given to [Machine.make] as
-[~shape]. The deriver [[@@deriving state_shape]] of [silica.ppx] makes it from
-the variant: [state_shape] for a type [state], [<type>_shape] for another type,
-and [shape] for a type [t]. The name is the constructor in lower case;
-[[@state_name "x"]] on a constructor gives another name. Two constructors with
-the same name, a GADT, a type with a parameter and an empty variant are compile
-errors. [Machine.shape_name state_shape] gives the name of a snapshot and
-[Machine.shape_names state_shape] the list of all names. Without the deriver,
-write [Machine.shape ~name:(function ...) ~names:[ ... ] ()]. The dune file
-needs [(preprocess (pps silica.ppx))].
+state, and the checker, the spec and the ids of timers use it too. Give
+[Machine.make] a function [~name] that gives the name of the state of a
+snapshot. Match on every constructor, with no [_] case: when you add a state,
+the compiler shows the function. Two snapshots with the same name are in the
+same state, so a step between them changes only the data.
 
 The example below is a field with a debounce. It has three states: [Empty],
 [Typing], which carries the text, and [Settled], which carries the text that
@@ -32,10 +25,16 @@ stayed for half a second.
 {@mlx file=examples/shared/doc_debounce.mlx[
 open Silica
 
-type event = Typed of string | Settle | Clear [@@deriving event_shape]
-
+type event = Typed of string | Settle | Clear
 type state = Empty | Typing of string | Settled of string
-[@@deriving state_shape]
+
+let name = function
+  | Empty ->
+      "empty"
+  | Typing _ ->
+      "typing"
+  | Settled _ ->
+      "settled"
 
 let typed : string -> (state, event) Machine.next = function
   | "" ->
@@ -44,8 +43,8 @@ let typed : string -> (state, event) Machine.next = function
       Reenter (Typing text)
 
 let machine =
-  Machine.make ~id:"debounce" ~init:Empty ~shape:state_shape ~events:event_shape
-    ~owns:(function
+  Machine.make ~id:"debounce" ~init:Empty ~name
+    ~during:(function
       | Typing _ -> [ Source.after 500 Settle ] | Empty | Settled _ -> []
       )
     (fun state event ->
@@ -79,35 +78,49 @@ let view (state : state) : event Node.t =
 let component = Component.make machine view
 ]}
 
-{1:events Events and codecs}
+{1:events Events}
 
-The events have a shape too, given to [Machine.make] as [~events]. The deriver
-[[@@deriving event_shape]] makes it from the event variant, with the same rules
-as [state_shape]: [event_shape] for a type [event], the constructor in lower
-case as the name, [[@event_name "x"]] for another name. It lists no names: only
-the states need the list. The checker names the edges of the spec with it, and
-{!Silica.Machine.event_name} gives the name of an event (or [""] for a machine
-with no [events]).
+The checker, the spec and the traces show each event with a label. A machine
+does not need to name its events. With no [~event_name], the label of an event
+is its cause (see {!Silica.Transition.cause_label}):
 
-When the data of an event matters to a reader of a spec or a trace, name the
-event by its data with [[@event_name_of f]]: the name is [f] applied to the
-data of the constructor, one argument for each item of a tuple. By convention
-the name is the constructor name, a space, and a word for the data:
+{t
+| Cause | Label |
+|-------|-------|
+| A press or a key on an element | The handler, the key, the role and the accessible name: [press button "Save"], [key_down Escape textbox "Search"] |
+| A timer | [after 2000ms] |
+| The answer of a call | [ok /api/save], [rejected /api/save] or [failed /api/save]; [answer /api/save] when the trace does not record the answer |
+| A subscription | [live <topic>] |
+| A held source | Its name, such as [dismiss] |
+| The result of an action | [result <action>] |
+| Other causes | [props], [child <instance>], [url <url>], [preload <url>], [message] |
+}
+
+To show your own names, give [Machine.make] a function [~event_name]. By
+convention the name is the constructor in lower case. When the data of an event
+matters to a reader of a spec or a trace, add a word for the data:
 
 {@ocaml skip[
-type event =
-  | Settled of (Item.t, string) Remote.answer
-      [@event_name_of
-        function
-        | Remote.Ok _ -> "settled ok"
-        | Rejected _ -> "settled rejected"
-        | Failed _ -> "settled error"]
-  | Select of string [@event_name_of fun value -> "select " ^ value]
-  | Retry
-[@@deriving event_shape]
+let event_name = function
+  | Settled (Remote.Ok _) -> "settled ok"
+  | Settled (Rejected _) -> "settled rejected"
+  | Settled (Failed _) -> "settled error"
+  | Select value -> "select " ^ value
+  | Retry -> "retry"
 ]}
 
-The names are in every build, release too: production traces record them.
+The [event] field of a checker step (see {!Check.type-step}) holds this name,
+and {!Silica.Machine.event_name} gives it ([None] for a machine with no
+[event_name]). The names are in every build, release too: production traces
+record them.
+
+A trace with names only (see {!Silica.Transition.names_only}) does not keep
+the accessible names and the answers. So the conformance check
+({!Silica.Spec.conforms}, [silica conform]) matches an event with no name by
+its states only: the step must go between the same states as a step of the
+spec.
+
+{1:codecs Codecs}
 
 The JSON codecs of the snapshots and the events (see {!Silica.Codec}) serve
 traces, replay and development tools. They are not part of the machine: an app
@@ -119,13 +132,11 @@ drops the code that nothing references. In an app that derives JSON with
 
 {@ocaml skip[
 type event = Save | Answer of (string, string) Silica_jsonkit.answer
-[@@deriving json, event_shape]
+[@@deriving json]
 
-type state = Idle | Saving | Saved of string [@@deriving json, state_shape]
+type state = Idle | Saving | Saved of string [@@deriving json]
 
-let machine =
-  Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
-    update
+let machine = Machine.make ~id:"save" ~init:Idle ~name update
 ]}
 
 A module [Save_codecs], which only the tests and the development tools call:
@@ -160,21 +171,41 @@ example app and the site do.
 
 {1:make Make a machine}
 
-[Machine.make ~id ~init ~shape update] makes the machine. [id] names the
+[Machine.make ~id ~init ~name update] makes the machine. [id] names the
 machine in the spec, in the checker and in the ids of timers and sources.
-[init] is the first snapshot. [shape] gives the name of a snapshot and the list
-of every name, so that the checker can report the states that it never
-reached. The other options:
+[init] is the first snapshot. [name] gives the name of the state of a snapshot
+(see {!section-states}). The other options:
 
 {t
 | Option | Meaning |
 |--------|---------|
-| [events] | The names of the events (see {!section-events}). |
-| [owns] | The timers, calls and sources of a snapshot (see {!section-owns}). |
+| [states] | The list of every name that [name] gives. The checker uses it to report the states that no run reached. |
+| [event_name] | The names of the events (see {!section-events}). |
+| [fingerprint] | Lets a hot reload keep the snapshots of the machine (see below). |
+| [during] | The timers, calls and sources that run during a snapshot (see {!section-during}). |
 | [entry], [exit] | The actions to run when the machine enters or leaves a state. They get the snapshot. |
 | [final] | The snapshots where the machine stops: a final state handles no event. |
 | [start] | Actions that run once, before the entry of [init]. |
 }
+
+A machine with no [states] cannot tell the checker which states exist. The
+report of the checker then has a line [unlisted: ...] for the machine: it does
+not report unreached states for it. Give [states] when a state that no run
+reaches is a bug:
+
+{@ocaml skip[
+let states = [ "empty"; "typing"; "settled" ]
+
+let machine =
+  Machine.make ~id:"debounce" ~init:Empty ~name ~states ~during update
+]}
+
+At a hot reload, a machine keeps its snapshot only when it has a
+[fingerprint] and the state type did not change. [[@@deriving fingerprint]] on
+the state type gives [state_fingerprint] ([fingerprint] for a type [t]); pass
+it as [~fingerprint:state_fingerprint] (see {!Silica.Fingerprint}). A machine
+with no [fingerprint] starts again at each hot reload, unless its initial
+snapshot is equal to the old one.
 
 The last argument is the update: a function of the snapshot and the event that
 gives the next step. Most updates match on the pair and end with
@@ -195,36 +226,37 @@ The update gives a {!Silica.Machine.next}:
 | [Ignore] | The event is not handled. The snapshot does not change. |
 }
 
-A debounce is [Reenter] on a state that owns a timer: each new text starts the
-timer again, so the timer fires only after the last key.
+A debounce is [Reenter] on a state with a timer in [during]: each new text
+starts the timer again, so the timer fires only after the last key.
 
 {!Silica.Machine.can} tells whether the machine handles an event in a
 snapshot: the snapshot is not final and the update does not give [Ignore]. A
 view can disable a button with it (see {!section-records}).
 
-{1:owns Timers and sources}
+{1:during Timers and sources}
 
-[owns] gives, for each snapshot, the list of its timers ({!Silica.Source.after}),
-Remote calls ({!Silica.Remote.call}) and other sources. A source starts when a
-snapshot starts to own it and stops when the snapshot no longer owns it, so a
-timer or an answer of a left state never arrives.
+[during] gives, for each snapshot, the list of the timers
+({!Silica.Source.after}), Remote calls ({!Silica.Remote.call}) and other
+sources that run during it. A source starts when it comes into the list and
+stops when it goes out of the list, so a timer or an answer of a left state
+never arrives.
 
 Each source has a key ({!Silica.Source.key}): the path and the input of a
 call, the topic and key of a subscription, the delay of a timer. After each
 step, the machine compares the keys of the old and the new list. Each key
 starts with the name of the state, so a step to a state with another name
 stops every source and starts the sources of the new state, even the ones
-that look the same. It stops the
-sources whose key went away and starts the new ones. The other sources keep
-running. So a state can own a set of calls that changes with its data, and a
-call whose input changes starts again. See {!page-actions} for the sources.
+that look the same. It stops the sources whose key went away and starts the
+new ones. The other sources keep running. So the calls of a state can change
+with its data, and a call whose input changes starts again. See {!page-actions} for the sources.
 
 {1:run Run a machine}
 
 {!Silica.Machine.start} gives the first snapshot and the actions of the start.
 {!Silica.Machine.step} gives the next snapshot, the actions and how the step
 changed the snapshot: [Unhandled], [Kept] (same name) or [Entered].
-{!Silica.Machine.active} lists the timers and sources that the snapshot owns.
+{!Silica.Machine.active} lists the timers and sources that run during the
+snapshot.
 These functions take the props; a machine from [Machine.make] has the props
 [()].
 
@@ -268,7 +300,7 @@ val state : Doc_debounce.state = Doc_debounce.Settled "ocaml"
 {1:props Props}
 
 A component that gets props from its parent uses
-{!Silica.Machine.make_with_props}. The update, [owns], [entry] and [exit] get
+{!Silica.Machine.make_with_props}. The update, [during], [entry] and [exit] get
 the props of the moment as their first argument. The props are not an event and
 are not stored in the snapshot: the view gets them too (see
 {!page-components.children}).
@@ -281,7 +313,7 @@ the props change. A switch that follows a [checked] prop:
 
 {@ocaml skip[
 let machine =
-  Machine.make_with_props ~id:"switch" ~init:Unchecked ~shape:state_shape
+  Machine.make_with_props ~id:"switch" ~init:Unchecked ~name
     ~on_props:(fun previous props _ ->
       match previous with
       | Some (previous : props) when previous.checked = props.checked ->
@@ -300,8 +332,8 @@ let machine =
 {1:records States in a record}
 
 Some data belongs to every state, such as the text of a form. Then the
-snapshot is a record, and one field holds the variant of the phase. The name of
-the snapshot is the name of its phase. A helper decides the step of the phase
+snapshot is a record, and one field holds the variant of the phase. The [name]
+of the snapshot is the name of its phase. A helper decides the step of the phase
 and gives a [next] of the phase; {!Silica.Machine.map_next} puts the phase back
 into the record:
 
@@ -313,10 +345,7 @@ let subscribe =
     ~rejected:Codec.string
 
 type event = Typed of string | Send | Answer of (string, string) Remote.answer
-[@@deriving event_shape]
-
 type phase = Editing | Sending | Sent of string | Failed of string
-[@@deriving state_shape]
 
 type state = { email : string; phase : phase }
 
@@ -345,14 +374,18 @@ let update state event : (state, event) Machine.next =
 let machine =
   Machine.make ~id:"signup"
     ~init:{ email = ""; phase = Editing }
-    ~shape:
-      (Machine.shape
-         ~name:(fun state -> Machine.shape_name phase_shape state.phase)
-         ~names:(Machine.shape_names phase_shape)
-         ()
-      )
-    ~events:event_shape
-    ~owns:(fun state ->
+    ~name:(fun state ->
+      match state.phase with
+      | Editing ->
+          "editing"
+      | Sending ->
+          "sending"
+      | Sent _ ->
+          "sent"
+      | Failed _ ->
+          "failed"
+    )
+    ~during:(fun state ->
       match state.phase with
       | Sending ->
           [ Remote.call subscribe state.email (fun answer -> Answer answer) ]
@@ -393,7 +426,7 @@ the address has no [@]. So the checker sees no button that does nothing.
 
 {1:spec The spec}
 
-The spec of a machine is the shape that a checker run found: the states it
+The spec of a machine is what a checker run found: the states it
 reached, the timers and sources of each, and the steps it took with the names
 of their events. It is in the [specs] field of the report of {!Check.run} (see
 {!Check.type-report}), and {!Silica.Spec.to_quint} and {!Silica.Spec.to_dot}

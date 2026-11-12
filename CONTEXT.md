@@ -22,23 +22,22 @@ _Avoid_: realtime, socket state, LiveView
 
 **State**:
 A constructor of the plain variant of a machine, with the data it carries, such
-as `Typing` carrying the query. Each state has a **state name**, which the
-**shape** of the machine gives; no two states have the same name.
+as `Typing` carrying the query. Each state has a **state name**; no two
+states have the same name.
 Never a data kind.
 _Avoid_: node, mode, control state
 
-**Shape**:
-The value that tells a machine about its state type or its event type: the
-name of each value and, for states, the list of all names. `Machine.make` takes
-the shape of the states as `~shape` and the shape of the events as `~events`;
-the `[@@deriving state_shape]` and `[@@deriving event_shape]` derivers make
-them.
-_Avoid_: schema, state names (as the name of the value)
+**State name**:
+The name of the state of a snapshot, given by the `name` function of its
+machine (`~name` of `Machine.make`). The machine enters a state when the name
+changes. The optional `~states` lists every name, so that the checker can
+report the states that no run reached.
+_Avoid_: tag, mode
 
 **Fingerprint**:
 The digest of a state type and every type it mentions, made by
-`[@@deriving state_shape]` (and `[@@deriving fingerprint]` for the types it
-mentions) in a development build, and kept in the shape. Two equal fingerprints
+`[@@deriving fingerprint]` in a development build and given to `Machine.make`
+as `~fingerprint`. Two equal fingerprints
 mean the two builds compiled the same declarations, so a hot reload may give the
 old snapshot to the new code. A type the deriver cannot see gives no
 fingerprint, only a reason.
@@ -58,9 +57,17 @@ resumes (`Machine.resume`); another one starts again, with the reason shown.
 _Avoid_: saved state, hot state
 
 **Event name**:
-The name of an event, from the event shape of its machine
-(`Machine.event_name`). The checker names the edges of the spec with it.
-_Avoid_: label (as the name of the value)
+The name of an event, from the `event_name` function of its machine
+(`Machine.event_name`). It is optional.
+_Avoid_: event id
+
+**Event label**:
+How the checker, the spec and the traces show an event: its event name, or,
+for a machine with no `event_name`, the label of its cause, such as
+`press button "Save"`, `after 2000ms` or `ok /api/save`
+(`Transition.label`). The conformance check matches an event with no name by
+its states only.
+_Avoid_: event name (for the label of a cause)
 
 **Codec**:
 An encoder and a decoder between a type and JSON (`Silica.Codec.t`). Endpoints
@@ -97,20 +104,21 @@ A step of a machine from one state to a state on an event. The Quint export
 writes one Quint `action` for each.
 _Avoid_: action
 
-**Owns**:
+**During**:
 The function of a machine that gives the timers, Remote calls, subscriptions
-and held sources of each snapshot. A source runs while the snapshot owns it.
+and held sources that run during each snapshot. A source runs while the list
+of the snapshot holds it.
 _Avoid_: invoke, effect
 
 **Source key**:
-The identity of a source in what a snapshot owns: the path and input of a call,
+The identity of a source in the `during` list of a snapshot: the path and input of a call,
 the topic and key of a subscription, the delay of a timer. After each step the
 machine stops the sources whose key went away and starts the new ones; the
 others keep running.
 _Avoid_: source id (an id names a running source for the host)
 
 **Props**:
-The value that a parent gives to a child component. The update, `owns` and the
+The value that a parent gives to a child component. The update, `during` and the
 view get it; `on_props` reacts when it changes. Props are not an event and are
 not kept in the snapshot.
 _Avoid_: props event, attributes
@@ -168,9 +176,9 @@ server and sent in full to every subscriber, with a sequence number.
 _Avoid_: channel, room, stream
 
 **Subscription**:
-One socket that follows one key of a topic. A snapshot owns it through
-`Source.live`: it starts when a snapshot starts to own it and stops when the
-snapshot no longer owns it. The client reconnects by itself and tells the state when it is offline.
+One socket that follows one key of a topic: `Source.live` in the `during`
+list of a snapshot. It starts when it comes into the list and stops when it
+goes out of the list. The client reconnects by itself and tells the state when it is offline.
 _Avoid_: listener, watcher
 
 **Status**:

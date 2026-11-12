@@ -2,17 +2,28 @@ open Silica
 open Jsonkit.Primitives
 open Linear_model
 
-type event =
-  | Loaded of (User.t, string) Silica_jsonkit.answer
-      [@event_name_of answer_name "loaded"]
-[@@deriving json, event_shape]
+type event = Loaded of (User.t, string) Silica_jsonkit.answer
+[@@deriving json]
 
-type state = Loading | Ready of User.t | Failed [@@deriving json, state_shape]
+let event_name (Loaded answer) = answer_name "loaded" answer
+
+type state = Loading | Ready of User.t | Failed [@@deriving json, fingerprint]
+
+let name = function
+  | Loading ->
+      "loading"
+  | Ready _ ->
+      "ready"
+  | Failed ->
+      "failed"
+
+let states = [ "loading"; "ready"; "failed" ]
 
 let machine =
-  Machine.make ~id:"me" ~init:Loading ~shape:state_shape ~events:event_shape
+  Machine.make ~id:"me" ~init:Loading ~name ~states ~event_name
+    ~fingerprint:state_fingerprint
     ~final:(function Ready _ | Failed -> true | Loading -> false)
-    ~owns:(function
+    ~during:(function
       | Loading ->
           [ Remote.call me_endpoint () (fun answer -> Loaded answer) ]
       | Ready _ | Failed ->

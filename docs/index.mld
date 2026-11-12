@@ -9,8 +9,8 @@ server, and the model checker.
 
 - {b One machine for each component.} The states of a machine are the
   constructors of a plain OCaml variant, and one update function gives the
-  next step for each state and event. A state owns its timers, calls and
-  subscriptions: they start when the machine enters the state and stop when it
+  next step for each state and event. Timers, calls and subscriptions run
+  during a state: they start when the machine enters the state and stop when it
   leaves it.
 - {b Views in JSX.} A view is a function of the snapshot, written in mlx, the
   JSX syntax for OCaml. An event handler is an event value, not code.
@@ -22,7 +22,7 @@ server, and the model checker.
 - {b A typed router.} The routes are the states of a machine. One value reads
   and writes the URL of each route.
 - {b A model checker.} It runs every event in every state that a component
-  can reach, and checks the properties of each view. The shape of each machine
+  can reach, and checks the properties of each view. The graph of each machine
   exports to Quint.
 - {b Headless components.} [silica-ui] has components with the WAI-ARIA
   patterns, after Base UI, and themes.
@@ -54,7 +54,7 @@ Concepts:
 - {!page-data}: Local, Remote and Live data, and [Status].
 - {!page-optimistic}: show a change before the server confirms it.
 - {!page-actions}: what a machine asks the host to do, and the sources that
-  a state owns.
+  run during a state.
 - {!page-platform}: the runtime, the platform and the three renderers.
 - {!page-router}: routes, links, guards, blocks, preload and titles.
 - {!page-server}: the HTTP policy, sessions, CSRF, assets and Live sockets.

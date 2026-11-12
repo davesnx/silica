@@ -24,17 +24,12 @@ let kinds =
 
 let machine =
   Machine.make ~id:"answers" ~init:Idle
-    ~shape:
-      (Machine.shape
-         ~name:(function
-           | Idle -> "idle" | Loading -> "loading" | Result kind -> kind
-           )
-         ~names:([ "idle"; "loading" ] @ kinds)
-         ()
+    ~name:(function
+      | Idle -> "idle" | Loading -> "loading" | Result kind -> kind
       )
-    ~events:
-      (Machine.shape ~name:(function Load -> "load" | Got kind -> kind) ())
-    ~owns:(function
+    ~states:([ "idle"; "loading" ] @ kinds)
+    ~event_name:(function Load -> "load" | Got kind -> kind)
+    ~during:(function
       | Loading ->
           [ Remote.call endpoint () (fun answer -> Got (kind answer)) ]
       | Idle | Result _ ->

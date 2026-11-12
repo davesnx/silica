@@ -2,10 +2,33 @@ open Silica
 open Jsonkit.Primitives
 
 type event = Save | Done | Rejected_with of string | Failed_call | Retry
-[@@deriving json, event_shape]
+[@@deriving json]
 
-type state = Idle | Saving | Saved | Failed of string
-[@@deriving json, state_shape]
+let event_name = function
+  | Save ->
+      "save"
+  | Done ->
+      "done"
+  | Rejected_with _ ->
+      "rejected_with"
+  | Failed_call ->
+      "failed_call"
+  | Retry ->
+      "retry"
+
+type state = Idle | Saving | Saved | Failed of string [@@deriving json]
+
+let name = function
+  | Idle ->
+      "idle"
+  | Saving ->
+      "saving"
+  | Saved ->
+      "saved"
+  | Failed _ ->
+      "failed"
+
+let states = [ "idle"; "saving"; "saved"; "failed" ]
 
 let api =
   Remote.declare ~path:"/api/save" ~input:Codec.int ~output:Codec.unit
@@ -13,8 +36,8 @@ let api =
 
 let make_machine ~shorten =
   let machine =
-    Machine.make ~id:"upload" ~init:Idle ~shape:state_shape ~events:event_shape
-      ~owns:(function
+    Machine.make ~id:"upload" ~init:Idle ~name ~states ~event_name
+      ~during:(function
         | Saving ->
             [
               Remote.call api 1 (function

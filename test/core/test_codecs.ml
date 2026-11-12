@@ -1,9 +1,20 @@
 open Silica
 
 type event = Save | Answer of (string, string) Remote.answer | Reset
-[@@deriving event_shape]
 
-type state = Idle | Saving | Saved of string [@@deriving state_shape]
+let event_name = function
+  | Save ->
+      "save"
+  | Answer _ ->
+      "answer"
+  | Reset ->
+      "reset"
+
+type state = Idle | Saving | Saved of string
+
+let name = function Idle -> "idle" | Saving -> "saving" | Saved _ -> "saved"
+
+let states = [ "idle"; "saving"; "saved" ]
 
 let state_codec =
   Codec.make
@@ -51,32 +62,27 @@ let round_trip (type a) name (codec : a Codec.t) (value : a) =
 
 let test_event_names () =
   let machine =
-    Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
-      update
+    Machine.make ~id:"save" ~init:Idle ~name ~states ~event_name update
   in
-  Alcotest.(check (list string))
-    "derived names"
-    [ "save"; "answer"; "reset" ]
+  Alcotest.(check (list (option string)))
+    "names by event_name"
+    [ Some "save"; Some "answer"; Some "reset" ]
     (List.map (Machine.event_name machine) [ Save; Answer (Ok "noon"); Reset ]);
-  let unnamed = Machine.make ~id:"save" ~init:Idle ~shape:state_shape update in
-  Alcotest.(check string)
-    "no events, no name" ""
+  let unnamed = Machine.make ~id:"save" ~init:Idle ~name ~states update in
+  Alcotest.(check (option string))
+    "no event_name, no name" None
     (Machine.event_name unnamed Save)
 
 let test_registered_codecs () =
   let event_codec =
     Codec.make
-      ~encode:(fun event ->
-        Codec.string.encode (Machine.shape_name event_shape event)
-      )
+      ~encode:(fun event -> Codec.string.encode (event_name event))
       ~decode:(fun _ -> Error "not read")
   in
   let machine =
-    Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
-      update
+    Machine.make ~id:"save" ~init:Idle ~name ~states ~event_name update
   and twin =
-    Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
-      update
+    Machine.make ~id:"save" ~init:Idle ~name ~states ~event_name update
   in
   let missing =
     {|the machine "save" has no registered codecs: call Machine.register_codecs on it in the codec module of the app (for example Linear_codecs.register), and call that module before asking for a codec|}
@@ -217,9 +223,14 @@ let test_remote_machine_codecs () =
   Alcotest.(check string)
     "event text" {|["Load",3]|}
     (text event_codec (Remote_machine.Load 3));
-  Alcotest.(check (list string))
+  Alcotest.(check (list (option string)))
     "event names"
-    [ "load"; "settled ok"; "settled rejected"; "settled error" ]
+    [
+      Some "load";
+      Some "settled ok";
+      Some "settled rejected";
+      Some "settled error";
+    ]
     (List.map
        (Machine.event_name machine)
        [

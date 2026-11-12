@@ -13,15 +13,42 @@ type event =
   | Submit
   | Cancel
   | Created of (Issue.t, string) Silica_jsonkit.answer
-      [@event_name_of answer_name "created"]
-[@@deriving json, event_shape]
+[@@deriving json]
+
+let event_name = function
+  | Title _ ->
+      "title"
+  | Description _ ->
+      "description"
+  | Status_picked _ ->
+      "status_picked"
+  | Priority_picked _ ->
+      "priority_picked"
+  | Submit ->
+      "submit"
+  | Cancel ->
+      "cancel"
+  | Created answer ->
+      answer_name "created" answer
 
 type state =
   | Closed
   | Editing of form
   | Submitting of Draft.t
   | Failed of { draft : Draft.t; message : string }
-[@@deriving json, state_shape]
+[@@deriving json, fingerprint]
+
+let name = function
+  | Closed ->
+      "closed"
+  | Editing _ ->
+      "editing"
+  | Submitting _ ->
+      "submitting"
+  | Failed _ ->
+      "failed"
+
+let states = [ "closed"; "editing"; "submitting"; "failed" ]
 
 let fresh = Editing { draft = Draft.empty; error = None }
 let focus_opener = Action.Focus Linear_refs.new_issue
@@ -42,9 +69,9 @@ let edited (draft : Draft.t) = function
       None
 
 let machine =
-  Machine.make_with_props ~id:"create-issue" ~init:Closed ~shape:state_shape
-    ~events:event_shape
-    ~owns:(fun _ -> function
+  Machine.make_with_props ~id:"create-issue" ~init:Closed ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun _ -> function
       | Submitting draft ->
           [ Remote.call create_endpoint draft (fun answer -> Created answer) ]
       | Closed | Editing _ | Failed _ ->
@@ -227,7 +254,7 @@ let form { draft; busy; message } : event Node.t =
 let dialog_component =
   Silica_ui.Dialog.component ~id:"create-issue-dialog"
     ~closes:(fun (_ : event) -> false)
-    ~events:event_shape form
+    ~event_name form
 
 let classes : Silica_ui.Dialog.classes =
   {

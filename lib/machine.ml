@@ -24,25 +24,16 @@ type resource =
   | Held of { id : string; name : string }
 
 type how = Unhandled | Kept | Entered
-type 's shape = {
-  shape_name : 's -> string;
-  shape_names : string list option;
-  fingerprint : 's Fingerprint.t option;
-}
-
-let shape ~name ?names ?fingerprint () =
-  { shape_name = name; shape_names = names; fingerprint }
-
-let shape_name shape = shape.shape_name
-let shape_names shape = Option.value shape.shape_names ~default:[]
 
 type ('p, 's, 'e) t = {
   id : string;
   init : 's;
-  shape : 's shape;
-  events : 'e shape option;
+  name : 's -> string;
+  states : string list option;
+  event_name : ('e -> string) option;
+  fingerprint : 's Fingerprint.t option;
   final : 's -> bool;
-  owns : 'p -> 's -> 'e Source.t list;
+  during : 'p -> 's -> 'e Source.t list;
   entry : 'p -> 's -> 'e Action.t list;
   exit : 'p -> 's -> 'e Action.t list;
   first : 'e Action.t list;
@@ -54,16 +45,12 @@ type ('p, 's, 'e) t = {
 
 let id machine = machine.id
 let init machine = machine.init
-let name machine = machine.shape.shape_name
-let states machine = machine.shape.shape_names
-let fingerprint machine = machine.shape.fingerprint
+let name machine = machine.name
+let states machine = machine.states
+let fingerprint machine = machine.fingerprint
 
 let event_name machine event =
-  match machine.events with
-  | Some events ->
-      events.shape_name event
-  | None ->
-      ""
+  Option.map (fun event_name -> event_name event) machine.event_name
 
 type codecs =
   | Codecs : {
@@ -153,7 +140,7 @@ let owned machine props state =
       in
       (prefix ^ unique, source)
     )
-    (machine.owns props state)
+    (machine.during props state)
 
 let active machine props state =
   List.map
@@ -171,7 +158,7 @@ let active machine props state =
     (owned machine props state)
 
 let held machine props state =
-  List.filter_map Source.held (machine.owns props state)
+  List.filter_map Source.held (machine.during props state)
 
 let starts sources =
   List.map (fun (id, source) -> Source.start id source) sources
@@ -277,20 +264,22 @@ let set_props machine ~previous props state =
   props_step machine ~previous:(Some previous) props state
 
 let no_actions _ _ = []
-let owns_nothing _ _ = []
+let during_nothing _ _ = []
 let never _ = false
 let ignore_props _ _ _ = Ignore
 
-let make_with_props ~id ~init ~shape ?events ?(owns = owns_nothing)
-    ?(entry = no_actions) ?(exit = no_actions) ?(final = never) ?(start = [])
-    ?(on_props = ignore_props) update =
+let make_with_props ~id ~init ~name ?states ?event_name ?fingerprint
+    ?(during = during_nothing) ?(entry = no_actions) ?(exit = no_actions)
+    ?(final = never) ?(start = []) ?(on_props = ignore_props) update =
   {
     id;
     init;
-    shape;
-    events;
+    name;
+    states;
+    event_name;
+    fingerprint;
     final;
-    owns;
+    during;
     entry;
     exit;
     first = start;
@@ -300,12 +289,14 @@ let make_with_props ~id ~init ~shape ?events ?(owns = owns_nothing)
     type_id = Type.Id.make ();
   }
 
-let make ~id ~init ~shape ?events ?owns ?entry ?exit ?final ?start update =
+let make ~id ~init ~name ?states ?event_name ?fingerprint ?during ?entry ?exit
+    ?final ?start update =
   let without_props f = Option.map (fun f () state -> f state) f in
   {
-    (make_with_props ~id ~init ~shape ?events ?owns:(without_props owns)
-       ?entry:(without_props entry) ?exit:(without_props exit) ?final ?start
-       (fun () state event -> update state event
+    (make_with_props ~id ~init ~name ?states ?event_name ?fingerprint
+       ?during:(without_props during) ?entry:(without_props entry)
+       ?exit:(without_props exit) ?final ?start (fun () state event ->
+         update state event
      )
     )
     with

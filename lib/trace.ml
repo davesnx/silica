@@ -252,11 +252,7 @@ let line ?start (record : Transition.t) =
   in
   string_of_int record.seq ^ time ^ " " ^ record.instance ^ " " ^ states ^ " ("
   ^ change_text record.change ^ ")"
-  ^ ( if record.event = "" then
-        ""
-      else
-        " on " ^ record.event
-    )
+  ^ (match Transition.label record with "" -> "" | label -> " on " ^ label)
   ^ " <- " ^ cause_text record.cause
   ^
   match record.actions with

@@ -24,8 +24,7 @@ let note_view { text } =
 let note_dialog =
   Dialog.component ~id:"note-dialog"
     ~closes:(function Save -> true | Edit _ -> false)
-    ~events:
-      (Machine.shape ~name:(function Edit _ -> "edit" | Save -> "save") ())
+    ~event_name:(function Edit _ -> "edit" | Save -> "save")
     note_view
 
 type parent_event =
@@ -37,7 +36,7 @@ let reason = Popup.reason_name
 
 let page_machine =
   Machine.make ~id:"note-page" ~init:(None, [])
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun (open_, log) event ->
       match event with
       | Opened (opened, why) ->

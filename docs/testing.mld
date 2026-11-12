@@ -165,8 +165,8 @@ val page : unit Silica_memory.t = <abstr>
 # print_string (Silica.Trace.to_text (Silica_memory.trace page));;
 trace debounce / build memory from memory
 1 +0ms debounce empty (started) <- start
-2 +0ms debounce empty -> typing (entered) on typed <- input textbox "Word" (div > input) ocaml => start timer 1.1/debounce/typing/after 500ms 500ms
-3 +500ms debounce typing -> settled (entered) on settle <- timer 500ms 1.1/debounce/typing/after 500ms => stop 1.1/debounce/typing/after 500ms
+2 +0ms debounce empty -> typing (entered) on input textbox "Word" <- input textbox "Word" (div > input) ocaml => start timer 1.1/debounce/typing/after 500ms 500ms
+3 +500ms debounce typing -> settled (entered) on after 500ms <- timer 500ms 1.1/debounce/typing/after 500ms => stop 1.1/debounce/typing/after 500ms
 - : unit = ()
 ]}
 

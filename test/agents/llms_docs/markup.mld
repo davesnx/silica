@@ -11,7 +11,7 @@ A paragraph with [code], {b bold}, {i italic}, {e emphasis}, and a
 {2 Same}
 
 References: {!Check}, {!Check.val-run}, {!Check.type-report},
-{!Silica.Machine.module-Shape}, {{!Check.val-rules} the rules}, {!page-index},
+{!Silica.Machine.module-Sample}, {{!Check.val-rules} the rules}, {!page-index},
 {!page-markup.labelled}, {!section-same-2}, {{!section-labelled} here}.
 
 - one

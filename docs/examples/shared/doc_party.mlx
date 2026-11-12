@@ -1,13 +1,15 @@
 open Silica
 
 type party = { adults : int; children : int }
-type event = Adults of int | Children of int [@@deriving event_shape]
-type state = Party of party [@@deriving state_shape]
+type event = Adults of int | Children of int
+type state = Party of party
+
+let name (Party _) = "party"
 
 let machine =
   Machine.make ~id:"party"
     ~init:(Party { adults = 0; children = 0 })
-    ~shape:state_shape ~events:event_shape
+    ~name
     (fun (Party party) event ->
       match event with
       | Adults adults ->

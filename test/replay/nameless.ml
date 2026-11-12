@@ -1,11 +1,18 @@
 open Silica
 
-type event = Edit | Done [@@deriving event_shape]
-type state = Viewing | Editing [@@deriving state_shape]
+type event = Edit | Done
+
+let event_name = function Edit -> "edit" | Done -> "done"
+
+type state = Viewing | Editing
+
+let name = function Viewing -> "viewing" | Editing -> "editing"
+
+let states = [ "viewing"; "editing" ]
 
 let machine =
-  Machine.make ~id:"nameless" ~init:Viewing ~shape:state_shape
-    ~events:event_shape (fun state event ->
+  Machine.make ~id:"nameless" ~init:Viewing ~name ~states ~event_name
+    (fun state event ->
       match (state, event) with
       | Viewing, Edit ->
           Machine.Go Editing

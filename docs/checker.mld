@@ -73,7 +73,9 @@ its id, its message and its hint:
 - [raised]: the update, the view, a handler or a property raised an
   exception. The search does not go on from that state.
 - [unreached-state]: a name of the [states] of the machine (see
-  {!Silica.Machine.val-shape}) that no step reached.
+  {!Silica.Machine.make}) that no step reached. For a machine with no
+  [states], the report has a line [unlisted: ...] instead: the checker cannot
+  report its unreached states.
 - [state-limit]: the search stopped at [max_states].
 - [live-uses-client-source], [live-uses-client-action]: see
   {{!section-live}Live components}.
@@ -123,7 +125,8 @@ and they see a child component only as a node.
   does not see a key handler on an element above.
 - [dialog-name]: a dialog or alert dialog has a name.
 - [dialog-focus]: when the view shows a dialog with [aria-modal="true"], the
-  state owns a {!Silica.Source.focus_trap} on it or on an element around it.
+  state has a {!Silica.Source.focus_trap} on it or on an element around it in
+  its [during] list.
   It cannot see a native [<dialog>] opened with [showModal].
 - [heading-order]: a heading is at most one level below the heading before it;
   each portal starts again. The first heading of a view can have any level,
@@ -154,7 +157,7 @@ ignored event:
 # let broken =
     let machine =
       Silica.Machine.make ~id:"broken-lamp" ~init:Doc_lamp.Off
-        ~shape:Doc_lamp.state_shape (fun state Doc_lamp.Toggle ->
+        ~name:Doc_lamp.name (fun state Doc_lamp.Toggle ->
           match state with
           | Doc_lamp.Off -> Silica.Machine.Go Doc_lamp.On
           | Doc_lamp.On -> Silica.Machine.Ignore)
@@ -165,19 +168,23 @@ val broken : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Node.component =
 # Format.printf "%a@." Check.pp_report (Check.run (Check.component broken));;
 broken-lamp: 2 states, 2 transitions
 violation 1: ignored-event
-  In state on, the view offers press on button "Turn off" at div > button gives the event (unnamed), and the update returns Ignore.
-  hint: Handle (unnamed) in state on, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of on.
-  1. off -> on: (unnamed event), by the view offers press on button "Turn on" at div > button
-  2. on -> on: (unnamed event), by the view offers press on button "Turn off" at div > button
+  In state on, the view offers press on button "Turn off" at div > button gives the event press button "Turn off", and the update returns Ignore.
+  hint: Handle press button "Turn off" in state on, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of on.
+  1. off -> on: press button "Turn on", by the view offers press on button "Turn on" at div > button
+  2. on -> on: press button "Turn off", by the view offers press on button "Turn off" at div > button
   state: on
   view:
     text "The lamp is on."
     button "Turn off" [press]
+unlisted: Unreached states cannot be reported for the machine broken-lamp because it gives no ~states to Machine.make.
 - : unit = ()
 ]}
 
-This machine has no [events] shape, so its events have no name; give it one
-(see {!page-machines.events}) and the steps name them.
+This machine does not name its events, so the steps show the cause of each
+event, such as [press button "Turn off"]. Give the machine an [event_name] (see
+{!page-machines.events}) and the steps show those names. It also gives no
+[states], so the report says in the line [unlisted] that it cannot report the
+states that no run reached.
 
 {1:properties Properties}
 
@@ -209,7 +216,7 @@ val at_most_two : (Doc_stepper.state, '_weak1) Check.property = <abstr>
               (Check.steps violation.counterexample))))
     report.violations;;
 at-most-two: Stop the count at two in count.
-up, up, up
+press button "More Adults", press button "More Adults", press button "More Adults"
 - : unit = ()
 ]}
 
@@ -314,7 +321,9 @@ because the user may type an empty word and stop:
         | Check.Path _ | Check.Loop _ ->
             "other")
       fails.violations );;
-- : bool * string list = (true, ["waits in empty after typed, clear"])
+- : bool * string list =
+(true,
+ ["waits in empty after input textbox \"Word\", press button \"Clear\""])
 ]}
 
 {2:cut When the search was cut}
@@ -380,7 +389,7 @@ its [after] never held (a warning; the exit code does not change).
         (String.concat ", " (List.map (fun (step : _ Check.step) -> step.event) steps)))
     report.paths;;
 off: []
-on: [toggle]
+on: [press button "Turn on"]
 - : unit = ()
 # let report = Check.run (Check.component Doc_lamp.component) in
   List.iter
@@ -515,9 +524,9 @@ parent, or on the check of the child alone.
 {1:live Live components}
 
 {!Check.live} checks a Live component. Its machine runs on the server, so a
-state that owns a source of the page (a focus trap, a key table, a dismiss
-layer) is a violation of [live-uses-client-source], and an action that needs
-an answer of the page ([Measure], [Copy], [Load_script]) is a violation of
+state with a source of the page in its [during] list (a focus trap, a key
+table, a dismiss layer) is a violation of [live-uses-client-source], and an
+action that needs an answer of the page ([Measure], [Copy], [Load_script]) is a violation of
 [live-uses-client-action].
 
 {1:app Routed apps}
@@ -572,12 +581,13 @@ at a time, so that the product of the router and its pages stays small.
 
 {1:quint Diagrams and Quint}
 
-{!Silica.Spec} is the shape of a machine that a checker run found: the states it
+{!Silica.Spec} is the graph of a machine that a checker run found: the states it
 reached, the timers and sources of each, and the steps it took with the names
 of their events (see {!page-machines.spec}). The report gives it in [specs].
-The names come from the [events] of the machine (see {!page-machines.events});
-a machine with no [events] gives empty names. The states come in a fixed
-order: the initial state first, then by name. It has these exports:
+The names come from the [event_name] of the machine (see
+{!page-machines.events}); a machine with no [event_name] gives the label of the
+cause of each event, such as [press button "Turn on"]. The states come in a
+fixed order: the initial state first, then by name. It has these exports:
 
 - {!Silica.Spec.to_text}: a text form to read and diff, which
   {!Silica.Spec.of_text} reads back.
@@ -590,8 +600,22 @@ order: the initial state first, then by name. It has these exports:
   [resources_owned] (every running resource belongs to the current state),
   [can_move] and [inv] (both).
 
+This lamp names its event [toggle]:
+
 {@ocaml[
-# let report = Check.run (Check.component Doc_lamp.component) in
+# let named =
+    let machine =
+      Silica.Machine.make ~id:"lamp" ~init:Doc_lamp.Off ~name:Doc_lamp.name
+        ~event_name:(fun Doc_lamp.Toggle -> "toggle")
+        (fun state Doc_lamp.Toggle ->
+          match state with
+          | Doc_lamp.Off -> Silica.Machine.Go Doc_lamp.On
+          | Doc_lamp.On -> Silica.Machine.Go Doc_lamp.Off)
+    in
+    Silica.Component.make machine Doc_lamp.view;;
+val named : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Node.component =
+  {Silica.Component.machine = <abstr>; view = <fun>}
+# let report = Check.run (Check.component named) in
   print_string (Silica.Spec.to_quint (List.hd report.specs));;
 // Generated from the spec of the machine "lamp". Do not edit.
 module lamp {
@@ -849,7 +873,7 @@ From [test/check_suite/run.t]:
 {@json skip[
             "rule": "ignored-event",
             "message": "In state saved, the view offers press on button \"Save\" at div > button gives the event save, and the update returns Ignore.",
-            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.",
             "state": {
               "name": "saved",
               "data": [
@@ -878,7 +902,7 @@ start: editing
 1. editing -> saved: save, by the view offers press on button "Save" at form > button[2]
 2. saved -> saved: save, by the view offers press on button "Save" at div > button
   fails ignored-event: In state saved, the view offers press on button "Save" at div > button gives the event save, and the update returns Ignore.
-    hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+    hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
 state: saved
 view:
   text "Saved"

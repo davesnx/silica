@@ -327,16 +327,23 @@ type props = { id : string; label : string; set : set; choice : choice }
 let props ~id ?(label = "Theme") set choice = { id; label; set; choice }
 
 type current = { choice : choice; theme : t }
-type event =
-  | Choose of string [@event_name_of fun name -> "choose " ^ name]
-  | System_dark of bool
-      [@event_name_of fun dark -> "system_dark " ^ string_of_bool dark]
-[@@deriving event_shape]
+type event = Choose of string | System_dark of bool
 
-type state =
-  | Fixed_theme of t [@state_name "fixed"]
-  | System_scheme of bool option [@state_name "system"]
-[@@deriving state_shape]
+type state = Fixed_theme of t | System_scheme of bool option
+[@@deriving fingerprint]
+
+let state_name = function
+  | Fixed_theme _ ->
+      "fixed"
+  | System_scheme _ ->
+      "system"
+let states = [ "fixed"; "system" ]
+
+let event_name = function
+  | Choose name ->
+      "choose " ^ name
+  | System_dark dark ->
+      "system_dark " ^ string_of_bool dark
 
 let one_year = 365 * 24 * 60 * 60
 
@@ -371,9 +378,9 @@ let current_name = function
       "system"
 
 let machine =
-  Machine.make_with_props ~id:"theme" ~init:(Fixed_theme light)
-    ~shape:state_shape ~events:event_shape
-    ~owns:(fun _ -> function
+  Machine.make_with_props ~id:"theme" ~init:(Fixed_theme light) ~name:state_name
+    ~states ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun _ -> function
       | System_scheme _ ->
           [
             Source.media "(prefers-color-scheme: dark)" (fun dark ->

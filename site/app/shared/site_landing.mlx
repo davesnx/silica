@@ -1,8 +1,11 @@
 open Silica
 open Jsonkit.Primitives
 
-type event = Moved of string [@@deriving json, event_shape]
-type state = Watching of string [@@deriving json, state_shape]
+type event = Moved of string [@@deriving json]
+type state = Watching of string [@@deriving json]
+
+let name = function Watching _ -> "watching"
+let states = [ "watching" ]
 
 let chart = Site_landing_chart.landing
 
@@ -11,8 +14,8 @@ let initial =
     .name
 
 let machine =
-  Machine.make ~id:"landing" ~init:(Watching initial) ~shape:state_shape
-    ~events:event_shape (fun (Watching _) (Moved name) -> Go (Watching name)
+  Machine.make ~id:"landing" ~init:(Watching initial) ~name ~states
+    (fun (Watching _) (Moved name) -> Go (Watching name)
   )
 
 let ideas =
@@ -118,7 +121,7 @@ let view (Watching current) : event Node.t =
                   [&_button]:font-medium [&_button]:text-ui-accent-text \
                   [&_button:disabled]:opacity-60">
           (Component.node Landing_save.component ~output:(fun _ state ->
-               [ Moved (Machine.shape_name Landing_save.state_shape state) ]
+               [ Moved (Machine.name Landing_save.machine state) ]
            )
           )
         </div>

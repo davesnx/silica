@@ -14,7 +14,6 @@ type editor = {
 
 type event =
   | Loaded of (Issues.t, string) Silica_jsonkit.answer
-      [@event_name_of answer_name "loaded"]
   | Updated of Issues.t Silica_jsonkit.update
   | Retry
   | Reconnect
@@ -24,18 +23,52 @@ type event =
   | Save
   | Cancel_edit
   | Picker of Linear_pickers.picker option
-      [@event_name_of
-        function Some _ -> "picker open" | None -> "picker closed"]
   | Pick of Change.t
   | Saved of int * (Change.answer, string) Silica_jsonkit.answer
-      [@event_name_of saved_name]
   | Toast_closed of string
   | Menu_open of bool
-      [@event_name_of fun opened -> "menu_open " ^ string_of_bool opened]
   | Command of string
   | Create_key
   | Keep_editing
-[@@deriving json, event_shape]
+[@@deriving json]
+
+let event_name = function
+  | Loaded answer ->
+      answer_name "loaded" answer
+  | Updated _ ->
+      "updated"
+  | Retry ->
+      "retry"
+  | Reconnect ->
+      "reconnect"
+  | Reconnected ->
+      "reconnected"
+  | Edit _ ->
+      "edit"
+  | Draft_changed _ ->
+      "draft_changed"
+  | Save ->
+      "save"
+  | Cancel_edit ->
+      "cancel_edit"
+  | Picker (Some _) ->
+      "picker open"
+  | Picker None ->
+      "picker closed"
+  | Pick _ ->
+      "pick"
+  | Saved (_, answer) ->
+      saved_name answer
+  | Toast_closed _ ->
+      "toast_closed"
+  | Menu_open opened ->
+      "menu_open " ^ string_of_bool opened
+  | Command _ ->
+      "command"
+  | Create_key ->
+      "create_key"
+  | Keep_editing ->
+      "keep_editing"
 
 type view_state = {
   number : int;
@@ -48,7 +81,19 @@ type view_state = {
 }
 
 type state = Loading | Ready of view_state | Not_found | Failed of string
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function
+  | Loading ->
+      "loading"
+  | Ready _ ->
+      "ready"
+  | Not_found ->
+      "not_found"
+  | Failed _ ->
+      "failed"
+
+let states = [ "loading"; "ready"; "not_found"; "failed" ]
 
 let title_input = Ref.make "title-input"
 let description_input = Ref.make "description-input"
@@ -277,15 +322,15 @@ let page_title number data =
       "ENG-" ^ string_of_int number
 
 let machine =
-  Machine.make_with_props ~id:"issue-detail" ~init:Loading ~shape:state_shape
-    ~events:event_shape
+  Machine.make_with_props ~id:"issue-detail" ~init:Loading ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
     ~entry:(fun number -> function
       | Loading ->
           [ Action.Set_title ("ENG-" ^ string_of_int number) ]
       | Ready _ | Not_found | Failed _ ->
           []
       )
-    ~owns:(fun _ -> function
+    ~during:(fun _ -> function
       | Loading ->
           [ Remote.call issues_endpoint () (fun answer -> Loaded answer) ]
       | Ready state ->

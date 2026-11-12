@@ -31,7 +31,7 @@ values, code blocks, lists and tables.
   
   ### Same
   
-  References: `Check`, `Check.run`, `Check.report`, `Silica.Machine.Shape`, the rules (`Check.rules`), [Sample](https://example.org/docs), [A labelled heading](https://example.org/docs/markup#labelled), [Same](https://example.org/docs/markup#same-2), [here](https://example.org/docs/markup#labelled).
+  References: `Check`, `Check.run`, `Check.report`, `Silica.Machine.Sample`, the rules (`Check.rules`), [Sample](https://example.org/docs), [A labelled heading](https://example.org/docs/markup#labelled), [Same](https://example.org/docs/markup#same-2), [here](https://example.org/docs/markup#labelled).
   
   - one
   - two with `Check.run`

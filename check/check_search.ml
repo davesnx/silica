@@ -351,13 +351,12 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
           ()
     )
     starts;
-  let label event =
-    match model.event_name event with "" -> "(unnamed)" | name -> name
-  in
   while (not !truncated) && not (Queue.is_empty queue) do
     let index, moves = Queue.pop queue in
     let node = Dynarray.get nodes index in
     let from = model.name node in
+    let node_view = lazy (model.view node) in
+    let label move = Check_model.move_label model node node_view move in
     let edges = Dynarray.length targets in
     let edge move target =
       if graph then (
@@ -380,7 +379,7 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
           | Ok (_, _, Machine.Unhandled)
             when not (Check_model.ignorable move.via) ->
               edge move (-1);
-              let view = model.view node in
+              let view = Lazy.force node_view in
               let cause = model.cause node view move in
               let element =
                 match cause with
@@ -395,14 +394,14 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
                 (Check_rules.finding "ignored-event" ?element
                    ~values:
                      [
-                       ("event", label move.event);
+                       ("event", label move);
                        ("cause", Check_model.describe_cause cause);
                      ]
                 )
           | Ok (next, actions, _) ->
               let view = lazy (model.view next) in
               let target = model.name next in
-              let values = [ ("event", label move.event); ("from", from) ] in
+              let values = [ ("event", label move); ("from", from) ] in
               ( match
                   guard machine (fun () ->
                       model.action_rules ~values view actions

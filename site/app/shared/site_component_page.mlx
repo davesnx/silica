@@ -2,8 +2,11 @@ open Silica
 open Silica_ui
 
 type values = (string * Story.values) list
-type event = Set of string * Story.values [@@deriving event_shape]
-type state = Idle | Shown of values [@@deriving state_shape]
+type event = Set of string * Story.values
+type state = Idle | Shown of values
+
+let name = function Idle -> "idle" | Shown _ -> "shown"
+let states = [ "idle"; "shown" ]
 
 let fresh slug =
   match Site_catalog.find slug with
@@ -13,8 +16,7 @@ let fresh slug =
       []
 
 let machine =
-  Machine.make_with_props ~id:"component-page" ~init:Idle ~shape:state_shape
-    ~events:event_shape
+  Machine.make_with_props ~id:"component-page" ~init:Idle ~name ~states
     ~on_props:(fun previous slug _ ->
       if previous = Some slug then
         Ignore

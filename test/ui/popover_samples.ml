@@ -24,8 +24,7 @@ let filter_view { query } =
 let filter_popover =
   Popover.component ~id:"filter-popover"
     ~closes:(function Apply -> true | Query _ -> false)
-    ~events:
-      (Machine.shape ~name:(function Query _ -> "query" | Apply -> "apply") ())
+    ~event_name:(function Query _ -> "query" | Apply -> "apply")
     filter_view
 
 type event =
@@ -35,7 +34,7 @@ type event =
 
 let machine =
   Machine.make ~id:"filter-page" ~init:(None, [])
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun (open_, log) event ->
       match event with
       | Opened (opened, why) ->

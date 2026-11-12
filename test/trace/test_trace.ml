@@ -8,12 +8,9 @@ type light_event = Toggle
 let light =
   Component.make_with_props
     (Machine.make_with_props ~id:"light" ~init:Off
-       ~shape:
-         (Machine.shape
-            ~name:(function Off -> "off" | On -> "on")
-            ~names:[ "off"; "on" ] ()
-         )
-       ~events:(Machine.shape ~name:(fun Toggle -> "toggle") ())
+       ~name:(function Off -> "off" | On -> "on")
+       ~states:[ "off"; "on" ]
+       ~event_name:(fun Toggle -> "toggle")
        (fun _ state Toggle ->
          Machine.Go (match state with Off -> On | On -> Off)
        )
@@ -68,9 +65,9 @@ let event_name = function
 let panel_machine =
   Machine.make ~id:"panel"
     ~init:{ phase = Idle; shown = true; label = "a" }
-    ~shape:(Machine.shape ~name:(fun state -> phase_name state.phase) ())
-    ~events:(Machine.shape ~name:event_name ())
-    ~owns:(fun state ->
+    ~name:(fun state -> phase_name state.phase)
+    ~event_name
+    ~during:(fun state ->
       match state.phase with
       | Waiting ->
           [ Remote.call endpoint () (fun answer -> Answered answer) ]
@@ -405,7 +402,7 @@ let probe =
   let typing = Attr.on_input (fun _ -> Probe) in
   Component.make
     (Machine.make ~id:"probe" ~init:()
-       ~shape:(Machine.shape ~name:(fun () -> "only") ())
+       ~name:(fun () -> "only")
        (fun () Probe -> Machine.Ignore)
     )
     (fun () ->
@@ -519,6 +516,70 @@ let elements_found_later () =
 let codec_round_trip () =
   Alcotest.(check int) "every sample reads back" 16 (Trace_cases.run ())
 
+let answer outcome = (Remote.answer_codec Codec.int Codec.string).encode outcome
+
+let answer_cause answer : Transition.cause =
+  Answer { id = "1.1/save/saving//api/save null"; path = "/api/save"; answer }
+
+let element ?role ?value handler name : Transition.cause =
+  Element { handler; role; name; element = "main > button"; value }
+
+let cause_labels () =
+  List.iter
+    (fun (expected, cause) ->
+      Alcotest.(check string) expected expected (Transition.cause_label cause)
+    )
+    [
+      ("press button \"Save\"", element ~role:"button" "press" "Save");
+      ( "key_down Escape textbox \"Search\"",
+        element ~role:"textbox" ~value:"Escape" "key_down" "Search"
+      );
+      ("press", element "press" "");
+      ("after 2000ms", Timer { id = "1.1/save/saved/after 2000ms"; ms = 2000 });
+      ("ok /api/save", answer_cause (Some (answer (Remote.Ok 1))));
+      ("rejected /api/save", answer_cause (Some (answer (Remote.Rejected "no"))));
+      ( "failed /api/save",
+        answer_cause (Some (answer (Remote.Failed (Remote.Http 500))))
+      );
+      ("answer /api/save", answer_cause None);
+    ]
+
+let labels () =
+  let record event change cause : Transition.t =
+    {
+      seq = 1;
+      time_ms = None;
+      instance = "save";
+      number = 1;
+      entry = 1;
+      machine = "save";
+      from = "idle";
+      target = "saving";
+      change;
+      event;
+      data = None;
+      props = None;
+      snapshot = None;
+      actions = [];
+      cause;
+    }
+  in
+  let press = element ~role:"button" "press" "Save" in
+  Alcotest.(check string)
+    "the event name when the machine names it" "save"
+    (Transition.label (record "save" Transition.Entered press));
+  Alcotest.(check string)
+    "the cause when it does not" "press button \"Save\""
+    (Transition.label (record "" Transition.Entered press));
+  Alcotest.(check string)
+    "an unhandled event too" "after 300ms"
+    (Transition.label
+       (record "" Transition.Unhandled (Timer { id = "t"; ms = 300 }))
+    );
+  Alcotest.(check string)
+    "no label for a start" ""
+    (Transition.label (record "" Transition.Started Start))
+
 let () =
   let case name run = Alcotest.test_case name `Quick run in
   Alcotest.run "trace"
@@ -531,6 +592,12 @@ let () =
           case "a tree with no hook observes nothing" no_hook_no_record;
           case "the element of a handler, found when the trace is read"
             elements_found_later;
+        ]
+      );
+      ( "labels",
+        [
+          case "the label of a cause" cause_labels;
+          case "the event name, or the label of the cause" labels;
         ]
       );
       ( "file",

@@ -67,7 +67,7 @@ let () =
           Alcotest.test_case "every page is listed" `Quick every_page_listed;
           Alcotest.test_case "code in the glossary" `Quick (fun () ->
               let body = (get "/docs/glossary.md").body in
-              let needle = "`[@@deriving state_shape]`" in
+              let needle = "`[@@deriving fingerprint]`" in
               let length = String.length needle in
               let rec scan at =
                 at + length <= String.length body

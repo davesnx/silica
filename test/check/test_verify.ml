@@ -94,13 +94,23 @@ let show_load = function
   | Retry ->
       "retry"
 
-type loading = Loading | Ready of int | Failed of int [@@deriving state_shape]
+type loading = Loading | Ready of int | Failed of int
+
+let loading_name = function
+  | Loading ->
+      "loading"
+  | Ready _ ->
+      "ready"
+  | Failed _ ->
+      "failed"
+
+let loading_states = [ "loading"; "ready"; "failed" ]
 
 let loader ?(network = true) ?(decode = true) () =
-  Machine.make ~id:"loader" ~init:Loading ~shape:loading_shape
-    ~events:(Machine.shape ~name:show_load ())
+  Machine.make ~id:"loader" ~init:Loading ~name:loading_name
+    ~states:loading_states ~event_name:show_load
     ~final:(function Ready _ -> true | Loading | Failed _ -> false)
-    ~owns:(function
+    ~during:(function
       | Loading ->
           [ Remote.call endpoint () (fun r -> Loaded r) ]
       | Ready _ | Failed _ ->
@@ -156,9 +166,10 @@ let test_answers_are_delivered () =
 let test_rejected_answers_are_delivered () =
   let rejected = ref false in
   let machine =
-    Machine.make ~id:"loader" ~init:Loading ~shape:loading_shape
+    Machine.make ~id:"loader" ~init:Loading ~name:loading_name
+      ~states:loading_states
       ~final:(function Ready _ -> true | Loading | Failed _ -> false)
-      ~owns:(function
+      ~during:(function
         | Loading -> [ Remote.call endpoint () (fun r -> Loaded r) ] | _ -> []
         )
       (fun state event ->
@@ -233,9 +244,10 @@ let test_answers_of_another_endpoint_are_not_used () =
 let test_answered_call_runs_again () =
   let answers = ref [] in
   let counting =
-    Machine.make ~id:"loader" ~init:Loading ~shape:loading_shape
+    Machine.make ~id:"loader" ~init:Loading ~name:loading_name
+      ~states:loading_states
       ~final:(function Ready _ -> true | Loading | Failed _ -> false)
-      ~owns:(function
+      ~during:(function
         | Loading -> [ Remote.call endpoint () (fun r -> Loaded r) ] | _ -> []
         )
       (fun state event ->
@@ -278,20 +290,30 @@ let test_answered_call_runs_again () =
     "three answers handled"
     [ "loaded 1"; "loaded http 500"; "loaded network down" ]
     (List.sort_uniq compare !answers);
-  Alcotest.(check (list (pair string bool)))
-    "the answers kept the state, the retry entered ready"
-    [ ("loading", true); ("ready", false) ]
+  Alcotest.(check (list (triple string string bool)))
+    "the answers kept the state, the retry entered ready; with no event_name \
+     the edges are labelled by cause"
+    [
+      ("failed /api/n", "loading", true);
+      ("ok /api/n", "loading", true);
+      ("press button \"go\"", "ready", false);
+    ]
     (List.map
-       (fun (label : Spec.label) -> (label.target, label.kept))
+       (fun (label : Spec.label) -> (label.event, label.target, label.kept))
        (List.hd report.specs).edges
     )
 
-type ticking = Waiting of int [@@deriving state_shape]
+type ticking = Waiting of int
+
+let ticking_name = function Waiting _ -> "waiting"
+
+let ticking_states = [ "waiting" ]
 
 let test_fired_timer_runs_again () =
   let ticker =
-    Machine.make ~id:"ticker" ~init:(Waiting 0) ~shape:ticking_shape
-      ~owns:(fun _ -> [ Source.after 100 Retry ])
+    Machine.make ~id:"ticker" ~init:(Waiting 0) ~name:ticking_name
+      ~states:ticking_states
+      ~during:(fun _ -> [ Source.after 100 Retry ])
       (fun (Waiting count) -> function
         | Retry ->
             Machine.Go (Waiting (count + 1))
@@ -321,8 +343,9 @@ let test_fired_timer_runs_again () =
 
 let test_violation_does_not_stop_exploration () =
   let ticker =
-    Machine.make ~id:"ticker" ~init:(Waiting 0) ~shape:ticking_shape
-      ~owns:(fun _ -> [ Source.after 100 Retry ])
+    Machine.make ~id:"ticker" ~init:(Waiting 0) ~name:ticking_name
+      ~states:ticking_states
+      ~during:(fun _ -> [ Source.after 100 Retry ])
       (fun (Waiting count) -> function
         | Retry ->
             Machine.Go (Waiting (count + 1))
@@ -366,14 +389,25 @@ let show_watch = function
   | Leave ->
       "leave"
 
-type watching = Watching of int | Broken | Away [@@deriving state_shape]
+type watching = Watching of int | Broken | Away
+
+let watching_name = function
+  | Watching _ ->
+      "watching"
+  | Broken ->
+      "broken"
+  | Away ->
+      "away"
+
+let watching_states = [ "watching"; "broken"; "away" ]
 
 let watch_source = Source.live topic "all" (fun u -> Update u)
 
 let watcher ~on_stale =
-  Machine.make ~id:"watcher" ~init:(Watching 0) ~shape:watching_shape
+  Machine.make ~id:"watcher" ~init:(Watching 0) ~name:watching_name
+    ~states:watching_states
     ~final:(function Broken | Away -> true | Watching _ -> false)
-    ~owns:(function Watching _ -> [ watch_source ] | Broken | Away -> [])
+    ~during:(function Watching _ -> [ watch_source ] | Broken | Away -> [])
     (fun state event ->
       match (state, event) with
       | Watching count, Update { status = Ready { stale = true; _ }; _ } ->
@@ -452,9 +486,10 @@ let test_arrivals_are_bounded () =
 let test_failure_ends_the_subscription () =
   let failed : int option list ref = ref [] in
   let after_failure =
-    Machine.make ~id:"watcher" ~init:(Watching 0) ~shape:watching_shape
+    Machine.make ~id:"watcher" ~init:(Watching 0) ~name:watching_name
+      ~states:watching_states
       ~final:(function Broken | Away -> true | Watching _ -> false)
-      ~owns:(function Watching _ -> [ watch_source ] | Broken | Away -> [])
+      ~during:(function Watching _ -> [ watch_source ] | Broken | Away -> [])
       (fun state event ->
         match (state, event) with
         | Watching count, Update { status = Failed { last; _ }; _ } ->
@@ -498,7 +533,11 @@ type go = Go | Wait
 
 let show_go = function Go -> "go" | Wait -> "wait"
 
-type three = A | B [@@deriving state_shape]
+type three = A | B
+
+let three_name = function A -> "a" | B -> "b"
+
+let three_states = [ "a"; "b" ]
 
 let drifting_owns source =
   let calls = ref 0 in
@@ -513,8 +552,8 @@ let drifting_owns source =
         []
 
 let wrong source =
-  Machine.make ~id:"wrong" ~init:A ~shape:three_shape
-    ~owns:(drifting_owns source) (fun state event ->
+  Machine.make ~id:"wrong" ~init:A ~name:three_name ~states:three_states
+    ~during:(drifting_owns source) (fun state event ->
       match (state, event) with
       | A, Go ->
           Machine.Go B
@@ -547,13 +586,19 @@ let test_subscription_outside_its_state () =
        (Component.make (wrong (Source.live topic "all" (fun _ -> Wait))) go_view)
     )
 
-type attempt = Fetching of int | Fetched of int [@@deriving state_shape]
+type attempt = Fetching of int | Fetched of int
+
+let attempt_name = function Fetching _ -> "fetching" | Fetched _ -> "fetched"
+
+let attempt_states = [ "fetching"; "fetched" ]
+
 type attempt_event = Got of int * (int, string) Remote.answer | Again
 
 let test_answers_rebuilt_at_each_start () =
   let machine =
-    Machine.make ~id:"attempts" ~init:(Fetching 0) ~shape:attempt_shape
-      ~owns:(function
+    Machine.make ~id:"attempts" ~init:(Fetching 0) ~name:attempt_name
+      ~states:attempt_states
+      ~during:(function
         | Fetching attempt ->
             [ Remote.call endpoint () (fun answer -> Got (attempt, answer)) ]
         | Fetched _ ->
@@ -593,12 +638,18 @@ let test_answers_rebuilt_at_each_start () =
     "a later attempt gets its own answers" true
     (List.mem_assoc "fetched" report.paths)
 
-type moving = Still | Moving [@@deriving state_shape]
+type moving = Still | Moving
+
+let moving_name = function Still -> "still" | Moving -> "moving"
+
+let moving_states = [ "still"; "moving" ]
+
 type moving_event = Moved
 
 let test_start_away_from_init () =
   let machine =
-    Machine.make_with_props ~id:"moving" ~init:Still ~shape:moving_shape
+    Machine.make_with_props ~id:"moving" ~init:Still ~name:moving_name
+      ~states:moving_states
       ~on_props:(fun _ moves _ ->
         if moves then
           Machine.Go Moving
@@ -623,12 +674,24 @@ let test_start_away_from_init () =
        spec.states
     )
 
-type asking = Ready_to_ask | Asking | Closed [@@deriving state_shape]
+type asking = Ready_to_ask | Asking | Closed
+
+let asking_name = function
+  | Ready_to_ask ->
+      "ready_to_ask"
+  | Asking ->
+      "asking"
+  | Closed ->
+      "closed"
+
+let asking_states = [ "ready_to_ask"; "asking"; "closed" ]
+
 type asking_event = Ask | Close | Measured
 
 let test_late_action_result_is_allowed () =
   let machine =
-    Machine.make ~id:"asking" ~init:Ready_to_ask ~shape:asking_shape
+    Machine.make ~id:"asking" ~init:Ready_to_ask ~name:asking_name
+      ~states:asking_states
       ~final:(function Closed -> true | Ready_to_ask | Asking -> false)
       (fun state event ->
         match (state, event) with
@@ -732,10 +795,14 @@ let test_app_root_timer_owner () =
        )
     )
 
-type drift = Start | Done | Never [@@deriving state_shape] [@@warning "-37"]
+type drift = Start | Done | Never [@@warning "-37"]
+
+let drift_name = function Start -> "start" | Done -> "done" | Never -> "never"
+
+let drift_states = [ "start"; "done"; "never" ] [@@warning "-37"]
 
 let drifting =
-  Machine.make ~id:"drift" ~init:Start ~shape:drift_shape
+  Machine.make ~id:"drift" ~init:Start ~name:drift_name ~states:drift_states
     ~final:(function Done | Never -> true | Start -> false)
     (fun state event ->
       match (state, event) with
@@ -790,14 +857,18 @@ let test_edges_are_labelled () =
     )
 
 type child_event = Dec
-type child_state = Count of int [@@deriving state_shape]
+type child_state = Count of int
+
+let child_state_name = function Count _ -> "count"
+
+let child_state_states = [ "count" ]
 
 let show_child Dec = "dec"
 
 let child =
   Component.make
-    (Machine.make_with_props ~id:"child" ~init:(Count 1)
-       ~shape:child_state_shape
+    (Machine.make_with_props ~id:"child" ~init:(Count 1) ~name:child_state_name
+       ~states:child_state_states
        ~final:(fun (Count n) -> n <= 0)
        ~on_props:(fun _ value _ -> Machine.Go (Count value))
        (fun _ (Count n) Dec -> Machine.Go (Count (n - 1)))
@@ -859,7 +930,7 @@ let test_new_props_are_a_step () =
   let only_after_props =
     Component.make
       (Machine.make_with_props ~id:"child" ~init:(Count 0)
-         ~shape:child_state_shape
+         ~name:child_state_name ~states:child_state_states
          ~on_props:(fun previous value _ ->
            match previous with
            | None ->

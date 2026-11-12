@@ -34,15 +34,13 @@ let info_popover =
 
 type page = { label : string; saved : string; events : string list }
 type event = Changed of bool * Popup.reason | Edited of label_event
-[@@deriving event_shape]
 
 let note page line = { page with events = page.events @ [ line ] }
 
 let machine =
   Machine.make ~id:"popover-events"
     ~init:{ label = "Bug"; saved = "Bug"; events = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Changed (opened, reason) ->

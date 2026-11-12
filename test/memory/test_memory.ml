@@ -636,7 +636,7 @@ module Family = struct
   let child name =
     Component.make_with_props
       (Machine.make_with_props ~id:("family-" ^ name) ~init:0
-         ~shape:(Machine.shape ~name:(fun _ -> "only") ())
+         ~name:(fun _ -> "only")
          (fun _ bumps -> function
            | Bump -> Machine.Go (bumps + 1) | Break -> failwith "break"
            )
@@ -1162,7 +1162,7 @@ module With_props = struct
   let component =
     Component.make_with_props
       (Machine.make_with_props ~id:"with-props" ~init:{ shown = 0; changes = 0 }
-         ~shape:(Machine.shape ~name:(fun _ -> "only") ())
+         ~name:(fun _ -> "only")
          ~on_props:(fun _ props state ->
            Machine.Go { shown = props; changes = state.changes + 1 }
          )

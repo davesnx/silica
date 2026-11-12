@@ -150,14 +150,10 @@ let state_codec endpoint =
     )
 
 let make ?timeout_ms ~id endpoint =
-  Machine.make ~id ~init:Idle
-    ~shape:
-      (Machine.shape ~name
-         ~names:[ "idle"; "loading"; "ready"; "rejected"; "failed" ]
-         ()
-      )
-    ~events:(Machine.shape ~name:event_name ())
-    ~owns:(function
+  Machine.make ~id ~init:Idle ~name
+    ~states:[ "idle"; "loading"; "ready"; "rejected"; "failed" ]
+    ~event_name
+    ~during:(function
       | Loading { input; _ } ->
           [
             Remote.call ?timeout_ms endpoint input (fun answer -> Settled answer);

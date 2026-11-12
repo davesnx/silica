@@ -1,6 +1,16 @@
 open Silica
 
-type route = Home | About | Secret [@@deriving state_shape]
+type route = Home | About | Secret
+
+let route_name = function
+  | Home ->
+      "home"
+  | About ->
+      "about"
+  | Secret ->
+      "secret"
+
+let route_states = [ "home"; "about"; "secret" ]
 
 let parse url =
   match Url.to_string url with
@@ -19,15 +29,15 @@ let print = function
   | Secret ->
       Url.of_string "/secret"
 
-let events =
-  Machine.shape
-    ~name:(function
-      | Router.Url_changed _ -> "url changed" | Preload _ -> "preload"
-      )
-    ()
+let event_name = function
+  | Router.Url_changed _ ->
+      "url changed"
+  | Preload _ ->
+      "preload"
 
 let machine =
-  Machine.make ~id:"pages" ~init:Home ~shape:route_shape ~events (fun _ event ->
+  Machine.make ~id:"pages" ~init:Home ~name:route_name ~states:route_states
+    ~event_name (fun _ event ->
       match event with
       | Router.Url_changed url ->
           Machine.Go (parse url)

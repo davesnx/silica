@@ -1,12 +1,35 @@
 open Silica
 
-type event = Start | Short | Long | Again [@@deriving json, event_shape]
-type state = Idle | Waiting | Ready | Timed_out [@@deriving json, state_shape]
+type event = Start | Short | Long | Again [@@deriving json]
+
+let event_name = function
+  | Start ->
+      "start"
+  | Short ->
+      "short"
+  | Long ->
+      "long"
+  | Again ->
+      "again"
+
+type state = Idle | Waiting | Ready | Timed_out [@@deriving json]
+
+let name = function
+  | Idle ->
+      "idle"
+  | Waiting ->
+      "waiting"
+  | Ready ->
+      "ready"
+  | Timed_out ->
+      "timed_out"
+
+let states = [ "idle"; "waiting"; "ready"; "timed_out" ]
 
 let machine =
   let machine =
-    Machine.make ~id:"clock" ~init:Idle ~shape:state_shape ~events:event_shape
-      ~owns:(function
+    Machine.make ~id:"clock" ~init:Idle ~name ~states ~event_name
+      ~during:(function
         | Waiting ->
             [ Source.after 300 Short; Source.after 2000 Long ]
         | Idle | Ready | Timed_out ->

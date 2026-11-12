@@ -9,13 +9,16 @@ let echo =
 module Ticker = struct
   type event = Tick | Bump | Settled of int
   type state = Running of { ticks : int; bumps : int; last : int option }
-  [@@deriving state_shape]
+
+  let name = function Running _ -> "running"
+
+  let states = [ "running" ]
 
   let machine =
     Machine.make_with_props ~id:"ticker"
       ~init:(Running { ticks = 0; bumps = 0; last = None })
-      ~shape:state_shape
-      ~owns:(fun _label (Running data) ->
+      ~name ~states
+      ~during:(fun _label (Running data) ->
         [
           Source.after 10 Tick;
           Remote.call echo data.bumps (function
@@ -75,12 +78,15 @@ module Parent = struct
         heard : (string * int) list;
         label : string;
       }
-  [@@deriving state_shape]
+
+  let name = function Parent _ -> "parent"
+
+  let states = [ "parent" ]
 
   let machine =
     Machine.make ~id:"parent"
       ~init:(Parent { keys = []; heard = []; label = "x" })
-      ~shape:state_shape
+      ~name ~states
       (fun (Parent data) -> function
         | Show keys ->
             Machine.Go (Parent { data with keys })
@@ -107,10 +113,14 @@ end
 
 module Unkeyed = struct
   type event = Nothing
-  type state = Two [@@deriving state_shape]
+  type state = Two
+
+  let name = function Two -> "two"
+
+  let states = [ "two" ]
 
   let machine =
-    Machine.make ~id:"two" ~init:Two ~shape:state_shape (fun Two Nothing ->
+    Machine.make ~id:"two" ~init:Two ~name ~states (fun Two Nothing ->
         Machine.Ignore
     )
 
@@ -143,10 +153,14 @@ let lacks sim needle =
 
 module Task = struct
   type event = Finish
-  type state = Working | Done [@@deriving state_shape]
+  type state = Working | Done
+
+  let name = function Working -> "working" | Done -> "done"
+
+  let states = [ "working"; "done" ]
 
   let machine =
-    Machine.make_with_props ~id:"task" ~init:Working ~shape:state_shape
+    Machine.make_with_props ~id:"task" ~init:Working ~name ~states
       ~final:(function Done -> true | Working -> false)
       ~on_props:(fun _ start_done state ->
         match (start_done, state) with
@@ -176,12 +190,15 @@ end
 module Boss = struct
   type event = Add of int | Finished of int
   type state = Boss of { tasks : int list; finished : int list }
-  [@@deriving state_shape]
+
+  let name = function Boss _ -> "boss"
+
+  let states = [ "boss" ]
 
   let machine =
     Machine.make ~id:"boss"
       ~init:(Boss { tasks = []; finished = [] })
-      ~shape:state_shape
+      ~name ~states
       (fun (Boss data) -> function
         | Add id ->
             Machine.Go (Boss { data with tasks = data.tasks @ [ id ] })
@@ -206,11 +223,20 @@ end
 module Patient = struct
   type event = Settled of (int, string) Remote.answer
   type state = Asking | Answered of int | Gave_up of string
-  [@@deriving state_shape]
+
+  let name = function
+    | Asking ->
+        "asking"
+    | Answered _ ->
+        "answered"
+    | Gave_up _ ->
+        "gave_up"
+
+  let states = [ "asking"; "answered"; "gave_up" ]
 
   let machine =
-    Machine.make ~id:"patient" ~init:Asking ~shape:state_shape
-      ~owns:(function
+    Machine.make ~id:"patient" ~init:Asking ~name ~states
+      ~during:(function
         | Asking ->
             [ Remote.call ~timeout_ms:30 echo 1 (fun r -> Settled r) ]
         | Answered _ | Gave_up _ ->
@@ -325,11 +351,15 @@ let test_unmount_stops_children_first () =
 let test_unmount_orders_children_before_parent () =
   let module Owner = struct
     type event = Tick
-    type state = Owner [@@deriving state_shape]
+    type state = Owner
+
+    let name = function Owner -> "owner"
+
+    let states = [ "owner" ]
 
     let machine =
-      Machine.make ~id:"owner" ~init:Owner ~shape:state_shape
-        ~owns:(fun Owner -> [ Source.after 5 Tick ])
+      Machine.make ~id:"owner" ~init:Owner ~name ~states
+        ~during:(fun Owner -> [ Source.after 5 Tick ])
         (fun Owner Tick -> Machine.Stay [])
 
     let view Owner : event Node.t =
@@ -478,10 +508,14 @@ let test_duplicate_key_is_an_error () =
 
 module Clip = struct
   type event = Copied of bool
-  type state = Copying | Elsewhere of bool option [@@deriving state_shape]
+  type state = Copying | Elsewhere of bool option
+
+  let name = function Copying -> "copying" | Elsewhere _ -> "elsewhere"
+
+  let states = [ "copying"; "elsewhere" ]
 
   let machine =
-    Machine.make_with_props ~id:"clip" ~init:Copying ~shape:state_shape
+    Machine.make_with_props ~id:"clip" ~init:Copying ~name ~states
       ~entry:(fun () -> function
         | Copying ->
             [
@@ -513,10 +547,14 @@ end
 
 module Clip_host = struct
   type event = Show of bool
-  type state = Host of bool [@@deriving state_shape]
+  type state = Host of bool
+
+  let name = function Host _ -> "host"
+
+  let states = [ "host" ]
 
   let machine =
-    Machine.make ~id:"clip-host" ~init:(Host true) ~shape:state_shape
+    Machine.make ~id:"clip-host" ~init:(Host true) ~name ~states
       (fun _ (Show shown) -> Machine.Go (Host shown)
     )
 
@@ -569,11 +607,15 @@ let test_action_result_after_end_is_dropped () =
   Alcotest.(check int) "no child starts again" 1 (Instance.count tree)
 
 module Same_id_int = struct
-  type state = Number of int [@@deriving state_shape]
+  type state = Number of int
+
+  let name = function Number _ -> "number"
+
+  let states = [ "number" ]
 
   let machine =
-    Machine.make ~id:"same" ~init:(Number 0) ~shape:state_shape
-      ~owns:(fun _ -> [ Source.after 1 `Up ])
+    Machine.make ~id:"same" ~init:(Number 0) ~name ~states
+      ~during:(fun _ -> [ Source.after 1 `Up ])
       (fun (Number n) `Up -> Machine.Go (Number (n + 1)))
 
   let component =
@@ -585,11 +627,15 @@ module Same_id_int = struct
 end
 
 module Same_id_text = struct
-  type state = Text of string [@@deriving state_shape]
+  type state = Text of string
+
+  let name = function Text _ -> "text"
+
+  let states = [ "text" ]
 
   let machine =
-    Machine.make ~id:"same" ~init:(Text "") ~shape:state_shape
-      ~owns:(fun _ -> [ Source.after 1 `Up ])
+    Machine.make ~id:"same" ~init:(Text "") ~name ~states
+      ~during:(fun _ -> [ Source.after 1 `Up ])
       (fun (Text s) `Up -> Machine.Go (Text (s ^ "!")))
 
   let component =
@@ -599,11 +645,15 @@ module Same_id_text = struct
 end
 
 module Other_id = struct
-  type state = Number of int [@@deriving state_shape]
+  type state = Number of int
+
+  let name = function Number _ -> "number"
+
+  let states = [ "number" ]
 
   let machine =
-    Machine.make ~id:"other" ~init:(Number 0) ~shape:state_shape
-      ~owns:(fun _ -> [ Source.after 1 `Up ])
+    Machine.make ~id:"other" ~init:(Number 0) ~name ~states
+      ~during:(fun _ -> [ Source.after 1 `Up ])
       (fun (Number n) `Up -> Machine.Go (Number (n + 1)))
 
   let component =
@@ -617,12 +667,16 @@ end
 module Switcher = struct
   type shown = Int | Text | Other
   type event = Show of shown | Redraw
-  type state = Showing of shown * int [@@deriving state_shape]
+  type state = Showing of shown * int
+
+  let name = function Showing _ -> "showing"
+
+  let states = [ "showing" ]
 
   let machine =
     Machine.make ~id:"switcher"
       ~init:(Showing (Int, 0))
-      ~shape:state_shape
+      ~name ~states
       (fun (Showing (shown, draws)) -> function
         | Show next ->
             Machine.Go (Showing (next, draws))
@@ -674,12 +728,16 @@ let test_same_id_other_types_is_an_error () =
 
 module Rebuilt = struct
   type event = Redraw
-  type state = Drawn of int [@@deriving state_shape]
+  type state = Drawn of int
+
+  let name = function Drawn _ -> "drawn"
+
+  let states = [ "drawn" ]
 
   let child () =
     Component.make
       (Machine.make ~id:"same" ~init:0
-         ~shape:(Machine.shape ~name:(fun _ -> "counting") ())
+         ~name:(fun _ -> "counting")
          (fun count () -> Machine.Go (count + 1))
       )
       (fun count ->
@@ -690,7 +748,7 @@ module Rebuilt = struct
 
   let component =
     Component.make
-      (Machine.make ~id:"rebuilt" ~init:(Drawn 0) ~shape:state_shape
+      (Machine.make ~id:"rebuilt" ~init:(Drawn 0) ~name ~states
          (fun (Drawn draws) Redraw -> Machine.Go (Drawn (draws + 1))
        )
       )

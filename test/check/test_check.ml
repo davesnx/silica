@@ -236,12 +236,16 @@ let test_functional_value () =
   | report ->
       Alcotest.fail ("expected Invalid_check, got:\n" ^ print report)
 
-type wait = Waiting | Over [@@deriving state_shape]
+type wait = Waiting | Over
+
+let wait_name = function Waiting -> "waiting" | Over -> "over"
+
+let wait_states = [ "waiting"; "over" ]
 
 let test_after_is_enabled () =
   let machine =
-    Machine.make ~id:"c" ~init:Waiting ~shape:wait_shape
-      ~owns:(function Waiting -> [ Source.after 100 Go ] | Over -> [])
+    Machine.make ~id:"c" ~init:Waiting ~name:wait_name ~states:wait_states
+      ~during:(function Waiting -> [ Source.after 100 Go ] | Over -> [])
       (fun state event ->
         match (state, event) with
         | Waiting, Go ->
@@ -250,7 +254,7 @@ let test_after_is_enabled () =
             Machine.Ignore
       )
   in
-  let view state = Node.text (Machine.shape_name wait_shape state) in
+  let view state = Node.text (wait_name state) in
   violation "dead-end" [ "Go" ] (Check.component (Component.make machine view))
 
 let test_inputs () =
@@ -288,11 +292,11 @@ let test_pp () =
     \  The property \"non-negative\" does not hold in state active.\n\
     \  hint: Change the update or the view so that \"non-negative\" holds in \
      state active, or correct the property.\n\
-    \  1. active -> active: (unnamed event), by the view offers press on \
+    \  1. active -> active: press button \"+\", by the view offers press on \
      button \"+\" at button\n\
-    \  2. active -> active: (unnamed event), by the view offers press on \
+    \  2. active -> active: press button \"+\", by the view offers press on \
      button \"+\" at button[1]\n\
-    \  3. active -> active: (unnamed event), by the view offers press on \
+    \  3. active -> active: press button \"-\", by the view offers press on \
      button \"-\" at button\n\
     \  state: active\n\
     \  view:\n\
@@ -325,12 +329,17 @@ let unnamed_child_component =
   let view _ = Node.element "button" [ Attr.on_press Dec ] [] in
   Component.make machine view
 
-type props_child = Showing [@@deriving state_shape]
+type props_child = Showing
+
+let props_child_name = function Showing -> "showing"
+
+let props_child_states = [ "showing" ]
 
 let props_child_component =
   Component.make_with_props
     (Machine.make_with_props ~id:"props-child" ~init:Showing
-       ~shape:props_child_shape (fun _ Showing () -> Machine.Ignore
+       ~name:props_child_name ~states:props_child_states (fun _ Showing () ->
+         Machine.Ignore
      )
     )
     (fun number Showing -> Node.text (string_of_int number))
@@ -592,13 +601,26 @@ let test_link_to_not_found_allowed_without_predicate () =
   passes (app ~extra:[ raw_link "/items/007" ] ())
 
 type stale_event = Leave | Back | Tick
-type stale_state = Waiting | Left | Fired | Late [@@deriving state_shape]
+type stale_state = Waiting | Left | Fired | Late
+
+let stale_state_name = function
+  | Waiting ->
+      "waiting"
+  | Left ->
+      "left"
+  | Fired ->
+      "fired"
+  | Late ->
+      "late"
+
+let stale_state_states = [ "waiting"; "left"; "fired"; "late" ]
 
 let stale_component =
   let machine =
-    Machine.make ~id:"timer" ~init:Waiting ~shape:stale_state_shape
+    Machine.make ~id:"timer" ~init:Waiting ~name:stale_state_name
+      ~states:stale_state_states
       ~final:(function Fired | Late -> true | Waiting | Left -> false)
-      ~owns:(function Waiting -> [ Source.after 10 Tick ] | _ -> [])
+      ~during:(function Waiting -> [ Source.after 10 Tick ] | _ -> [])
       (fun state event ->
         match (state, event) with
         | Waiting, Leave ->
@@ -661,13 +683,17 @@ let test_timer_stops_on_exit () =
     "the allowance applied once" [ 1 ]
     (List.map snd report.allowed)
 
-type broken = A | B [@@deriving state_shape]
+type broken = A | B
+
+let broken_name = function A -> "a" | B -> "b"
+
+let broken_states = [ "a"; "b" ]
 
 let broken_component ~go =
   let machine =
-    Machine.make ~id:"broken" ~init:A ~shape:broken_shape
+    Machine.make ~id:"broken" ~init:A ~name:broken_name ~states:broken_states
       ~final:(function B -> true | A -> false)
-      ~owns:(function A -> [ Source.after 5 (Dec : ev) ] | B -> [])
+      ~during:(function A -> [ Source.after 5 (Dec : ev) ] | B -> [])
       (fun state (event : ev) ->
         match (state, event) with
         | A, Inc ->
@@ -706,9 +732,7 @@ let test_ignored_event () =
   Alcotest.(check (list string))
     "the trace ends with the ignored event" [ "Go" ]
     (List.map (show_input show) (inputs violation));
-  Alcotest.(check string)
-    "the state before it" "a"
-    (Machine.shape_name broken_shape violation.state);
+  Alcotest.(check string) "the state before it" "a" (broken_name violation.state);
   Alcotest.(check (option string))
     "the element" (Some "button[2]") violation.element;
   ( match Check.steps violation.counterexample with
@@ -732,11 +756,11 @@ let test_ignored_event () =
   Alcotest.(check string)
     "the message names the element and the state"
     "In state a, the view offers press on button \"go\" at button[2] gives the \
-     event (unnamed), and the update returns Ignore."
+     event press button \"go\", and the update returns Ignore."
     violation.message;
   Alcotest.(check bool)
     "the hint says how to fix it" true
-    (contains violation.hint "Handle (unnamed) in state a");
+    (contains violation.hint "Handle press button \"go\" in state a");
   Alcotest.(check string)
     "the view at the failing step"
     "button \"inc\" [press]\nbutton \"go\" [press]\n" violation.view;
@@ -763,8 +787,8 @@ let test_ignored_event () =
 let test_ignored_timer_event () =
   let machine =
     Machine.make ~id:"timer" ~init:0
-      ~shape:(Machine.shape ~name:(fun _ -> "counting") ())
-      ~owns:(fun _ -> [ Source.after 5 (Dec : ev) ])
+      ~name:(fun _ -> "counting")
+      ~during:(fun _ -> [ Source.after 5 (Dec : ev) ])
       (fun n (event : ev) ->
         match event with
         | Inc ->
@@ -780,8 +804,8 @@ let test_ignored_held_event_is_allowed () =
   let panel = Ref.make "panel" in
   let machine =
     Machine.make ~id:"held" ~init:0
-      ~shape:(Machine.shape ~name:(fun _ -> "open") ())
-      ~owns:(fun _ ->
+      ~name:(fun _ -> "open")
+      ~during:(fun _ ->
         [ Source.focus_trap panel; Source.resize panel (fun _ -> (Dec : ev)) ]
       )
       (fun n (event : ev) ->
@@ -817,7 +841,11 @@ module Dialog = struct
     | Seen visible ->
         "Seen " ^ string_of_bool visible
 
-  type state = Closed | Opened [@@deriving state_shape]
+  type state = Closed | Opened
+
+  let name = function Closed -> "closed" | Opened -> "opened"
+
+  let states = [ "closed"; "opened" ]
 
   let panel = Ref.make "panel"
 
@@ -843,8 +871,8 @@ module Dialog = struct
       else
         []
     in
-    Machine.make ~id:"dialog" ~init:Closed ~shape:state_shape
-      ~owns:(function Closed -> [] | Opened -> sources)
+    Machine.make ~id:"dialog" ~init:Closed ~name ~states
+      ~during:(function Closed -> [] | Opened -> sources)
       (fun state event ->
         match (state, event) with
         | Closed, Open ->
@@ -1014,7 +1042,7 @@ let test_live_rejects_client_only_source () =
   Alcotest.(check string) "rule" "live-uses-client-source" violation.rule;
   Alcotest.(check string)
     "reached in the opened state" "opened"
-    (Machine.shape_name Dialog.state_shape violation.state);
+    (Dialog.name violation.state);
   Alcotest.(check int) "after one event" 1 (List.length (inputs violation));
   Alcotest.(check bool)
     "the hint names the source" true
@@ -1114,11 +1142,15 @@ let test_action_results_arrive () =
 
 module Watcher = struct
   type event = Got of string
-  type state = Watching of string list [@@deriving state_shape]
+  type state = Watching of string list
+
+  let name = function Watching _ -> "watching"
+
+  let states = [ "watching" ]
 
   let machine =
-    Machine.make ~id:"watcher" ~init:(Watching []) ~shape:state_shape
-      ~owns:(fun _ ->
+    Machine.make ~id:"watcher" ~init:(Watching []) ~name ~states
+      ~during:(fun _ ->
         [
           Source.scroll (fun (s : Scroll.t) ->
               Got (Printf.sprintf "scroll:%.0f" s.top)
@@ -1268,31 +1300,40 @@ module Search = struct
     | Searching of string
     | Shown of string * string list
     | Failed of string
-  [@@deriving state_shape]
+
+  let name = function
+    | Idle ->
+        "idle"
+    | Typing _ ->
+        "typing"
+    | Searching _ ->
+        "searching"
+    | Shown _ ->
+        "shown"
+    | Failed _ ->
+        "failed"
+
+  let states = [ "idle"; "typing"; "searching"; "shown"; "failed" ]
 
   let endpoint =
     Remote.declare ~path:"/api/search" ~input:Codec.string
       ~output:(Codec.list Codec.string) ~rejected:Codec.string
 
   let machine =
-    Machine.make ~id:"search" ~init:Idle ~shape:state_shape
-      ~events:
-        (Machine.shape
-           ~name:(function
-             | Input _ ->
-                 "input"
-             | Clear ->
-                 "clear"
-             | Fire ->
-                 "fire"
-             | Got _ ->
-                 "got"
-             | Retry ->
-                 "retry"
-             )
-           ()
+    Machine.make ~id:"search" ~init:Idle ~name ~states
+      ~event_name:(function
+        | Input _ ->
+            "input"
+        | Clear ->
+            "clear"
+        | Fire ->
+            "fire"
+        | Got _ ->
+            "got"
+        | Retry ->
+            "retry"
         )
-      ~owns:(function
+      ~during:(function
         | Typing _ ->
             [ Source.after 300 Fire ]
         | Searching query ->
@@ -1424,13 +1465,17 @@ let test_paths () =
        paths
     )
 
-type kept = Counting of int [@@deriving state_shape]
+type kept = Counting of int
+
+let kept_name = function Counting _ -> "counting"
+
+let kept_states = [ "counting" ]
 
 let test_kept_steps_are_labels_not_edges () =
   let machine =
-    Machine.make ~id:"kept" ~init:(Counting 0) ~shape:kept_shape
-      ~events:(Machine.shape ~name:show ())
-      ~owns:(fun _ -> [ Source.after 5 (Dec : ev) ])
+    Machine.make ~id:"kept" ~init:(Counting 0) ~name:kept_name
+      ~states:kept_states ~event_name:show
+      ~during:(fun _ -> [ Source.after 5 (Dec : ev) ])
       (fun (Counting n) (event : ev) ->
         match event with
         | Inc ->
@@ -1459,7 +1504,15 @@ let test_kept_steps_are_labels_not_edges () =
        )
     )
 
-type item = Shown_item | Loading_item of int [@@deriving state_shape]
+type item = Shown_item | Loading_item of int
+
+let item_name = function
+  | Shown_item ->
+      "shown_item"
+  | Loading_item _ ->
+      "loading_item"
+
+let item_states = [ "shown_item"; "loading_item" ]
 
 let item_endpoint =
   Remote.declare ~path:"/api/item" ~input:Codec.int ~output:Codec.string
@@ -1467,8 +1520,9 @@ let item_endpoint =
 
 let item_component =
   let machine =
-    Machine.make_with_props ~id:"item" ~init:Shown_item ~shape:item_shape
-      ~owns:(fun number -> function
+    Machine.make_with_props ~id:"item" ~init:Shown_item ~name:item_name
+      ~states:item_states
+      ~during:(fun number -> function
         | Shown_item ->
             []
         | Loading_item _ ->
@@ -1492,8 +1546,7 @@ let item_component =
       )
   in
   Component.make_with_props machine (fun number state ->
-      Node.text
-        (Printf.sprintf "%d %s" number (Machine.shape_name item_shape state))
+      Node.text (Printf.sprintf "%d %s" number (item_name state))
   )
 
 let test_props_input () =
@@ -1541,13 +1594,29 @@ let test_props_input () =
        (inputs violation)
     )
 
-type step_state = Zero | One | Two | Three [@@deriving state_shape]
-type step_event = Next | Broken [@@deriving event_shape]
+type step_state = Zero | One | Two | Three
+
+let step_state_name = function
+  | Zero ->
+      "zero"
+  | One ->
+      "one"
+  | Two ->
+      "two"
+  | Three ->
+      "three"
+
+let step_state_states = [ "zero"; "one"; "two"; "three" ]
+
+type step_event = Next | Broken
+
+let step_event_event_name = function Next -> "next" | Broken -> "broken"
 
 let three_breaches ?(update = fun state event -> (state, event)) () =
   let machine =
-    Machine.make ~id:"three" ~init:Zero ~shape:step_state_shape
-      ~events:step_event_shape (fun state event ->
+    Machine.make ~id:"three" ~init:Zero ~name:step_state_name
+      ~states:step_state_states ~event_name:step_event_event_name
+      (fun state event ->
         let state, event = update state event in
         match (state, event) with
         | Zero, Next ->
@@ -1714,8 +1783,9 @@ let test_raised () =
     "the search does not go on from a step that raised" [ "two"; "three" ]
     report.unreached;
   let machine =
-    Machine.make ~id:"view-raises" ~init:Zero ~shape:step_state_shape
-      ~events:step_event_shape (fun state event ->
+    Machine.make ~id:"view-raises" ~init:Zero ~name:step_state_name
+      ~states:step_state_states ~event_name:step_event_event_name
+      (fun state event ->
         match (state, event) with
         | Zero, Next ->
             Machine.Go One
@@ -1842,8 +1912,8 @@ let impure ~source =
   let starting = ref true in
   let machine =
     Machine.make ~id:"impure" ~init:0
-      ~shape:(Machine.shape ~name:(fun _ -> "on") ())
-      ~owns:(fun _ ->
+      ~name:(fun _ -> "on")
+      ~during:(fun _ ->
         if !starting then
           [ source ]
         else
@@ -1973,8 +2043,8 @@ let test_dialog_with_trap_passes () =
   let panel = Ref.make "panel" in
   let machine =
     Machine.make ~id:"trapped" ~init:0
-      ~shape:(Machine.shape ~name:(fun _ -> "open") ())
-      ~owns:(fun _ -> [ Source.focus_trap panel ])
+      ~name:(fun _ -> "open")
+      ~during:(fun _ -> [ Source.focus_trap panel ])
       (fun _ (event : ev) ->
         match event with Inc -> Machine.Stay [] | _ -> Machine.Ignore
       )
@@ -2000,9 +2070,8 @@ let test_dialog_focus_follows_the_traps () =
   let panel = Ref.make "panel" in
   let machine =
     Machine.make ~id:"traps" ~init:0
-      ~shape:
-        (Machine.shape ~name:(function 0 -> "trapped" | _ -> "untrapped") ())
-      ~owns:(function 0 -> [ Source.focus_trap panel ] | _ -> [])
+      ~name:(function 0 -> "trapped" | _ -> "untrapped")
+      ~during:(function 0 -> [ Source.focus_trap panel ] | _ -> [])
       (fun state (event : ev) ->
         match (state, event) with
         | 0, Inc ->
@@ -2449,9 +2518,117 @@ let test_every_rule () =
     )
     fixtures
 
+type save_event =
+  | Save
+  | Saved_answer of (string, string) Remote.answer
+  | Reset
+type save_state = Idle | Saving | Saved | Lost [@@warning "-37"]
+
+let save_endpoint =
+  Remote.declare ~path:"/api/save" ~input:Codec.string ~output:Codec.string
+    ~rejected:Codec.string
+
+let save_name = function
+  | Idle ->
+      "idle"
+  | Saving ->
+      "saving"
+  | Saved ->
+      "saved"
+  | Lost ->
+      "lost"
+
+let save_machine ?states () =
+  Machine.make ~id:"save" ~init:Idle ~name:save_name ?states
+    ~during:(function
+      | Saving ->
+          [
+            Remote.call save_endpoint "draft" (fun answer -> Saved_answer answer);
+          ]
+      | Saved ->
+          [ Source.after 2000 Reset ]
+      | Idle | Lost ->
+          []
+      )
+    (fun state event ->
+      match (state, event) with
+      | Idle, Save ->
+          Machine.Go Saving
+      | Saving, Saved_answer (Remote.Ok _) ->
+          Machine.Go Saved
+      | Saving, Saved_answer (Remote.Rejected _ | Remote.Failed _) ->
+          Machine.Go Idle
+      | Saved, Reset ->
+          Machine.Go Idle
+      | _ ->
+          Machine.Ignore
+    )
+
+let save_view = function
+  | Idle ->
+      btn "Save" Save
+  | Saving | Saved | Lost ->
+      Node.text "saving"
+
+let save_check ?states ?properties () =
+  Check.run
+    (Check.component ?properties
+       ~samples:[ Check.answers save_endpoint [ "noon" ] ]
+       (Component.make (save_machine ?states ()) save_view)
+    )
+
+let test_unlisted_states () =
+  let report = save_check () in
+  Alcotest.(check (list string))
+    "no states: unlisted" [ "save" ] report.unlisted;
+  Alcotest.(check (list string))
+    "no states: no unreached state" [] report.unreached;
+  let report = save_check ~states:[ "idle"; "saving"; "saved"; "lost" ] () in
+  Alcotest.(check (list string)) "states: none unlisted" [] report.unlisted;
+  Alcotest.(check (list string))
+    "states: the unreached ones" [ "lost" ] report.unreached
+
+let test_labels_by_cause () =
+  let report = save_check () in
+  let edges =
+    List.map
+      (fun (label : Spec.label) ->
+        Printf.sprintf "%s -> %s on %s" label.from label.target label.event
+      )
+      (List.hd report.specs).edges
+  in
+  List.iter
+    (fun edge -> Alcotest.(check bool) edge true (List.mem edge edges))
+    [
+      "idle -> saving on press button \"Save\"";
+      "saving -> saved on ok /api/save";
+      "saving -> idle on failed /api/save";
+      "saved -> idle on after 2000ms";
+    ];
+  let never_saved =
+    Check.always ~name:"never saved"
+      (Check.state (function Saved -> false | Idle | Saving | Lost -> true))
+  in
+  let violation = first (save_check ~properties:[ never_saved ] ()) in
+  Alcotest.(check (list string))
+    "the steps of the counterexample are labelled by cause"
+    [ "press button \"Save\""; "ok /api/save" ]
+    (List.map
+       (fun (step : _ Check.step) -> step.event)
+       (Check.steps violation.counterexample)
+    )
+
 let () =
   Alcotest.run "check"
     [
+      ( "names",
+        [
+          Alcotest.test_case "a machine with no states is unlisted" `Quick
+            test_unlisted_states;
+          Alcotest.test_case "a machine with no event_name is labelled by cause"
+            `Quick test_labels_by_cause;
+        ]
+      );
       ( "component",
         [
           Alcotest.test_case "correct component passes" `Quick test_ok;

@@ -1,28 +1,36 @@
 open Silica
 
 type event = Save | Answer of (int, string) Remote.answer
-type state = Editing | Saving | Saved | Failed [@@deriving state_shape]
+type state = Editing | Saving | Saved | Failed
+
+let name = function
+  | Editing ->
+      "editing"
+  | Saving ->
+      "saving"
+  | Saved ->
+      "saved"
+  | Failed ->
+      "failed"
+
+let states = [ "editing"; "saving"; "saved"; "failed" ]
 
 let endpoint =
   Remote.declare ~path:"/api/save" ~input:Codec.unit ~output:Codec.int
     ~rejected:Codec.string
 
-let events =
-  Machine.shape
-    ~name:(function
-      | Save ->
-          "save"
-      | Answer (Ok _) ->
-          "answer ok"
-      | Answer _ ->
-          "answer failed"
-      )
-    ()
+let event_name = function
+  | Save ->
+      "save"
+  | Answer (Ok _) ->
+      "answer ok"
+  | Answer _ ->
+      "answer failed"
 
 let machine =
-  Machine.make ~id:"lost" ~init:Editing ~shape:state_shape ~events
+  Machine.make ~id:"lost" ~init:Editing ~name ~states ~event_name
     ~final:(function Saved -> true | Editing | Saving | Failed -> false)
-    ~owns:(function
+    ~during:(function
       | Saving ->
           [ Remote.call endpoint () (fun answer -> Answer answer) ]
       | Editing | Saved | Failed ->

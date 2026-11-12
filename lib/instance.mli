@@ -17,8 +17,8 @@
     - A new child starts its machine with its props. A child that stays gets its
       new props when they changed (see {!Machine.set_props}).
     - A child that is no longer rendered ends: the actions of leaving its state,
-      and a {!Action.Stop} for every timer and source it still owns, come first
-      for its own children, then for it.
+      and a {!Action.Stop} for every timer and source that still runs, come
+      first for its own children, then for it.
     - Each entry of a state gets a number. Timer and source ids are
       ["<instance>.<entry>/<machine>/<state>/<key>"] (see {!Source.key}), so two
       instances of one machine never share an id. A message from a timer or

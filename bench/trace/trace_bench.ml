@@ -7,9 +7,7 @@ let rows = 1000
 let component =
   Component.make
     (Machine.make ~id:"rows" ~init:0
-       ~shape:(Machine.shape ~name:(fun _ -> "shown") ~names:[ "shown" ] ())
-       ~events:
-         (Machine.shape ~name:(function Step -> "step" | Pick _ -> "pick") ())
+       ~name:(fun _ -> "shown")
        (fun count -> function
          | Step -> Machine.Go (count + 1) | Pick _ -> Machine.Ignore
          )

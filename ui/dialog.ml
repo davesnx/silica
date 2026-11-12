@@ -37,7 +37,10 @@ type 'ce event =
   | Close_request of Popup.reason
   | Content of 'ce
 
-type state = Closed | Open [@@deriving state_shape]
+type state = Closed | Open [@@deriving fingerprint]
+
+let name = function Closed -> "closed" | Open -> "open"
+let states = [ "closed"; "open" ]
 
 let parts (props : (_, _) props) = Popup.parts props.id
 
@@ -58,27 +61,19 @@ let dismisses (props : (_, _) props) = function
 let close (props : (_, _) props) : (state, _ event) Machine.next =
   Popup.close ~focus:(Option.is_some props.trigger) (parts props) Closed
 
-let event_shape content =
-  Machine.shape
-    ~name:(function
-      | Open_request reason ->
-          "open_request " ^ Popup.reason_name reason
-      | Close_request reason ->
-          "close_request " ^ Popup.reason_name reason
-      | Content event -> (
-          match content with
-          | Some content ->
-              Machine.shape_name content event
-          | None ->
-              "content"
-        )
-      )
-    ()
+let event_name content_name = function
+  | Open_request reason ->
+      "open_request " ^ Popup.reason_name reason
+  | Close_request reason ->
+      "close_request " ^ Popup.reason_name reason
+  | Content event -> (
+      match content_name with Some name -> name event | None -> "content"
+    )
 
-let machine ~id ~closes ?events () =
-  Machine.make_with_props ~id ~init:Closed ~shape:state_shape
-    ~events:(event_shape events)
-    ~owns:(fun props -> function
+let machine ~id ~closes ?event_name:content_name () =
+  Machine.make_with_props ~id ~init:Closed ~name ~states
+    ~event_name:(event_name content_name) ~fingerprint:state_fingerprint
+    ~during:(fun props -> function
       | Open ->
           let parts = parts props in
           [
@@ -221,10 +216,12 @@ type ('content, 'ce) t = {
   closes : 'ce -> bool;
 }
 
-let component ~id ~closes ?events content =
+let component ~id ~closes ?event_name content =
   {
     component =
-      Component.make_with_props (machine ~id ~closes ?events ()) (view ~content);
+      Component.make_with_props
+        (machine ~id ~closes ?event_name ())
+        (view ~content);
     closes;
   }
 

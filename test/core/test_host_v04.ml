@@ -268,7 +268,11 @@ module Held = struct
     | Seen of bool
 
   type data = { opened : bool; log : string list }
-  type state = Shut of data | Popup of data [@@deriving state_shape]
+  type state = Shut of data | Popup of data
+
+  let name = function Shut _ -> "shut" | Popup _ -> "popup"
+
+  let states = [ "shut"; "popup" ]
 
   let panel = Ref.make "panel"
   let box = Ref.make "box"
@@ -288,8 +292,8 @@ module Held = struct
     let note data text = { data with log = text :: data.log } in
     Machine.make ~id:"held"
       ~init:(Shut { opened = false; log = [] })
-      ~shape:state_shape
-      ~owns:(function Shut _ -> [] | Popup _ -> sources)
+      ~name ~states
+      ~during:(function Shut _ -> [] | Popup _ -> sources)
       (fun state event ->
         match (state, event) with
         | Shut data, Open ->
@@ -417,13 +421,16 @@ let test_sim_sources () =
 module Bomb = struct
   type event = Inc | Boom | Break_view | Tick
   type state = Live of { count : int; ticks : int; broken : bool }
-  [@@deriving state_shape]
+
+  let name = function Live _ -> "live"
+
+  let states = [ "live" ]
 
   let machine =
     Machine.make ~id:"bomb"
       ~init:(Live { count = 0; ticks = 0; broken = false })
-      ~shape:state_shape
-      ~owns:(fun _ -> [ Source.after 10 Tick ])
+      ~name ~states
+      ~during:(fun _ -> [ Source.after 10 Tick ])
       (fun (Live data) -> function
         | Inc ->
             Machine.Go (Live { data with count = data.count + 1 })
@@ -453,12 +460,16 @@ end
 
 module Shell = struct
   type event = Bump | Child of Bomb.event
-  type state = Shell of { bumps : int } [@@deriving state_shape]
+  type state = Shell of { bumps : int }
+
+  let name = function Shell _ -> "shell"
+
+  let states = [ "shell" ]
 
   let machine =
     Machine.make ~id:"shell"
       ~init:(Shell { bumps = 0 })
-      ~shape:state_shape
+      ~name ~states
       (fun (Shell data) -> function
         | Bump ->
             Machine.Go (Shell { bumps = data.bumps + 1 })
@@ -619,10 +630,14 @@ let test_no_boundary_exception_escapes () =
 
 module Nested = struct
   type event = Nothing
-  type state = Only [@@deriving state_shape]
+  type state = Only
+
+  let name = function Only -> "only"
+
+  let states = [ "only" ]
 
   let machine =
-    Machine.make ~id:"nested" ~init:Only ~shape:state_shape (fun Only Nothing ->
+    Machine.make ~id:"nested" ~init:Only ~name ~states (fun Only Nothing ->
         Machine.Ignore
     )
 

@@ -10,17 +10,14 @@ type event = Bump
 
 let machine =
   Machine.make_with_props ~id:"row" ~init:{ clicks = 0; seen = -1 }
-    ~shape:
-      (Machine.shape
-         ~name:(fun state ->
-           if state.clicks >= 2 then
-             "done"
-           else
-             "counting"
-         )
-         ~names:[ "counting"; "done" ] ()
-      )
-    ~events:(Machine.shape ~name:(fun Bump -> "bump") ())
+    ~name:(fun state ->
+      if state.clicks >= 2 then
+        "done"
+      else
+        "counting"
+    )
+    ~states:[ "counting"; "done" ]
+    ~event_name:(fun Bump -> "bump")
     ~final:(fun state -> state.clicks >= 2)
     ~on_props:(fun _ props state -> Go { state with seen = props.label })
     (fun _ state Bump -> Go { state with clicks = state.clicks + 1 })

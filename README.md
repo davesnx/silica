@@ -13,7 +13,7 @@ Most UI bugs aren't rendering bugs, they are behaviour bugs. The spinner that ne
 Silica takes a strong position on this:
 
 - **Behaviour is a machine, not a side effect of rendering.** The states of a machine are the constructors of a plain OCaml variant, and each state carries its own data. `Saved` carries the time, `Failed` carries the error, `Saving` carries nothing. A state that can't exist can't be written.
-- **A state owns its resources.** Timers, calls and subscriptions are what a state owns: one `owns` function gives them for each state. They start when the machine enters it and stop when it leaves it. There is nothing to clean up, so there is nothing to forget to clean up.
+- **A state owns its resources.** Timers, calls and subscriptions run during a state: one `during` function gives them for each state. They start when the machine enters it and stop when it leaves it. There is nothing to clean up, so there is nothing to forget to clean up.
 - **Handlers are data.** `on_press=Save` is an event value, not a closure. So a view is plain data, and a program can read it: the server renders it, the browser diffs it, and the checker finds every event in it.
 - **One language, both sides.** The machine, the view, the routes and the endpoints are written once in OCaml. The server renders the first HTML with the answers of its calls, and the browser adopts that HTML and doesn't call again. A Remote endpoint is one typed value shared by the client that calls it and the server that implements it.
 - **If it's a machine, check it.** A statechart is small enough to explore in full. The checker runs every event in every reachable state, checks properties of each view (every pressable element has a name a screen reader can read, no dead ends, every running timer belongs to the current state, no button whose event the machine ignores) and gives the shortest list of events that breaks one. The spec that a check finds exports to [Quint](https://quint-lang.org) and Graphviz.
@@ -22,7 +22,7 @@ The browser, the server and the model checker are three hosts of the same machin
 
 ## Features
 
-- **[Machines](docs/machines.mld)**: plain variant states, one update function that returns `Go`, `Stay`, `Reenter` or `Ignore`, and timers, calls and sources owned by a state (`~owns`), compared by key after each step
+- **[Machines](docs/machines.mld)**: plain variant states, one update function that returns `Go`, `Stay`, `Reenter` or `Ignore`, and timers, calls and sources that run during a state (`~during`), compared by key after each step
 - **[Views in JSX](docs/components.mld)** with [mlx](https://github.com/ocaml-mlx/mlx), child components, props and output through function props
 - **[Local, Remote and Live data](docs/data.mld)**: client data, typed endpoints, and server data pushed over a socket to topics and islands, plus [optimistic changes](docs/optimistic.mld)
 - **[Server render and hydration](docs/hydration.mld)**: the first HTML holds the answers of the calls, so a page reads with JavaScript off
@@ -36,7 +36,7 @@ The browser, the server and the model checker are three hosts of the same machin
 
 ## Example
 
-A button that saves a draft. It calls the server, shows the time of the save for two seconds, and goes back to idle. Four states, one Remote call, one timer. `[@@deriving state_shape]` and `[@@deriving event_shape]` name the states and the events for the checker:
+A button that saves a draft. It calls the server, shows the time of the save for two seconds, and goes back to idle. Four states, one Remote call, one timer. The function `name` names the state of each snapshot, and `states` lists the names, so the checker can report a state that no run reaches:
 
 ```ocaml
 open Silica
@@ -46,13 +46,23 @@ let save =
     ~rejected:Codec.string
 
 type event = Save | Answer of (string, string) Remote.answer | Reset
-[@@deriving event_shape]
+type state = Idle | Saving | Saved of string | Failed
 
-type state = Idle | Saving | Saved of string | Failed [@@deriving state_shape]
+let name = function
+  | Idle ->
+      "idle"
+  | Saving ->
+      "saving"
+  | Saved _ ->
+      "saved"
+  | Failed ->
+      "failed"
+
+let states = [ "idle"; "saving"; "saved"; "failed" ]
 
 let machine =
-  Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
-    ~owns:(function
+  Machine.make ~id:"save" ~init:Idle ~name ~states
+    ~during:(function
       | Saving ->
           [ Remote.call save "draft" (fun answer -> Answer answer) ]
       | Saved _ ->

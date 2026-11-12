@@ -21,7 +21,7 @@ default; [--json] prints the protocol messages, one per line.
 
 - [silica inspect targets]: the pages and the server.
 - [silica inspect tree [--target T] [--machine ID] [--path PATH]]: each
-  running instance with its machine, state, the timers and sources it owns,
+  running instance with its machine, state, the timers and sources that run,
   and its snapshot when the machine registered its codecs (see
   {!Silica.Machine.register_codecs}).
 - [silica inspect tail [--target T] [--machine ID]... [--path PATH]
@@ -86,16 +86,16 @@ connects again; the hub answers a [tree] request with it:
 v}
 
 [mount] is an instance that started, with its state, data, props and
-[owns], the timers, calls, subscriptions and held sources it owns, with the
-time each started:
+[owns], the timers, calls, subscriptions and held sources that run during its
+snapshot, with the time each started:
 
 {v
 {"t":"mount","target":"tab-002d","path":"router/:home/3:votes","machine":"votes","state":"watching","owns":[{"kind":"subscription","id":"4.0/votes/watching/live:votes main","topic":"votes","since":1794454000361.0}]}
 v}
 
 [step] is one record of the transition log as {!Silica.Transition.codec}
-writes it, with [target] and [owns] (what the instance owns after the step;
-left out for an [unhandled] step). [data] and [snapshot] are there when the
+writes it, with [target] and [owns] (what runs during the snapshot after the
+step; left out for an [unhandled] step). [data] and [snapshot] are there when the
 machine registered its codecs:
 
 {v

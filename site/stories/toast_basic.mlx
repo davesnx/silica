@@ -3,12 +3,11 @@ open Silica_ui
 
 type props = { id : string; priority : Toast.priority }
 type page = { toasts : Toast.toast list; next : int }
-type event = Add | Closed of string [@@deriving event_shape]
+type event = Add | Closed of string
 
 let machine =
   Machine.make_with_props ~id:"toast-basic" ~init:{ toasts = []; next = 1 }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun props page event ->
       match event with
       | Add ->

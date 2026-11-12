@@ -39,12 +39,16 @@ let u s = Url.of_string s
 
 module Page = struct
   type event = Bump
-  type state = Page of int [@@deriving state_shape]
+  type state = Page of int
+
+  let name = function Page _ -> "page"
+
+  let states = [ "page" ]
 
   let machine =
-    Machine.make_with_props ~id:"issue" ~init:(Page 0) ~shape:state_shape
+    Machine.make_with_props ~id:"issue" ~init:(Page 0) ~name ~states
       ~entry:(fun _ _ -> [ Action.Set_title "issue" ])
-      ~owns:(fun _ _ -> [ Source.after 5 Bump ])
+      ~during:(fun _ _ -> [ Source.after 5 Bump ])
       (fun _ (Page bumps) Bump -> Machine.Go (Page (bumps + 1)))
 
   let view id (Page bumps) : event Node.t =
@@ -60,7 +64,7 @@ module Static = struct
   let make name =
     let machine =
       Machine.make ~id:name ~init:()
-        ~shape:(Machine.shape ~name:(fun () -> name) ())
+        ~name:(fun () -> name)
         ~entry:(fun () -> [ Action.Set_title name ])
         (fun () () -> Machine.Ignore)
     in
@@ -132,9 +136,9 @@ let test_codecs () =
     | Ok (Router.Url_changed _) | Error _ ->
         false
     );
-  Alcotest.(check (list string))
+  Alcotest.(check (list (option string)))
     "event names"
-    [ "url changed"; "preload" ]
+    [ Some "url changed"; Some "preload" ]
     (List.map
        (Machine.event_name machine)
        [ Router.Url_changed (u "/"); Router.Preload (u "/") ]

@@ -1,12 +1,19 @@
 open Silica
 
-type event = Go [@@deriving event_shape]
-type state = Shown [@@deriving state_shape]
+type event = Go
+
+let event_name = function Go -> "go"
+
+type state = Shown
+
+let name = function Shown -> "shown"
+
+let states = [ "shown" ]
 
 let machine =
   let machine =
-    Machine.make_with_props ~id:"labelled" ~init:Shown ~shape:state_shape
-      ~events:event_shape (fun _ Shown Go -> Machine.Stay []
+    Machine.make_with_props ~id:"labelled" ~init:Shown ~name ~states ~event_name
+      (fun _ Shown Go -> Machine.Stay []
     )
   in
   Machine.register_codecs machine ~props:Codec.string ();

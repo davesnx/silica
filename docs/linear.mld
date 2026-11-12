@@ -139,8 +139,8 @@ events of the child into events of the parent. See {!Silica.Node.child}.
 
 {1 Remote calls}
 
-A state that needs data owns a call: [Remote.call endpoint input on_answer] in
-the [owns] list of the state. The call starts when the machine enters the
+A state that needs data runs a call: [Remote.call endpoint input on_answer] in
+the [during] list of the state. The call starts when the machine enters the
 state. The answer comes back as an event. If the machine leaves the state first,
 the answer is dropped. The list waits in [Loading] for the first answer, and
 goes to [Ready] or to [Failed]. [Failed] has a retry button. The answer is [Ok], [Rejected] (an application
@@ -155,7 +155,7 @@ runs two times.
 {1 The Live topic}
 
 The topic [issues] holds the full list of issues under one key. In [Ready], the
-list owns a subscription: [Source.live issues_topic]. Each time the server
+list runs a subscription: [Source.live issues_topic]. Each time the server
 publishes a new list, every subscriber gets it as an event. When the socket
 goes down, the data stays and its {!Silica.Status.t} is stale. When the socket
 comes back, the server sends the full state again.
@@ -172,7 +172,7 @@ focus trap, the Escape key, the outside press and the ARIA attributes.
 
 The route controls the dialog. [?new=true] gives the [open_] props
 ({{!page-glossary}open request}), and the dialog reports each open change to
-its parent. In [Submitting] the machine owns the create call. On success the
+its parent. In [Submitting] the machine runs the create call. On success the
 dialog closes, and the new issue arrives on all pages through the Live topic.
 On failure the machine goes to [Failed] and keeps the form, so the user can try
 again.
@@ -215,7 +215,7 @@ From [linear/app/shared/linear_model.ml]:
 The page shows the change at once. It keeps the data in a value of
 {!Silica.Optimistic.Make} (see {!page-optimistic}): the last confirmed issues
 and the changes that wait for the server. Each change goes to the server in its
-own Remote call. The page owns one call for each waiting change: the calls are
+own Remote call. The page runs one call for each waiting change: the calls are
 compared by key after each step, so a new change starts a call and the other
 calls keep running. The change stops waiting when the call answers, or
 when the Live topic first sends issues that already have it. When the call

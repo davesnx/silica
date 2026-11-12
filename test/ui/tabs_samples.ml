@@ -7,7 +7,7 @@ type event = Changed of string | Set_value of string
 let machine =
   Machine.make ~id:"tabs-page"
     ~init:{ selected = "a"; log = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Changed value ->

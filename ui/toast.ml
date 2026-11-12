@@ -30,14 +30,8 @@ type props = {
   classes : classes;
 }
 
-type event =
-  | Close of string [@event_name_of fun key -> "close " ^ key]
-  | Tick
-  | Hover of bool
-      [@event_name_of fun hovered -> "hover " ^ string_of_bool hovered]
-  | Focus of bool
-      [@event_name_of fun focused -> "focus " ^ string_of_bool focused]
-[@@deriving event_shape]
+type event = Close of string | Tick | Hover of bool | Focus of bool
+
 type model = { hovered : bool; focused : bool }
 
 type state =
@@ -45,7 +39,29 @@ type state =
   | Running of model * int
   | Paused of model
   | Expired of model
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function
+  | Empty _ ->
+      "empty"
+  | Running _ ->
+      "running"
+  | Paused _ ->
+      "paused"
+  | Expired _ ->
+      "expired"
+
+let states = [ "empty"; "running"; "paused"; "expired" ]
+
+let event_name = function
+  | Close key ->
+      "close " ^ key
+  | Tick ->
+      "tick"
+  | Hover hovered ->
+      "hover " ^ string_of_bool hovered
+  | Focus focused ->
+      "focus " ^ string_of_bool focused
 
 let tick_ms = 100
 
@@ -63,8 +79,8 @@ let shows (props : props) key =
 let machine =
   Machine.make_with_props ~id:"toast"
     ~init:(Empty { hovered = false; focused = false })
-    ~shape:state_shape ~events:event_shape
-    ~owns:(fun _ -> function
+    ~name ~states ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun _ -> function
       | Running _ ->
           [ Source.after tick_ms Tick ]
       | Empty _ | Paused _ | Expired _ ->

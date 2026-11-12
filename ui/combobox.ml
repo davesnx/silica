@@ -50,16 +50,6 @@ type data = {
 type event =
   | Typed of string
   | Move of [ `Next | `Previous | `First | `Last ]
-      [@event_name_of
-        function
-        | `Next ->
-            "move next"
-        | `Previous ->
-            "move previous"
-        | `First ->
-            "move first"
-        | `Last ->
-            "move last"]
   | Show
   | Highlight of string
   | Choose_highlighted
@@ -67,10 +57,45 @@ type event =
   | Escape
   | Outside_press
   | Focus_out
-[@@deriving event_shape]
 
 type state = Closed of data | Open of data | Inline of data
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function
+  | Closed _ ->
+      "closed"
+  | Open _ ->
+      "open"
+  | Inline _ ->
+      "inline"
+
+let states = [ "closed"; "open"; "inline" ]
+
+let event_name = function
+  | Typed _ ->
+      "typed"
+  | Move `Next ->
+      "move next"
+  | Move `Previous ->
+      "move previous"
+  | Move `First ->
+      "move first"
+  | Move `Last ->
+      "move last"
+  | Show ->
+      "show"
+  | Highlight _ ->
+      "highlight"
+  | Choose_highlighted ->
+      "choose_highlighted"
+  | Choose _ ->
+      "choose"
+  | Escape ->
+      "escape"
+  | Outside_press ->
+      "outside_press"
+  | Focus_out ->
+      "focus_out"
 
 let input_id (props : props) = props.id ^ "-input"
 let listbox_id (props : props) = props.id ^ "-listbox"
@@ -179,8 +204,8 @@ let settle (props : props) data : (state, event) Machine.next =
 let machine =
   Machine.make_with_props ~id:"combobox"
     ~init:(Closed { query = ""; highlighted = None; selected = None })
-    ~shape:state_shape ~events:event_shape
-    ~owns:(fun props -> function
+    ~name ~states ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun props -> function
       | Open _ ->
           Popup.layer ~outside:Outside_press ~focus_out:Focus_out (parts props)
       | Closed _ | Inline _ ->

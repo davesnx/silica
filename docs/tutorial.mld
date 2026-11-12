@@ -16,15 +16,14 @@ A component is a machine and a view. The machine holds all the behaviour. The
 view shows the state of the machine and sends events to it.
 
 The states of a machine are the constructors of a plain OCaml variant. The
-counter has one state, [Count], which carries an [int]. The deriver
-[[@@deriving state_shape]] of [silica.ppx] makes [state_shape], the
-{e shape} of the state type: the name of each state and the list of all
-names. [Machine.make ~shape:state_shape] uses it; the checker and the spec use
-the names.
+counter has one state, [Count], which carries an [int]. The function [name]
+gives the name of the state of a snapshot: here always ["count"].
+[Machine.make ~name] uses it to know when the machine enters a new state; the
+checker and the spec show the names.
 
-The machine has two events. [[@@deriving event_shape]] makes [event_shape],
-the shape of the event type, and [~events:event_shape] gives the machine the
-names of its events, for the edges of the spec (see {!page-machines.events}).
+The machine has two events. It does not name them: the checker and the spec
+label each event by its cause, such as [press button "Increment"] (see
+{!page-machines.events}).
 The update function gets the state and the event,
 and gives the next step. [Increment] goes to [Count] with the number plus one.
 [Decrement] goes to [Count] with the number minus one, and stays when the
@@ -33,12 +32,13 @@ number is 0. The view is written in mlx, the JSX syntax for OCaml.
 {@mlx file=examples/shared/tutorial_counter.mlx[
 open Silica
 
-type event = Increment | Decrement [@@deriving event_shape]
-type state = Count of int [@@deriving state_shape]
+type event = Increment | Decrement
+type state = Count of int
+
+let name (Count _) = "count"
 
 let machine =
-  Machine.make ~id:"counter" ~init:(Count 0) ~shape:state_shape
-    ~events:event_shape (fun (Count n) event ->
+  Machine.make ~id:"counter" ~init:(Count 0) ~name (fun (Count n) event ->
       match event with
       | Increment ->
           Go (Count (n + 1))
@@ -128,8 +128,8 @@ can answer [Error reason], for example when the input is not valid.
 {2 The machine}
 
 The greeting machine has four states. In [Idle], a press on the button sends
-[Ask], and the machine goes to [Asking]. The state [Asking] owns the call: the
-[owns] function gives the call for [Asking] and nothing for the other states.
+[Ask], and the machine goes to [Asking]. The call runs during [Asking]: the
+[during] function gives the call for [Asking] and nothing for the other states.
 The call starts when the machine enters the state, and its answer comes back
 as the event [Answered]. If the machine leaves the state first, the answer is
 dropped.
@@ -147,14 +147,21 @@ machine ignores, so this catch-all cannot hide a mistake.
 open Silica
 
 type event = Ask | Answered of (string, string) Remote.answer
-[@@deriving event_shape]
-
 type state = Idle | Asking | Shown of string | Failed of string
-[@@deriving state_shape]
+
+let name = function
+  | Idle ->
+      "idle"
+  | Asking ->
+      "asking"
+  | Shown _ ->
+      "shown"
+  | Failed _ ->
+      "failed"
 
 let machine =
-  Machine.make ~id:"greeting" ~init:Idle ~shape:state_shape ~events:event_shape
-    ~owns:(function
+  Machine.make ~id:"greeting" ~init:Idle ~name
+    ~during:(function
       | Asking ->
           [
             Remote.call Tutorial_api.greeting "Ada" (fun answer ->

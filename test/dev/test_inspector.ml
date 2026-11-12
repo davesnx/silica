@@ -62,8 +62,9 @@ let record ?(change = Transition.Entered) ~seq ~machine ~instance ~from ~target
     cause = Message;
   }
 
-let step ?owns transition : Inspect.message =
-  Event { id = None; target = ""; event = Step { transition; owns } }
+let step ?resources transition : Inspect.message =
+  Event
+    { id = None; target = ""; event = Step { transition; owns = resources } }
 
 let hello_client peer = say peer (Hello_client "test")
 
@@ -189,7 +190,7 @@ let cache () =
        }
     );
   say tab
-    (step ~owns:[ timer_resource ]
+    (step ~resources:[ timer_resource ]
        (record ~seq:3 ~machine:"saver" ~instance:"app/0:saver" ~from:"idle"
           ~target:"saving" ~event:"save" ()
        )
@@ -316,14 +317,17 @@ let write_line socket message =
 
 module Saver = struct
   type event = Save | Done
-  type state = Idle | Saving [@@deriving state_shape]
+  type state = Idle | Saving
 
-  let events =
-    Machine.shape ~name:(function Save -> "save" | Done -> "done") ()
+  let name = function Idle -> "idle" | Saving -> "saving"
+
+  let states = [ "idle"; "saving" ]
+
+  let event_name = function Save -> "save" | Done -> "done"
 
   let machine =
-    Machine.make ~id:"saver" ~init:Idle ~shape:state_shape ~events
-      ~owns:(function Idle -> [] | Saving -> [ Source.after 2000 Done ])
+    Machine.make ~id:"saver" ~init:Idle ~name ~states ~event_name
+      ~during:(function Idle -> [] | Saving -> [ Source.after 2000 Done ])
       (fun state event ->
         match (state, event) with
         | Idle, Save ->

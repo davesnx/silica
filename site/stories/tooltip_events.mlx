@@ -1,12 +1,11 @@
 open Silica
 open Silica_ui
 
-type event = Changed of string * bool * Popup.reason [@@deriving event_shape]
+type event = Changed of string * bool * Popup.reason
 
 let machine =
   Machine.make ~id:"tooltip-events" ~init:[]
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun events event ->
       match event with
       | Changed (id, opened, reason) ->

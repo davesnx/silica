@@ -383,7 +383,10 @@ type 'ev step = {
   input : 'ev;
   event : string;
       (** The name of the event by {!Silica.Machine.event_name}, ["props"] for
-          new props, ["link <url>"], ["back"] or ["forward"]. *)
+          new props, ["link <url>"], ["back"] or ["forward"]; for a machine with
+          no [event_name], the label of its cause by
+          {!Silica.Transition.cause_label}, such as ["press button \"Save\""].
+      *)
   cause : cause;
   instance : string;  (** ["0"] for the root machine. *)
   machine : string;  (** The machine id. *)
@@ -464,9 +467,13 @@ type ('s, 'ev) report = {
       (** In the order found, so shortest first. The first violation of each
           rule, state name, element and message. *)
   unreached : string list;
-      (** The names of the states of the machine (see
-          {!Silica.Machine.val-shape}) that no step reached and no allowance
-          covers. *)
+      (** The names of the states of the machines (the [states] given to
+          {!Silica.Machine.make}) that no step reached and no allowance covers.
+          A child state is named ["<machine id>: <state>"]. *)
+  unlisted : string list;
+      (** The ids of the machines that give no [states], for which the check
+          cannot report unreached states. A note, not a finding: it does not
+          change {!passed}. *)
   allowed : (allowance * int) list;
       (** Each allowance and how many distinct violations it turned off. *)
   not_explored : string list;
@@ -525,7 +532,7 @@ Every step of the counterexample, in order: for a `Loop`, the stem then the cycl
 val pp_report : Format.formatter -> ('s, 'ev) report -> unit
 ```
 
-The report as text: the counts, then each violation with its message, hint, numbered steps with their causes, state and view, then the unreached states, the allowances and what was not explored.
+The report as text: the counts, then each violation with its message, hint, numbered steps with their causes, state and view, then the unreached states, the machines that give no `states`, the allowances and what was not explored.
 
 **Rules**
 

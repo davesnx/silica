@@ -14,8 +14,19 @@ type props = {
   classes : classes;
 }
 
-type event = Toggle | Enter_key [@event_name "enter"] [@@deriving event_shape]
-type state = Unchecked | Checked | Indeterminate [@@deriving state_shape]
+type event = Toggle | Enter_key
+type state = Unchecked | Checked | Indeterminate [@@deriving fingerprint]
+
+let name = function
+  | Unchecked ->
+      "unchecked"
+  | Checked ->
+      "checked"
+  | Indeterminate ->
+      "indeterminate"
+
+let states = [ "unchecked"; "checked"; "indeterminate" ]
+let event_name = function Toggle -> "toggle" | Enter_key -> "enter"
 
 let of_props (props : props) =
   if props.indeterminate then
@@ -30,8 +41,8 @@ let requested (previous : props) (props : props) =
   || props.indeterminate <> previous.indeterminate
 
 let machine =
-  Machine.make_with_props ~id:"checkbox" ~init:Unchecked ~shape:state_shape
-    ~events:event_shape
+  Machine.make_with_props ~id:"checkbox" ~init:Unchecked ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
     ~on_props:(fun previous props _ ->
       match previous with
       | Some previous when not (requested previous props) ->

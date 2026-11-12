@@ -14,7 +14,7 @@ let broken_view broken : event Node.t =
 let breaking ~init =
   Component.make
     (Machine.make ~id:"breaking" ~init
-       ~shape:(Machine.shape ~name:(fun _ -> "running") ())
+       ~name:(fun _ -> "running")
        (fun _ Break -> Machine.Go true)
     )
     broken_view
@@ -23,7 +23,7 @@ let guarded =
   let child = breaking ~init:false in
   Component.make
     (Machine.make ~id:"guard" ~init:()
-       ~shape:(Machine.shape ~name:(fun _ -> "guarding") ())
+       ~name:(fun _ -> "guarding")
        (fun () () -> Machine.Ignore)
     )
     (fun () ->

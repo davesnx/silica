@@ -33,17 +33,29 @@ let edge_name = function Start -> "first" | End -> "last"
 type event =
   | Trigger_press
   | Open_key of Popup.reason * edge
-      [@event_name_of
-        fun reason edge ->
-          "open_key " ^ edge_name edge ^ " " ^ Popup.reason_name reason]
-  | Move of nav [@event_name_of fun nav -> "move " ^ nav_name nav]
+  | Move of nav
   | Highlight of int
   | Choose of int
   | Close of Popup.reason
-      [@event_name_of fun reason -> "close " ^ Popup.reason_name reason]
-[@@deriving event_shape]
 
-type state = Closed | Open of int option [@@deriving state_shape]
+type state = Closed | Open of int option [@@deriving fingerprint]
+
+let name = function Closed -> "closed" | Open _ -> "open"
+let states = [ "closed"; "open" ]
+
+let event_name = function
+  | Trigger_press ->
+      "trigger_press"
+  | Open_key (reason, edge) ->
+      "open_key " ^ edge_name edge ^ " " ^ Popup.reason_name reason
+  | Move nav ->
+      "move " ^ nav_name nav
+  | Highlight _ ->
+      "highlight"
+  | Choose _ ->
+      "choose"
+  | Close reason ->
+      "close " ^ Popup.reason_name reason
 
 let item_id id i = id ^ "-item-" ^ string_of_int i
 let parts (props : props) = Popup.parts props.id
@@ -98,9 +110,9 @@ let close ?focus props : (state, event) Machine.next =
   Popup.close ?focus (parts props) Closed
 
 let machine =
-  Machine.make_with_props ~id:"menu" ~init:Closed ~shape:state_shape
-    ~events:event_shape
-    ~owns:(fun props -> function
+  Machine.make_with_props ~id:"menu" ~init:Closed ~name ~states ~event_name
+    ~fingerprint:state_fingerprint
+    ~during:(fun props -> function
       | Open _ ->
           Popup.layer ~escape:(Close Popup.Escape_key)
             ~outside:(Close Popup.Outside_press) (parts props)

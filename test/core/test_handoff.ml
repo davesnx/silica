@@ -22,8 +22,9 @@ type event = Bump | Tick | Answer of int
 
 let counter ?(id = "counter") ?fingerprint () =
   Machine.make ~id ~init:0
-    ~shape:(Machine.shape ~name:(fun _ -> "counting") ?fingerprint ())
-    ~owns:(fun count ->
+    ~name:(fun _ -> "counting")
+    ?fingerprint
+    ~during:(fun count ->
       if count > 0 then
         [
           Source.after 1000 Tick;
@@ -224,7 +225,8 @@ let resume_tests =
         in
         let machine =
           Machine.make ~id:"closure" ~init:succ
-            ~shape:(Machine.shape ~name:(fun _ -> "holding") ~fingerprint ())
+            ~name:(fun _ -> "holding")
+            ~fingerprint
             (fun _ () -> Machine.Ignore)
         in
         let component =
@@ -257,7 +259,8 @@ type child_event = Child_bump
 
 let child_machine fingerprint =
   Machine.make ~id:"child" ~init:0
-    ~shape:(Machine.shape ~name:(fun _ -> "child") ~fingerprint ())
+    ~name:(fun _ -> "child")
+    ~fingerprint
     (fun count Child_bump -> Machine.Go (count + 1))
 
 let child_view count : child_event Node.t =
@@ -267,7 +270,8 @@ let child_view count : child_event Node.t =
 
 let parent_machine ?fingerprint () =
   Machine.make ~id:"parent" ~init:0
-    ~shape:(Machine.shape ~name:(fun _ -> "parent") ?fingerprint ())
+    ~name:(fun _ -> "parent")
+    ?fingerprint
     (fun count () -> Machine.Go (count + 1))
 
 let tree_tests =

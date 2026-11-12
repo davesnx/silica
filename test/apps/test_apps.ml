@@ -2,7 +2,8 @@ open Silica
 
 let simple ~id ~init step =
   Machine.make ~id ~init
-    ~shape:(Machine.shape ~name:(fun _ -> "only") ~names:[ "only" ] ())
+    ~name:(fun _ -> "only")
+    ~states:[ "only" ]
     (fun data event ->
       match step data event with
       | None ->
@@ -41,7 +42,16 @@ type state = {
 }
 
 type phase = Idle of state | Asking of state | Hurrying of state
-[@@deriving state_shape]
+
+let phase_name = function
+  | Idle _ ->
+      "idle"
+  | Asking _ ->
+      "asking"
+  | Hurrying _ ->
+      "hurrying"
+
+let phase_states = [ "idle"; "asking"; "hurrying" ]
 
 let double_ep =
   Remote.declare ~path:"/api/double" ~input:Codec.int ~output:Codec.int
@@ -94,8 +104,8 @@ let machine =
            asking = 0;
          }
       )
-    ~shape:phase_shape
-    ~owns:(function
+    ~name:phase_name ~states:phase_states
+    ~during:(function
       | Idle _ ->
           []
       | Asking s ->
@@ -250,7 +260,8 @@ let routes =
 let title_component =
   Component.make
     (Machine.make_with_props ~id:"title" ~init:()
-       ~shape:(Machine.shape ~name:(fun () -> "only") ~names:[ "only" ] ())
+       ~name:(fun () -> "only")
+       ~states:[ "only" ]
        ~on_props:(fun _ title () -> Stay [ Action.Set_title title ])
        (fun _ () () -> Ignore)
     )
@@ -275,12 +286,17 @@ let nav_component =
     )
 
 type data_event = Loaded of (string, string) Remote.answer
-type data_state = Loading | Shown of string [@@deriving state_shape]
+type data_state = Loading | Shown of string
+
+let data_state_name = function Loading -> "loading" | Shown _ -> "shown"
+
+let data_state_states = [ "loading"; "shown" ]
 
 let data_component =
   Component.make
-    (Machine.make_with_props ~id:"data" ~init:Loading ~shape:data_state_shape
-       ~owns:(fun name -> function
+    (Machine.make_with_props ~id:"data" ~init:Loading ~name:data_state_name
+       ~states:data_state_states
+       ~during:(fun name -> function
          | Loading ->
              [ Remote.call data_ep name (fun answer -> Loaded answer) ]
          | Shown _ ->
@@ -319,7 +335,16 @@ type edit_event =
   | Go_home
 
 type edit_state = Clean | Dirty of string | Asking of string * Nav.t
-[@@deriving state_shape]
+
+let edit_state_name = function
+  | Clean ->
+      "clean"
+  | Dirty _ ->
+      "dirty"
+  | Asking _ ->
+      "asking"
+
+let edit_state_states = [ "clean"; "dirty"; "asking" ]
 
 let nav_text = function
   | Nav.Push url ->
@@ -332,8 +357,9 @@ let nav_text = function
 let edit_component =
   let home = Router.navigate routes Pages.Home in
   Component.make
-    (Machine.make ~id:"edit" ~init:Clean ~shape:edit_state_shape
-       ~owns:(function
+    (Machine.make ~id:"edit" ~init:Clean ~name:edit_state_name
+       ~states:edit_state_states
+       ~during:(function
          | Clean ->
              []
          | Dirty _ | Asking _ ->
@@ -479,7 +505,11 @@ let news = Topic.declare ~name:"news" ~state:Codec.int
 
 type watch_event = Update of int Topic.update | Leave | Return
 type watch = { text : string; updates : int }
-type watch_state = Watching of watch | Away of watch [@@deriving state_shape]
+type watch_state = Watching of watch | Away of watch
+
+let watch_state_name = function Watching _ -> "watching" | Away _ -> "away"
+
+let watch_state_states = [ "watching"; "away" ]
 
 let describe (update : int Topic.update) =
   let status =
@@ -518,8 +548,8 @@ let watch_data = function Watching watch | Away watch -> watch
 let watch_machine =
   Machine.make ~id:"watch"
     ~init:(Watching { text = "none"; updates = 0 })
-    ~shape:watch_state_shape
-    ~owns:(function
+    ~name:watch_state_name ~states:watch_state_states
+    ~during:(function
       | Watching _ ->
           [ Source.live news "room" (fun update -> Update update) ]
       | Away _ ->
@@ -584,13 +614,26 @@ let host_component =
 
 type timer_event = Leave | Back | Tick_timer
 
-type timer_state = Waiting | Left | Fired | Late [@@deriving state_shape]
+type timer_state = Waiting | Left | Fired | Late
+
+let timer_state_name = function
+  | Waiting ->
+      "waiting"
+  | Left ->
+      "left"
+  | Fired ->
+      "fired"
+  | Late ->
+      "late"
+
+let timer_state_states = [ "waiting"; "left"; "fired"; "late" ]
 
 let timer_component =
   Component.make
-    (Machine.make ~id:"timer" ~init:Waiting ~shape:timer_state_shape
+    (Machine.make ~id:"timer" ~init:Waiting ~name:timer_state_name
+       ~states:timer_state_states
        ~final:(function Fired | Late -> true | Waiting | Left -> false)
-       ~owns:(function
+       ~during:(function
          | Waiting -> [ Source.after 20 Tick_timer ] | Left | Fired | Late -> []
          )
        (fun state event ->
@@ -610,9 +653,7 @@ let timer_component =
     (fun state ->
       el "main" []
         [
-          el "p"
-            [ id "phase" ]
-            [ txt (Machine.shape_name timer_state_shape state) ];
+          el "p" [ id "phase" ] [ txt (timer_state_name state) ];
           el "button" [ id "leave"; Attr.on_press Leave ] [ txt "leave" ];
           el "button" [ id "back"; Attr.on_press Back ] [ txt "back" ];
         ]
@@ -623,7 +664,8 @@ type child_event = Child_press
 let child_component =
   Component.make_with_props
     (Machine.make_with_props ~id:"child" ~init:0
-       ~shape:(Machine.shape ~name:(fun _ -> "only") ~names:[ "only" ] ())
+       ~name:(fun _ -> "only")
+       ~states:[ "only" ]
        (fun _ clicks Child_press -> Go (clicks + 1))
     )
     (fun prop clicks ->
@@ -700,13 +742,17 @@ let parent_component =
     )
 
 type ticker_event = Tick_child
-type ticker_state = Running of int [@@deriving state_shape]
+type ticker_state = Running of int
+
+let ticker_state_name = function Running _ -> "running"
+
+let ticker_state_states = [ "running" ]
 
 let ticker_component =
   Component.make_with_props
     (Machine.make_with_props ~id:"ticker" ~init:(Running 0)
-       ~shape:ticker_state_shape
-       ~owns:(fun _ (Running _) -> [ Source.after 20 Tick_child ])
+       ~name:ticker_state_name ~states:ticker_state_states
+       ~during:(fun _ (Running _) -> [ Source.after 20 Tick_child ])
        (fun _ (Running count) Tick_child -> Reenter (Running (count + 1)))
     )
     (fun label (Running count) ->
@@ -751,11 +797,20 @@ module Lookup = struct
   type event = Again | Answered of (int, string) Remote.answer
 
   type state = Loading of int | Ready of int | Failed of int
-  [@@deriving state_shape]
+
+  let name = function
+    | Loading _ ->
+        "loading"
+    | Ready _ ->
+        "ready"
+    | Failed _ ->
+        "failed"
+
+  let states = [ "loading"; "ready"; "failed" ]
 
   let machine =
-    Machine.make ~id:"lookup" ~init:(Loading 4) ~shape:state_shape
-      ~owns:(function
+    Machine.make ~id:"lookup" ~init:(Loading 4) ~name ~states
+      ~during:(function
         | Loading n ->
             [ Remote.call double_ep n (fun answer -> Answered answer) ]
         | Ready _ | Failed _ ->
@@ -828,10 +883,14 @@ let lookup_answers () = snd (lookup_server ())
 
 module Bomb = struct
   type event = Inc | Boom | Break_view | Quiet
-  type state = Live of int [@@deriving state_shape]
+  type state = Live of int
+
+  let name = function Live _ -> "live"
+
+  let states = [ "live" ]
 
   let machine =
-    Machine.make ~id:"bomb" ~init:(Live 0) ~shape:state_shape
+    Machine.make ~id:"bomb" ~init:(Live 0) ~name ~states
       (fun (Live count) -> function
       | Inc ->
           Go (Live (count + 1))

@@ -1,10 +1,17 @@
 open Silica
 
-type event = Run [@@deriving event_shape]
-type state = Ready | Done [@@deriving state_shape]
+type event = Run
+
+let event_name = function Run -> "run"
+
+type state = Ready | Done
+
+let name = function Ready -> "ready" | Done -> "done"
+
+let states = [ "ready"; "done" ]
 
 let machine =
-  Machine.make ~id:"search" ~init:Ready ~shape:state_shape ~events:event_shape
+  Machine.make ~id:"search" ~init:Ready ~name ~states ~event_name
     (fun state Run ->
       match state with Ready -> Machine.Go Done | Done -> Machine.Ignore
   )

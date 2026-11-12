@@ -246,14 +246,17 @@ let test_text () =
 
 module Saver = struct
   type event = Save | Done
-  type state = Idle | Saving [@@deriving state_shape]
+  type state = Idle | Saving
 
-  let events =
-    Machine.shape ~name:(function Save -> "save" | Done -> "done") ()
+  let name = function Idle -> "idle" | Saving -> "saving"
+
+  let states = [ "idle"; "saving" ]
+
+  let event_name = function Save -> "save" | Done -> "done"
 
   let machine =
-    Machine.make ~id:"saver" ~init:Idle ~shape:state_shape ~events
-      ~owns:(function Idle -> [] | Saving -> [ Source.after 2000 Done ])
+    Machine.make ~id:"saver" ~init:Idle ~name ~states ~event_name
+      ~during:(function Idle -> [] | Saving -> [ Source.after 2000 Done ])
       (fun state event ->
         match (state, event) with
         | Idle, Save ->

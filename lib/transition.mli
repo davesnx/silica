@@ -20,8 +20,8 @@ type change = Instance.change =
   | Resumed
       (** The instance started again at a snapshot it reached before, such as a
           Live island after a server restart: [from] is [""], [target] is the
-          state of that snapshot, [actions] are only the starts of what it owns
-          (see {!Machine.resume}), and the cause is [Start]. *)
+          state of that snapshot, [actions] are only the starts of what runs
+          during it (see {!Machine.resume}), and the cause is [Start]. *)
   | Unhandled  (** The machine ignored the event: nothing changed. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state, with the same name or another. *)
@@ -93,7 +93,8 @@ type t = {
   change : change;
   event : string;
       (** {!Machine.event_name} of the event; [""] when there is no event
-          ([Started], [Resumed], [Ended], [Props]). *)
+          ([Started], [Resumed], [Ended], [Props]) or the machine gives no
+          [event_name]. {!label} names the event in both cases. *)
   data : Silica_json.Json.t option;
       (** The event, by the event codec of the machine. *)
   props : Silica_json.Json.t option;
@@ -118,6 +119,22 @@ val describe : 'm Action.host -> string
     path), ["stop 1.1/save/saving//api/save null"], ["focus title"] or
     ["navigate /issues"]. The text of a [Copy] and the value of a cookie are
     left out. *)
+
+val cause_label : cause -> string
+(** The label of an event that its machine does not name: the handler, the key
+    of a key handler, the role and the quoted accessible name of the element, as
+    in [press button "Save"] or [key_down Escape textbox "Search"];
+    [after 2000ms] for a timer; [ok /api/save], [rejected /api/save] or
+    [failed /api/save] for the answer of a call ([answer /api/save] when the
+    answer is not recorded); [live <topic>]; the name of a held source, such as
+    [dismiss]; [result <action>]; [props]; [child <instance>]; [url <url>];
+    [preload <url>]; [message]. The checker labels the events of its steps and
+    specs the same way. *)
+
+val label : t -> string
+(** The label of the event of the record: its [event], or {!cause_label} of its
+    cause when the machine does not name it; [""] for [Started], [Resumed] and
+    [Ended]. *)
 
 val strip : t -> t
 (** The record with no user data: [data], [props], [snapshot], the [answer] of

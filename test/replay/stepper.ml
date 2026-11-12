@@ -3,15 +3,12 @@ open Silica
 type event = Typed of string | Increment
 type state = { count : int; step : int }
 
-let events =
-  Machine.shape
-    ~name:(function Typed _ -> "typed" | Increment -> "increment")
-    ()
+let event_name = function Typed _ -> "typed" | Increment -> "increment"
 
 let machine =
   Machine.make ~id:"stepper" ~init:{ count = 0; step = 1 }
-    ~shape:(Machine.shape ~name:(fun _ -> "counting") ~names:[ "counting" ] ())
-    ~events
+    ~name:(fun _ -> "counting")
+    ~states:[ "counting" ] ~event_name
     (fun state event ->
       match event with
       | Typed text -> (

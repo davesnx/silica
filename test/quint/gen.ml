@@ -12,7 +12,11 @@ let label = function
   | Answer ->
       "answer"
 
-type state = Closed | Open | Gone [@@deriving state_shape]
+type state = Closed | Open | Gone
+
+let name = function Closed -> "closed" | Open -> "open" | Gone -> "gone"
+
+let states = [ "closed"; "open"; "gone" ]
 
 let endpoint =
   Remote.declare ~path:"/api/x" ~input:Codec.unit ~output:Codec.unit
@@ -21,10 +25,9 @@ let endpoint =
 let panel = Ref.make "panel"
 
 let door =
-  Machine.make ~id:"door" ~init:Closed ~shape:state_shape
-    ~events:(Machine.shape ~name:label ())
+  Machine.make ~id:"door" ~init:Closed ~name ~states ~event_name:label
     ~final:(function Gone -> true | Closed | Open -> false)
-    ~owns:(function
+    ~during:(function
       | Open ->
           [
             Source.after 300 Timeout;

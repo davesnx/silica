@@ -43,7 +43,7 @@ Save button stays in the saved state, and the update ignores it there:
       ~message:"In state saved, the view offers press on button \"Save\" at div > \
                 button gives the event save, and the update returns Ignore."
       ~hint:"Handle save in state saved, or do not offer it there: disable the \
-             element with Machine.can, or leave its timer or call out of owns \
+             element with Machine.can, or leave its timer or call out of during \
              of saved."
   
   let () =
@@ -55,7 +55,7 @@ The script fails while the bug is there, with the rule and its hint:
 
   $ ./save_script.exe
   ignored-event: In state saved, the view offers press on button "Save" at div > button gives the event save, and the update returns Ignore.
-  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
   The update still ignores the input.
   [1]
 
@@ -98,7 +98,7 @@ An answer of a call, then a press that the update ignores:
                 > button gives the event retry, and the update returns Ignore."
       ~hint:"Handle retry in state failed, or do not offer it there: disable \
              the element with Machine.can, or leave its timer or call out of \
-             owns of failed."
+             during of failed."
   
   let () =
     let page = Memory.mount Upload.component in
@@ -107,7 +107,7 @@ An answer of a call, then a press that the update ignores:
     Check_expect.handles broken ~name:"Retry" page Accessibility.Button Memory.press
   $ ./upload_retry_script.exe
   ignored-event: In state failed, the view offers press on button "Retry" at div > button gives the event retry, and the update returns Ignore.
-  hint: Handle retry in state failed, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of failed.
+  hint: Handle retry in state failed, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of failed.
   The update still ignores the input.
   [1]
 
@@ -123,7 +123,7 @@ A timer that fires first in real time: the script moves the clock to it.
 
   $ ./clock_script.exe
   ignored-event: In state ready, the view offers press on button "Again" at div > button gives the event again, and the update returns Ignore.
-  hint: Handle again in state ready, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of ready.
+  hint: Handle again in state ready, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of ready.
   The update still ignores the input.
   [1]
 
@@ -245,7 +245,7 @@ A key handler: focus the field, then the key.
       ~message:"In state done, the view offers key_down Enter on textbox \"Query\" \
                 at div > input gives the event run, and the update returns Ignore."
       ~hint:"Handle run in state done, or do not offer it there: disable the \
-             element with Machine.can, or leave its timer or call out of owns \
+             element with Machine.can, or leave its timer or call out of during \
              of done."
   
   let () =
@@ -259,7 +259,7 @@ A key handler: focus the field, then the key.
       )
   $ ./search_script.exe
   ignored-event: In state done, the view offers key_down Enter on textbox "Query" at div > input gives the event run, and the update returns Ignore.
-  hint: Handle run in state done, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of done.
+  hint: Handle run in state done, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of done.
   The update still ignores the input.
   [1]
 

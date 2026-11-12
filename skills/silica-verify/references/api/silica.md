@@ -221,7 +221,7 @@ val modal : 'e element -> bool
 
 ## Silica.Action
 
-Requests that a machine asks its host to carry out. App code builds `t` values only. Timers and calls are not actions: a state owns them through the `owns` list of `Machine.make`, and hosts see them as `host` values that only the library builds.
+Requests that a machine asks its host to carry out. App code builds `t` values only. Timers and calls are not actions: they run during a state, in the `during` list of `Machine.make`, and hosts see them as `host` values that only the library builds.
 
 ```ocaml
 type 'e t =
@@ -367,7 +367,7 @@ type 'e source =
   | Anchor of { anchor : Ref.t; popup : Ref.t; place : Place.t }
 ```
 
-A held resource that a state owns: it starts when the state is entered and stops when the state is left. Build them with the constructors in `Source`. A renderer carries them out. `rate` limits how often the renderer delivers the event (see `Rate`).
+A held resource that runs during a state: it starts when the state is entered and stops when the state is left. Build them with the constructors in `Source`. A renderer carries them out. `rate` limits how often the renderer delivers the event (see `Rate`).
 
 ```ocaml
 val check : 'e t -> unit
@@ -428,7 +428,7 @@ type 'e host =
   | Stop of string
 ```
 
-What a machine gives to its host. Only `Machine` and `Instance` build `Start_timer`, `Start_call` and `Stop`, so no timer or call lives outside the state that owns it.
+What a machine gives to its host. Only `Machine` and `Instance` build `Start_timer`, `Start_call` and `Stop`, so no timer or call lives outside the state that it runs during.
 
 ```ocaml
 val map : ('a -> 'b) -> 'a t -> 'b t
@@ -933,13 +933,11 @@ val answer_codec : 'o Codec.t -> 'x Codec.t -> ('o, 'x) answer Codec.t
 
 The fingerprint of a type: what a hot reload compares before it gives a snapshot of the old page to the new code (see `Handoff`).
 
-Two equal fingerprints mean that the two builds compiled the same declarations, with the same compiler, for the type and every type it mentions. The derivers of `silica.ppx` make them: `[@@deriving state_shape]` gives `state_fingerprint` next to `state_shape` and puts it in the shape; `[@@deriving fingerprint]` gives one to any other type, so that a state type in another file can mention it. A type with no fingerprint can not be handed over: a machine whose state mentions it starts again at a hot reload, and the reason names the type.
-
-A state type that `state_shape` does not take, such as a record, gets its fingerprint from `[@@deriving fingerprint]`, and the shape written by hand passes it: `Machine.shape ~name:(fun _ -> "todo") ~fingerprint:state_fingerprint ()`. A shape written by hand with no `~fingerprint` starts again at each hot reload, unless its initial snapshot equals the old one (see `Handoff.hook`).
+Two equal fingerprints mean that the two builds compiled the same declarations, with the same compiler, for the type and every type it mentions. The deriver `[@@deriving fingerprint]` of `silica.ppx` makes them: on a state type it gives `state_fingerprint`, which the machine passes to `Machine.make` as `~fingerprint:state_fingerprint`; on any other type it gives one so that a state type in another file can mention it. A type with no fingerprint can not be handed over: a machine whose state mentions it starts again at a hot reload, and the reason names the type. A machine with no `~fingerprint` starts again at each hot reload, unless its initial snapshot equals the old one (see `Handoff.hook`).
 
 A fingerprint written by hand, such as the one of a type made by a functor, goes in `[%fingerprint ...]`: the expression in a development build, `off` in a release build, so a release bundle computes nothing.
 
-The derivers give fingerprints only in a development build: the release profile of a project sets `SILICA_FINGERPRINTS=false` for them (see the root `dune` file), so a release bundle holds none; there `[@@deriving fingerprint]` gives `off`.
+The deriver gives fingerprints only in a development build: the release profile of a project sets `SILICA_FINGERPRINTS=false` for it (see the root `dune` file), so a release bundle holds none; there `[@@deriving fingerprint]` gives `off`.
 
 ```ocaml
 type part =
@@ -989,7 +987,7 @@ The fingerprint of a type that can not be handed over, such as a function. The t
 val off : 'a t
 ```
 
-What `[@@deriving fingerprint]` gives in a release build, where fingerprints are off: it gives no digest. A shape written by hand can then pass `~fingerprint:state_fingerprint` in every build.
+What `[@@deriving fingerprint]` gives in a release build, where fingerprints are off: it gives no digest. A machine can then pass `~fingerprint:state_fingerprint` in every build.
 
 ```ocaml
 val digest : 'a t -> (string, string) result
@@ -1009,8 +1007,8 @@ Only development code uses this module: `silica dev` and its browser hook, and t
 type entry = {
   machine : string;  (** The {!Machine.id}. *)
   fingerprint : (string, string) result option;
-      (** The {!Fingerprint.digest} of the state type, or [None] when the shape
-          has no fingerprint. *)
+      (** The {!Fingerprint.digest} of the state type, or [None] when the
+          machine has no fingerprint. *)
   snapshot : Obj.t;  (** The snapshot, as the old code made it. *)
 }
 ```
@@ -1035,7 +1033,7 @@ The handoff of the instances that `Instance.running` gives.
 type reason =
   | Other_machine of string
       (** Another machine, with this id, ran at the path before. *)
-  | No_fingerprint  (** The shape of the machine has no fingerprint. *)
+  | No_fingerprint  (** The machine has no fingerprint. *)
   | Not_handed_over of string
       (** The fingerprint of the new code gives this reason (see
           {!Fingerprint.digest}). *)
@@ -1171,7 +1169,8 @@ type filter = {
   machines : string list;  (** Machine ids; [[]] is every machine. *)
   path : string option;
       (** An instance path: the instance and the instances under it. *)
-  events : string list;  (** Event names; [[]] is every event. *)
+  events : string list;
+      (** Event labels (see {!Transition.label}); [[]] is every event. *)
   changes : Transition.change list;  (** [[]] is every change. *)
 }
 ```
@@ -1291,7 +1290,7 @@ A tree has a root component. Rendering a view that holds component nodes (see `N
 - A child is identified by its position in the view of its parent, by the `Machine.id` of its machine and by its key, not by the machine value. A key keeps the child when the siblings are reordered, a key that is removed ends the child, and a key that comes back starts a new one.
 - One id is one machine in a tree. The state of a child is kept only when its machine has the same type as before, and the types are known equal only for the same `Machine.make` call (`Machine.type_id`). So a tree that meets two machine values with one id, such as a machine made again in a view or two machines that share an id, raises `Invalid_argument` with that id, rather than starting the child again at each render. Make each machine once, at the top level.
 - A new child starts its machine with its props. A child that stays gets its new props when they changed (see `Machine.set_props`).
-- A child that is no longer rendered ends: the actions of leaving its state, and a `Action.Stop` for every timer and source it still owns, come first for its own children, then for it.
+- A child that is no longer rendered ends: the actions of leaving its state, and a `Action.Stop` for every timer and source that still runs, come first for its own children, then for it.
 - Each entry of a state gets a number. Timer and source ids are `"<instance>.<entry>/<machine>/<state>/<key>"` (see `Source.key`), so two instances of one machine never share an id. A message from a timer or source of an earlier entry, or of an ended instance, is dropped.
 - The result event of an action (such as `Action.Measure`) goes to the instance that ran the action, in any state. It is dropped when that instance has ended.
 - A view must be a function of its snapshot. An instance whose snapshot is physically the same as at its last render, whose props did not change, under which no instance stepped and no boundary failed or was reset, and that was not remounted, is not rendered again: its last resolved view is used.
@@ -1772,15 +1771,21 @@ The states are the constructors of a plain OCaml variant, with their data inside
 
 ```
   type event = Save | Answer of (string, string) Remote.answer | Reset
-  [@@deriving event_shape]
-
   type state = Idle | Saving | Saved of string | Failed of Remote.error
-  [@@deriving state_shape]
+
+  let name = function
+    | Idle ->
+        "idle"
+    | Saving ->
+        "saving"
+    | Saved _ ->
+        "saved"
+    | Failed _ ->
+        "failed"
 
   let machine =
-    Machine.make ~id:"save" ~init:Idle ~shape:state_shape
-      ~events:event_shape
-      ~owns:(function
+    Machine.make ~id:"save" ~init:Idle ~name
+      ~during:(function
         | Saving ->
             [ Remote.call save "draft" (fun answer -> Answer answer) ]
         | Saved _ ->
@@ -1801,7 +1806,7 @@ The states are the constructors of a plain OCaml variant, with their data inside
 
 The machine enters a state when its `name` changes. A step to a state with the same name keeps its timers and sources running, except those whose `Source.key` changed; `Reenter` stops and starts them all again. Hosts carry this out through the actions `Action.host`: `Start_timer`, `Start_call`, `Start_live`, `Start_source` and `Stop`; a host drops a timer or answer whose id was stopped.
 
-A component with props uses `make_with_props`: the update, `owns`, `entry` and `exit` get the props, and the props are not an event.
+A component with props uses `make_with_props`: the update, `during`, `entry` and `exit` get the props, and the props are not an event.
 
 ```ocaml
 type ('s, 'e) next =
@@ -1830,54 +1835,14 @@ type ('p, 's, 'e) t
 A machine with props `'p`, snapshots `'s` and events `'e`.
 
 ```ocaml
-type 'a shape
-```
-
-What a machine knows about its state type or its event type: the name of each value and the list of every name. Make it with `shape`, or with the derivers `[@@deriving state_shape]` and `[@@deriving event_shape]` of `silica.ppx`:
-
-```
-  type event = Save | Answer of (string, string) Remote.answer
-  [@@deriving event_shape]
-  (* event_shape : event Machine.shape *)
-
-  type state = Idle | Saving | Saved of string [@@deriving state_shape]
-  (* state_shape : state Machine.shape *)
-```
-
-The derivers name each constructor in lower case (`Saved` is `"saved"`); `state_shape` also lists every name, `event_shape` lists none; `[@state_name "x"]` or `[@event_name "x"]` on a constructor gives another name, and two constructors with one name are a compile error. `[@event_name_of f]` on an event constructor with tuple data names the event by its data: the name is `f` applied to the items of the tuple, such as `[@event_name_of fun value -> "select " ^ value]`.
-
-```ocaml
-val shape :
-  name:('a -> string) ->
-  ?names:string list ->
-  ?fingerprint:'a Fingerprint.t ->
-  unit ->
-  'a shape
-```
-
-`shape ~name ?names ?fingerprint ()`. For states, `name` names the state of a snapshot in the spec, the checker and the ids of timers and sources, and `names` lists every name, for the checker to report the states that a run never reached. For events, `name` names the event on the edges of the spec and in traces.
-
-`fingerprint` lets a hot reload keep the snapshots of the machine (see `Fingerprint`); `[@@deriving state_shape]` gives it in a development build, and a shape written by hand takes the one of `[@@deriving fingerprint]` on its state type. A machine with none starts again at each hot reload, unless its initial snapshot equals the old one.
-
-```ocaml
-val shape_name : 'a shape -> 'a -> string
-```
-
-The name of the value.
-
-```ocaml
-val shape_names : 'a shape -> string list
-```
-
-Every name, or `[]` when the shape has no `names`.
-
-```ocaml
 val make :
   id:string ->
   init:'s ->
-  shape:'s shape ->
-  ?events:'e shape ->
-  ?owns:('s -> 'e Source.t list) ->
+  name:('s -> string) ->
+  ?states:string list ->
+  ?event_name:('e -> string) ->
+  ?fingerprint:'s Fingerprint.t ->
+  ?during:('s -> 'e Source.t list) ->
   ?entry:('s -> 'e Action.t list) ->
   ?exit:('s -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -1886,9 +1851,17 @@ val make :
   (unit, 's, 'e) t
 ```
 
-`make ~id ~init ~shape update` is a machine with no props, for example `Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape ~owns update`.
+`make ~id ~init ~name update` is a machine with no props, for example `Machine.make ~id:"save" ~init:Idle ~name ~during update`.
 
-`id` names the machine in the spec, in the checker and in the ids of timers and sources. `shape` names its states and `events` its events (see `shape`). `owns` lists the timers (`Source.after`), calls (`Remote.call`) and sources of a snapshot (see `Source.key`). `entry` and `exit` give the actions of entering and leaving a state. A `final` snapshot handles no event. `start` are actions that run once, before the entry of `init`.
+`id` names the machine in the spec, in the checker and in the ids of timers and sources. `name` names the state of a snapshot: two snapshots with one name are one state, which the machine enters once.
+
+`states` lists every name that `name` gives, so that the checker can report the states that no run reached; with no `states`, the checker says that it cannot report them for this machine.
+
+`event_name` names an event on the edges of the spec, in the checker and in traces, and `Check.event` finds an event by it. With no `event_name`, the tools label an event by its cause, such as `press button "Save"`, `after 2000ms` or `ok /api/save` (see `Transition.cause_label`).
+
+`fingerprint` lets a hot reload keep the snapshots of the machine: pass the one of `[@@deriving fingerprint]` on the state type (see `Fingerprint`). A machine with none starts again at each hot reload, unless its initial snapshot equals the old one.
+
+`during` lists the timers (`Source.after`), calls (`Remote.call`) and sources that run during a snapshot (see `Source.key`). `entry` and `exit` give the actions of entering and leaving a state. A `final` snapshot handles no event. `start` are actions that run once, before the entry of `init`.
 
 The update ends with `| _ -> Ignore` in most machines; the checker reports an event that the view offers and the machine ignores (see `Check`).
 
@@ -1896,9 +1869,11 @@ The update ends with `| _ -> Ignore` in most machines; the checker reports an ev
 val make_with_props :
   id:string ->
   init:'s ->
-  shape:'s shape ->
-  ?events:'e shape ->
-  ?owns:('p -> 's -> 'e Source.t list) ->
+  name:('s -> string) ->
+  ?states:string list ->
+  ?event_name:('e -> string) ->
+  ?fingerprint:'s Fingerprint.t ->
+  ?during:('p -> 's -> 'e Source.t list) ->
   ?entry:('p -> 's -> 'e Action.t list) ->
   ?exit:('p -> 's -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -1908,7 +1883,7 @@ val make_with_props :
   ('p, 's, 'e) t
 ```
 
-Like `make`, for a component with props: the parent gives them with `Component.node`, and the update, `owns`, `entry` and `exit` get the props of the moment. `on_props previous props state` runs when the component starts (`previous = None`) and when the parent gives other props; it defaults to `Ignore`. After it, the sources are compared by key, as after a step, so a source that depends on the props starts again when they change.
+Like `make`, for a component with props: the parent gives them with `Component.node`, and the update, `during`, `entry` and `exit` get the props of the moment. `on_props previous props state` runs when the component starts (`previous = None`) and when the parent gives other props; it defaults to `Ignore`. After it, the sources are compared by key, as after a step, so a source that depends on the props starts again when they change.
 
 ```ocaml
 val id : ('p, 's, 'e) t -> string
@@ -1932,19 +1907,19 @@ The name of the state of the snapshot.
 val states : ('p, 's, 'e) t -> string list option
 ```
 
-The `names` of the shape of the machine.
+The `states` given to `make`.
 
 ```ocaml
 val fingerprint : ('p, 's, 'e) t -> 's Fingerprint.t option
 ```
 
-The `fingerprint` of the shape of the machine.
+The `fingerprint` given to `make`.
 
 ```ocaml
-val event_name : ('p, 's, 'e) t -> 'e -> string
+val event_name : ('p, 's, 'e) t -> 'e -> string option
 ```
 
-The name of the event by the `events` of the machine, or `""` when it has none.
+The name of the event by the `event_name` given to `make`, or `None` when the machine has none.
 
 ```ocaml
 val register_codecs :
@@ -2014,13 +1989,13 @@ type resource =
 val active : ('p, 's, 'e) t -> 'p -> 's -> resource list
 ```
 
-The timers and sources that the snapshot owns. After `start`, `step` or `set_props`, the actions and this list agree: a resource is running if and only if its id was started and not stopped.
+The timers and sources that run during the snapshot. After `start`, `step` or `set_props`, the actions and this list agree: a resource is running if and only if its id was started and not stopped.
 
 ```ocaml
 val held : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
 ```
 
-The held sources (see `Source.focus_trap`) that the snapshot owns. The checker reads them to know which presses can happen.
+The held sources (see `Source.focus_trap`) that run during the snapshot. The checker reads them to know which presses can happen.
 
 ```ocaml
 val can : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
@@ -2042,7 +2017,7 @@ The initial snapshot after the `start` actions of the machine, the actions of en
 val resume : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
 ```
 
-`resume machine props snapshot` gives the actions that run the machine again at a snapshot it reached before, in another process or bundle: the starts of the timers, calls, subscriptions and held sources that the snapshot owns, in the order of `owns`, with the ids of `active`. A timer starts with its full delay and a call is sent again.
+`resume machine props snapshot` gives the actions that run the machine again at a snapshot it reached before, in another process or bundle: the starts of the timers, calls, subscriptions and held sources that run during the snapshot, in the order of `during`, with the ids of `active`. A timer starts with its full delay and a call is sent again.
 
 It gives no `start` actions, no `entry` and no `on_props`: the snapshot entered its state before, when they ran, and their effects (a focus, a title, a navigation, a call made by an action) must not happen twice. After it, the actions and `active` agree, as after `start`.
 
@@ -2058,7 +2033,7 @@ val step :
 
 Run the update. A final state handles nothing; `Ignore` leaves the snapshot unchanged (`Unhandled`). On a change of state the actions are: `exit` and stops of the old state, the actions of the step, `entry` and starts of the new state (`Entered`). A step that keeps the name stops the sources whose key went away, runs the actions and starts the new sources (`Kept`). `Reenter` is `Entered` even when the name stays. Hosts use `Entered` to give each entry of a state its own instance (see `Instance`).
 
-`finished` is the id of the timer or call that raised the event: it ended when it delivered. A handled step that keeps the name and still owns a source with that id starts it again, so a state that owns `Source.after 1000 Tick` and handles `Tick` with `Go` ticks every second. Hosts give it for timers and calls; subscriptions and held sources do not end when they deliver.
+`finished` is the id of the timer or call that raised the event: it ended when it delivered. A handled step that keeps the name and still has a source with that id in `during` starts it again, so a state whose `during` gives `Source.after 1000 Tick` and handles `Tick` with `Go` ticks every second. Hosts give it for timers and calls; subscriptions and held sources do not end when they deliver.
 
 ```ocaml
 val set_props :
@@ -2845,7 +2820,7 @@ val call :
   'e Source.t
 ```
 
-One request to the endpoint with this input, as a source that a state owns (see `Machine.make`). The answer is raised as an event unless the call was stopped first. The key of the call is its path and its encoded input: a step that keeps the state but changes the input stops the old call and starts a new one. There is no timeout unless `timeout_ms` is given. When it passes before the answer, the call ends with `Failed (Network "timeout")`, and a later answer is dropped.
+One request to the endpoint with this input, as a source that runs during a state (see the `during` list of `Machine.make`). The answer is raised as an event unless the call was stopped first. The key of the call is its path and its encoded input: a step that keeps the state but changes the input stops the old call and starts a new one. There is no timeout unless `timeout_ms` is given. When it passes before the answer, the call ends with `Failed (Network "timeout")`, and a later answer is dropped.
 
 ```ocaml
 val error_codec : error Codec.t
@@ -2857,7 +2832,7 @@ The error as `[@@deriving json]` writes a variant: `["Http", 500]`, `["Decode", 
 val answer_codec : 'o Codec.t -> 'x Codec.t -> ('o, 'x) answer Codec.t
 ```
 
-`answer_codec output rejected`: `["Ok", output]`, `["Rejected", error]` or `["Failed", error]`. For an endpoint: `answer_codec (Remote.output endpoint) (Remote.rejected endpoint)`. A machine whose events hold answers uses it in its event codec (see `Machine.shape`).
+`answer_codec output rejected`: `["Ok", output]`, `["Rejected", error]` or `["Failed", error]`. For an endpoint: `answer_codec (Remote.output endpoint) (Remote.rejected endpoint)`. A machine whose events hold answers uses it in its event codec (see `Machine.register_codecs`).
 
 ```ocaml
 val error_to_string : error -> string
@@ -2943,7 +2918,7 @@ val make :
   (unit, ('i, 'o, 'x) state, ('i, 'o, 'x) event) Machine.t
 ```
 
-`Loading` owns a `Remote.call` on the endpoint, with `timeout_ms` when given. The events are named `"load"`, `"retry"`, `"settled ok"`, `"settled rejected"`, `"settled error"` and `"reset"`. There is no automatic retry: a `Retrying` state that owns a `Source.after` timer and counts the attempts is a pattern for the app.
+A `Remote.call` on the endpoint runs during `Loading`, with `timeout_ms` when given. The events are named `"load"`, `"retry"`, `"settled ok"`, `"settled rejected"`, `"settled error"` and `"reset"`. There is no automatic retry: a `Retrying` state with a `Source.after` timer in `during` that counts the attempts is a pattern for the app.
 
 ## Silica.Render
 
@@ -3364,9 +3339,9 @@ All six values are `0.`.
 
 ## Silica.Source
 
-Timers and sources of events that a state owns: the `owns` list of `Machine.make`. A source starts when a state starts to own it and stops when the state no longer owns it.
+Timers and sources of events that run during a state: the `during` list of `Machine.make`. A source starts when it comes into the list and stops when it goes out of the list.
 
-Each source has a `key`. After each step the machine compares the keys of the old and the new `owns` list: it stops the sources whose key went away and starts the new ones, and the others keep running. So one state can own a set of calls that changes with its data. Calls are made with `Remote.call`.
+Each source has a `key`. After each step the machine compares the keys of the old and the new `during` list: it stops the sources whose key went away and starts the new ones, and the others keep running. So the calls of one state can change with its data. Calls are made with `Remote.call`.
 
 ```ocaml
 type 'e t
@@ -3474,7 +3449,7 @@ The same held source with each of its refs replaced. A component that can have m
 val key : 'e t -> string
 ```
 
-The identity of the source in an `owns` list: the path and encoded input of a call, the topic and key of a subscription, `"after <ms>ms"` for a timer, the kind and refs of a held source, and the place of an `anchor`. When an `owns` list holds two sources with the same key, the second one gets `"#2"` after its key, and so on.
+The identity of the source in a `during` list: the path and encoded input of a call, the topic and key of a subscription, `"after <ms>ms"` for a timer, the kind and refs of a held source, and the place of an `anchor`. When an `during` list holds two sources with the same key, the second one gets `"#2"` after its key, and so on.
 
 ```ocaml
 val same : 'e t -> 'e t -> bool
@@ -3482,7 +3457,7 @@ val same : 'e t -> 'e t -> bool
 
 Two sources with the same key also have the same data: the event of a timer, the table of `keys`, the events of `outside_press` and `dismiss`. Compared with `=`. Functions cannot be compared: a part that is a function counts as the same.
 
-The rule after a step that keeps the state: a source whose key went away stops, a new key starts, and a source whose key stays but whose data is not `same` stops and starts again, so it raises the event of the current `owns` list. A function, such as the answer function of a call, is the one of its first start while the key and the data stay: put the data it needs in the state, or in the input of the call.
+The rule after a step that keeps the state: a source whose key went away stops, a new key starts, and a source whose key stays but whose data is not `same` stops and starts again, so it raises the event of the current `during` list. A function, such as the answer function of a call, is the one of its first start while the key and the data stay: put the data it needs in the state, or in the input of the call.
 
 ```ocaml
 val name : 'e t -> string
@@ -3717,7 +3692,7 @@ type deviation = {
 val conforms : t list -> Trace.t -> deviation list
 ```
 
-`conforms specs trace`: the records of `trace` that `specs` do not allow, in the order of the trace. A start, a resume and an end must be in a state of a spec of the machine; an unhandled event in a state of it; a step that entered a state must be an edge, and a step that kept it a kept step, with the same event name (`props` for new props). A machine can have several specs, such as the specs of the joint checks of a parent with each of its children: a record conforms when one of them allows it. `[]` when the whole trace conforms.
+`conforms specs trace`: the records of `trace` that `specs` do not allow, in the order of the trace. A start, a resume and an end must be in a state of a spec of the machine; an unhandled event in a state of it; a step that entered a state must be an edge, and a step that kept it a kept step, with the same event name (`props` for new props). An event that its machine does not name (see `Transition.label`) matches a step between the same states whatever its label: a trace with names only no longer holds the accessible name or the answer that the label of the spec shows. A machine can have several specs, such as the specs of the joint checks of a parent with each of its children: a record conforms when one of them allows it. `[]` when the whole trace conforms.
 
 ```ocaml
 val deviation_to_string : deviation -> string
@@ -3917,7 +3892,7 @@ What a subscription raises as an event. `seq` is the sequence number of the stat
 val update_codec : 's Codec.t -> 's update Codec.t
 ```
 
-`update_codec state` writes `{"seq": n, "status": ..}`, the status by `Status.codec`. A machine whose events hold updates uses it in its event codec (see `Machine.shape`). For a topic: `update_codec (Topic.state topic)`.
+`update_codec state` writes `{"seq": n, "status": ..}`, the status by `Status.codec`. A machine whose events hold updates uses it in its event codec (see `Machine.register_codecs`). For a topic: `update_codec (Topic.state topic)`.
 
 ## Silica.Trace
 
@@ -4054,8 +4029,8 @@ type change = Instance.change =
   | Resumed
       (** The instance started again at a snapshot it reached before, such as a
           Live island after a server restart: [from] is [""], [target] is the
-          state of that snapshot, [actions] are only the starts of what it owns
-          (see {!Machine.resume}), and the cause is [Start]. *)
+          state of that snapshot, [actions] are only the starts of what runs
+          during it (see {!Machine.resume}), and the cause is [Start]. *)
   | Unhandled  (** The machine ignored the event: nothing changed. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state, with the same name or another. *)
@@ -4136,7 +4111,8 @@ type t = {
   change : change;
   event : string;
       (** {!Machine.event_name} of the event; [""] when there is no event
-          ([Started], [Resumed], [Ended], [Props]). *)
+          ([Started], [Resumed], [Ended], [Props]) or the machine gives no
+          [event_name]. {!label} names the event in both cases. *)
   data : Silica_json.Json.t option;
       (** The event, by the event codec of the machine. *)
   props : Silica_json.Json.t option;
@@ -4162,6 +4138,18 @@ val describe : 'm Action.host -> string
 ```
 
 One action as short text, such as `"start timer 1.2/save/saved/after 2000ms 2000ms"`, `"start call 1.1/save/saving//api/save null /api/save"` (the id, then the path), `"stop 1.1/save/saving//api/save null"`, `"focus title"` or `"navigate /issues"`. The text of a `Copy` and the value of a cookie are left out.
+
+```ocaml
+val cause_label : cause -> string
+```
+
+The label of an event that its machine does not name: the handler, the key of a key handler, the role and the quoted accessible name of the element, as in `press button "Save"` or `key_down Escape textbox "Search"`; `after 2000ms` for a timer; `ok /api/save`, `rejected /api/save` or `failed /api/save` for the answer of a call (`answer /api/save` when the answer is not recorded); `live <topic>`; the name of a held source, such as `dismiss`; `result <action>`; `props`; `child <instance>`; `url <url>`; `preload <url>`; `message`. The checker labels the events of its steps and specs the same way.
+
+```ocaml
+val label : t -> string
+```
+
+The label of the event of the record: its `event`, or `cause_label` of its cause when the machine does not name it; `""` for `Started`, `Resumed` and `Ended`.
 
 ```ocaml
 val strip : t -> t

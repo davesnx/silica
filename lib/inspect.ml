@@ -509,7 +509,9 @@ let passes filter = function
   | Step { transition; _ } ->
       machine_passes filter transition.machine
       && path_passes filter transition.instance
-      && (filter.events = [] || List.mem transition.event filter.events)
+      && (filter.events = []
+         || List.mem (Transition.label transition) filter.events
+         )
       && (filter.changes = [] || List.mem transition.change filter.changes)
   | Mount instance ->
       machine_passes filter instance.machine && path_passes filter instance.path

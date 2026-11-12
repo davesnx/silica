@@ -23,7 +23,11 @@ module Dialog = struct
     seen : string;
   }
 
-  type state = Closed of data | Opened of data [@@deriving state_shape]
+  type state = Closed of data | Opened of data
+
+  let name = function Closed _ -> "closed" | Opened _ -> "opened"
+
+  let states = [ "closed"; "opened" ]
 
   let opener = Ref.make "opener"
   let dialog = Ref.make "dialog"
@@ -32,8 +36,8 @@ module Dialog = struct
   let initial = { outsides = 0; leaks = 0; escapes = 0; width = 0.; seen = "-" }
 
   let machine ~id ~sources =
-    Machine.make ~id ~init:(Closed initial) ~shape:state_shape
-      ~owns:(function Opened _ -> sources | Closed _ -> [])
+    Machine.make ~id ~init:(Closed initial) ~name ~states
+      ~during:(function Opened _ -> sources | Closed _ -> [])
       (fun state event ->
         match (state, event) with
         | Closed data, (Open | Toggle_k) ->
@@ -407,7 +411,10 @@ module Gadgets = struct
     | Got of string
 
   type state = Idle of string list | Watching of string list
-  [@@deriving state_shape]
+
+  let name = function Idle _ -> "idle" | Watching _ -> "watching"
+
+  let states = [ "idle"; "watching" ]
 
   let box = Ref.make "gadget-box"
 
@@ -478,8 +485,8 @@ module Gadgets = struct
     match state with Idle _ -> Idle log | Watching _ -> Watching log
 
   let machine =
-    Machine.make ~id:"gadgets" ~init:(Idle []) ~shape:state_shape
-      ~owns:(function
+    Machine.make ~id:"gadgets" ~init:(Idle []) ~name ~states
+      ~during:(function
         | Watching _ ->
             [
               Source.scroll (fun s -> Got (scroll "page" s));
@@ -538,7 +545,10 @@ module Document = struct
     | Dark of bool
 
   type state = Idle of string list | Watching of string list
-  [@@deriving state_shape]
+
+  let name = function Idle _ -> "idle" | Watching _ -> "watching"
+
+  let states = [ "idle"; "watching" ]
 
   let log = function Idle log | Watching log -> log
 
@@ -546,8 +556,8 @@ module Document = struct
     match state with Idle _ -> Idle log | Watching _ -> Watching log
 
   let machine =
-    Machine.make ~id:"document" ~init:(Idle []) ~shape:state_shape
-      ~owns:(function
+    Machine.make ~id:"document" ~init:(Idle []) ~name ~states
+      ~during:(function
         | Watching _ ->
             [ Source.media "(prefers-color-scheme: dark)" (fun d -> Dark d) ]
         | Idle _ ->

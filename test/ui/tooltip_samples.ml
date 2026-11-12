@@ -5,7 +5,7 @@ type event = Changed of bool * Popup.reason | Set_delay of Tooltip.delay
 
 let machine ~delay =
   Machine.make ~id:"tooltip-page" ~init:(delay, [])
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun (delay, log) event ->
       match event with
       | Changed (opened, why) ->

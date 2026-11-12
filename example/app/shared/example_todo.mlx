@@ -7,19 +7,25 @@ type state = { todos : todo list; draft : string; next_id : int }
 [@@deriving json, fingerprint]
 
 type event = Draft of string | Add | Toggle of int | Delete of int
-[@@deriving json, event_shape]
+[@@deriving json]
+
+let event_name = function
+  | Draft _ ->
+      "draft"
+  | Add ->
+      "add"
+  | Toggle _ ->
+      "toggle"
+  | Delete _ ->
+      "delete"
 
 let init = { todos = []; draft = ""; next_id = 1 }
 let input_ref = Ref.make "todo-input"
 
 let machine =
   Machine.make ~id:"todo" ~init
-    ~shape:
-      (Machine.shape
-         ~name:(fun _ -> "todo")
-         ~names:[ "todo" ] ~fingerprint:state_fingerprint ()
-      )
-    ~events:event_shape
+    ~name:(fun _ -> "todo")
+    ~states:[ "todo" ] ~event_name ~fingerprint:state_fingerprint
     (fun state event ->
       match event with
       | Draft draft ->

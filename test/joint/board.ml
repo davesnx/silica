@@ -26,26 +26,23 @@ let free items = List.find_opt (fun key -> not (List.mem key items)) [ 1; 2 ]
 let machine =
   Machine.make ~id:"board"
     ~init:{ items = [ 1 ]; label = 0; last = None; finished = []; job = true }
-    ~shape:(Machine.shape ~name:(fun _ -> "board") ~names:[ "board" ] ())
-    ~events:
-      (Machine.shape
-         ~name:(function
-           | Add ->
-               "add"
-           | Remove_first ->
-               "remove first"
-           | Reverse ->
-               "reverse"
-           | Relabel ->
-               "relabel"
-           | Toggle_job ->
-               "toggle job"
-           | Bumped _ ->
-               "bumped"
-           | Done _ ->
-               "done"
-           )
-         ()
+    ~name:(fun _ -> "board")
+    ~states:[ "board" ]
+    ~event_name:(function
+      | Add ->
+          "add"
+      | Remove_first ->
+          "remove first"
+      | Reverse ->
+          "reverse"
+      | Relabel ->
+          "relabel"
+      | Toggle_job ->
+          "toggle job"
+      | Bumped _ ->
+          "bumped"
+      | Done _ ->
+          "done"
       )
     (fun state event ->
       match event with

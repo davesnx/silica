@@ -20,14 +20,10 @@ let name = function
       "finished"
 
 let machine =
-  Machine.make ~id:"job" ~init:Idle
-    ~shape:(Machine.shape ~name ~names:[ "idle"; "running"; "finished" ] ())
-    ~events:
-      (Machine.shape
-         ~name:(function Start -> "start" | Answered _ -> "answered")
-         ()
-      )
-    ~owns:(function
+  Machine.make ~id:"job" ~init:Idle ~name
+    ~states:[ "idle"; "running"; "finished" ]
+    ~event_name:(function Start -> "start" | Answered _ -> "answered")
+    ~during:(function
       | Running ->
           [ Remote.call endpoint 1 (fun answer -> Answered answer) ]
       | Idle | Finished _ ->

@@ -2,10 +2,12 @@ open Silica
 open Silica_ui
 open Jsonkit.Primitives
 
-type event = Open_search | Changed of bool | Ran of string
-[@@deriving json, event_shape]
+type event = Open_search | Changed of bool | Ran of string [@@deriving json]
 
-type state = Closed | Open [@@deriving json, state_shape]
+type state = Closed | Open [@@deriving json]
+
+let name = function Closed -> "closed" | Open -> "open"
+let states = [ "closed"; "open" ]
 
 let doc_value ?anchor slug =
   "doc:" ^ slug ^ match anchor with Some a -> "#" ^ a | None -> ""
@@ -76,8 +78,8 @@ let shortcut =
     ]
 
 let machine =
-  Machine.make ~id:"search" ~init:Closed ~shape:state_shape ~events:event_shape
-    ~owns:(function Closed -> [ shortcut ] | Open -> [])
+  Machine.make ~id:"search" ~init:Closed ~name ~states
+    ~during:(function Closed -> [ shortcut ] | Open -> [])
     (fun state event ->
       match (state, event) with
       | Closed, (Open_search | Changed true) ->

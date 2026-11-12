@@ -41,7 +41,12 @@ let contains text part =
   in
   from 0
 
-type tally = Counting of int | Waiting of int [@@deriving state_shape]
+type tally = Counting of int | Waiting of int
+
+let tally_name = function Counting _ -> "counting" | Waiting _ -> "waiting"
+
+let tally_states = [ "counting"; "waiting" ]
+
 type tally_event = Add | Wait | Tick
 
 let tally_codec : tally Codec.t =
@@ -85,8 +90,9 @@ let event_codec : tally_event Codec.t =
 let field = Ref.make "field"
 
 let tally =
-  Machine.make ~id:"tally" ~init:(Counting 0) ~shape:tally_shape
-    ~owns:(function Waiting _ -> [ Source.after 50 Tick ] | Counting _ -> [])
+  Machine.make ~id:"tally" ~init:(Counting 0) ~name:tally_name
+    ~states:tally_states
+    ~during:(function Waiting _ -> [ Source.after 50 Tick ] | Counting _ -> [])
     ~entry:(function Counting _ -> [ Action.Focus field ] | Waiting _ -> [])
     (fun state event ->
       match (state, event) with
@@ -108,7 +114,7 @@ let tally_live =
 
 let plain =
   Machine.make ~id:"plain" ~init:0
-    ~shape:(Machine.shape ~name:(fun _ -> "on") ())
+    ~name:(fun _ -> "on")
     (fun count event ->
       match event with Add -> Machine.Go (count + 1) | Wait | Tick -> Ignore
     )

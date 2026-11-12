@@ -10,12 +10,9 @@ let kinds =
 
 let machine =
   Machine.make ~id:"gestures" ~init:Idle
-    ~shape:
-      (Machine.shape
-         ~name:(function Idle -> "idle" | Done kind -> kind)
-         ~names:("idle" :: kinds) ()
-      )
-    ~events:(Machine.shape ~name:(fun (Fired kind) -> kind) ())
+    ~name:(function Idle -> "idle" | Done kind -> kind)
+    ~states:("idle" :: kinds)
+    ~event_name:(fun (Fired kind) -> kind)
     (fun _ (Fired kind) -> Machine.Go (Done kind))
 
 let fired kind = Some (Fired kind)

@@ -15,22 +15,25 @@ type props = {
 }
 
 type move = Next | Previous | First | Last
-type event =
-  | Select of string [@event_name_of fun value -> "select " ^ value]
-  | Move of move
-      [@event_name_of
-        function
-        | Next ->
-            "move next"
-        | Previous ->
-            "move previous"
-        | First ->
-            "move first"
-        | Last ->
-            "move last"]
-[@@deriving event_shape]
+type event = Select of string | Move of move
+
 type model = { selected : string; focused : string }
-type state = Ready of model [@@deriving state_shape]
+type state = Ready of model [@@deriving fingerprint]
+
+let name = function Ready _ -> "ready"
+let states = [ "ready" ]
+
+let event_name = function
+  | Select value ->
+      "select " ^ value
+  | Move Next ->
+      "move next"
+  | Move Previous ->
+      "move previous"
+  | Move First ->
+      "move first"
+  | Move Last ->
+      "move last"
 
 let tab_id id value = id ^ "-tab-" ^ value
 let panel_id id value = id ^ "-panel-" ^ value
@@ -92,7 +95,7 @@ let target props model move =
 let machine =
   Machine.make_with_props ~id:"tabs"
     ~init:(Ready { selected = ""; focused = "" })
-    ~shape:state_shape ~events:event_shape
+    ~name ~states ~event_name ~fingerprint:state_fingerprint
     ~on_props:(fun previous (props : props) _ ->
       match previous with
       | Some (previous : props) when previous.value = props.value ->

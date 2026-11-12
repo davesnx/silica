@@ -5,15 +5,21 @@
 
     {[
       type event = Save | Answer of (string, string) Remote.answer | Reset
-      [@@deriving event_shape]
-
       type state = Idle | Saving | Saved of string | Failed of Remote.error
-      [@@deriving state_shape]
+
+      let name = function
+        | Idle ->
+            "idle"
+        | Saving ->
+            "saving"
+        | Saved _ ->
+            "saved"
+        | Failed _ ->
+            "failed"
 
       let machine =
-        Machine.make ~id:"save" ~init:Idle ~shape:state_shape
-          ~events:event_shape
-          ~owns:(function
+        Machine.make ~id:"save" ~init:Idle ~name
+          ~during:(function
             | Saving ->
                 [ Remote.call save "draft" (fun answer -> Answer answer) ]
             | Saved _ ->
@@ -39,8 +45,8 @@
     [Start_call], [Start_live], [Start_source] and [Stop]; a host drops a timer
     or answer whose id was stopped.
 
-    A component with props uses {!make_with_props}: the update, [owns], [entry]
-    and [exit] get the props, and the props are not an event. *)
+    A component with props uses {!make_with_props}: the update, [during],
+    [entry] and [exit] get the props, and the props are not an event. *)
 
 type ('s, 'e) next =
   | Ignore  (** The event is not handled: the snapshot does not change. *)
@@ -55,7 +61,7 @@ type ('s, 'e) next =
   | Reenter of 's
       (** Like [Go], but exit and enter also when the name does not change: all
           timers and sources start again. A debounce is [Reenter] on a state
-          that owns a timer. *)
+          with a timer in [during]. *)
 
 val map_next : ('a -> 'b) -> ('a, 'e) next -> ('b, 'e) next
 (** Change the snapshot of a [Go], [Go_with] or [Reenter]. A helper that decides
@@ -65,76 +71,45 @@ val map_next : ('a -> 'b) -> ('a, 'e) next -> ('b, 'e) next
 type ('p, 's, 'e) t
 (** A machine with props ['p], snapshots ['s] and events ['e]. *)
 
-type 'a shape
-(** What a machine knows about its state type or its event type: the name of
-    each value and the list of every name. Make it with {!val-shape}, or with
-    the derivers [[@@deriving state_shape]] and [[@@deriving event_shape]] of
-    [silica.ppx]:
-
-    {[
-      type event = Save | Answer of (string, string) Remote.answer
-      [@@deriving event_shape]
-      (* event_shape : event Machine.shape *)
-
-      type state = Idle | Saving | Saved of string [@@deriving state_shape]
-      (* state_shape : state Machine.shape *)
-    ]}
-
-    The derivers name each constructor in lower case ([Saved] is ["saved"]);
-    [state_shape] also lists every name, [event_shape] lists none;
-    [[@state_name "x"]] or [[@event_name "x"]] on a constructor gives another
-    name, and two constructors with one name are a compile error.
-    [[@event_name_of f]] on an event constructor with tuple data names the event
-    by its data: the name is [f] applied to the items of the tuple, such as
-    [[@event_name_of fun value -> "select " ^ value]]. *)
-
-val shape :
-  name:('a -> string) ->
-  ?names:string list ->
-  ?fingerprint:'a Fingerprint.t ->
-  unit ->
-  'a shape
-(** [shape ~name ?names ?fingerprint ()]. For states, [name] names the state of
-    a snapshot in the spec, the checker and the ids of timers and sources, and
-    [names] lists every name, for the checker to report the states that a run
-    never reached. For events, [name] names the event on the edges of the spec
-    and in traces.
-
-    [fingerprint] lets a hot reload keep the snapshots of the machine (see
-    {!Fingerprint}); [[@@deriving state_shape]] gives it in a development build,
-    and a shape written by hand takes the one of [[@@deriving fingerprint]] on
-    its state type. A machine with none starts again at each hot reload, unless
-    its initial snapshot equals the old one. *)
-
-val shape_name : 'a shape -> 'a -> string
-(** The name of the value. *)
-
-val shape_names : 'a shape -> string list
-(** Every name, or [[]] when the shape has no [names]. *)
-
 val make :
   id:string ->
   init:'s ->
-  shape:'s shape ->
-  ?events:'e shape ->
-  ?owns:('s -> 'e Source.t list) ->
+  name:('s -> string) ->
+  ?states:string list ->
+  ?event_name:('e -> string) ->
+  ?fingerprint:'s Fingerprint.t ->
+  ?during:('s -> 'e Source.t list) ->
   ?entry:('s -> 'e Action.t list) ->
   ?exit:('s -> 'e Action.t list) ->
   ?final:('s -> bool) ->
   ?start:'e Action.t list ->
   ('s -> 'e -> ('s, 'e) next) ->
   (unit, 's, 'e) t
-(** [make ~id ~init ~shape update] is a machine with no props, for example
-    [Machine.make ~id:"save" ~init:Idle ~shape:state_shape ~events:event_shape
-     ~owns update].
+(** [make ~id ~init ~name update] is a machine with no props, for example
+    [Machine.make ~id:"save" ~init:Idle ~name ~during update].
 
     [id] names the machine in the spec, in the checker and in the ids of timers
-    and sources. [shape] names its states and [events] its events (see
-    {!type-shape}). [owns] lists the timers ({!Source.after}), calls
-    ({!Remote.call}) and sources of a snapshot (see {!Source.key}). [entry] and
-    [exit] give the actions of entering and leaving a state. A [final] snapshot
-    handles no event. [start] are actions that run once, before the entry of
-    [init].
+    and sources. [name] names the state of a snapshot: two snapshots with one
+    name are one state, which the machine enters once.
+
+    [states] lists every name that [name] gives, so that the checker can report
+    the states that no run reached; with no [states], the checker says that it
+    cannot report them for this machine.
+
+    [event_name] names an event on the edges of the spec, in the checker and in
+    traces, and [Check.event] finds an event by it. With no [event_name], the
+    tools label an event by its cause, such as [press button "Save"],
+    [after 2000ms] or [ok /api/save] (see {!Transition.cause_label}).
+
+    [fingerprint] lets a hot reload keep the snapshots of the machine: pass the
+    one of [[@@deriving fingerprint]] on the state type (see {!Fingerprint}). A
+    machine with none starts again at each hot reload, unless its initial
+    snapshot equals the old one.
+
+    [during] lists the timers ({!Source.after}), calls ({!Remote.call}) and
+    sources that run during a snapshot (see {!Source.key}). [entry] and [exit]
+    give the actions of entering and leaving a state. A [final] snapshot handles
+    no event. [start] are actions that run once, before the entry of [init].
 
     The update ends with [| _ -> Ignore] in most machines; the checker reports
     an event that the view offers and the machine ignores (see [Check]). *)
@@ -142,9 +117,11 @@ val make :
 val make_with_props :
   id:string ->
   init:'s ->
-  shape:'s shape ->
-  ?events:'e shape ->
-  ?owns:('p -> 's -> 'e Source.t list) ->
+  name:('s -> string) ->
+  ?states:string list ->
+  ?event_name:('e -> string) ->
+  ?fingerprint:'s Fingerprint.t ->
+  ?during:('p -> 's -> 'e Source.t list) ->
   ?entry:('p -> 's -> 'e Action.t list) ->
   ?exit:('p -> 's -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -153,8 +130,8 @@ val make_with_props :
   ('p -> 's -> 'e -> ('s, 'e) next) ->
   ('p, 's, 'e) t
 (** Like {!make}, for a component with props: the parent gives them with
-    {!Component.node}, and the update, [owns], [entry] and [exit] get the props
-    of the moment. [on_props previous props state] runs when the component
+    {!Component.node}, and the update, [during], [entry] and [exit] get the
+    props of the moment. [on_props previous props state] runs when the component
     starts ([previous = None]) and when the parent gives other props; it
     defaults to [Ignore]. After it, the sources are compared by key, as after a
     step, so a source that depends on the props starts again when they change.
@@ -170,14 +147,14 @@ val name : ('p, 's, 'e) t -> 's -> string
 (** The name of the state of the snapshot. *)
 
 val states : ('p, 's, 'e) t -> string list option
-(** The [names] of the shape of the machine. *)
+(** The [states] given to {!make}. *)
 
 val fingerprint : ('p, 's, 'e) t -> 's Fingerprint.t option
-(** The [fingerprint] of the shape of the machine. *)
+(** The [fingerprint] given to {!make}. *)
 
-val event_name : ('p, 's, 'e) t -> 'e -> string
-(** The name of the event by the [events] of the machine, or [""] when it has
-    none. *)
+val event_name : ('p, 's, 'e) t -> 'e -> string option
+(** The name of the event by the [event_name] given to {!make}, or [None] when
+    the machine has none. *)
 
 val register_codecs :
   ('p, 's, 'e) t ->
@@ -229,18 +206,19 @@ type resource =
   | Call of { id : string; path : string }
   | Subscription of { id : string; topic : string }
   | Held of { id : string; name : string }
-      (** A timer, call, subscription or held source that a snapshot owns. [id]
-          is the id used by the actions [Start_timer], [Start_call],
-          [Start_source], [Start_live] and [Stop] of {!Action.host}. *)
+      (** A timer, call, subscription or held source that runs during a
+          snapshot. [id] is the id used by the actions [Start_timer],
+          [Start_call], [Start_source], [Start_live] and [Stop] of
+          {!Action.host}. *)
 
 val active : ('p, 's, 'e) t -> 'p -> 's -> resource list
-(** The timers and sources that the snapshot owns. After [start], [step] or
-    [set_props], the actions and this list agree: a resource is running if and
-    only if its id was started and not stopped. *)
+(** The timers and sources that run during the snapshot. After [start], [step]
+    or [set_props], the actions and this list agree: a resource is running if
+    and only if its id was started and not stopped. *)
 
 val held : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
-(** The held sources (see {!Source.focus_trap}) that the snapshot owns. The
-    checker reads them to know which presses can happen. *)
+(** The held sources (see {!Source.focus_trap}) that run during the snapshot.
+    The checker reads them to know which presses can happen. *)
 
 val can : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
 (** The machine handles the event in this snapshot: it is not final and the
@@ -255,9 +233,9 @@ val start : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
 val resume : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
 (** [resume machine props snapshot] gives the actions that run the machine again
     at a snapshot it reached before, in another process or bundle: the starts of
-    the timers, calls, subscriptions and held sources that the snapshot owns, in
-    the order of [owns], with the ids of {!active}. A timer starts with its full
-    delay and a call is sent again.
+    the timers, calls, subscriptions and held sources that run during the
+    snapshot, in the order of [during], with the ids of {!active}. A timer
+    starts with its full delay and a call is sent again.
 
     It gives no [start] actions, no [entry] and no [on_props]: the snapshot
     entered its state before, when they ran, and their effects (a focus, a
@@ -280,8 +258,8 @@ val step :
     each entry of a state its own instance (see {!Instance}).
 
     [finished] is the id of the timer or call that raised the event: it ended
-    when it delivered. A handled step that keeps the name and still owns a
-    source with that id starts it again, so a state that owns
+    when it delivered. A handled step that keeps the name and still has a source
+    with that id in [during] starts it again, so a state whose [during] gives
     [Source.after 1000 Tick] and handles [Tick] with [Go] ticks every second.
     Hosts give it for timers and calls; subscriptions and held sources do not
     end when they deliver. *)

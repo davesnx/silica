@@ -1,12 +1,18 @@
 open Silica
 
 module Counter = struct
-  type state = Idle of int | Ticking of int [@@deriving state_shape]
+  type state = Idle of int | Ticking of int [@@deriving fingerprint]
+
+  let name = function Idle _ -> "idle" | Ticking _ -> "ticking"
+
+  let states = [ "idle"; "ticking" ]
+
   type event = Bump | Start | Tick
 
   let machine =
-    Machine.make ~id:"counter" ~init:(Idle 0) ~shape:state_shape
-      ~owns:(function Ticking _ -> [ Source.after 50 Tick ] | Idle _ -> [])
+    Machine.make ~id:"counter" ~init:(Idle 0) ~name ~states
+      ~fingerprint:state_fingerprint
+      ~during:(function Ticking _ -> [ Source.after 50 Tick ] | Idle _ -> [])
       (fun state event ->
         match (state, event) with
         | Idle count, Bump ->
@@ -39,12 +45,18 @@ module Counter = struct
 end
 
 module Draft = struct
-  type state = Draft of string [@@deriving state_shape]
+  type state = Draft of string [@@deriving fingerprint]
+
+  let name = function Draft _ -> "draft"
+
+  let states = [ "draft" ]
+
   type event = Typed of string | Key
 
   let[@warning "-11"] machine =
-    Machine.make ~id:"draft" ~init:(Draft "") ~shape:state_shape
-      ~owns:(fun _ -> [ Source.keys [ (Key.make "k", Key) ] ])
+    Machine.make ~id:"draft" ~init:(Draft "") ~name ~states
+      ~fingerprint:state_fingerprint
+      ~during:(fun _ -> [ Source.keys [ (Key.make "k", Key) ] ])
       (fun state event ->
         match (state, event) with
         | _, Typed text ->

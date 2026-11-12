@@ -174,13 +174,16 @@ let topic_tests =
 module Watch = struct
   type event = Watch of string | Stop | Update of int Topic.update
   type state = Idle | Watching of string * int Status.t
-  [@@deriving state_shape]
+
+  let name = function Idle -> "idle" | Watching _ -> "watching"
+
+  let states = [ "idle"; "watching" ]
 
   let topic = Topic.declare ~name:"counts" ~state:Codec.int
 
   let machine =
-    Machine.make ~id:"watch" ~init:Idle ~shape:state_shape
-      ~owns:(function
+    Machine.make ~id:"watch" ~init:Idle ~name ~states
+      ~during:(function
         | Idle ->
             []
         | Watching (key, _) ->

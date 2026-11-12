@@ -112,14 +112,23 @@ const processesIn = (directory: string): number[] =>
 const hotComponent = `open Silica
 
 type state = Idle of int * string | Waiting of int * string
-[@@deriving state_shape]
+[@@deriving fingerprint]
 
-type event = Bump | Wait | Done | Typed of string [@@deriving event_shape]
+type event = Bump | Wait | Done | Typed of string
+
+let name = function Idle _ -> "idle" | Waiting _ -> "waiting"
+let states = [ "idle"; "waiting" ]
+
+let event_name = function
+  | Bump -> "bump"
+  | Wait -> "wait"
+  | Done -> "done"
+  | Typed _ -> "typed"
 
 let machine =
-  Machine.make ~id:"hot" ~init:(Idle (0, "")) ~shape:state_shape
-    ~events:event_shape
-    ~owns:(function Waiting _ -> [ Source.after 2500 Done ] | _ -> [])
+  Machine.make ~id:"hot" ~init:(Idle (0, "")) ~name ~states ~event_name
+    ~fingerprint:state_fingerprint
+    ~during:(function Waiting _ -> [ Source.after 2500 Done ] | _ -> [])
     (fun state event ->
       match (state, event) with
       | Idle (count, text), Bump ->
@@ -355,6 +364,8 @@ describe("hot reload", () => {
         hot(),
         readFileSync(hot(), "utf8")
           .replace("| Waiting of int * string\n", "| Waiting of int * string\n  | Paused\n")
+          .replace('| Waiting _ -> "waiting"', '| Waiting _ -> "waiting" | Paused -> "paused"')
+          .replace('[ "idle"; "waiting" ]', '[ "idle"; "waiting"; "paused" ]')
           .replace('(count, text, "waiting")', '(count, text, "waiting")\n  | Paused ->\n      (0, "", "paused")'),
       );
       const changed = await dev.waitFor((event) => event.t === "hot-reload", before);
@@ -451,16 +462,16 @@ describe("silica dev", () => {
       const errors = failed["errors"] as { file: string; line: number; message: string; excerpt: [number, string][] }[];
       assert.equal(errors.length, 1, "one error, not one for each copy of the file");
       assert.equal(errors[0]?.file, "example/app/shared/example_about.mlx");
-      assert.equal(errors[0]?.line, 20);
+      assert.equal(errors[0]?.line, 25);
       assert.match(errors[0]?.message ?? "", /Unbound constructor About_broken/);
       assert.deepEqual(
         errors[0]?.excerpt.map(([line]) => line),
-        [18, 19, 20, 21, 22],
+        [23, 24, 25, 26, 27],
       );
       const overlay = page.locator("[data-silica-dev-overlay]");
       await overlay.waitFor();
-      assert.match((await overlay.textContent()) ?? "", /example\/app\/shared\/example_about\.mlx:20:/);
-      assert.match((await page.locator('#silica-dev .line[data-error]').textContent()) ?? "", /20 \|\s+\[ Node.text About_broken \]/);
+      assert.match((await overlay.textContent()) ?? "", /example\/app\/shared\/example_about\.mlx:25:/);
+      assert.match((await page.locator('#silica-dev .line[data-error]').textContent()) ?? "", /25 \|\s+\[ Node.text About_broken \]/);
       assert.equal(await page.locator("h1", { hasText: "About" }).first().isVisible(), true, "the old page still runs under the overlay");
     } finally {
       writeFileSync(about(), original);

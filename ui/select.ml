@@ -32,17 +32,30 @@ let nav_name = function
 type event =
   | Trigger_press
   | Open_key of Popup.reason
-      [@event_name_of fun reason -> "open_key " ^ Popup.reason_name reason]
-  | Move of nav [@event_name_of fun nav -> "move " ^ nav_name nav]
+  | Move of nav
   | Highlight of int
   | Select of int * Popup.reason
-      [@event_name_of fun _ reason -> "select " ^ Popup.reason_name reason]
   | Close of Popup.reason
-      [@event_name_of fun reason -> "close " ^ Popup.reason_name reason]
-[@@deriving event_shape]
 
 type state = Closed of string option | Open of string option * int option
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function Closed _ -> "closed" | Open _ -> "open"
+let states = [ "closed"; "open" ]
+
+let event_name = function
+  | Trigger_press ->
+      "trigger_press"
+  | Open_key reason ->
+      "open_key " ^ Popup.reason_name reason
+  | Move nav ->
+      "move " ^ nav_name nav
+  | Highlight _ ->
+      "highlight"
+  | Select (_, reason) ->
+      "select " ^ Popup.reason_name reason
+  | Close reason ->
+      "close " ^ Popup.reason_name reason
 
 type selection = { props : props; value : string option }
 
@@ -108,9 +121,9 @@ let close ?focus props value : (state, event) Machine.next =
   Popup.close ?focus (parts props) (Closed value)
 
 let machine =
-  Machine.make_with_props ~id:"select" ~init:(Closed None) ~shape:state_shape
-    ~events:event_shape
-    ~owns:(fun props -> function
+  Machine.make_with_props ~id:"select" ~init:(Closed None) ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun props -> function
       | Open _ ->
           Popup.layer ~escape:(Close Popup.Escape_key)
             ~outside:(Close Popup.Outside_press) (parts props)

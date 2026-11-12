@@ -1,7 +1,7 @@
 (** Requests that a machine asks its host to carry out. App code builds {!t}
-    values only. Timers and calls are not actions: a state owns them through the
-    [owns] list of {!Machine.make}, and hosts see them as {!host} values that
-    only the library builds. *)
+    values only. Timers and calls are not actions: they run during a state, in
+    the [during] list of {!Machine.make}, and hosts see them as {!host} values
+    that only the library builds. *)
 
 type 'e t =
   | Focus of Ref.t
@@ -76,10 +76,10 @@ type 'e t =
           first. They start again, with new state, when the view renders them
           again. {!Instance} handles it: a host never receives it. *)
 
-(** A held resource that a state owns: it starts when the state is entered and
-    stops when the state is left. Build them with the constructors in {!Source}.
-    A renderer carries them out. [rate] limits how often the renderer delivers
-    the event (see {!Rate}). *)
+(** A held resource that runs during a state: it starts when the state is
+    entered and stops when the state is left. Build them with the constructors
+    in {!Source}. A renderer carries them out. [rate] limits how often the
+    renderer delivers the event (see {!Rate}). *)
 type 'e source =
   | Focus_trap of { container : Ref.t; return_focus : bool }
       (** Keep keyboard focus inside the element with the ref [container]: focus
@@ -175,7 +175,7 @@ val map_refs : (Ref.t -> Ref.t) -> 'e source -> 'e source
 
 (** What a machine gives to its host. Only {!Machine} and {!Instance} build
     [Start_timer], [Start_call] and [Stop], so no timer or call lives outside
-    the state that owns it. *)
+    the state that it runs during. *)
 type 'e host =
   | Run of 'e t
   | Start_source of { id : string; source : 'e source }

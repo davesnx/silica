@@ -1,9 +1,13 @@
 open Silica
 
-type state = Home [@@deriving state_shape]
+type state = Home [@@deriving fingerprint]
+
+let name Home = "home"
+let states = [ "home" ]
 
 let machine =
-  Machine.make ~id:"home" ~init:Home ~shape:state_shape
+  Machine.make ~id:"home" ~init:Home ~name ~states
+    ~fingerprint:state_fingerprint
     ~final:(fun Home -> true)
     ~entry:(fun Home -> [ Action.Set_title "Silica example" ])
     (fun Home () -> Ignore)

@@ -17,7 +17,7 @@ type event =
 let machine =
   Machine.make ~id:"checkbox-page"
     ~init:{ checked = false; indeterminate = false; disabled = false; log = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Changed checked ->

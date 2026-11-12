@@ -999,8 +999,8 @@ test("a recorder keeps the transitions of the page, with the element of each inp
   const lines = App.trace_text().split("\n");
   assert.equal(lines[0], "trace events / build jsdom from browser");
   assert.match(lines[1], /^1 \+0ms events only \(started\) <- start$/);
-  assert.match(lines[2], /^2 \+\d+ms events only -> only \(kept\) <- key_down textbox "plain" \(main > input\[2\]\) q$/);
-  assert.match(lines[3], /^3 \+\d+ms events only -> only \(kept\) <- input textbox "debounced" \(main > input\[3\]\) abc$/);
+  assert.match(lines[2], /^2 \+\d+ms events only -> only \(kept\) on key_down q textbox "plain" <- key_down textbox "plain" \(main > input\[2\]\) q$/);
+  assert.match(lines[3], /^3 \+\d+ms events only -> only \(kept\) on input textbox "debounced" <- input textbox "debounced" \(main > input\[3\]\) abc$/);
   assert.ok(App.trace_reads_back(), "the JSON Lines file reads back as the same trace");
   for (const time of App.trace_times()) {
     assert.ok(time >= before && time <= Date.now(), "each record has the browser time");

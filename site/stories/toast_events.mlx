@@ -2,13 +2,12 @@ open Silica
 open Silica_ui
 
 type page = { toasts : Toast.toast list; next : int; events : string list }
-type event = Add of Toast.priority | Closed of string [@@deriving event_shape]
+type event = Add of Toast.priority | Closed of string
 
 let machine =
   Machine.make ~id:"toast-events"
     ~init:{ toasts = []; next = 1; events = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Add priority ->

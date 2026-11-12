@@ -1,13 +1,20 @@
 open Silica
 open Jsonkit.Primitives
 
-type event = Edit | Save [@@deriving json, event_shape]
-type state = Editing of int | Saved [@@deriving json, state_shape]
+type event = Edit | Save [@@deriving json]
+
+let event_name = function Edit -> "edit" | Save -> "save"
+
+type state = Editing of int | Saved [@@deriving json]
+
+let name = function Editing _ -> "editing" | Saved -> "saved"
+
+let states = [ "editing"; "saved" ]
 
 let machine ~fixed =
   let machine =
-    Machine.make ~id:"save" ~init:(Editing 0) ~shape:state_shape
-      ~events:event_shape (fun state event ->
+    Machine.make ~id:"save" ~init:(Editing 0) ~name ~states ~event_name
+      (fun state event ->
         match (state, event) with
         | Editing count, Edit ->
             Machine.Go (Editing ((count + 1) mod 2))

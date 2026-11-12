@@ -208,8 +208,7 @@ let run ?only entries =
   }
 
 let step_line (step : _ Check.step) =
-  Printf.sprintf "  %s -> %s on %s, by %s\n" step.from step.target
-    (match step.event with "" -> "(unnamed event)" | event -> event)
+  Printf.sprintf "  %s -> %s on %s, by %s\n" step.from step.target step.event
     (Check.describe_cause step.cause)
 
 let indented text =
@@ -1193,8 +1192,7 @@ let replay_text (Found check) ~id ~file replay =
       | None ->
           add "start: %s\n" point.state_name
       | Some step ->
-          add "%d. %s -> %s: %s, by %s\n" index step.from step.target
-            (match step.event with "" -> "(unnamed event)" | event -> event)
+          add "%d. %s -> %s: %s, by %s\n" index step.from step.target step.event
             (Check.describe_cause step.cause)
       );
       List.iter

@@ -6,17 +6,34 @@ type ready = { viewer : User.t; comments : Comment.t list } [@@deriving json]
 
 type event =
   | Loaded of (Thread.t, string) Silica_jsonkit.answer
-      [@event_name_of answer_name "loaded"]
   | Updated of Comments.t Silica_jsonkit.update
   | Retry
-[@@deriving json, event_shape]
+[@@deriving json]
 
-type state = Loading | Ready of ready | Failed [@@deriving json, state_shape]
+let event_name = function
+  | Loaded answer ->
+      answer_name "loaded" answer
+  | Updated _ ->
+      "updated"
+  | Retry ->
+      "retry"
+
+type state = Loading | Ready of ready | Failed [@@deriving json, fingerprint]
+
+let name = function
+  | Loading ->
+      "loading"
+  | Ready _ ->
+      "ready"
+  | Failed ->
+      "failed"
+
+let states = [ "loading"; "ready"; "failed" ]
 
 let machine =
-  Machine.make_with_props ~id:"comments" ~init:Loading ~shape:state_shape
-    ~events:event_shape
-    ~owns:(fun number -> function
+  Machine.make_with_props ~id:"comments" ~init:Loading ~name ~states ~event_name
+    ~fingerprint:state_fingerprint
+    ~during:(fun number -> function
       | Loading ->
           [ Remote.call comments_endpoint number (fun answer -> Loaded answer) ]
       | Ready _ ->

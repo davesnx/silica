@@ -1,13 +1,21 @@
 open Silica
 
-type event = Copy | Result of bool | Back [@@deriving event_shape]
-type state = Ready | Copying | Shown of bool [@@deriving state_shape]
+type event = Copy | Result of bool | Back
+type state = Ready | Copying | Shown of bool
+
+let name = function
+  | Ready ->
+      "ready"
+  | Copying ->
+      "copying"
+  | Shown _ ->
+      "shown"
 
 let text = "Hello from Silica"
 
 let machine =
-  Machine.make ~id:"copy" ~init:Ready ~shape:state_shape ~events:event_shape
-    ~owns:(function
+  Machine.make ~id:"copy" ~init:Ready ~name
+    ~during:(function
       | Shown _ -> [ Source.after 2000 Back ] | Ready | Copying -> []
       )
     (fun state event ->

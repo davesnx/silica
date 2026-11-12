@@ -9,8 +9,8 @@
 type entry = {
   machine : string;  (** The {!Machine.id}. *)
   fingerprint : (string, string) result option;
-      (** The {!Fingerprint.digest} of the state type, or [None] when the shape
-          has no fingerprint. *)
+      (** The {!Fingerprint.digest} of the state type, or [None] when the
+          machine has no fingerprint. *)
   snapshot : Obj.t;  (** The snapshot, as the old code made it. *)
 }
 
@@ -28,7 +28,7 @@ val of_running :
 type reason =
   | Other_machine of string
       (** Another machine, with this id, ran at the path before. *)
-  | No_fingerprint  (** The shape of the machine has no fingerprint. *)
+  | No_fingerprint  (** The machine has no fingerprint. *)
   | Not_handed_over of string
       (** The fingerprint of the new code gives this reason (see
           {!Fingerprint.digest}). *)

@@ -48,13 +48,13 @@ val call :
   'i ->
   (('o, 'x) answer -> 'e) ->
   'e Source.t
-(** One request to the endpoint with this input, as a source that a state owns
-    (see {!Machine.make}). The answer is raised as an event unless the call was
-    stopped first. The key of the call is its path and its encoded input: a step
-    that keeps the state but changes the input stops the old call and starts a
-    new one. There is no timeout unless [timeout_ms] is given. When it passes
-    before the answer, the call ends with [Failed (Network "timeout")], and a
-    later answer is dropped. *)
+(** One request to the endpoint with this input, as a source that runs during a
+    state (see the [during] list of {!Machine.make}). The answer is raised as an
+    event unless the call was stopped first. The key of the call is its path and
+    its encoded input: a step that keeps the state but changes the input stops
+    the old call and starts a new one. There is no timeout unless [timeout_ms]
+    is given. When it passes before the answer, the call ends with
+    [Failed (Network "timeout")], and a later answer is dropped. *)
 
 val error_codec : error Codec.t
 (** The error as [[@@deriving json]] writes a variant: [["Http", 500]],
@@ -65,7 +65,7 @@ val answer_codec : 'o Codec.t -> 'x Codec.t -> ('o, 'x) answer Codec.t
     [["Failed", error]]. For an endpoint:
     [answer_codec (Remote.output endpoint) (Remote.rejected endpoint)]. A
     machine whose events hold answers uses it in its event codec (see
-    {!Machine.val-shape}). *)
+    {!Machine.register_codecs}). *)
 
 val error_to_string : error -> string
 (** A short English sentence for the error, for a view:

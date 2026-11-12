@@ -18,7 +18,12 @@ end
 
 module Server = Silica_server.Make (Io)
 
-type tally = Counting of int [@@deriving state_shape]
+type tally = Counting of int
+
+let tally_name = function Counting _ -> "counting"
+
+let tally_states = [ "counting" ]
+
 type tally_event = Add
 
 let tally_codec : tally Codec.t =
@@ -40,8 +45,9 @@ let event_codec : tally_event Codec.t =
     )
 
 let tally =
-  Machine.make ~id:"tally" ~init:(Counting 0) ~shape:tally_shape
-    ~events:(Machine.shape ~name:(fun Add -> "add") ())
+  Machine.make ~id:"tally" ~init:(Counting 0) ~name:tally_name
+    ~states:tally_states
+    ~event_name:(fun Add -> "add")
     (fun (Counting count) Add -> Machine.Go (Counting (count + 1)))
 
 let () = Machine.register_codecs tally ~state:tally_codec ~event:event_codec ()

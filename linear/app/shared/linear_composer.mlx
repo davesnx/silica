@@ -4,19 +4,41 @@ open Linear_model
 
 type event =
   | Typed of string
-      [@event_name_of function "" -> "typed empty" | _ -> "typed"]
   | Send
   | Clear
   | Sent of (Comment.t, string) Silica_jsonkit.answer
-      [@event_name_of answer_name "sent"]
-[@@deriving json, event_shape]
+[@@deriving json]
+
+let event_name = function
+  | Typed "" ->
+      "typed empty"
+  | Typed _ ->
+      "typed"
+  | Send ->
+      "send"
+  | Clear ->
+      "clear"
+  | Sent answer ->
+      answer_name "sent" answer
 
 type state =
   | Empty
   | Drafting of string
   | Sending of string
   | Failed of { body : string; message : string }
-[@@deriving json, state_shape]
+[@@deriving json, fingerprint]
+
+let name = function
+  | Empty ->
+      "empty"
+  | Drafting _ ->
+      "drafting"
+  | Sending _ ->
+      "sending"
+  | Failed _ ->
+      "failed"
+
+let states = [ "empty"; "drafting"; "sending"; "failed" ]
 
 let typed draft : (state, event) Machine.next =
   if String.trim draft = "" then
@@ -25,9 +47,9 @@ let typed draft : (state, event) Machine.next =
     Go (Drafting draft)
 
 let machine =
-  Machine.make_with_props ~id:"comment-composer" ~init:Empty ~shape:state_shape
-    ~events:event_shape
-    ~owns:(fun number -> function
+  Machine.make_with_props ~id:"comment-composer" ~init:Empty ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun number -> function
       | Sending body ->
           [
             Remote.call add_comment_endpoint { New_comment.number; body }

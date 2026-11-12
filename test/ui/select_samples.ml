@@ -24,7 +24,7 @@ type event =
 
 let machine =
   Machine.make ~id:"select-page" ~init:(None, [])
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun (value, log) event ->
       match event with
       | Changed (id, chosen) ->

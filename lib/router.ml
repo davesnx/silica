@@ -249,9 +249,7 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
           (other, [ Action.Replace (print routes other) ])
     in
     Component.make
-      (Machine.make ~id:"router" ~init
-         ~shape:(Machine.shape ~name:(name routes) ())
-         ~events:(Machine.shape ~name:event_name ())
-         ~exit ~start:(titled init start) update
+      (Machine.make ~id:"router" ~init ~name:(name routes) ~event_name ~exit
+         ~start:(titled init start) update
       )
       render

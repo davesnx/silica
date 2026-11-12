@@ -851,6 +851,7 @@ type ('s, 'ev) report = {
   truncated : bool;
   violations : ('s, 'ev) violation list;
   unreached : string list;
+  unlisted : string list;
   allowed : (allowance * int) list;
   not_explored : string list;
   children : children;
@@ -1334,12 +1335,14 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
   in
   let step_of parent (move : _ Check_model.move) ~next ~target =
     let node = Dynarray.get result.nodes parent in
-    let cause = model.cause node (model.view node) move in
+    let view = model.view node in
+    let cause = model.cause node view move in
+    let event = Check_model.move_label model node (Lazy.from_val view) move in
     match model.tree.actor move.event with
     | None ->
         {
           input = move.event;
-          event = model.event_name move.event;
+          event;
           cause;
           instance = "0";
           machine = model.machine;
@@ -1364,7 +1367,7 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
         in
         {
           input = move.event;
-          event = model.event_name move.event;
+          event;
           cause;
           instance;
           machine;
@@ -1464,6 +1467,7 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
     truncated;
     violations;
     unreached = List.rev unreached;
+    unlisted = model.unlisted ();
     allowed;
     not_explored =
       List.sort_uniq String.compare (result.not_explored @ model.tree.not_run ());
@@ -1557,8 +1561,7 @@ let pp_step formatter index step =
       else
         Printf.sprintf "[%s at %s] " step.machine step.instance
     )
-    step.from step.target
-    (match step.event with "" -> "(unnamed event)" | name -> name)
+    step.from step.target step.event
     (describe_cause step.cause)
 
 let pp_report formatter report =
@@ -1633,6 +1636,12 @@ let pp_report formatter report =
     )
     report.unreached;
   List.iter
+    (fun machine ->
+      Format.fprintf formatter "@,unlisted: %s"
+        (Check_rules.unlisted_message machine)
+    )
+    report.unlisted;
+  List.iter
     (fun ((allowance : allowance), count) ->
       Format.fprintf formatter "@,allowed %s%s%s (%d): %s" allowance.rule
         (match allowance.state with Some name -> " in " ^ name | None -> "")
@@ -1683,6 +1692,15 @@ type 'ev wanted = {
   url : string option;
   by_cause : bool;
 }
+
+let wanted_label wanted =
+  match (wanted.event, wanted.cause) with
+  | "", Some cause ->
+      Check_model.cause_label ~answer:wanted.answer cause
+  | "", None ->
+      "(unnamed)"
+  | name, _ ->
+      name
 
 exception Unfaithful_step of string
 
@@ -1861,7 +1879,7 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
     let step =
       {
         input = move.event;
-        event = model.event_name move.event;
+        event = Check_model.move_label model node (Lazy.from_val view) move;
         cause = model.cause node view move;
         instance = "0";
         machine = model.machine;
@@ -1890,7 +1908,7 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
       | Some input ->
           move.event = input
       | None ->
-          model.event_name move.event = wanted.event
+          Option.value ~default:"" (model.event_name move.event) = wanted.event
     in
     let cause_of move = model.cause node view move in
     let fits move =
@@ -1911,9 +1929,9 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
     in
     let reaches url (move : _ Check_model.move) =
       match model.event_name move.event with
-      | "back" | "forward" ->
+      | Some ("back" | "forward") ->
           reached url move
-      | name
+      | Some name
         when String.starts_with ~prefix:"link " name
              || String.starts_with ~prefix:"open " name ->
           reached url move
@@ -1962,9 +1980,7 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
                  (Printf.sprintf
                     "step %d of the run (%s) fits %d moves of the check, so it \
                      cannot be replayed faithfully"
-                    at
-                    (match wanted.event with "" -> "(unnamed)" | name -> name)
-                    (List.length several)
+                    at (wanted_label wanted) (List.length several)
                  )
               )
       )
@@ -1988,14 +2004,7 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
                          from another version of the check, so it cannot be \
                          replayed faithfully: run the check again with \
                          --traces"
-                        at position
-                        ( match wanted.event with
-                        | "" ->
-                            "(unnamed)"
-                        | name ->
-                            name
-                        )
-                        (List.length several)
+                        at position (wanted_label wanted) (List.length several)
                      )
                   )
           )
@@ -2050,11 +2059,8 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
                 let values =
                   [
                     ( "event",
-                      match model.event_name move.event with
-                      | "" ->
-                          "(unnamed)"
-                      | name ->
-                          name
+                      Check_model.move_label model node (Lazy.from_val view)
+                        move
                     );
                     ("from", from);
                   ]
@@ -2600,8 +2606,7 @@ let wanted_of ?(by_cause = false) (Check check) (trace : Trace.t) records =
                 recorded with names only, or the machine has no event codec \
                 (see Silica.Machine.register_codecs). To compare a recorded \
                 run with the specs and the code, run conform"
-               record.seq
-               (match record.event with "" -> "no event" | event -> event)
+               record.seq (Transition.label record)
             )
       | _ ->
           Ok
@@ -2724,42 +2729,6 @@ let replay_run ?cycle_from ?start:start_index ?(props = []) check
         |> Result.join
     )
 
-let transition_cause ~answer ~url : cause -> Transition.cause = function
-  | View { handler; element; role; name } ->
-      let handler, value =
-        match String.index_opt handler ' ' with
-        | Some space ->
-            ( String.sub handler 0 space,
-              Some
-                (String.sub handler (space + 1)
-                   (String.length handler - space - 1)
-                )
-            )
-        | None ->
-            (handler, None)
-      in
-      Element { handler; role; name; element; value }
-  | Input ->
-      Message
-  | Timer { id; ms } ->
-      Timer { id; ms }
-  | Answer { id; path } ->
-      Answer { id; path; answer }
-  | Live { id; topic } ->
-      Live { id; topic; update = None }
-  | Held { id; source } ->
-      Held { id; source }
-  | Action_result action ->
-      Action_result { action }
-  | Props ->
-      Props
-  | Child { instance; _ } ->
-      Child { instance }
-  | Navigation ->
-      Url (Option.value url ~default:"")
-  | Address url ->
-      Url url
-
 let export (type s ev) (Check check as subject : (s, ev) t) ~rule
     (counterexample : ev counterexample) =
   let items = steps counterexample in
@@ -2857,12 +2826,12 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
                   | Machine.Entered ->
                       Entered
                   );
-                event = step.event;
+                event = Option.value ~default:"" (model.event_name move.event);
                 data = check.input_json step.input;
                 props =
                   (match step.cause with Props -> common.props | _ -> None);
                 cause =
-                  transition_cause ~answer:(model.answer node move)
+                  Check_model.transition_cause ~answer:(model.answer node move)
                     ~url:(check.url state) step.cause;
               }
           | _ ->

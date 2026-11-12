@@ -164,10 +164,13 @@ val conforms : t list -> Trace.t -> deviation list
     the order of the trace. A start, a resume and an end must be in a state of a
     spec of the machine; an unhandled event in a state of it; a step that
     entered a state must be an edge, and a step that kept it a kept step, with
-    the same event name ([props] for new props). A machine can have several
-    specs, such as the specs of the joint checks of a parent with each of its
-    children: a record conforms when one of them allows it. [[]] when the whole
-    trace conforms. *)
+    the same event name ([props] for new props). An event that its machine does
+    not name (see {!Transition.label}) matches a step between the same states
+    whatever its label: a trace with names only no longer holds the accessible
+    name or the answer that the label of the spec shows. A machine can have
+    several specs, such as the specs of the joint checks of a parent with each
+    of its children: a record conforms when one of them allows it. [[]] when the
+    whole trace conforms. *)
 
 val deviation_to_string : deviation -> string
 (** One line, such as

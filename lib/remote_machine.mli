@@ -37,8 +37,8 @@ val make :
   id:string ->
   ('i, 'o, 'x) Remote.endpoint ->
   (unit, ('i, 'o, 'x) state, ('i, 'o, 'x) event) Machine.t
-(** [Loading] owns a {!Remote.call} on the endpoint, with [timeout_ms] when
-    given. The events are named ["load"], ["retry"], ["settled ok"],
+(** A {!Remote.call} on the endpoint runs during [Loading], with [timeout_ms]
+    when given. The events are named ["load"], ["retry"], ["settled ok"],
     ["settled rejected"], ["settled error"] and ["reset"]. There is no automatic
-    retry: a [Retrying] state that owns a {!Source.after} timer and counts the
-    attempts is a pattern for the app. *)
+    retry: a [Retrying] state with a {!Source.after} timer in [during] that
+    counts the attempts is a pattern for the app. *)

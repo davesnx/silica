@@ -901,24 +901,6 @@ type deviation = {
   problem : problem;
 }
 
-let event_of (record : Transition.t) =
-  match record.cause with
-  | Props ->
-      "props"
-  | Start
-  | Element _
-  | Timer _
-  | Answer _
-  | Live _
-  | Held _
-  | Action_result _
-  | Child _
-  | Url _
-  | Preload _
-  | Message
-  | Ended ->
-      record.event
-
 let label_of (record : Transition.t) : label option =
   match record.change with
   | Kept ->
@@ -926,7 +908,7 @@ let label_of (record : Transition.t) : label option =
         {
           from = record.from;
           target = record.target;
-          event = event_of record;
+          event = Transition.label record;
           kept = true;
         }
   | Entered ->
@@ -934,7 +916,7 @@ let label_of (record : Transition.t) : label option =
         {
           from = record.from;
           target = record.target;
-          event = event_of record;
+          event = Transition.label record;
           kept = false;
         }
   | Started | Resumed | Unhandled | Ended ->
@@ -980,11 +962,23 @@ let conforms specs (trace : Trace.t) =
           | Some name ->
               deviation (Unknown_state name)
           | None -> (
+              let allows (edge : label) label =
+                edge = label
+                || record.event = "" && record.cause <> Props
+                   && edge.from = label.from && edge.target = label.target
+                   && edge.kept = label.kept
+              in
               match label_of record with
               | Some label
                 when not
-                       (List.exists (fun spec -> List.mem label spec.edges) own)
-                ->
+                       (List.exists
+                          (fun spec ->
+                            List.exists
+                              (fun edge -> allows edge label)
+                              spec.edges
+                          )
+                          own
+                       ) ->
                   deviation (Unknown_edge label)
               | Some _ | None ->
                   None

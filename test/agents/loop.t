@@ -64,11 +64,11 @@ Each violation has its rule, its state, a hint and a trace file.
             "element": null,
             "trace_file": "traces/counter_no_save_while_saving_saving.jsonl",
             "rule": "ignored-event",
-            "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.",
+            "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saving.",
             "element": "main > button[3]",
             "trace_file": "traces/counter_ignored_event_saving.jsonl",
             "rule": "ignored-event",
-            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.",
             "element": "main > button[3]",
             "trace_file": "traces/counter_ignored_event_saved.jsonl",
   $ grep -E '^ *"(name|event|text)"' report.json | head -12
@@ -96,7 +96,7 @@ Replay the third violation in the checker: each step, and the rule that fails.
   2. saving -> saved: answered ok, by the answer of the call counter/saving//api/save 0 to /api/save
   3. saved -> saved: save, by the view offers press on button "Save" at main > button[3]
     fails ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
-      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
   state: saved
   view:
     main
@@ -126,7 +126,7 @@ that you fix, named after its trace file.
          button[3] gives the event save, and the update returns Ignore."
       ~hint:
         "Handle save in state saved, or do not offer it there: disable the \
-         element with Machine.can, or leave its timer or call out of owns of \
+         element with Machine.can, or leave its timer or call out of during of \
          saved."
   
   let () =
@@ -147,7 +147,7 @@ compares the whole view, and the first try changed the view of saved.
   $ dune test 2>&1 | grep -E '^(ignored-event|hint|view:)'
   view: the text differs (- expected, + got):
   ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
-  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
 
 The fix: the update handles Save in saved, and the view disables Save where
 the update does not handle it.

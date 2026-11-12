@@ -1,11 +1,12 @@
 open Silica
 
-type event = Increment | Decrement [@@deriving event_shape]
-type state = Count of int [@@deriving state_shape]
+type event = Increment | Decrement
+type state = Count of int
+
+let name (Count _) = "count"
 
 let machine =
-  Machine.make ~id:"counter" ~init:(Count 0) ~shape:state_shape
-    ~events:event_shape (fun (Count n) event ->
+  Machine.make ~id:"counter" ~init:(Count 0) ~name (fun (Count n) event ->
       match event with
       | Increment ->
           Go (Count (n + 1))

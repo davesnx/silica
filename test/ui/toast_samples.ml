@@ -7,7 +7,7 @@ type event = Add of Toast.priority | Closed of string
 let machine =
   Machine.make ~id:"toast-page"
     ~init:{ toasts = []; next = 1; log = [] }
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun page event ->
       match event with
       | Add priority ->

@@ -83,12 +83,17 @@ let anchor_place source =
   | _ ->
       Alcotest.fail "not an anchor source"
 
-type popup = Shown of Place.side [@@deriving state_shape]
+type popup = Shown of Place.side
+
+let popup_name = function Shown _ -> "shown"
+
+let popup_states = [ "shown" ]
 
 let anchor_takes_place_from_the_state () =
   let machine =
-    Machine.make ~id:"popup" ~init:(Shown Place.Top) ~shape:popup_shape
-      ~owns:(fun (Shown side) ->
+    Machine.make ~id:"popup" ~init:(Shown Place.Top) ~name:popup_name
+      ~states:popup_states
+      ~during:(fun (Shown side) ->
         [
           Source.anchor ~place:(place ~side ()) ~anchor:(Ref.make "trigger")
             (Ref.make "popup");

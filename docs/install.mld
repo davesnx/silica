@@ -138,10 +138,12 @@ state holds a function, or when the new view raises on the old snapshot. The
 other instances keep their state. When the new code does not start within 5
 s, the page reloads.
 
-A machine keeps its state only when its state type has a fingerprint:
-[[@@deriving state_shape]] gives one; a type from another module needs
-[[@@deriving fingerprint]] in its own module; a shape written by hand passes
-[~fingerprint] (see {!Silica.Fingerprint}). The hot reload code is in the
+A machine keeps its state only when it passes a fingerprint of its state type
+to [Machine.make]: [[@@deriving fingerprint]] on the state type gives
+[state_fingerprint], and the machine passes [~fingerprint:state_fingerprint]; a
+type from another module that the state mentions needs
+[[@@deriving fingerprint]] in its own module (see {!Silica.Fingerprint} and
+{!page-machines.make}). The hot reload code is in the
 development bundle only: the dev esbuild rule of the client injects
 [out/node_modules/silica.browser/hot_reload.mjs], and a test checks that the
 release bundles have none of it.
@@ -243,8 +245,7 @@ From [docs/examples/native/dune]:
 The Melange library is the same with [(modes melange)] and the preprocessors
 [silica.ppx melange.ppx]. The ppx [silica.ppx] turns the JSX elements into
 calls of {!Silica.Node.element} (see {!page-components.jsx}), and gives the
-derivers [[@@deriving state_shape]] and [[@@deriving event_shape]] (see
-{!page-machines.states}). An app that
+deriver [[@@deriving fingerprint]] (see {!page-machines.make}). An app that
 derives JSON codecs needs a different library for each side; see
 {!page-recipes.json}.
 
@@ -268,20 +269,21 @@ stanza. See [example/client/dune] in the repository for the esbuild rule, and
 {1:first A first component}
 
 A component is a machine and a view. This lamp has two states, [Off] and
-[On], and one event, [Toggle]. The states are a plain variant, and
-[[@@deriving state_shape]] gives their names; [[@@deriving event_shape]] gives
-the name of the event. The view shows a text and a button
-for each state.
+[On], and one event, [Toggle]. The states are a plain variant, and the
+function [name] gives the name of each state. The view shows a text and a
+button for each state.
 
 {@mlx file=examples/shared/doc_lamp.mlx[
 open Silica
 
-type event = Toggle [@@deriving event_shape]
-type state = Off | On [@@deriving state_shape]
+type event = Toggle
+type state = Off | On
+
+let name = function Off -> "off" | On -> "on"
 
 let machine =
-  Machine.make ~id:"lamp" ~init:Off ~shape:state_shape ~events:event_shape
-    (fun state Toggle -> match state with Off -> Go On | On -> Go Off
+  Machine.make ~id:"lamp" ~init:Off ~name (fun state Toggle ->
+      match state with Off -> Go On | On -> Go Off
   )
 
 let view : state -> event Node.t = function

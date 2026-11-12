@@ -54,10 +54,19 @@ let triple =
 module Lookup = struct
   type event = Answered of (int, string) Remote.answer
   type state = Loading of int | Ready of int | Failed of string
-  [@@deriving state_shape]
+
+  let name = function
+    | Loading _ ->
+        "loading"
+    | Ready _ ->
+        "ready"
+    | Failed _ ->
+        "failed"
+
+  let states = [ "loading"; "ready"; "failed" ]
 
   let machine ~id ~endpoint ~input =
-    Machine.make ~id ~init:(Loading input) ~shape:state_shape
+    Machine.make ~id ~init:(Loading input) ~name ~states
       ~entry:(function
         | Loading _ ->
             [ Action.Set_title "loading" ]
@@ -66,7 +75,7 @@ module Lookup = struct
         | Failed _ ->
             []
         )
-      ~owns:(function
+      ~during:(function
         | Loading n ->
             [ Remote.call endpoint n (fun answer -> Answered answer) ]
         | Ready _ | Failed _ ->
@@ -97,10 +106,14 @@ end
 
 module Page = struct
   type event = Nothing
-  type state = Page [@@deriving state_shape]
+  type state = Page
+
+  let name = function Page -> "page"
+
+  let states = [ "page" ]
 
   let machine =
-    Machine.make ~id:"page" ~init:Page ~shape:state_shape (fun Page Nothing ->
+    Machine.make ~id:"page" ~init:Page ~name ~states (fun Page Nothing ->
         Machine.Ignore
     )
 
@@ -405,11 +418,20 @@ module Chain = struct
     | Got_b of (int, string) Remote.answer
 
   type state = First of int | Second of int | Done of int
-  [@@deriving state_shape]
+
+  let name = function
+    | First _ ->
+        "first"
+    | Second _ ->
+        "second"
+    | Done _ ->
+        "done"
+
+  let states = [ "first"; "second"; "done" ]
 
   let machine =
-    Machine.make ~id:"chain" ~init:(First 1) ~shape:state_shape
-      ~owns:(function
+    Machine.make ~id:"chain" ~init:(First 1) ~name ~states
+      ~during:(function
         | First n ->
             [ Remote.call double n (fun r -> Got_a r) ]
         | Second n ->
@@ -460,10 +482,14 @@ let test_chained_calls_settle () =
 
 module Bad = struct
   type event = Nothing
-  type state = Only [@@deriving state_shape]
+  type state = Only
+
+  let name = function Only -> "only"
+
+  let states = [ "only" ]
 
   let machine =
-    Machine.make ~id:"bad" ~init:Only ~shape:state_shape (fun Only Nothing ->
+    Machine.make ~id:"bad" ~init:Only ~name ~states (fun Only Nothing ->
         Machine.Ignore
     )
 
@@ -588,11 +614,15 @@ let gate_app url =
 let header name (response : Silica_server.response) =
   List.assoc_opt name response.headers
 
-type only = Only [@@deriving state_shape]
+type only = Only
+
+let only_name = function Only -> "only"
+
+let only_states = [ "only" ]
 
 let starting ~id actions : (unit, only, unit) Component.t =
   Component.make
-    (Machine.make ~id ~init:Only ~shape:only_shape
+    (Machine.make ~id ~init:Only ~name:only_name ~states:only_states
        ~entry:(fun Only -> actions)
        (fun Only () -> Machine.Ignore)
     )
@@ -717,12 +747,16 @@ let test_cookie_reader () =
 
 module After = struct
   type event = Answered of (int, string) Remote.answer
-  type state = Loading | Done [@@deriving state_shape]
+  type state = Loading | Done
+
+  let name = function Loading -> "loading" | Done -> "done"
+
+  let states = [ "loading"; "done" ]
 
   let component on_answer =
     Component.make
-      (Machine.make ~id:"after" ~init:Loading ~shape:state_shape
-         ~owns:(function
+      (Machine.make ~id:"after" ~init:Loading ~name ~states
+         ~during:(function
            | Loading ->
                [ Remote.call double 1 (fun r -> Answered r) ]
            | Done ->

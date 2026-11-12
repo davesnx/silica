@@ -220,14 +220,14 @@ page".
 
 {1:block Unsaved changes}
 
-A page that holds a draft owns the block: {!Silica.Source.block} in the
-[owns] list of the snapshot that holds the draft. While the snapshot owns it,
+A page that holds a draft holds the block: {!Silica.Source.block} in the
+[during] list of the snapshot that holds the draft. While the list holds it,
 every navigation (a link press, a navigation action, back and forward) stops
 before the URL changes, and reaches the page as a {!Silica.Nav.t}. The page
 asks the user, then sends [Action.Resume nav] to let it happen. While a block is
 held, closing or reloading the tab asks the user through the browser.
 
-The block starts and stops with the snapshot that owns it, so it cannot
+The block starts and stops with the snapshot that holds it, so it cannot
 stay after the draft is saved. Mini Linear holds one while a title or a
 description differs from the saved text (see {!page-linear}).
 

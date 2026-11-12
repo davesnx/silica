@@ -1,9 +1,9 @@
-Without SILICA_FINGERPRINTS, the derivers give fingerprints.
+Without SILICA_FINGERPRINTS, the deriver gives fingerprints.
 
   $ SILICA_FINGERPRINTS=true ../standalone.exe --impl release.ml -o out.ml
   $ ocamlformat --enable-outside-detected-project --impl out.ml | sed -E 's/"[0-9a-f]{32}"/"<digest>"/'
   type item = { name : string }
-  type state = Idle | Saved of item [@@deriving state_shape]
+  type state = Idle | Saved of item [@@deriving fingerprint]
   
   include struct
     [@@@ocaml.warning "-60"]
@@ -21,14 +21,6 @@ Without SILICA_FINGERPRINTS, the derivers give fingerprints.
         : state Silica.Fingerprint.t)
   
     let _ = state_fingerprint
-  
-    let state_shape =
-      (Silica.Machine.shape
-         ~name:(function Idle -> "idle" | Saved _ -> "saved")
-         ~names:[ "idle"; "saved" ] ~fingerprint:state_fingerprint ()
-        : state Silica.Machine.shape)
-  
-    let _ = state_shape
   end [@@ocaml.doc "@inline"] [@@merlin.hide]
   
   type 'a box = { content : 'a; items : 'a Other.list } [@@deriving fingerprint]
@@ -61,24 +53,18 @@ Without SILICA_FINGERPRINTS, the derivers give fingerprints.
     let _ = box_fingerprint
   end [@@ocaml.doc "@inline"] [@@merlin.hide]
 
-With SILICA_FINGERPRINTS=false, as in the release profile, state_shape is as
-before and [@@deriving fingerprint] gives Fingerprint.off.
+With SILICA_FINGERPRINTS=false, as in the release profile, [@@deriving
+fingerprint] gives Fingerprint.off.
 
   $ SILICA_FINGERPRINTS=false ../standalone.exe --impl release.ml -o out.ml
   $ ocamlformat --enable-outside-detected-project --impl out.ml
   type item = { name : string }
-  type state = Idle | Saved of item [@@deriving state_shape]
+  type state = Idle | Saved of item [@@deriving fingerprint]
   
   include struct
     let _ = fun (_ : state) -> ()
-  
-    let state_shape =
-      (Silica.Machine.shape
-         ~name:(function Idle -> "idle" | Saved _ -> "saved")
-         ~names:[ "idle"; "saved" ] ()
-        : state Silica.Machine.shape)
-  
-    let _ = state_shape
+    let state_fingerprint = (Silica.Fingerprint.off : state Silica.Fingerprint.t)
+    let _ = state_fingerprint
   end [@@ocaml.doc "@inline"] [@@merlin.hide]
   
   type 'a box = { content : 'a; items : 'a Other.list } [@@deriving fingerprint]

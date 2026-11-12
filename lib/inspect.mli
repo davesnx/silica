@@ -76,7 +76,8 @@ type filter = {
   machines : string list;  (** Machine ids; [[]] is every machine. *)
   path : string option;
       (** An instance path: the instance and the instances under it. *)
-  events : string list;  (** Event names; [[]] is every event. *)
+  events : string list;
+      (** Event labels (see {!Transition.label}); [[]] is every event. *)
   changes : Transition.change list;  (** [[]] is every change. *)
 }
 

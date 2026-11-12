@@ -5,22 +5,39 @@ type state =
   | Saving of int
   | Saved of int
   | Save_failed of int
-[@@deriving state_shape]
+[@@deriving fingerprint]
+
+let name = function
+  | Counting _ ->
+      "counting"
+  | Saving _ ->
+      "saving"
+  | Saved _ ->
+      "saved"
+  | Save_failed _ ->
+      "save_failed"
+
+let states = [ "counting"; "saving"; "saved"; "save_failed" ]
 
 type event =
   | Increment
   | Decrement
   | Save
   | Answered of (unit, string) Remote.answer
-      [@event_name_of
-        function
-        | Remote.Ok _ ->
-            "answered ok"
-        | Rejected _ ->
-            "answered rejected"
-        | Failed _ ->
-            "answered error"]
-[@@deriving event_shape]
+
+let event_name = function
+  | Increment ->
+      "increment"
+  | Decrement ->
+      "decrement"
+  | Save ->
+      "save"
+  | Answered (Ok ()) ->
+      "answered ok"
+  | Answered (Rejected _) ->
+      "answered rejected"
+  | Answered (Failed _) ->
+      "answered error"
 
 let count = function
   | Counting count | Saving count | Saved count | Save_failed count ->
@@ -42,15 +59,15 @@ let update state event : (state, event) Machine.next =
   | _ ->
       Ignore
 
-let owns = function
+let during = function
   | Saving count ->
       [ Remote.call Api.save count (fun answer -> Answered answer) ]
   | Counting _ | Saved _ | Save_failed _ ->
       []
 
 let machine =
-  Machine.make ~id:"counter" ~init:(Counting 0) ~shape:state_shape
-    ~events:event_shape ~owns update
+  Machine.make ~id:"counter" ~init:(Counting 0) ~name ~states ~event_name
+    ~fingerprint:state_fingerprint ~during update
 
 let message = function
   | Counting _ ->

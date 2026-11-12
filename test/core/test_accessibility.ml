@@ -490,7 +490,7 @@ let states () =
 let child_component =
   Component.make
     (Machine.make ~id:"accessibility-child" ~init:()
-       ~shape:(Machine.shape ~name:(fun () -> "only") ())
+       ~name:(fun () -> "only")
        (fun () () -> Machine.Stay [])
     )
     (fun () -> element "button" [] [ text "Inside" ])

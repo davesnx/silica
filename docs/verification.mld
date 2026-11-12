@@ -147,7 +147,7 @@ let typed : string -> (state, event) Machine.next = function
       Reenter (Typing text)
 ]}
 
-See {!page-machines} for the update and [owns].
+See {!page-machines} for the update and [during].
 
 {1:example The loop on an example}
 
@@ -193,11 +193,11 @@ From [test/agents/loop.t]:
             "element": null,
             "trace_file": "traces/counter_no_save_while_saving_saving.jsonl",
             "rule": "ignored-event",
-            "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.",
+            "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saving.",
             "element": "main > button[3]",
             "trace_file": "traces/counter_ignored_event_saving.jsonl",
             "rule": "ignored-event",
-            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.",
             "element": "main > button[3]",
             "trace_file": "traces/counter_ignored_event_saved.jsonl",
 ]}
@@ -216,7 +216,7 @@ From [test/agents/loop.t]:
   2. saving -> saved: answered ok, by the answer of the call counter/saving//api/save 0 to /api/save
   3. saved -> saved: save, by the view offers press on button "Save" at main > button[3]
     fails ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
-      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
   state: saved
   view:
     main
@@ -248,7 +248,7 @@ From [test/agents/loop.t]:
 From [test/agents/loop.t]:
 {@sh skip[
   ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
-  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
 ]}
 
 The fix handles [Save] in [Saved] in the update, and keeps
@@ -345,7 +345,7 @@ last column.
 {t
 | Rule | What it means | Usual fix | When an allowance is right |
 |---|---|---|---|
-| [ignored-event] | The view offers an element, or a timer or call gives an event, and the update returns [Ignore] for it in this state. | Handle the event in that state, or disable the element with [Machine.can], or move the timer or call out of [owns] of that state. | Never for an element of the view. |
+| [ignored-event] | The view offers an element, or a timer or call gives an event, and the update returns [Ignore] for it in this state. | Handle the event in that state, or disable the element with [Machine.can], or move the timer or call out of [during] of that state. | Never for an element of the view. |
 | [dead-end] | A state that is not final where nothing can happen. | Add a button, timer or input that leaves the state, or mark the state final with [~final]. | Never; mark a real end state final. |
 | [unreached-state] | No step reached a state of the machine. | Add [samples], [inputs] or [props] that reach it, or widen [within]. | The state is reachable only from data the check cannot give, or is kept on purpose; give the reason. |
 | [raised] | The update, the view, a handler or a property raised an exception. | Fix the code; keep an expected failure in the state, not in an exception. | Never. |
@@ -357,7 +357,7 @@ last column.
 | [boundary-reset] | The fallback of a boundary has no element with the reset attribute. | Put [~reset] on a button of the fallback. | Never. |
 | [timer-owner] | A timer runs that the state does not own. | This is a Silica bug: report it with the trace. | Never. |
 | [call-owner] | A call or subscription runs that the state does not own. | This is a Silica bug: report it with the trace. | Never. |
-| [live-uses-client-source] | A Live component owns a source that only a browser has. | Move the source into a client component. | Never. |
+| [live-uses-client-source] | A Live component runs a source that only a browser has. | Move the source into a client component. | Never. |
 | [live-uses-client-action] | A Live component runs an action that needs an answer of the browser. | Run the action in a client component. | Never. |
 | [route-round-trip] | A route prints as a URL that does not parse back to the same route. | Make the parse and the print of the route agree. | Never. |
 | [link-parses] | A link goes to a URL that does not print back the same, or goes to the not-found route. | Make the link with [Router.link]. | A link that leaves the app on purpose. |
@@ -371,7 +371,7 @@ last column.
 | [nested-interactive] | A control holds another control. | Move the inner control out. | Never. |
 | [keyboard-access] | An element with a press handler cannot get keyboard focus. | Use a [<button>] or an [<a href>], or give a role and [tabindex="0"] and handle Enter and Space. | A key handler on an element above handles the keyboard. |
 | [dialog-name] | A dialog has no name. | An [aria-labelledby] to its title, or an [aria-label]. | Never. |
-| [dialog-focus] | A modal dialog shows, and the state owns no focus trap on it. | Own [Source.focus_trap] on the dialog, or use [Silica_ui.Dialog]. | A native [<dialog>] opened with [showModal], which traps focus itself. |
+| [dialog-focus] | A modal dialog shows, and the state has no focus trap on it. | Put [Source.focus_trap] on the dialog in [during], or use [Silica_ui.Dialog]. | A native [<dialog>] opened with [showModal], which traps focus itself. |
 | [landmark-main] | A view has more than one visible main landmark, or a main inside another. | Keep one [main] (or [role="main"]) for the page; make the others a section, a region or a div. A component check sees its own view; a joint check sees the whole page. | Never. |
 | [heading-order] | A heading skips a level after the heading before it. | Use the next level, or add the missing levels. | Never. |
 | [name-spacing] | Two inline parts of a name join with no space, such as [ENG-2Second]. | Put a [" "] text node between them, or an [aria-label]. | Never; CSS spacing does not count. |

@@ -174,7 +174,9 @@ module Item = struct
 end
 
 module Counter_event = struct
-  type t = Incr | Decr | Reset [@@deriving json, event_shape]
+  type t = Incr | Decr | Reset [@@deriving json]
+
+  let name = function Incr -> "incr" | Decr -> "decr" | Reset -> "reset"
 end
 
 let item_endpoint =

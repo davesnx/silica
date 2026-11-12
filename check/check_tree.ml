@@ -608,7 +608,7 @@ let joint (type n s ev e)
     in
     settle start 0
   in
-  let step_child effects (node : n joint) bindings child_event via =
+  let step_child ~label effects (node : n joint) bindings child_event via =
     let (Check_model.Child_event { instance; _ }) = child_event in
     match
       ( List.find_opt
@@ -625,7 +625,7 @@ let joint (type n s ev e)
             let runtime = binding.runtime in
             let world = Check_model.consume (world_of runtime entry) via in
             let snapshot, actions, how =
-              Check_model.send ?finished:(Check_model.finished via)
+              Check_model.send ?finished:(Check_model.finished via) ~label
                 runtime.recorder runtime.machine world event
             in
             let world =
@@ -678,7 +678,11 @@ let joint (type n s ev e)
   let deliver effects (node : n joint) bindings event =
     match out_of event with
     | Some child_event ->
-        fst (step_child effects node bindings child_event Check_model.By_input)
+        fst
+          (step_child
+             ~label:(fun () -> "message")
+             effects node bindings child_event Check_model.By_input
+          )
     | None ->
         let root, actions, _ =
           model.step node.root { event; via = Check_model.By_input }
@@ -776,22 +780,6 @@ let joint (type n s ev e)
         (node, returned `Start effects)
       )
       (model.start ())
-  in
-  let step node (move : ev Check_model.move) =
-    let bindings = (resolved node).bindings in
-    let effects = effects () in
-    let node, how =
-      match out_of move.event with
-      | Some child_event ->
-          step_child effects node bindings child_event move.via
-      | None ->
-          let root, actions, how = model.step node.root move in
-          emit_root effects actions;
-          ({ node with root }, how)
-    in
-    let node, resolution = settle effects node bindings in
-    remember node resolution;
-    (node, returned `Step effects, how)
   in
   let entry_of (node : n joint) instance =
     List.find_opt
@@ -903,6 +891,42 @@ let joint (type n s ev e)
             model.cause node.root (strip view) move
       )
   in
+  let answer node (move : ev Check_model.move) =
+    match out_of move.event with
+    | Some (Child_event { instance; _ } as child_event) -> (
+        match binding_of node instance with
+        | Some (entry, Binding { runtime; _ }) ->
+            Option.bind (typed_event runtime child_event) (fun event ->
+                Check_model.answer_json runtime.host (world_of runtime entry)
+                  move.via event
+            )
+        | None ->
+            None
+      )
+    | None ->
+        model.answer node.root move
+  in
+  let step node (move : ev Check_model.move) =
+    let bindings = (resolved node).bindings in
+    let effects = effects () in
+    let node, how =
+      match out_of move.event with
+      | Some child_event ->
+          step_child
+            ~label:(fun () ->
+              Check_model.cause_label ~answer:(answer node move)
+                (cause node (resolved node).view move)
+            )
+            effects node bindings child_event move.via
+      | None ->
+          let root, actions, how = model.step node.root move in
+          emit_root effects actions;
+          ({ node with root }, how)
+    in
+    let node, resolution = settle effects node bindings in
+    remember node resolution;
+    (node, returned `Step effects, how)
+  in
   let state_of node instance =
     match binding_of node instance with
     | Some (entry, Binding { runtime; _ }) ->
@@ -958,7 +982,7 @@ let joint (type n s ev e)
               )
           )
           None runtimes
-        |> Option.value ~default:""
+        |> Option.join
     | None ->
         model.event_name event
   in
@@ -1028,22 +1052,19 @@ let joint (type n s ev e)
             )
             (Array.to_list runtimes)
       );
-    answer =
-      (fun node (move : ev Check_model.move) ->
-        match out_of move.event with
-        | Some (Child_event { instance; _ } as child_event) -> (
-            match binding_of node instance with
-            | Some (entry, Binding { runtime; _ }) ->
-                Option.bind (typed_event runtime child_event) (fun event ->
-                    Check_model.answer_json runtime.host
-                      (world_of runtime entry) move.via event
-                )
-            | None ->
-                None
-          )
-        | None ->
-            model.answer node.root move
+    unlisted =
+      (fun () ->
+        model.unlisted ()
+        @ List.concat_map
+            (fun (Runtime runtime as packed) ->
+              if started packed then
+                Check_model.unlisted_of runtime.machine
+              else
+                []
+            )
+            (Array.to_list runtimes)
       );
+    answer;
     props_json = (fun node -> model.props_json node.root);
     tree =
       {

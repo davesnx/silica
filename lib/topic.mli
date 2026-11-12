@@ -27,5 +27,5 @@ type 's update = { seq : int; status : 's Status.t }
 val update_codec : 's Codec.t -> 's update Codec.t
 (** [update_codec state] writes [{"seq": n, "status": ..}], the status by
     {!Status.codec}. A machine whose events hold updates uses it in its event
-    codec (see {!Machine.val-shape}). For a topic:
+    codec (see {!Machine.register_codecs}). For a topic:
     [update_codec (Topic.state topic)]. *)

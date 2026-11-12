@@ -1,28 +1,36 @@
 open Silica
 
 type event = Sync | Answer of (int, string) Remote.answer
-type state = Unsynced | Syncing | Synced | Offline [@@deriving state_shape]
+type state = Unsynced | Syncing | Synced | Offline
+
+let name = function
+  | Unsynced ->
+      "unsynced"
+  | Syncing ->
+      "syncing"
+  | Synced ->
+      "synced"
+  | Offline ->
+      "offline"
+
+let states = [ "unsynced"; "syncing"; "synced"; "offline" ]
 
 let endpoint =
   Remote.declare ~path:"/api/sync" ~input:Codec.unit ~output:Codec.int
     ~rejected:Codec.string
 
-let events =
-  Machine.shape
-    ~name:(function
-      | Sync ->
-          "sync"
-      | Answer (Ok _) ->
-          "answer ok"
-      | Answer _ ->
-          "answer failed"
-      )
-    ()
+let event_name = function
+  | Sync ->
+      "sync"
+  | Answer (Ok _) ->
+      "answer ok"
+  | Answer _ ->
+      "answer failed"
 
 let machine =
-  Machine.make ~id:"sync" ~init:Unsynced ~shape:state_shape ~events
+  Machine.make ~id:"sync" ~init:Unsynced ~name ~states ~event_name
     ~final:(function Synced -> true | Unsynced | Syncing | Offline -> false)
-    ~owns:(function
+    ~during:(function
       | Syncing ->
           [ Remote.call endpoint () (fun answer -> Answer answer) ]
       | Unsynced | Synced | Offline ->

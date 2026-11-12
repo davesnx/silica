@@ -1,10 +1,15 @@
 open Silica
 
-type event = Go_back [@event_name "go back"] [@@deriving json, event_shape]
-type state = About [@@deriving json, state_shape]
+type event = Go_back [@@deriving json]
+type state = About [@@deriving json, fingerprint]
+
+let name About = "about"
+let states = [ "about" ]
+let event_name Go_back = "go back"
 
 let machine =
-  Machine.make ~id:"about" ~init:About ~shape:state_shape ~events:event_shape
+  Machine.make ~id:"about" ~init:About ~name ~states ~event_name
+    ~fingerprint:state_fingerprint
     ~entry:(fun About -> [ Action.Set_title "About" ])
     (fun About Go_back -> Stay [ Action.Back ])
 

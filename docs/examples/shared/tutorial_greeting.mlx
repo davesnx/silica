@@ -1,14 +1,21 @@
 open Silica
 
 type event = Ask | Answered of (string, string) Remote.answer
-[@@deriving event_shape]
-
 type state = Idle | Asking | Shown of string | Failed of string
-[@@deriving state_shape]
+
+let name = function
+  | Idle ->
+      "idle"
+  | Asking ->
+      "asking"
+  | Shown _ ->
+      "shown"
+  | Failed _ ->
+      "failed"
 
 let machine =
-  Machine.make ~id:"greeting" ~init:Idle ~shape:state_shape ~events:event_shape
-    ~owns:(function
+  Machine.make ~id:"greeting" ~init:Idle ~name
+    ~during:(function
       | Asking ->
           [
             Remote.call Tutorial_api.greeting "Ada" (fun answer ->

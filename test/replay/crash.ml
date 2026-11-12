@@ -1,13 +1,19 @@
 open Silica
 
-type event = Divide [@@deriving event_shape]
-type state = Ready of int [@@deriving state_shape]
+type event = Divide
+
+let event_name = function Divide -> "divide"
+
+type state = Ready of int
+
+let name = function Ready _ -> "ready"
+
+let states = [ "ready" ]
 
 let component =
   Component.make
-    (Machine.make ~id:"crash" ~init:(Ready 0) ~shape:state_shape
-       ~events:event_shape (fun (Ready count) Divide ->
-         Machine.Go (Ready (10 / count))
+    (Machine.make ~id:"crash" ~init:(Ready 0) ~name ~states ~event_name
+       (fun (Ready count) Divide -> Machine.Go (Ready (10 / count))
      )
     )
     (fun (Ready count) ->

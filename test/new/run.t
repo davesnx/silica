@@ -177,7 +177,7 @@ script of that trace is a test that fails for the same reason.
          button[3] gives the event save, and the update returns Ignore."
       ~hint:
         "Handle save in state saving, or do not offer it there: disable the \
-         element with Machine.can, or leave its timer or call out of owns of \
+         element with Machine.can, or leave its timer or call out of during of \
          saving."
   
   let () =
@@ -188,7 +188,7 @@ script of that trace is a test that fails for the same reason.
   $ dune build @fmt 2>&1
   $ dune test 2>&1 | grep -E '^(ignored-event|hint)'
   ignored-event: In state saving, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
-  hint: Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.
+  hint: Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saving.
 
 The fix disables the button again; the test passes and stays as a regression
 test.

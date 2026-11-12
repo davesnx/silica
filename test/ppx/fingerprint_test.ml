@@ -10,7 +10,7 @@ module First = struct
     | Idle
     | Saved of string list
     | Failed of { reason : string; code : int }
-  [@@deriving state_shape]
+  [@@deriving fingerprint]
 end
 
 module Second = struct
@@ -60,9 +60,17 @@ let () =
   assert (Result.is_ok first);
   assert (digest Second.state_fingerprint = first);
   let machine =
-    Machine.make ~id:"first" ~init:First.Idle ~shape:First.state_shape
-      (fun _ () -> Machine.Ignore
-    )
+    Machine.make ~id:"first" ~init:First.Idle
+      ~name:(function
+        | First.Idle ->
+            "idle"
+        | First.Saved _ ->
+            "saved"
+        | First.Failed _ ->
+            "failed"
+        )
+      ~fingerprint:First.state_fingerprint
+      (fun _ () -> Machine.Ignore)
   in
   assert (Option.map digest (Machine.fingerprint machine) = Some first);
   List.iter
@@ -183,7 +191,7 @@ let () =
   )
 
 module Uses_boxes = struct
-  type state = Idle | Counted of int Boxes.box [@@deriving state_shape]
+  type state = Idle | Counted of int Boxes.box [@@deriving fingerprint]
   type other = Idle | Counted of string Boxes.box [@@deriving fingerprint]
   type no_box = Idle | Plain of Boxes.plain [@@deriving fingerprint]
 end
@@ -218,7 +226,7 @@ module Uses_silica = struct
     | Moved of Nav.t
     | Failed of Remote.error
     | Loading of int Status.t
-  [@@deriving state_shape]
+  [@@deriving fingerprint]
 end
 
 let () = assert (ok Uses_silica.state_fingerprint)
@@ -227,15 +235,15 @@ let manual : int Fingerprint.t = [%fingerprint Fingerprint.declared "manual" []]
 let () = assert (digest manual = Ok "manual")
 
 module Uses_mel_as_one = struct
-  type state = Holding of Mel_as_one.t [@@deriving state_shape]
+  type state = Holding of Mel_as_one.t [@@deriving fingerprint]
 end
 
 module Uses_mel_as_two = struct
-  type state = Holding of Mel_as_one.t [@@deriving state_shape]
+  type state = Holding of Mel_as_one.t [@@deriving fingerprint]
 end
 
 module Uses_mel_as_changed = struct
-  type state = Holding of Mel_as_two.t [@@deriving state_shape]
+  type state = Holding of Mel_as_two.t [@@deriving fingerprint]
 end
 
 let () =

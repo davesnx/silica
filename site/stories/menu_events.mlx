@@ -2,12 +2,10 @@ open Silica
 open Silica_ui
 
 type event = Changed of bool * Popup.reason | Selected of string
-[@@deriving event_shape]
 
 let machine =
   Machine.make ~id:"menu-events" ~init:[]
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
-    ~events:event_shape
+    ~name:(fun _ -> "page")
     (fun events event ->
       match event with
       | Changed (opened, reason) ->

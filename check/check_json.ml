@@ -190,6 +190,17 @@ let report ?(trace_files = []) check (report : (_, _) Check.report) =
           )
           report.unreached
       );
+      ( "unlisted",
+        list
+          (fun machine ->
+            record
+              [
+                ("machine", string machine);
+                ("message", string (Check_rules.unlisted_message machine));
+              ]
+          )
+          report.unlisted
+      );
       ( "state_limit",
         if report.complete then
           null

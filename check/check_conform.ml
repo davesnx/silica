@@ -73,12 +73,10 @@ let token text =
 
 let step_of (record : Transition.t) =
   let on =
-    match (record.cause, record.event) with
-    | Props, _ ->
-        " on props"
-    | _, "" ->
+    match Transition.label record with
+    | "" ->
         ""
-    | _, event ->
+    | event ->
         " on " ^ token event
   in
   match record.change with

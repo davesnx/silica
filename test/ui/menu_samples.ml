@@ -20,7 +20,7 @@ type event =
 
 let machine =
   Machine.make ~id:"menu-page" ~init:(None, [])
-    ~shape:(Machine.shape ~name:(fun _ -> "page") ())
+    ~name:(fun _ -> "page")
     (fun (open_, log) event ->
       match event with
       | Opened (id, opened, why) ->

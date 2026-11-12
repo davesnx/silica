@@ -3,17 +3,20 @@ open Silica
 type event = Remove | Cancel | Aged
 type state = Badge of { fresh : bool; confirming : bool }
 
-let events =
-  Machine.shape
-    ~name:(function Remove -> "remove" | Cancel -> "cancel" | Aged -> "aged")
-    ()
+let event_name = function
+  | Remove ->
+      "remove"
+  | Cancel ->
+      "cancel"
+  | Aged ->
+      "aged"
 
 let machine ~pauses =
   Machine.make ~id:"badge"
     ~init:(Badge { fresh = true; confirming = false })
-    ~shape:(Machine.shape ~name:(fun _ -> "badge") ~names:[ "badge" ] ())
-    ~events
-    ~owns:(fun (Badge { fresh; confirming }) ->
+    ~name:(fun _ -> "badge")
+    ~states:[ "badge" ] ~event_name
+    ~during:(fun (Badge { fresh; confirming }) ->
       ( if fresh && not (pauses && confirming) then
           [ Source.after 3000 Aged ]
         else

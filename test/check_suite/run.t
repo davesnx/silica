@@ -36,7 +36,7 @@ state, and the update ignores it there.
           {
             "rule": "ignored-event",
             "message": "In state saved, the view offers press on button \"Save\" at div > button gives the event save, and the update returns Ignore.",
-            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.",
             "state": {
               "name": "saved",
               "data": [
@@ -92,6 +92,7 @@ state, and the update ignores it there.
           }
         ],
         "unreached": [],
+        "unlisted": [],
         "state_limit": null,
         "allowed": [],
         "not_explored": [],
@@ -349,7 +350,7 @@ the exit code is 1.
   1. editing -> saved: save, by the view offers press on button "Save" at form > button[2]
   2. saved -> saved: save, by the view offers press on button "Save" at div > button
     fails ignored-event: In state saved, the view offers press on button "Save" at div > button gives the event save, and the update returns Ignore.
-      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of during of saved.
   state: saved
   view:
     text "Saved"

@@ -1,11 +1,13 @@
 open Silica
 
-type event = Toggle [@@deriving event_shape]
-type state = Off | On [@@deriving state_shape]
+type event = Toggle
+type state = Off | On
+
+let name = function Off -> "off" | On -> "on"
 
 let machine =
-  Machine.make ~id:"lamp" ~init:Off ~shape:state_shape ~events:event_shape
-    (fun state Toggle -> match state with Off -> Go On | On -> Go Off
+  Machine.make ~id:"lamp" ~init:Off ~name (fun state Toggle ->
+      match state with Off -> Go On | On -> Go Off
   )
 
 let view : state -> event Node.t = function

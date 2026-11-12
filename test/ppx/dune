@@ -32,13 +32,6 @@
   (pps silica.ppx)))
 
 (test
- (name shape_test)
- (modules shape_test)
- (libraries silica)
- (preprocess
-  (pps silica.ppx)))
-
-(test
  (name routes_test)
  (modules routes_test)
  (libraries silica)

@@ -93,7 +93,7 @@ get their CSS, import [silica-ui.css] in the Tailwind input of the app (see
 {1:popups Popups}
 
 A popup is painted in a portal at the end of the body, so no [overflow] of
-the page cuts it. While it is open, its state owns the sources that it needs:
+the page cuts it. While it is open, the sources that it needs run during its state:
 
 - A dismiss layer ({!Silica.Source.dismiss}): Escape, a press outside and
   focus that leaves close it. Layers stack: Escape reaches the newest popup

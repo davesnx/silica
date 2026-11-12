@@ -1,16 +1,20 @@
 open Silica
 open Jsonkit.Primitives
 
-type event = Update of int Silica_jsonkit.update | Reconnect
-[@@deriving json, event_shape]
+type event = Update of int Silica_jsonkit.update | Reconnect [@@deriving json]
+
+let event_name = function Update _ -> "update" | Reconnect -> "reconnect"
 
 type state = Watching of int Silica_jsonkit.status
-[@@deriving json, state_shape]
+[@@deriving json, fingerprint]
+
+let name (Watching _) = "watching"
+let states = [ "watching" ]
 
 let machine =
-  Machine.make ~id:"votes" ~init:(Watching Status.Idle) ~shape:state_shape
-    ~events:event_shape
-    ~owns:(fun (Watching _) ->
+  Machine.make ~id:"votes" ~init:(Watching Status.Idle) ~name ~states
+    ~event_name ~fingerprint:state_fingerprint
+    ~during:(fun (Watching _) ->
       [
         Source.live Example_model.votes_topic "main" (fun update ->
             Update update

@@ -443,12 +443,8 @@ module Reach = struct
 
   let machine =
     Machine.make ~id:"reach" ~init:None
-      ~shape:
-        (Machine.shape
-           ~name:(function None -> "none" | Some event -> name event)
-           ()
-        )
-      ~events:(Machine.shape ~name ())
+      ~name:(function None -> "none" | Some event -> name event)
+      ~event_name:name
       (fun _ event -> Go (Some event))
 
   let button label event =
