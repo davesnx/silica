@@ -206,12 +206,16 @@ let in_child ~instance ~machine ~state (finding : Check_rules.finding) =
 
 let joint (type n s ev e)
     ~(own_actions : (ev Action.host list -> e Action.host list) ref) ~keys
-    ~arrivals ~(own : e -> ev) ~(own_of : ev -> e option)
+    ~texts ~arrivals ~(own : e -> ev) ~(own_of : ev -> e option)
     ~(into : Check_model.child_event -> ev)
     ~(out_of : ev -> Check_model.child_event option)
     ?(link : (string -> ev) option) ~(children : Check_model.child list)
     (model : (n, s, ev, e) Check_model.model) :
     (n joint, s, ev, ev) Check_model.model =
+  let all_texts =
+    texts
+    @ List.concat_map (fun (Check_model.Child listed) -> listed.texts) children
+  in
   let runtimes =
     Array.of_list
       (List.mapi
@@ -806,6 +810,21 @@ let joint (type n s ev e)
       )
       (Check_rules.handlers ~keys view)
     @ List.concat_map
+        (fun (Runtime runtime) ->
+          let machine = Machine.id runtime.machine in
+          List.filter_map
+            (fun event ->
+              match out_of event with
+              | Some (Child_event { instance; machine = owner; _ })
+                when owner = machine && running instance ->
+                  Some { Check_model.event; via = Check_model.By_typing }
+              | Some _ | None ->
+                  None
+            )
+            (Check_rules.typed ~texts:runtime.options.texts view)
+        )
+        (Array.to_list runtimes)
+    @ List.concat_map
         (fun (entry : running) ->
           match List.assoc_opt entry.instance resolution.bindings with
           | None ->
@@ -860,8 +879,8 @@ let joint (type n s ev e)
     match out_of move.event with
     | Some (Child_event { instance; _ } as child_event) -> (
         match move.via with
-        | Check_model.By_view ->
-            Check_model.view_cause ~keys view move.event
+        | Check_model.By_view | Check_model.By_typing ->
+            Check_model.view_cause ~keys ~texts:all_texts view move.event
         | via -> (
             match binding_of node instance with
             | Some (entry, Binding { runtime; _ }) -> (
@@ -878,8 +897,8 @@ let joint (type n s ev e)
       )
     | None -> (
         match (move.via, own_of move.event) with
-        | Check_model.By_view, Some _ ->
-            Check_model.view_cause ~keys view move.event
+        | (Check_model.By_view | Check_model.By_typing), Some _ ->
+            Check_model.view_cause ~keys ~texts:all_texts view move.event
         | _ ->
             model.cause node.root (strip view) move
       )

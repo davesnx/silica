@@ -105,6 +105,10 @@ let steps check ~first items =
   list Fun.id
     (List.mapi (fun index item -> step check (first + index) item) items)
 
+let test_file trace_file =
+  Filename.concat "test"
+    (Filename.remove_extension (Filename.basename trace_file) ^ "_replay.ml")
+
 let violation check ?trace_file (violation : (_, _) Check.violation) =
   let kind, trace, loop =
     match violation.counterexample with
@@ -133,6 +137,7 @@ let violation check ?trace_file (violation : (_, _) Check.violation) =
       ("trace", steps check ~first:1 trace);
       ("loop", option (steps check ~first:(List.length trace + 1)) loop);
       ("trace_file", option string trace_file);
+      ("test_file", option string (Option.map test_file trace_file));
     ]
 
 let finding ~rule ~values ~state =

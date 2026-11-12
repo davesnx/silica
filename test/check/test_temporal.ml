@@ -514,11 +514,11 @@ let test_step_conditions () =
       )
   in
   Alcotest.(check (list (pair string string)))
-    "the call start breaks the always property in saving, and the entry into \
-     failed breaks the never_after property"
+    "the entry into failed breaks the never_after property, and the call start \
+     breaks the always property in saving, in the order of the properties"
     [
-      ("no call starts", "saving");
       ("failing is not entered after a save", "failed");
+      ("no call starts", "saving");
     ]
     (List.map
        (fun (violation : _ Check.violation) ->
@@ -526,15 +526,154 @@ let test_step_conditions () =
        )
        report.violations
     );
-  let entered = List.nth report.violations 1 in
+  let entered = List.nth report.violations 0 in
   Alcotest.(check (list string))
     "save, then a failed answer"
     [ "save"; "answer http 500" ]
     (events (Check.steps entered.counterexample))
 
+type reset_event = Increment | Reset
+type count = Count of int [@@deriving state_shape]
+
+let reset_events =
+  Machine.shape
+    ~name:(function Increment -> "increment" | Reset -> "reset")
+    ()
+
+let resetting ~keeps =
+  Component.make
+    (Machine.make ~id:"reset" ~init:(Count 0) ~shape:count_shape
+       ~events:reset_events (fun (Count count) event ->
+         match event with
+         | Increment ->
+             Machine.Go (Count (count + 1))
+         | Reset ->
+             if keeps then
+               Machine.Stay []
+             else
+               Machine.Go (Count 0)
+     )
+    )
+    (fun (Count count) ->
+      Node.element "div" []
+        [
+          Node.text (string_of_int count);
+          button Increment "Add";
+          button Reset "Reset";
+        ]
+    )
+
+let reset_check ~keeps =
+  Check.component
+    ~within:(fun (Count count) -> count <= 2)
+    ~properties:
+      [
+        Check.always ~name:"a reset step leaves the count at 0"
+          Check.(
+            not_ (event (( = ) Reset)) ||| state (fun (Count count) -> count = 0)
+          );
+      ]
+    (resetting ~keeps)
+
+let test_always_reads_every_step () =
+  Alcotest.(check int)
+    "a reset that clears the count passes" 0
+    (List.length (Check.run (reset_check ~keeps:false)).violations);
+  let violation = only_violation (Check.run (reset_check ~keeps:true)) in
+  Alcotest.(check string)
+    "the rule" "a reset step leaves the count at 0" violation.rule;
+  Alcotest.(check string) "the state" "count" violation.state_name;
+  match violation.counterexample with
+  | Path steps ->
+      Alcotest.(check (list string))
+        "a shortest run to a reset that keeps the count"
+        [ "increment"; "reset" ] (events steps)
+  | Waits _ | Loop _ ->
+      Alcotest.failf "expected a path:\n%s"
+        (print (Check.run (reset_check ~keeps:true)))
+
+let adding ~skips =
+  Component.make
+    (Machine.make ~id:"adding" ~init:(Count 0) ~shape:count_shape
+       ~events:reset_events (fun (Count count) event ->
+         match event with
+         | Increment ->
+             Machine.Go
+               (Count
+                  ( if skips && count = 1 then
+                      count + 2
+                    else
+                      count + 1
+                  )
+               )
+         | Reset ->
+             Machine.Go (Count 0)
+     )
+    )
+    (fun (Count count) ->
+      Node.element "div" []
+        [
+          Node.text (string_of_int count);
+          button Increment "Add";
+          button Reset "Reset";
+        ]
+    )
+
+let adds_one ~skips =
+  Check.run
+    (Check.component
+       ~within:(fun (Count count) -> count <= 4)
+       ~properties:
+         [
+           Check.always ~name:"increment adds one"
+             Check.(
+               not_ (event (( = ) Increment))
+               ||| transition (fun (Count before) _ (Count after) ->
+                   after = before + 1
+               )
+             );
+         ]
+       (adding ~skips)
+    )
+
+let test_transition_reads_both_states () =
+  Alcotest.(check int)
+    "an increment that adds one passes" 0
+    (List.length (adds_one ~skips:false).violations);
+  let violation = only_violation (adds_one ~skips:true) in
+  Alcotest.(check (list string))
+    "the second increment skips"
+    [ "increment"; "increment" ]
+    (events (Check.steps violation.counterexample))
+
+let test_child_step_condition () =
+  match
+    Check.child
+      ~properties:
+        [ Check.always ~name:"resets" (Check.not_ (Check.event (( = ) Reset))) ]
+      (resetting ~keeps:false)
+  with
+  | _ ->
+      Alcotest.fail "a child property that reads the step was accepted"
+  | exception Check.Invalid_check message ->
+      Alcotest.(check bool)
+        ("names the right place: " ^ message)
+        true
+        (contains message "put it on the check of the child alone")
+
 let () =
   Alcotest.run "temporal"
     [
+      ( "always",
+        [
+          Alcotest.test_case "a step condition is read on every step" `Quick
+            test_always_reads_every_step;
+          Alcotest.test_case "a transition reads the states before and after"
+            `Quick test_transition_reads_both_states;
+          Alcotest.test_case "a child property cannot read the step" `Quick
+            test_child_step_condition;
+        ]
+      );
       ( "leads_to",
         [
           Alcotest.test_case "a debounce holds" `Quick test_debounce_holds;

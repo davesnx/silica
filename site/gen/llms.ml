@@ -8,7 +8,12 @@ type page = {
   blocks : Ast.block_element Ast.with_location list;
 }
 
-type site = { base : string; docs : string; pages : page list }
+type site = {
+  base : string;
+  docs : string;
+  pages : page list;
+  local : string list option;
+}
 
 let fail file fmt = Printf.ksprintf (fun m -> failwith (file ^ ": " ^ m)) fmt
 let read path = In_channel.with_open_bin path In_channel.input_all
@@ -165,6 +170,33 @@ let page_url site slug anchor =
 
 let markdown_url site slug = site.base ^ "/docs/" ^ slug ^ ".md"
 
+let markdown_anchor text =
+  String.concat ""
+    (List.map
+       (fun character ->
+         match Char.lowercase_ascii character with
+         | ('a' .. 'z' | '0' .. '9' | '-' | '_') as kept ->
+             String.make 1 kept
+         | ' ' ->
+             "-"
+         | _ ->
+             ""
+       )
+       (List.init (String.length text) (String.get text))
+    )
+
+let local_url ~local (linked : page) anchor =
+  if List.mem linked.slug local then
+    linked.slug ^ ".md"
+    ^
+    match anchor with
+    | Some anchor ->
+        "#" ^ markdown_anchor (List.assoc anchor linked.anchors)
+    | None ->
+        ""
+  else
+    "../../../docs/" ^ linked.slug ^ ".mld"
+
 let find_page site file slug =
   match List.find_opt (fun page -> page.slug = slug) site.pages with
   | Some page ->
@@ -234,7 +266,14 @@ let rec inline site (page : page)
               inlines site page content
         in
         Option.iter (fun a -> ignore (heading_text page.file linked a)) anchor;
-        "[" ^ label ^ "](" ^ page_url site slug anchor ^ ")"
+        let url =
+          match site.local with
+          | Some local ->
+              local_url ~local linked anchor
+          | None ->
+              page_url site slug anchor
+        in
+        "[" ^ label ^ "](" ^ url ^ ")"
       in
       if String.starts_with ~prefix:"page-" target then
         let slug, anchor = split_page_target (after "page-" target) in
@@ -520,7 +559,7 @@ let load ~base ~docs =
     |> List.sort compare
   in
   let pages = List.map (fun file -> parse (Filename.concat docs file)) files in
-  let site = { base; docs; pages } in
+  let site = { base; docs; pages; local = None } in
   let index = find_page site "index.mld" "index" in
   let groups = groups site index in
   let listed =
@@ -594,12 +633,17 @@ let main () =
   | [ _; "page"; base; docs; slug ] ->
       let site, _, _, _ = load ~base ~docs in
       print_string (markdown site (find_page site "page" slug))
+  | [ _; "reference"; docs; slug; local ] ->
+      let site, _, _, _ = load ~base:"" ~docs in
+      let site = { site with local = Some (String.split_on_char ',' local) } in
+      print_string (markdown site (find_page site "reference" slug))
   | [ _; "ml"; base; docs ] ->
       print_string (ocaml_module (load ~base ~docs))
   | _ ->
       prerr_endline
         "usage: llms (index|full|ml) BASE_URL DOCS_DIR\n\
-        \       llms page BASE_URL DOCS_DIR SLUG";
+        \       llms page BASE_URL DOCS_DIR SLUG\n\
+        \       llms reference DOCS_DIR SLUG LOCAL_SLUGS";
       exit 2
 
 let () =

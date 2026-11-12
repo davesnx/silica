@@ -1,7 +1,18 @@
 (library
  (name replay_fixtures)
  (wrapped false)
- (modules save nameless crash upload clock labelled lost sync pages search)
+ (modules
+  save
+  nameless
+  crash
+  upload
+  clock
+  labelled
+  lost
+  sync
+  pages
+  search
+  stepper)
  (libraries silica silica.check silica.jsonkit jsonkit)
  (preprocess
   (pps jsonkit.ppx silica.ppx)))
@@ -97,6 +108,11 @@
   search_script.ml
   (run ./gen_script.exe search ignored-event)))
 
+(rule
+ (with-stdout-to
+  typing_script.ml
+  (run ./gen_script.exe typing "the step is positive")))
+
 (executables
  (names
   save_script
@@ -113,7 +129,8 @@
   sync_script
   pages_link_script
   pages_back_script
-  search_script)
+  search_script
+  typing_script)
  (modules
   save_script
   save_fixed_script
@@ -129,7 +146,8 @@
   sync_script
   pages_link_script
   pages_back_script
-  search_script)
+  search_script
+  typing_script)
  (libraries replay_fixtures silica silica.check silica.memory))
 
 (cram
@@ -157,4 +175,6 @@
   pages_back_script.ml
   pages_back_script.exe
   search_script.ml
-  search_script.exe))
+  search_script.exe
+  typing_script.ml
+  typing_script.exe))

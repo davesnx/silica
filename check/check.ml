@@ -8,28 +8,59 @@ type ('s, 'e) context = {
   event : 'e option;
   name : string;
   from : string option;
+  before : 's option;
   actions : 'e Action.host list Lazy.t;
 }
 
-type ('s, 'e) condition = ('s, 'e) context -> bool
+type ('s, 'e) condition = { test : ('s, 'e) context -> bool; reads_step : bool }
 
-let state test context = test context.snapshot
-let state_named name context = context.name = name
-let view test context = test (Lazy.force context.view)
-let holds test context = test context.snapshot (Lazy.force context.view)
+let of_point test = { test; reads_step = false }
+let of_step test = { test; reads_step = true }
+let state test = of_point (fun context -> test context.snapshot)
+let state_named name = of_point (fun context -> context.name = name)
+let view test = of_point (fun context -> test (Lazy.force context.view))
 
-let event test context =
-  match context.event with Some event -> test event | None -> false
+let holds test =
+  of_point (fun context -> test context.snapshot (Lazy.force context.view))
 
-let action test context = List.exists test (Lazy.force context.actions)
+let event test =
+  of_step (fun context ->
+      match context.event with Some event -> test event | None -> false
+  )
 
-let entered name context =
-  context.name = name
-  && match context.from with Some from -> from <> name | None -> false
+let action test =
+  of_step (fun context -> List.exists test (Lazy.force context.actions))
 
-let ( &&& ) first second context = first context && second context
-let ( ||| ) first second context = first context || second context
-let not_ condition context = not (condition context)
+let entered name =
+  of_step (fun context ->
+      context.name = name
+      && match context.from with Some from -> from <> name | None -> false
+  )
+
+let both first second ~test =
+  { test; reads_step = first.reads_step || second.reads_step }
+
+let transition test =
+  of_step (fun context ->
+      match (context.before, context.event) with
+      | Some before, Some event ->
+          test before event context.snapshot
+      | _ ->
+          false
+  )
+
+let ( &&& ) first second =
+  both first second ~test:(fun context ->
+      first.test context && second.test context
+  )
+
+let ( ||| ) first second =
+  both first second ~test:(fun context ->
+      first.test context || second.test context
+  )
+
+let not_ condition =
+  { condition with test = (fun context -> not (condition.test context)) }
 
 type ('s, 'e) property =
   | Always of {
@@ -97,7 +128,7 @@ type 'e app_event = 'e Check_model.app_event =
   | In_child of child_event
 
 let property_finding ~name ~hint ~condition context =
-  if condition context then
+  if condition.test context then
     []
   else
     [
@@ -115,9 +146,9 @@ let property_finding ~name ~hint ~condition context =
 
 type child = Check_model.child
 
-let child ?(samples = []) ?(inputs = fun _ -> []) ?(within = fun _ -> true)
-    ?(max_instances = 2) ?(properties = []) (component : (_, _, _) Component.t)
-    =
+let child ?(samples = []) ?(inputs = fun _ -> []) ?(texts = [])
+    ?(within = fun _ -> true) ?(max_instances = 2) ?(properties = [])
+    (component : (_, _, _) Component.t) =
   if max_instances < 1 then
     raise
       (Invalid_check
@@ -129,8 +160,19 @@ let child ?(samples = []) ?(inputs = fun _ -> []) ?(within = fun _ -> true)
   let always =
     List.map
       (function
-        | Always { name; hint; condition } ->
+        | Always { name; hint; condition } when not condition.reads_step ->
             (name, hint, condition)
+        | Always { name; _ } ->
+            raise
+              (Invalid_check
+                 ("the property " ^ name ^ " of the child "
+                 ^ Machine.id component.machine
+                 ^ " reads the step (Check.event, Check.action or \
+                    Check.entered), and a child property is read only on the \
+                    first visit of each joint snapshot; put it on the check of \
+                    the child alone, where Check.always reads it on every step"
+                 )
+              )
         | Never_after { name; _ } | Leads_to { name; _ } ->
             raise
               (Invalid_check
@@ -149,6 +191,7 @@ let child ?(samples = []) ?(inputs = fun _ -> []) ?(within = fun _ -> true)
       component;
       samples;
       inputs;
+      texts;
       within;
       max_instances;
       names = List.map property_name properties;
@@ -163,6 +206,7 @@ let child ?(samples = []) ?(inputs = fun _ -> []) ?(within = fun _ -> true)
                   event;
                   name;
                   from = None;
+                  before = None;
                   actions = Lazy.from_val [];
                 }
             )
@@ -171,16 +215,23 @@ let child ?(samples = []) ?(inputs = fun _ -> []) ?(within = fun _ -> true)
     }
 
 let lift_property own_of own_actions property =
-  let lift condition context =
-    condition
-      {
-        snapshot = context.snapshot;
-        view = lazy (Check_tree.restrict own_of (Lazy.force context.view));
-        event = Option.bind context.event own_of;
-        name = context.name;
-        from = context.from;
-        actions = lazy (!own_actions (Lazy.force context.actions));
-      }
+  let lift condition =
+    {
+      condition with
+      test =
+        (fun context ->
+          condition.test
+            {
+              snapshot = context.snapshot;
+              view = lazy (Check_tree.restrict own_of (Lazy.force context.view));
+              event = Option.bind context.event own_of;
+              name = context.name;
+              from = context.from;
+              before = context.before;
+              actions = lazy (!own_actions (Lazy.force context.actions));
+            }
+        );
+    }
   in
   match property with
   | Always { name; hint; condition } ->
@@ -352,11 +403,11 @@ let subject_of machine =
 let component ?(max_states = 100_000) ?(max_violations = 50)
     ?(within = fun _ -> true) ?(inputs = fun _ -> []) ?(props = [])
     ?(samples = []) ?(arrivals = 2) ?(keys = Check_rules.default_keys)
-    ?(children = []) ?(properties = []) ?(allow = [])
+    ?(texts = []) ?(children = []) ?(properties = []) ?(allow = [])
     (component : (_, _, _) Component.t) =
   let flat () =
-    Check_model.component_model ~client_only:false ~keys ~inputs ~props ~samples
-      ~arrivals component
+    Check_model.component_model ~client_only:false ~keys ~texts ~inputs ~props
+      ~samples ~arrivals component
   in
   let own_of : (_, _) input -> _ = function
     | Event event ->
@@ -406,7 +457,7 @@ let component ?(max_states = 100_000) ?(max_violations = 50)
           listed = listed_ids children;
           build =
             (fun () ->
-              Check_tree.joint ~own_actions ~keys ~arrivals
+              Check_tree.joint ~own_actions ~keys ~texts ~arrivals
                 ~own:(fun event : (_, _) input -> Event event)
                 ~own_of ~into
                 ~out_of:(function
@@ -449,8 +500,8 @@ let component ?(max_states = 100_000) ?(max_violations = 50)
 
 let live ?(max_states = 100_000) ?(max_violations = 50)
     ?(within = fun _ -> true) ?(inputs = fun _ -> []) ?(samples = [])
-    ?(arrivals = 2) ?(keys = Check_rules.default_keys) ?(properties = [])
-    ?(allow = []) (live : (_, _) Live.t) =
+    ?(arrivals = 2) ?(keys = Check_rules.default_keys) ?(texts = [])
+    ?(properties = []) ?(allow = []) (live : (_, _) Live.t) =
   Check
     {
       id = lazy (Machine.id live.component.machine);
@@ -458,8 +509,8 @@ let live ?(max_states = 100_000) ?(max_violations = 50)
       listed = [];
       build =
         (fun () ->
-          Check_model.component_model ~client_only:true ~keys ~inputs ~props:[]
-            ~samples ~arrivals live.component
+          Check_model.component_model ~client_only:true ~keys ~texts ~inputs
+            ~props:[] ~samples ~arrivals live.component
         );
       max_states;
       max_violations;
@@ -574,8 +625,9 @@ let app_root ~routes ~print ~properties root =
 
 let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ?(max_history = 4) ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
-    ?(keys = Check_rules.default_keys) ?(pages = []) ?(properties = [])
-    ?(allow = []) ~routes ~parse ~print ?is_not_found ~url_event root =
+    ?(keys = Check_rules.default_keys) ?(texts = []) ?(pages = [])
+    ?(properties = []) ?(allow = []) ~routes ~parse ~print ?is_not_found
+    ~url_event root =
   let id =
     lazy
       ( match routes with
@@ -586,8 +638,8 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
       )
   in
   let flat () =
-    Check_model.app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes
-      ~parse ~print ?is_not_found ~url_event root
+    Check_model.app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals
+      ~routes ~parse ~print ?is_not_found ~url_event root
   in
   let own_of : _ app_event -> _ = function
     | Event event ->
@@ -637,7 +689,7 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
           listed = listed_ids pages;
           build =
             (fun () ->
-              Check_tree.joint ~own_actions ~keys ~arrivals
+              Check_tree.joint ~own_actions ~keys ~texts ~arrivals
                 ~own:(fun event -> Event event)
                 ~own_of ~into
                 ~out_of:(function
@@ -779,15 +831,17 @@ let property_rule (type n e ev) (model : (n, _, ev, e) Check_model.model) ~name
   ( "property \"" ^ name ^ "\"",
     fun node view _ (arrival : (ev, e) Check_search.arrival) ->
       if
-        condition
-          {
-            snapshot = model.snapshot node;
-            view = Lazy.from_val view;
-            event = Option.bind arrival.event model.event_of;
-            name = model.name node;
-            from = arrival.from;
-            actions = Lazy.from_val arrival.actions;
-          }
+        condition.reads_step
+        || condition.test
+             {
+               snapshot = model.snapshot node;
+               view = Lazy.from_val view;
+               event = Option.bind arrival.event model.event_of;
+               name = model.name node;
+               from = arrival.from;
+               before = None;
+               actions = Lazy.from_val arrival.actions;
+             }
       then
         []
       else
@@ -832,7 +886,7 @@ let temporal_violations (type n s ev e)
         List.iter2
           (fun condition labels ->
             match
-              Check_search.guard model.machine (fun () -> condition context)
+              Check_search.guard model.machine (fun () -> condition.test context)
             with
             | Ok true ->
                 set labels
@@ -852,6 +906,7 @@ let temporal_violations (type n s ev e)
         event;
         name = names.(index);
         from;
+        before = None;
         actions;
       }
     in
@@ -901,6 +956,7 @@ let temporal_violations (type n s ev e)
               shared with
               event = model.event_of graph.moves.(edge).event;
               from = Some names.(sources.(edge));
+              before = Some (model.snapshot (node sources.(edge)));
               actions =
                 lazy
                   (let _, actions, _ =
@@ -931,13 +987,20 @@ let temporal_violations (type n s ev e)
     List.concat_map
       (fun property ->
         match property with
-        | Always _ ->
-            []
+        | Always { name = rule; hint; condition } -> (
+            match label rule [ of_point (fun _ -> true); not_ condition ] with
+            | [ after; never ] ->
+                List.map
+                  (fun finding -> (rule, hint, `Always, finding))
+                  (Check_temporal.never_after graph ~count ~name ~after ~never)
+            | _ ->
+                []
+          )
         | Never_after { name = rule; hint; after; never } -> (
             match label rule [ after; never ] with
             | [ after; never ] ->
                 List.map
-                  (fun finding -> (rule, hint, finding))
+                  (fun finding -> (rule, hint, `Never_after, finding))
                   (Check_temporal.never_after graph ~count ~name ~after ~never)
             | _ ->
                 []
@@ -946,7 +1009,7 @@ let temporal_violations (type n s ev e)
             match label rule [ from; to_ ] with
             | [ from; to_ ] ->
                 List.map
-                  (fun finding -> (rule, hint, finding))
+                  (fun finding -> (rule, hint, `Leads_to, finding))
                   (Check_temporal.leads_to graph ~count ~name ~from ~to_)
             | _ ->
                 []
@@ -999,15 +1062,20 @@ let temporal_violations (type n s ev e)
       )
       !raised
     @ List.map
-        (fun (rule, hint, (finding : Check_temporal.finding)) ->
+        (fun (rule, hint, kind, (finding : Check_temporal.finding)) ->
           let texts message default = (message, Option.value hint ~default) in
           match finding.counterexample with
           | Check_temporal.Path links ->
               violation ~rule
                 ~values:[ ("property", rule) ]
                 ~texts:
-                  (texts Check_temporal.never_after_message
-                     Check_temporal.never_after_hint
+                  ( match kind with
+                  | `Always ->
+                      texts Check_rules.property_message
+                        Check_rules.property_hint
+                  | `Never_after | `Leads_to ->
+                      texts Check_temporal.never_after_message
+                        Check_temporal.never_after_hint
                   )
                 ~counterexample:(Path (steps links))
                 finding.node
@@ -1131,7 +1199,12 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
   let rules = rules_of model check.properties in
   let temporal =
     List.filter
-      (function Always _ -> false | Never_after _ | Leads_to _ -> true)
+      (function
+        | Always { condition; _ } ->
+            condition.reads_step
+        | Never_after _ | Leads_to _ ->
+            true
+        )
       check.properties
   in
   let result =
@@ -1412,7 +1485,14 @@ type ('s, 'ev) replay =
       enabled : 'ev step list;
     }
 
-type 'ev wanted = { input : 'ev option; event : string; cause : cause option }
+type 'ev wanted = {
+  input : 'ev option;
+  event : string;
+  cause : cause option;
+  choice : int option;
+}
+
+exception Unfaithful_step of string
 
 type ('n, 's, 'ev, 'e) point = {
   replayed : ('s, 'ev) replayed_step;
@@ -1430,6 +1510,7 @@ type ('n, 's, 'ev, 'e) walked =
       points : ('n, 's, 'ev, 'e) point list;
       enabled : 'ev step list;
     }
+  | Unfaithful of string
 
 let without_number id =
   match String.index_opt id '/' with
@@ -1595,38 +1676,79 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
           target = state (Option.value next ~default:node);
         }
   in
-  let choose node view moves (wanted : ev wanted) =
-    let candidates =
-      List.filter
-        (fun (move : _ Check_model.move) ->
-          match wanted.input with
-          | Some input ->
-              move.event = input
-          | None ->
-              model.event_name move.event = wanted.event
-        )
-        moves
+  let choose ~at node view moves (wanted : ev wanted) =
+    let named (move : _ Check_model.move) =
+      match wanted.input with
+      | Some input ->
+          move.event = input
+      | None ->
+          model.event_name move.event = wanted.event
     in
     let cause_of move = model.cause node view move in
-    let find test =
-      List.find_opt (fun move -> test (cause_of move)) candidates
+    let fits move =
+      named move
+      &&
+      match wanted.cause with
+      | Some cause ->
+          similar cause (cause_of move)
+      | None ->
+          true
     in
-    match wanted.cause with
-    | None ->
-        List.nth_opt candidates 0
-    | Some cause -> (
-        match find (fun other -> other = cause) with
-        | Some move ->
+    match wanted.choice with
+    | Some position -> (
+        match List.nth_opt moves position with
+        | Some move when fits move ->
             Some move
-        | None -> (
-            match find (similar cause) with
+        | _ -> (
+            match List.filter fits moves with
+            | [] ->
+                None
+            | [ move ] ->
+                Some move
+            | several ->
+                raise
+                  (Unfaithful_step
+                     (Printf.sprintf
+                        "step %d of the trace is move %d with the event %s, \
+                         which this check does not offer there, and %d moves \
+                         of the check fit its name and cause; the trace comes \
+                         from another version of the check, so it cannot be \
+                         replayed faithfully: run the check again with \
+                         --traces"
+                        at position
+                        ( match wanted.event with
+                        | "" ->
+                            "(unnamed)"
+                        | name ->
+                            name
+                        )
+                        (List.length several)
+                     )
+                  )
+          )
+      )
+    | None -> (
+        let candidates = List.filter named moves in
+        let find test =
+          List.find_opt (fun move -> test (cause_of move)) candidates
+        in
+        match wanted.cause with
+        | None ->
+            List.nth_opt candidates 0
+        | Some cause -> (
+            match find (fun other -> other = cause) with
             | Some move ->
                 Some move
-            | None ->
-                if wanted.input = None then
-                  None
-                else
-                  List.nth_opt candidates 0
+            | None -> (
+                match find (similar cause) with
+                | Some move ->
+                    Some move
+                | None ->
+                    if wanted.input = None then
+                      None
+                    else
+                      List.nth_opt candidates 0
+              )
           )
       )
   in
@@ -1639,7 +1761,7 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
             Stuck { at; points = List.rev points; enabled = [] }
         | Some (view, moves) -> (
             let node = last.node in
-            match choose node view moves wanted with
+            match choose ~at node view moves wanted with
             | None ->
                 Stuck
                   {
@@ -1754,6 +1876,10 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
       name = model.name point.node;
       from =
         Option.map (fun (previous, _, _) -> model.name previous) point.before;
+      before =
+        Option.map
+          (fun (previous, _, _) -> model.snapshot previous)
+          point.before;
       actions = Lazy.from_val point.host;
     }
   in
@@ -1769,7 +1895,7 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
         false
   in
   let holds condition point =
-    match guard (fun () -> condition (context point)) with
+    match guard (fun () -> condition.test (context point)) with
     | Ok holds ->
         holds
     | Error _ ->
@@ -1793,8 +1919,19 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
     in
     List.iter
       (function
-        | Always _ ->
+        | Always { condition; _ } when not condition.reads_step ->
             ()
+        | Always { name; hint; condition } ->
+            Array.iteri
+              (fun index point ->
+                if not (holds condition point) then
+                  add index name ~values:[]
+                    ~texts:
+                      ( Check_rules.property_message,
+                        Option.value hint ~default:Check_rules.property_hint
+                      )
+              )
+              points
         | Never_after { name; hint; after; never } ->
             let seen = ref false in
             Array.iteri
@@ -1918,8 +2055,23 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
         Walked (temporal points)
     | Stuck stuck ->
         Stuck { stuck with points = temporal stuck.points }
+    | Unfaithful reason ->
+        Unfaithful reason
+    | exception Unfaithful_step reason ->
+        Unfaithful reason
   in
-  let complete = function Walked _ -> true | Stuck _ -> false in
+  let complete = function
+    | Walked _ ->
+        true
+    | Stuck _ | Unfaithful _ ->
+        false
+  in
+  let faithful = function
+    | Walked _ | Stuck _ ->
+        true
+    | Unfaithful _ ->
+        false
+  in
   let breaks = function
     | Walked points -> (
         match (ends_with, List.rev points) with
@@ -1930,7 +2082,7 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
         | _ ->
             false
       )
-    | Stuck _ ->
+    | Stuck _ | Unfaithful _ ->
         false
   in
   match guard model.start with
@@ -1945,8 +2097,13 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
         match List.find_opt breaks attempts with
         | Some walked ->
             Some walked
-        | None ->
-            List.find_opt complete attempts
+        | None -> (
+            match List.find_opt complete attempts with
+            | Some walked ->
+                Some walked
+            | None ->
+                List.find_opt faithful attempts
+          )
       with
       | Some walked ->
           Ok (consumer.consume model walked)
@@ -1961,10 +2118,18 @@ let walk (type s ev r) ?ends_with ?loop_from (Check check : (s, ev) t)
 
 let public_replay = function
   | Walked points ->
-      Replayed (List.map (fun point -> point.replayed) points)
+      Ok (Replayed (List.map (fun point -> point.replayed) points))
   | Stuck { at; points; enabled } ->
-      Not_enabled
-        { at; steps = List.map (fun point -> point.replayed) points; enabled }
+      Ok
+        (Not_enabled
+           {
+             at;
+             steps = List.map (fun point -> point.replayed) points;
+             enabled;
+           }
+        )
+  | Unfaithful reason ->
+      Error reason
 
 let start_failure (type s ev) (Check check : (s, ev) t) error : (s, ev) replay =
   let model = check.build () in
@@ -1994,13 +2159,17 @@ let replay check inputs =
     walk check
       ~prefer:(fun _ -> true)
       (List.map
-         (fun input -> { input = Some input; event = ""; cause = None })
+         (fun input ->
+           { input = Some input; event = ""; cause = None; choice = None }
+         )
          inputs
       )
       { consume = (fun _ walked -> public_replay walked) }
   with
-  | Ok replay ->
+  | Ok (Ok replay) ->
       replay
+  | Ok (Error reason) ->
+      invalid_arg ("Check.replay: " ^ reason)
   | Error error ->
       start_failure check error
 
@@ -2008,8 +2177,8 @@ let check_cause : Transition.cause -> cause option = function
   | Element { handler; role; name; element; value } ->
       let handler =
         match (handler, value) with
-        | ("key_down" | "key_up"), Some key ->
-            handler ^ " " ^ key
+        | ("key_down" | "key_up" | "input"), Some value ->
+            handler ^ " " ^ value
         | _ ->
             handler
       in
@@ -2079,19 +2248,51 @@ let root_steps ?(listed = []) (trace : Trace.t) =
             trace.transitions
         )
 
-let wanted_of (Check check) records =
-  List.fold_left
-    (fun acc (record : Transition.t) ->
-      Result.bind acc (fun wanted ->
-          Result.map
-            (fun input ->
-              { input; event = record.event; cause = check_cause record.cause }
-              :: wanted
+let wanted_of (Check check) (trace : Trace.t) records =
+  let ( let* ) = Result.bind in
+  let* choices =
+    match trace.header.origin with
+    | Checker { choices; _ } ->
+        if List.compare_length_with choices (List.length records) = 0 then
+          Ok (List.map Option.some choices)
+        else
+          Error
+            (Printf.sprintf
+               "the trace has %d steps and %d choices of the checker, so it \
+                cannot be replayed faithfully"
+               (List.length records) (List.length choices)
             )
-            (check.input_of record)
-      )
+    | Runtime _ ->
+        Ok (List.map (fun _ -> None) records)
+  in
+  List.fold_left2
+    (fun acc (record : Transition.t) choice ->
+      let* wanted = acc in
+      let* input = check.input_of record in
+      match (input, choice) with
+      | None, None ->
+          Error
+            (Printf.sprintf
+               "transition %d (%s) has no event data and no choice of the \
+                checker, so it cannot be replayed faithfully: the trace was \
+                recorded with names only, or the machine has no event codec \
+                (see Silica.Machine.register_codecs). To compare a recorded \
+                run with the specs and the code, run conform"
+               record.seq
+               (match record.event with "" -> "no event" | event -> event)
+            )
+      | _ ->
+          Ok
+            ({
+               input;
+               event = record.event;
+               cause = check_cause record.cause;
+               choice;
+             }
+            :: wanted
+            )
     )
-    (Ok []) records
+    (Ok []) records choices
   |> Result.map List.rev
 
 let loop_start (trace : Trace.t) records =
@@ -2120,9 +2321,10 @@ let replay_trace check (trace : Trace.t) =
             | Ok replay ->
                 replay
             | Error error ->
-                start_failure check error
+                Ok (start_failure check error)
           )
-          (wanted_of check records)
+          (wanted_of check trace records)
+        |> Result.join
     )
 
 let transition_cause ~answer ~url : cause -> Transition.cause = function
@@ -2165,11 +2367,18 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
   let wanted =
     List.map
       (fun (step : ev step) ->
-        { input = Some step.input; event = step.event; cause = Some step.cause }
+        {
+          input = Some step.input;
+          event = step.event;
+          cause = Some step.cause;
+          choice = None;
+        }
       )
       items
   in
   let trace (type n e) (model : (n, s, ev, e) Check_model.model) = function
+    | Unfaithful reason ->
+        invalid_arg ("Check.export: " ^ reason)
     | Stuck { at; _ } ->
         invalid_arg
           (Printf.sprintf
@@ -2179,6 +2388,24 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
           )
     | Walked (points : (n, s, ev, e) point list) ->
         let machine = model.machine in
+        let choices =
+          List.filter_map Fun.id
+            (List.mapi
+               (fun index (point : (n, s, ev, e) point) ->
+                 match (point.before, index) with
+                 | _, 0 | None, _ ->
+                     None
+                 | Some (_, _, move), _ -> (
+                     match (List.nth points (index - 1)).next with
+                     | Some (_, moves) ->
+                         List.find_index (fun other -> other == move) moves
+                     | None ->
+                         None
+                   )
+               )
+               points
+            )
+        in
         let record seq point =
           let state = model.snapshot point.node in
           let common : Transition.t =
@@ -2253,7 +2480,7 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
                     None
                 );
               build = "check";
-              origin = Checker { rule };
+              origin = Checker { rule; choices };
               dropped = 0;
               loop_from =
                 ( match counterexample with
@@ -2336,6 +2563,11 @@ let script_action (type n s ev e) (model : (n, s, ev, e) Check_model.model)
           else
             let target = target role name element in
             match String.split_on_char ' ' handler with
+            | "input" :: _ ->
+                Ok
+                  (Check_script.Input
+                     (target, String.sub handler 6 (String.length handler - 6))
+                  )
             | [ "press" ] ->
                 Ok (Check_script.Press target)
             | [ "double_press" ] ->
@@ -2418,7 +2650,9 @@ let script_action (type n s ev e) (model : (n, s, ev, e) Check_model.model)
           not_replayable index
             ("is the event " ^ step.event
            ^ " from ~inputs of the check; no element of the view gives it, so \
-              Silica_memory cannot replay it"
+              Silica_memory cannot replay it. When it is text typed into a \
+              field, give the text with ~texts instead, and the checker types \
+              it into the field"
             )
       | Live { topic; _ } ->
           not_replayable index
@@ -2463,7 +2697,7 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
   let ( let* ) = Result.bind in
   let* rule =
     match trace.header.origin with
-    | Checker { rule } ->
+    | Checker { rule; _ } ->
         Ok rule
     | Runtime { platform } ->
         Error
@@ -2482,7 +2716,7 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
         )
   in
   let* start, records = root_steps ~listed:check.listed trace in
-  let* wanted = wanted_of subject records in
+  let* wanted = wanted_of subject trace records in
   let component =
     match component with
     | Some component ->
@@ -2515,6 +2749,8 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
         Ok (Routed (Option.value trace.header.url ~default:"/"))
   in
   let build (type n e) (model : (n, s, ev, e) Check_model.model) = function
+    | Unfaithful reason ->
+        Error reason
     | Stuck { at; _ } ->
         Error
           (Printf.sprintf
@@ -2669,6 +2905,7 @@ type target =
         event:'e option ->
         name:string ->
         from:string option ->
+        before:'m option ->
         Check_rules.finding list;
     }
       -> target
@@ -2680,7 +2917,7 @@ let root_target (Root root) =
       routed = root.routed;
       view = (fun ~url props state -> (root.component ~url).view props state);
       findings =
-        (fun ~url ~snapshot ~view ~event ~name ~from ->
+        (fun ~url ~snapshot ~view ~event ~name ~from ~before ->
           List.concat_map
             (function
               | Always { name = property; hint; condition } ->
@@ -2691,6 +2928,8 @@ let root_target (Root root) =
                       event;
                       name;
                       from;
+                      before =
+                        Option.map (fun before -> root.lift before ~url) before;
                       actions = Lazy.from_val [];
                     }
               | Never_after _ | Leads_to _ ->
@@ -2707,7 +2946,7 @@ let child_target (Check_model.Child listed) =
       routed = false;
       view = (fun ~url:_ props state -> listed.component.view props state);
       findings =
-        (fun ~url:_ ~snapshot ~view ~event ~name ~from:_ ->
+        (fun ~url:_ ~snapshot ~view ~event ~name ~from:_ ~before:_ ->
           listed.check ~snapshot ~view:(Lazy.force view) ~event ~name
         );
     }
@@ -2880,6 +3119,7 @@ let conform_record (Target target) ~allow ~url ~(before : kept)
             match
               target.findings ~url ~snapshot ~view ~event ~name:record.target
                 ~from:(match record.from with "" -> None | from -> Some from)
+                ~before:(snapshot_before ())
             with
             | findings ->
                 let findings =

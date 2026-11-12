@@ -20,8 +20,24 @@ type ('s, 'ev) t
 (** {1 Properties} *)
 
 type ('s, 'e) condition
-(** A test of one point of a run: the snapshot, its view, and the event of the
-    step that reached it. *)
+(** A test of one point of a run. A point is a start of the check, or the
+    snapshot that one step reaches, with that step. Point conditions
+    ({!val-state}, {!state_named}, {!val-view}, {!holds}) read only the snapshot
+    and its view. Step conditions ({!val-event}, {!action}, {!entered}) also
+    read the step into the point; at a start, {!val-event} and {!entered} do not
+    hold and {!action} reads the start actions. A combination ([&&&], [|||],
+    [not_]) is a step condition when one of its parts is.
+
+    Each property reads its conditions on every point of every run that the
+    search explored:
+    - {!always} with a point condition: on each explored snapshot (a snapshot is
+      the same point on every path that reaches it);
+    - {!always} with a step condition: on each start and on each explored step,
+      not only the step of a shortest path into each snapshot;
+    - {!never_after} and {!leads_to}: on each start and each explored step (see
+      {!section-temporal});
+    - a property of a {!val-child}: only point conditions; a step condition
+      raises {!Invalid_check}. *)
 
 val state : ('s -> bool) -> ('s, 'e) condition
 (** Holds when the snapshot passes the test. *)
@@ -37,9 +53,26 @@ val holds : ('s -> 'e Silica.Node.t -> bool) -> ('s, 'e) condition
 (** Holds when the snapshot and its view pass the test together. *)
 
 val event : ('e -> bool) -> ('s, 'e) condition
-(** Holds on the snapshot reached by a step whose event of the machine passes
-    the test. The checker visits each snapshot once, through a shortest path, so
-    this reads the event of that path. *)
+(** A step condition: holds on the point reached by a step whose event of the
+    machine passes the test. It does not hold at a start, nor after a step with
+    no event of the machine (new props, a link, back, forward). *)
+
+val transition : ('s -> 'e -> 's -> bool) -> ('s, 'e) condition
+(** [transition test]: a step condition that holds on the point reached by a
+    step with an event of the machine when [test before event after] holds, with
+    the snapshots before and after the step. It does not hold at a start, nor
+    after a step with no event of the machine. "Increment adds the step":
+    {[
+      Check.always ~name:"increment adds the step"
+        Check.(
+          not_ (event (( = ) Increment))
+          ||| transition (fun before _ after ->
+              after.count = before.count + before.step
+          )
+        )
+    ]}
+    The [not_ (event ...)] part makes the property hold at a start and on the
+    other steps. *)
 
 val ( &&& ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
 val ( ||| ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
@@ -50,10 +83,17 @@ type ('s, 'e) property
 
 val always :
   name:string -> ?hint:string -> ('s, 'e) condition -> ('s, 'e) property
-(** [always ~name ?hint condition]: [condition] holds on every reached snapshot.
-    A violation has the rule [name] and the [hint]; [hint] may name [{state}]
-    for the state of the failing snapshot. Without [hint], the hint asks to
-    change the update, the view, or the property. *)
+(** [always ~name ?hint condition]: [condition] holds at every point of every
+    explored run. With a point condition, it is checked on each explored
+    snapshot. With a step condition, it is checked on each start and on each
+    explored step, so
+    [always ~name (not_ (event (( = ) Reset)) ||| state is_zero)] fails on a
+    Reset step that keeps the count even when the snapshot it reaches was first
+    reached by another step; the checker then stores the explored graph, as for
+    {!never_after}. A violation has the rule [name], a [Path] to the first
+    failing point, and the [hint]; [hint] may name [{state}] for the state of
+    the failing point. Without [hint], the hint asks to change the update, the
+    view, or the property. *)
 
 (** {1 Allowances} *)
 
@@ -117,6 +157,7 @@ type child
 val child :
   ?samples:sample list ->
   ?inputs:('s -> 'e list) ->
+  ?texts:string list ->
   ?within:('s -> bool) ->
   ?max_instances:int ->
   ?properties:('s, 'e) property list ->
@@ -139,20 +180,23 @@ val child :
       listed in [not_explored] as
       ["component <id> (instances 3 to <n> not run)"].
     - [samples] answer the calls and subscriptions of the child, [inputs] give
-      it events ({!component} explains both), and [within] bounds it: a joint
-      snapshot where a child is outside its [within] is not explored.
+      it events, [texts] are typed into its fields ({!component} explains the
+      three; the [texts] of the check go only to the fields of the parent), and
+      [within] bounds it: a joint snapshot where a child is outside its [within]
+      is not explored.
     - The [max_states] of the check bounds the joint snapshots. The report gives
       the number of distinct snapshots of each machine in [machines].
 
-    [properties] are {!always} properties. They hold on every snapshot of every
-    instance: the view is the resolved view of the instance with only its own
-    handlers, [event] is the event of the step when the instance took it, and
-    {!entered} and {!action} never hold. A violation inside a child names the
+    [properties] are {!always} properties with point conditions. They hold on
+    every snapshot of every instance: the view is the resolved view of the
+    instance with only its own handlers. A violation inside a child names the
     machine and the instance. Unreached states of a child are named
     ["<machine id>: <state>"]. Raises {!Invalid_check} when [max_instances] is
-    below 1 or a property is temporal: put {!leads_to} and {!never_after} on the
-    parent, where they see the whole page, or on the check of the child alone.
-*)
+    below 1, when a property reads the step ({!val-event}, {!action},
+    {!entered}: a child property is read only on the first visit of each joint
+    snapshot, so put it on the check of the child alone), or when a property is
+    temporal: put {!leads_to} and {!never_after} on the parent, where they see
+    the whole page, or on the check of the child alone. *)
 
 type child_event = Check_model.child_event
 (** An event of a child instance, as a step of a joint check holds it. *)
@@ -175,6 +219,7 @@ val component :
   ?samples:sample list ->
   ?arrivals:int ->
   ?keys:Silica.Key.t list ->
+  ?texts:string list ->
   ?children:child list ->
   ?properties:('s, 'e) property list ->
   ?allow:allowance list ->
@@ -185,10 +230,13 @@ val component :
     state the parent can give any other of [props]. Events in a state are the
     handlers of the rendered view (press, double press, submit, focus, blur,
     pointer enter and leave), the key handlers of the view called with each key
-    of [keys] (default: Escape, Enter, Tab, Arrow up, Arrow down), the events of
-    the held sources of the state, [inputs s] (use it for [On_input], which
-    needs sample strings), the events of running timers, the answers of running
-    calls and the updates of running subscriptions (see {!answers} and
+    of [keys] (default: Escape, Enter, Tab, Arrow up, Arrow down), the input
+    handler of each text field of the view (a [textarea], or an [input] with no
+    [type] or a type of text, search, email, url, tel, password or number; not a
+    [select] or a checkbox) called with each text of [texts] (default: none),
+    the events of the held sources of the state, [inputs s] (for events that no
+    element of the view gives), the events of running timers, the answers of
+    running calls and the updates of running subscriptions (see {!answers} and
     {!val-states}; [arrivals] defaults to 2). A [Global_keys] source gives the
     event of each key in its table, which is the press of that key;
     [Outside_press] gives its event; [Resize] gives [on_resize] with
@@ -232,6 +280,7 @@ val live :
   ?samples:sample list ->
   ?arrivals:int ->
   ?keys:Silica.Key.t list ->
+  ?texts:string list ->
   ?properties:('s, 'e) property list ->
   ?allow:allowance list ->
   ('s, 'e) Silica.Live.t ->
@@ -268,6 +317,7 @@ val app :
   ?samples:sample list ->
   ?arrivals:int ->
   ?keys:Silica.Key.t list ->
+  ?texts:string list ->
   ?pages:child list ->
   ?properties:('s app_state, 'e) property list ->
   ?allow:allowance list ->
@@ -328,7 +378,8 @@ type cause = Check_model.cause =
       handler : string;
           (** ["press"], ["double_press"], ["submit"], ["focus"], ["blur"],
               ["pointer_enter"], ["pointer_leave"], ["key_down Enter"],
-              ["key_up Escape"]. *)
+              ["key_up Escape"], or ["input 0"] for the text ["0"] of [texts]
+              typed into the field. *)
       element : string;
           (** The path of the element, such as ["main > form > button[2]"] (see
               {!Silica.Accessibility.path}). *)
@@ -468,7 +519,7 @@ type rule = Check_rules.rule = {
 val rules : rule list
 (** Every built-in rule. *)
 
-(** {1 Temporal properties}
+(** {1:temporal Temporal properties}
 
     {!never_after} and {!leads_to} talk about runs, not single snapshots. The
     checker stores the graph that the search explored (each snapshot, and each
@@ -592,13 +643,21 @@ val replay_trace :
   ('s, 'ev) t -> Silica.Trace.t -> (('s, 'ev) replay, string) result
 (** Replays the steps of the root instance of a trace, such as one that
     {!export} wrote, and in a joint check the steps of the listed children (not
-    their props and not what their parents did on their [output]). Each step is
-    matched by its event data, decoded with the event and props codecs of the
-    root machine (see {!Silica.Machine.register_codecs}), and by its cause: the
-    same element, timer, call or source when the check offers it. A step with no
-    data is matched by its event name and cause. [Error] when the trace is of
-    another machine, has no start of its root, or holds data that does not
-    decode. *)
+    their props and not what their parents did on their [output]). It never
+    guesses a step:
+    - A trace that {!export} wrote holds the choice of each step (see
+      {!Silica.Trace.type-origin}): the position of its move among the moves the
+      check offered there. With the same check, each step replays exactly, with
+      no codec. When the check changed, the step is the one move that fits its
+      event name, data and cause; with no such move the step is not enabled
+      ([Not_enabled]); with several, the result is [Error].
+    - A recorded trace is matched by the event data of each step, decoded with
+      the event and props codecs of the root machine (see
+      {!Silica.Machine.register_codecs}), and by its cause. A step with no data
+      is an [Error]: a trace recorded with names only cannot replay faithfully.
+
+    [Error] also when the trace is of another machine, has no start of its root,
+    or holds data that does not decode. *)
 
 val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
 (** A counterexample as a trace file (see {!Silica.Trace}): the start, then one

@@ -1,6 +1,8 @@
 module Json = Silica_json.Json
 
-type origin = Checker of { rule : string } | Runtime of { platform : string }
+type origin =
+  | Checker of { rule : string; choices : int list }
+  | Runtime of { platform : string }
 
 type header = {
   root : string;
@@ -30,8 +32,13 @@ let encode_header header =
         ("build", string header.build);
         ( "origin",
           match header.origin with
-          | Checker { rule } ->
-              object_of [ ("type", string "checker"); ("rule", string rule) ]
+          | Checker { rule; choices } ->
+              object_of
+                [
+                  ("type", string "checker");
+                  ("rule", string rule);
+                  ("choices", Json.declassify (`List (List.map int choices)));
+                ]
           | Runtime { platform } ->
               object_of
                 [ ("type", string "runtime"); ("platform", string platform) ]
@@ -84,13 +91,27 @@ let as_int json =
   | _ ->
       Error "expected an integer"
 
+let as_ints json =
+  match Json.classify json with
+  | `List items ->
+      List.fold_right
+        (fun item acc ->
+          let* rest = acc in
+          let* value = as_int item in
+          Ok (value :: rest)
+        )
+        items (Ok [])
+  | _ ->
+      Error "expected a list of integers"
+
 let decode_origin json =
   let* fields = fields json in
   let* kind = required fields "type" as_string in
   match kind with
   | "checker" ->
       let* rule = required fields "rule" as_string in
-      Ok (Checker { rule })
+      let* choices = required fields "choices" as_ints in
+      Ok (Checker { rule; choices })
   | "runtime" ->
       let* platform = required fields "platform" as_string in
       Ok (Runtime { platform })
@@ -207,7 +228,7 @@ let cause_text : Transition.cause -> string = function
       "end"
 
 let origin_text = function
-  | Checker { rule } ->
+  | Checker { rule; _ } ->
       "checker " ^ rule
   | Runtime { platform } ->
       platform

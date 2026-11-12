@@ -139,10 +139,7 @@ let item ?(properties = []) ~props () =
 
 let about () = Check.component Example_about.component
 
-let edit () =
-  Check.component
-    ~inputs:(fun _ -> [ Example_edit.Draft "note"; Example_edit.Draft "" ])
-    Example_edit.component
+let edit () = Check.component ~texts:[ "note"; "" ] Example_edit.component
 
 let not_found () = Check.component Example_not_found.component
 

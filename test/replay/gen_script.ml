@@ -12,6 +12,7 @@ let checks =
     ("sync", Check Sync.check);
     ("pages", Check Pages.check);
     ("search", Check Search.check);
+    ("typing", Check Stepper.typing);
   ]
 
 let () =

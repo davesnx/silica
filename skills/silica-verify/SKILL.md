@@ -9,11 +9,12 @@ Work from the root of the app (the directory with `check/main.ml`). The loop
 is red, then green: a check fails on the bug, then passes on the fix.
 
 1. Write the requirement as a check before the change: a property in
-   `~properties` of the entry in `check/main.ml`, and the `~samples` and
-   `~inputs` that reach the new states. A new component gets its own
-   `Check_suite.entry`. A rule about steps needs `Check.never_after`, not
-   `Check.always` (see "Write a requirement as a property" in the
-   verification reference). Done when `silica check` runs your property.
+   `~properties` of the entry in `check/main.ml`, and the `~samples`,
+   `~texts` (text typed into each field) and `~inputs` (other events) that
+   reach the new states. A new component gets its own `Check_suite.entry`. A
+   rule about steps is a `Check.always` with `Check.event` or
+   `Check.transition`; it is read on every step (see "A rule about steps" in
+   the verification reference). Done when `silica check` runs your property.
 2. Change the machine and the view. Behaviour goes in the machine; the view
    disables each element whose event the state does not handle.
 3. Run `silica check --json --traces traces > report.json` and branch on the
@@ -24,24 +25,28 @@ is red, then green: a check fails on the bug, then passes on the fix.
    Look up the rule in the table in
    [references/verification.md](references/verification.md) (section "The
    rules"). Also read `unreached`, `unchecked` and `errors`.
-5. Make it red, one test for each violation you fix: for the `trace_file`
-   `traces/ID-N.jsonl`, `silica script ID traces/ID-N.jsonl >
-   test/ID_N_replay.ml`, add `ID_N_replay` to the names in `test/dune`,
-   `dune fmt` twice (the first run prints a diff and exits 1), `dune test`.
-   It fails with the same rule and hint; keep what its last line asserts. A
-   test that compares a whole view fails too when the change changed that
-   view; update it in step 7 if the difference is intended. If `silica script` exits 1, run
-   `silica replay ID FILE` and read the step that fails.
+5. Make it red, one test for each violation you fix: each violation has a
+   `trace_file` (`traces/<id>_<rule>_<state>.jsonl`) and a `test_file`;
+   `silica script ID TRACE_FILE > TEST_FILE`, add the name of the test file
+   to the names in `test/dune`, `dune test`. The test is formatted already
+   (when `ocamlformat` is installed), and it fails with the same rule and
+   hint; do not edit its last line. A test that compares a whole view fails
+   too when the change changed that view, and prints the lines that differ;
+   update it in step 7 if the difference is intended. If `silica script`
+   exits 1, run `silica replay ID TRACE_FILE` and read the step that fails:
+   it replays the steps the checker chose, with no codec, and exits 3 when a
+   trace cannot be replayed faithfully, never 0.
 6. Fix the code as the hint says, until `silica check` exits 0 and the red
    test passes. The property, the bounds and the allowances stay as they were;
    an allowance is right only where the table says so.
 7. Run `dune test`. On `golden-drift`, read each changed state, edge and view
    line. Intended: `dune exec ./check/main.exe -- golden check/spec --write`
-   (it prints the findings, then `golden: wrote the changes into check/spec`)
+   (it prints the findings, then the files it wrote and `passed (exit 0)`)
    and update the tests that expect the old behaviour (a test that compares a
    whole view fails on any change of it). Not intended: fix the code.
 8. Done when `dune build`, `dune test` and `dune build @fmt` pass with no
-   output. Delete `report.json` and `traces/`; do not commit them.
+   output. `report.json` and `traces/` are left out by `.gitignore`; do not
+   commit them.
 
 References, read when a step needs them:
 

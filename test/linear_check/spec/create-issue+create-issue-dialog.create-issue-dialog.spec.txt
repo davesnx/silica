@@ -7,4 +7,4 @@ state open
   hold dismiss
 edge closed -> open on props
 edge open -> closed on "close_request escape-key" "close_request outside-press" props
-stay open on cancel "close_request escape-key" "close_request outside-press" submit
+stay open on cancel "close_request escape-key" "close_request outside-press" description submit title

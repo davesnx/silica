@@ -18,7 +18,7 @@ let resource (via : Check_model.via) =
       Some ("call " ^ id)
   | By_result _ ->
       Some "action result"
-  | By_view | By_input | By_feed _ ->
+  | By_view | By_typing | By_input | By_feed _ ->
       None
 
 let edges (graph : (_, _) Check_search.graph) node =

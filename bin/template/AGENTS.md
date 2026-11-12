@@ -65,11 +65,13 @@ Run every command from this directory.
 
 1. Write the requirement as a check first: a property in `~properties` of the
    entry in `check/main.ml` (`Check.always`, `Check.leads_to`,
-   `Check.never_after`), and the `~samples` and `~inputs` that reach the new
-   states. A new component gets its own `Check_suite.entry`. Warning: in
-   `Check.always`, `Check.event` reads only one step into each state, so a
-   rule about steps ("Reset always gives 0") needs `Check.never_after`; see
-   "A rule about steps" in the verification reference.
+   `Check.never_after`), and the `~samples`, `~texts` (text that the checker
+   types into each field) and `~inputs` (other events that no element gives)
+   that reach the new states. A new component gets its own
+   `Check_suite.entry`. A rule about steps ("Reset always gives 0", "Increment
+   adds the step") is a `Check.always` with `Check.event` and
+   `Check.transition`: it is read on every step; see "A rule about steps" in
+   the verification reference.
 2. Put behaviour in the machine. A view only reads the state and names
    events. Disable an element when its event does nothing in a state:
    `disabled=(not (Machine.can machine () state Event))`.
@@ -78,30 +80,34 @@ Run every command from this directory.
    `hint`, `state.name`, `view` (the view as text at the failing step) and
    `trace` (each step has `event` and `cause.text`). Find the rule in the
    table of the verification reference.
-5. Make a red test for each violation you fix, named after its trace file:
-   for the `trace_file` `traces/ID-N.jsonl`, run
-   `silica script ID traces/ID-N.jsonl > test/ID_N_replay.ml` and add
-   `ID_N_replay` to the names in `test/dune`. Run `dune fmt`: the first run
-   prints a diff, writes the file and exits 1; run it again, it exits 0. The
-   formatter may wrap the last line, the assertion; keep what it asserts.
-   Run `dune test` and see the test fail with the rule and hint. A test that
-   compares a whole view, such as `test/counter_page.ml`, fails here too when
-   the change changed that view: if the difference is intended, update it in
-   step 8. When `silica script` exits 1 (a step that cannot run in memory),
-   use `silica replay ID traces/ID-N.jsonl`. Limits today: a step from
-   `~inputs`, such as typing in a field, cannot be scripted; and replay keeps
-   the data of a step only when the machine has codecs, so without them it
-   can exit 0 while the bug is there. Then write the red test by hand with
-   `Memory.input` (see "Limits today" in the verification reference).
+5. Make a red test for each violation you fix. Each violation has a
+   `trace_file` such as `traces/counter_ignored_event_saving.jsonl` and a
+   `test_file` such as `test/counter_ignored_event_saving_replay.ml`; run
+   `silica script ID TRACE_FILE > TEST_FILE` (standard error repeats the file
+   name) and add its name, such as `counter_ignored_event_saving_replay`, to
+   the names in `test/dune`. The test is already formatted when `ocamlformat`
+   is installed; do not edit its last line, the assertion. Run `dune test`
+   and see the test fail with the rule and hint. A test that compares a whole
+   view, such as `test/counter_page.ml`, fails here too when the change
+   changed that view, and prints the lines that differ: if the difference is
+   intended, update it in step 8. When `silica script` exits 1 (a step that
+   cannot run in memory, such as a timer that real time fires later), use
+   `silica replay ID TRACE_FILE`: it replays the steps that the checker
+   chose, with no codec, and exits 1 while a rule fails at the last step, 3
+   when the trace cannot be replayed faithfully (recorded with names only, or
+   from another version of the check).
 6. Fix the machine or the view, as the hint says. Keep the check as strict as
    it was: no removed property, lower bound or allowance to hide a finding.
 7. `silica check` exits 0, and the red test passes. Keep the test.
 8. `dune test`. On `golden-drift`, read the changed states, edges and view
    lines. If the change is intended, write the golden files again: the
    command prints the same findings, then
-   `golden: wrote the changes into check/spec` and `passed (exit 0)`. If not,
-   fix the code. Update the tests that expect the old behaviour, such as
-   `test/counter_page.ml`, which compares the whole view.
+   `golden: wrote N files into check/spec: ...`, a line that says the golden
+   files now match, and `passed (exit 0)`. If not, fix the code. Update the
+   tests that expect the old behaviour, such as `test/counter_page.ml`, which
+   compares the whole view.
 9. Before you finish: `dune build`, `dune test` and `dune build @fmt` all
-   pass with no output. Delete `report.json` and `traces/`: they belong to
-   one run, and the red tests keep the steps. Do not commit them.
+   pass with no output. `report.json` and `traces/` belong to one run, and
+   `.gitignore` leaves them out; the red tests keep the steps. A new run of
+   `silica check --traces traces` removes the trace files of a check that it
+   no longer writes.

@@ -176,6 +176,25 @@ val role : element -> Accessibility.role option
 val accessible_name : element -> string
 (** The accessible name of the element. *)
 
+val disabled : element -> bool
+(** The element is disabled: [aria-disabled="true"] or [disabled] on it (see
+    {!Silica.Accessibility.disabled}), or it is inside a disabled [fieldset] or
+    other native control. A press reaches an element with only [aria-disabled],
+    as in a browser (see {!Not_reachable}). *)
+
+val hidden : element -> bool
+(** The element is not in the accessibility tree (see
+    {!Silica.Accessibility.hidden}). *)
+
+val checked : element -> bool option
+(** See {!Silica.Accessibility.checked}. *)
+
+val selected : element -> bool option
+(** See {!Silica.Accessibility.selected}. *)
+
+val expanded : element -> bool option
+(** See {!Silica.Accessibility.expanded}. *)
+
 (** {1 Input}
 
     As in a browser, {!press}, {!double_press}, {!val-input}, {!submit} and
@@ -185,11 +204,27 @@ val accessible_name : element -> string
     or has [hidden] or [inert]. [aria-disabled] and [aria-hidden] do not stop
     input, as in a browser. *)
 
-exception Not_reachable of string
-(** The input cannot reach the element. The text names the element by role,
+(** Why an input cannot reach an element. *)
+type unreachable =
+  | Disabled
+      (** The element, or a [fieldset] around it, is a disabled native control.
+      *)
+  | Hidden  (** The element or an element around it has [hidden]. *)
+  | Inert  (** The element or an element around it has [inert]. *)
+
+exception Not_reachable of { reason : unreachable; message : string }
+(** The input cannot reach the element. [message] names the element by role,
     accessible name and path, and says why, such as
     ["Silica_memory: the button \"Save\" at main > button[3] is disabled, so a
-     browser does not deliver a press to it."]. *)
+     browser does not deliver a press to it."]. A test that expects the refusal
+    matches it:
+    {[
+      match Silica_memory.press save with
+      | () ->
+          failwith "the disabled Save button took a press"
+      | exception Silica_memory.Not_reachable { reason = Disabled; _ } ->
+          ()
+    ]} *)
 
 val press : element -> unit
 (** A press: the outside-press sources and dismiss layers see the press start,

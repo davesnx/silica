@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "create-issue". Do not edit.
 module create_issue {
   type State = | Closed | Editing | Failed | Submitting
-  type Event = OnStart | OnAny | OnCancel | OnCreatedError | OnCreatedOk | OnProps | OnSubmit | OnTitle
+  type Event = OnStart | OnAny | OnCancel | OnCreatedError | OnCreatedOk | OnDescription | OnProps | OnSubmit | OnTitle
 
   var state: State
   var running: Set[str]
@@ -35,9 +35,12 @@ module create_issue {
   action editing_to_submitting_on_submit = all { state == Editing, enter(Submitting, OnSubmit) }
   action failed_to_closed_on_cancel = all { state == Failed, enter(Closed, OnCancel) }
   action failed_to_closed_on_props = all { state == Failed, enter(Closed, OnProps) }
+  action failed_to_editing_on_description = all { state == Failed, enter(Editing, OnDescription) }
+  action failed_to_editing_on_title = all { state == Failed, enter(Editing, OnTitle) }
   action failed_to_submitting_on_submit = all { state == Failed, enter(Submitting, OnSubmit) }
   action submitting_to_closed_on_created_ok = all { state == Submitting, enter(Closed, OnCreatedOk) }
   action submitting_to_failed_on_created_error = all { state == Submitting, enter(Failed, OnCreatedError) }
+  action editing_stays_on_description = all { state == Editing, state' = state, running' = running, last' = OnDescription }
   action editing_stays_on_submit = all { state == Editing, state' = state, running' = running, last' = OnSubmit }
   action editing_stays_on_title = all { state == Editing, state' = state, running' = running, last' = OnTitle }
 
@@ -48,9 +51,12 @@ module create_issue {
     editing_to_submitting_on_submit,
     failed_to_closed_on_cancel,
     failed_to_closed_on_props,
+    failed_to_editing_on_description,
+    failed_to_editing_on_title,
     failed_to_submitting_on_submit,
     submitting_to_closed_on_created_ok,
     submitting_to_failed_on_created_error,
+    editing_stays_on_description,
     editing_stays_on_submit,
     editing_stays_on_title,
   }

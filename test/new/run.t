@@ -112,31 +112,33 @@ script of that trace is a test that fails for the same reason.
   $ silica check --traces traces > /dev/null 2>&1
   [1]
   $ ls traces
-  counter-1.jsonl
-  counter-2.jsonl
-  $ silica replay counter traces/counter-1.jsonl 2>&1 | tail -1
+  counter_ignored_event_saved.jsonl
+  counter_ignored_event_saving.jsonl
+  $ silica replay counter traces/counter_ignored_event_saving.jsonl 2>&1 | tail -1
   the last step breaks a rule (exit 1)
-  $ silica script counter traces/counter-1.jsonl > test/counter_replay.ml
-  $ sed 's/(names counter_steps counter_page)/(names counter_steps counter_page counter_replay)/' test/dune > test/dune.new
+  $ silica script counter traces/counter_ignored_event_saving.jsonl > test/counter_ignored_event_saving_replay.ml
+  script: the test of the violation ignored-event of counter, from traces/counter_ignored_event_saving.jsonl. Save it as test/counter_ignored_event_saving_replay.ml, and add counter_ignored_event_saving_replay to the names of the tests in test/dune.
+  $ sed 's/(names counter_steps counter_page)/(names counter_steps counter_page counter_ignored_event_saving_replay)/' test/dune > test/dune.new
   $ mv test/dune.new test/dune
-  $ cat test/counter_replay.ml
+  $ cat test/counter_ignored_event_saving_replay.ml
   open Silica
   module Memory = Silica_memory
   
   let broken =
     Check_expect.rule "ignored-event" ~state:"saving"
-      ~message:"In state saving, the view offers press on button \"Save\" at main \
-                > button[3] gives the event save, and the update returns Ignore."
-      ~hint:"Handle save in state saving, or do not offer it there: disable the \
-             element with Machine.can, or leave its timer or call out of owns \
-             of saving."
+      ~message:
+        "In state saving, the view offers press on button \"Save\" at main > \
+         button[3] gives the event save, and the update returns Ignore."
+      ~hint:
+        "Handle save in state saving, or do not offer it there: disable the \
+         element with Machine.can, or leave its timer or call out of owns of \
+         saving."
   
   let () =
     let page = Memory.mount Counter.component in
     Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
-    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
-  $ dune fmt > /dev/null 2>&1
-  [1]
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button
+      Memory.press
   $ dune build @fmt 2>&1
   $ dune test 2>&1 | grep -E '^(ignored-event|hint)'
   ignored-event: In state saving, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
@@ -153,11 +155,36 @@ test.
 The traces conform to the specs and to the code: the steps are the same. A
 trace with a step that no spec has does not conform:
 
-  $ silica conform traces/counter-1.jsonl traces/counter-2.jsonl 2>&1 | tail -1
+  $ silica conform traces/counter_ignored_event_saved.jsonl traces/counter_ignored_event_saving.jsonl 2>&1 | tail -1
   every trace conforms (exit 0)
-  $ sed 's/"from":"counting","to":"saving"/"from":"counting","to":"saved"/' traces/counter-1.jsonl > traces/changed.jsonl
+  $ sed 's/"from":"counting","to":"saving"/"from":"counting","to":"saved"/' traces/counter_ignored_event_saving.jsonl > traces/changed.jsonl
   $ silica conform traces/changed.jsonl 2>&1 | grep -E '^(deviation|  step|  difference)|exit'
   deviation 1 (unknown-step): transition 2, machine counter, instance counter
     step: counting -> saved on save
     difference: no spec of the machine has this step. The specs allow from counting: stay on decrement, stay on increment, -> saving on save.
   a trace does not conform (exit 1)
+
+The page test compares the whole text view. When a view changes, its failure
+shows the lines that differ.
+
+  $ sed 's/^      "Saved"$/      "All saved"/' app/shared/counter.mlx > changed.mlx
+  $ cp app/shared/counter.mlx counter.mlx.orig
+  $ mv changed.mlx app/shared/counter.mlx
+  $ dune test 2>&1 | grep -A 12 'view: the text differs'
+  view: the text differs (- expected, + got):
+    main
+      heading "Counter" level=1
+      status
+        text "2"
+      button "Decrement" [press]
+      button "Increment" [press]
+      button "Save" disabled [press]
+  -   text "Saved"
+  +   text "All saved"
+  $ mv counter.mlx.orig app/shared/counter.mlx
+
+The reports and traces that the commands write stay out of git.
+
+  $ grep -x -e traces -e report.json .gitignore
+  traces
+  report.json

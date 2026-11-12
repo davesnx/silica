@@ -87,7 +87,8 @@ state, and the update ignores it there.
               }
             ],
             "loop": null,
-            "trace_file": null
+            "trace_file": null,
+            "test_file": null
           }
         ],
         "unreached": [],
@@ -293,7 +294,10 @@ edge, removed and added, and nothing else.
           ]
         }
       ]
-  $ FIXTURE=changed ./fixtures.exe golden spec --write > /dev/null
+  $ FIXTURE=changed ./fixtures.exe golden spec --write | tail -3
+  golden: wrote 3 files into spec: door.spec.txt (changed), door.qnt (changed), door.dot (changed)
+  golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
+  passed (exit 0)
   $ FIXTURE=changed ./fixtures.exe golden spec
 
 A file that no entry makes is stale.
@@ -316,9 +320,9 @@ A file that no entry makes is stale.
 With --traces, each violation is also a trace file, and the JSON names it.
 
   $ FIXTURE=bug ./fixtures.exe --json --traces traces | grep trace_file
-            "trace_file": "traces/save-1.jsonl"
-  $ cat traces/save-1.jsonl
-  {"root":"save","build":"check","origin":{"type":"checker","rule":"ignored-event"},"dropped":0}
+            "trace_file": "traces/save_ignored_event_saved.jsonl",
+  $ cat traces/save_ignored_event_saved.jsonl
+  {"root":"save","build":"check","origin":{"type":"checker","rule":"ignored-event","choices":[1,0]},"dropped":0}
   {"seq":1,"instance":"save","number":1,"entry":0,"machine":"save","from":"","to":"editing","change":"started","event":"","snapshot":["Editing",0],"cause":{"type":"start"}}
   {"seq":2,"instance":"save","number":1,"entry":0,"machine":"save","from":"editing","to":"saved","change":"entered","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"form > button[2]"}}
   {"seq":3,"instance":"save","number":1,"entry":0,"machine":"save","from":"saved","to":"saved","change":"unhandled","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"div > button"}}
@@ -326,8 +330,8 @@ With --traces, each violation is also a trace file, and the JSON names it.
 replay runs the trace in the check again: the last step breaks the rule, so
 the exit code is 1.
 
-  $ FIXTURE=bug ./fixtures.exe replay save traces/save-1.jsonl
-  replay save: traces/save-1.jsonl
+  $ FIXTURE=bug ./fixtures.exe replay save traces/save_ignored_event_saved.jsonl
+  replay save: traces/save_ignored_event_saved.jsonl
   start: editing
   1. editing -> saved: save, by the view offers press on button "Save" at form > button[2]
   2. saved -> saved: save, by the view offers press on button "Save" at div > button
@@ -339,19 +343,19 @@ the exit code is 1.
     button "Save" [press]
   the last step breaks a rule (exit 1)
   [1]
-  $ FIXTURE=bug ./fixtures.exe replay save traces/save-1.jsonl --json | grep -E '"(exit_code|not_enabled|rule)"'
+  $ FIXTURE=bug ./fixtures.exe replay save traces/save_ignored_event_saved.jsonl --json | grep -E '"(exit_code|not_enabled|rule)"'
     "exit_code": 1,
             "rule": "ignored-event",
     "not_enabled": null,
 
 After a fix, the same trace no longer breaks a rule: exit 0.
 
-  $ FIXTURE=fixed ./fixtures.exe replay save traces/save-1.jsonl | tail -1
+  $ FIXTURE=fixed ./fixtures.exe replay save traces/save_ignored_event_saved.jsonl | tail -1
   no rule fails (exit 0)
 
 A step that the check no longer offers is a mismatch: exit 1.
 
-  $ FIXTURE=disabled ./fixtures.exe replay save traces/save-1.jsonl | tail -4
+  $ FIXTURE=disabled ./fixtures.exe replay save traces/save_ignored_event_saved.jsonl | tail -4
       hint: Add a button, a timer or an input that leaves saved, or mark saved final with ~final when the machine is done there.
   step 2 of the trace is not enabled here. The state offers:
     nothing
@@ -359,8 +363,58 @@ A step that the check no longer offers is a mismatch: exit 1.
 
 script prints a Silica_memory test of the counterexample.
 
-  $ FIXTURE=bug ./fixtures.exe script save traces/save-1.jsonl --component Fixtures.save | grep -c Memory.press
+  $ FIXTURE=bug ./fixtures.exe script save traces/save_ignored_event_saved.jsonl --component Fixtures.save | grep -c Memory.press
+  script: the test of the violation ignored-event of save, from traces/save_ignored_event_saved.jsonl. Save it as test/save_ignored_event_saved_replay.ml, and add save_ignored_event_saved_replay to the names of the tests in test/dune.
   2
+
+Two violations of one check get two trace files, named by the machine, the
+rule and the state, and the text names the test file of each:
+
+  $ FIXTURE=twice ./fixtures.exe --traces traces | grep trace
+  trace of violation 1: traces/twice_ignored_event_first.jsonl; its test: silica script twice traces/twice_ignored_event_first.jsonl > test/twice_ignored_event_first_replay.ml
+  trace of violation 2: traces/twice_ignored_event_second.jsonl; its test: silica script twice traces/twice_ignored_event_second.jsonl > test/twice_ignored_event_second_replay.ml
+  $ FIXTURE=twice ./fixtures.exe --json --traces traces | grep -E '"(trace|test)_file"'
+            "trace_file": "traces/twice_ignored_event_first.jsonl",
+            "test_file": "test/twice_ignored_event_first_replay.ml"
+            "trace_file": "traces/twice_ignored_event_second.jsonl",
+            "test_file": "test/twice_ignored_event_second_replay.ml"
+  $ FIXTURE=twice ./fixtures.exe script twice traces/twice_ignored_event_second.jsonl > /dev/null
+  script: the test of the violation ignored-event of twice, from traces/twice_ignored_event_second.jsonl. Save it as test/twice_ignored_event_second_replay.ml, and add twice_ignored_event_second_replay to the names of the tests in test/dune.
+
+conform takes a trace that the checker wrote, and says that it is a
+counterexample, not a recorded run: replay says whether it still breaks the
+rule.
+
+  $ FIXTURE=bug ./fixtures.exe golden savespec --write > /dev/null
+  [1]
+  $ FIXTURE=bug ./fixtures.exe conform --spec savespec traces/save_ignored_event_saved.jsonl
+  conform traces/save_ignored_event_saved.jsonl: root save, build check, 3 transitions
+    note: this trace is a counterexample of the checker for ignored-event, not a recorded run: conform compares its steps with the specs and the code, and says nothing about the rule; run replay to see whether it still breaks ignored-event
+    by names: transitions checked against the golden specs: 3
+    by data: steps run again in the code: 3; snapshots checked by the properties: 3
+  every trace conforms (exit 0)
+
+A new run removes the trace files of a check that ran and that it no longer
+writes, so a stale trace cannot be replayed by mistake. It keeps the files of
+other checks and files that are not traces:
+
+  $ touch traces/twice_ignored_event_gone.jsonl traces/door_dead_end_closed.jsonl traces/notes.txt
+  $ FIXTURE=twice ./fixtures.exe --traces traces > /dev/null
+  [1]
+  $ ls traces | grep -E '^(twice|door|notes)'
+  door_dead_end_closed.jsonl
+  notes.txt
+  twice_ignored_event_first.jsonl
+  twice_ignored_event_second.jsonl
+
+A trace that cannot be replayed faithfully is a setup error, never a pass,
+such as one recorded with names only (no event data and no choices of the
+checker).
+
+  $ sed -e 's/"origin":{[^}]*}/"origin":{"type":"runtime","platform":"browser"}/' -e 's/,"data":\[[^]]*\]//' traces/save_ignored_event_saved.jsonl > names.jsonl
+  $ FIXTURE=bug ./fixtures.exe replay save names.jsonl
+  replay: transition 2 (save) has no event data and no choice of the checker, so it cannot be replayed faithfully: the trace was recorded with names only, or the machine has no event codec (see Silica.Machine.register_codecs). To compare a recorded run with the specs and the code, run conform
+  [3]
 
 A trace that does not read, or an unknown machine, is a setup error.
 
@@ -369,6 +423,6 @@ A trace that does not read, or an unknown machine, is a setup error.
   replay: bad.jsonl: line 1: Line 1, bytes 0-1:
   Unexpected end of input
   [3]
-  $ FIXTURE=bug ./fixtures.exe script door traces/save-1.jsonl
+  $ FIXTURE=bug ./fixtures.exe script door traces/save_ignored_event_saved.jsonl
   script: no entry checks the machine door
   [3]

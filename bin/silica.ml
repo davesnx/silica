@@ -64,7 +64,14 @@ let check json graphs traces =
 
 let check_command =
   let json =
-    Arg.(value & flag & info [ "json" ] ~doc:"Print the report as JSON.")
+    Arg.(
+      value & flag
+      & info [ "json" ]
+          ~doc:
+            "Print the report as JSON on standard output. To keep it, redirect \
+             it to a file such as $(b,report.json), which the $(b,.gitignore) \
+             of $(b,silica new) leaves out."
+    )
   in
   let graphs =
     Arg.(
@@ -80,8 +87,11 @@ let check_command =
       & opt (some string) None
       & info [ "traces" ] ~docv:"DIR"
           ~doc:
-            "Write each violation as a trace file $(docv)/<id>-<n>.jsonl, for \
-             $(b,silica replay) and $(b,silica script)."
+            "Write each violation as a trace file \
+             $(docv)/<id>_<rule>_<state>.jsonl, for $(b,silica replay) and \
+             $(b,silica script); the trace files of a check that this run no \
+             longer writes are removed. $(docv) is relative to the app; the \
+             $(b,.gitignore) of $(b,silica new) leaves out $(b,traces)."
     )
   in
   Cmd.v

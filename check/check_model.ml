@@ -98,6 +98,7 @@ type sub = { phase : phase; arrivals : int; last : int option; dropped : bool }
 
 type via =
   | By_view
+  | By_typing
   | By_input
   | By_timer of string
   | By_answer of string
@@ -107,7 +108,7 @@ type via =
 type 'ev move = { event : 'ev; via : via }
 
 let ignorable = function
-  | By_input | By_result _ ->
+  | By_input | By_typing | By_result _ ->
       true
   | By_view | By_timer _ | By_answer _ | By_feed _ ->
       false
@@ -403,11 +404,11 @@ let answer_json host world via event =
       Option.bind (List.assoc_opt id world.calls) (fun answers ->
           List.assoc_opt event (Dynarray.get host.answer_lists.values answers)
       )
-  | By_view | By_input | By_timer _ | By_feed _ | By_result _ ->
+  | By_view | By_typing | By_input | By_timer _ | By_feed _ | By_result _ ->
       None
 
 let consume world = function
-  | By_view | By_input ->
+  | By_view | By_typing | By_input ->
       world
   | By_timer id ->
       { world with timers = List.remove_assoc id world.timers }
@@ -424,7 +425,7 @@ let consume world = function
 let finished = function
   | By_timer id | By_answer id ->
       Some id
-  | By_view | By_input | By_feed _ | By_result _ ->
+  | By_view | By_typing | By_input | By_feed _ | By_result _ ->
       None
 
 let source_events (sources : _ Action.source list) =
@@ -536,7 +537,7 @@ let resource_cause machine world via event =
       in
       match find held ids with Some cause -> cause | None -> Input
     )
-  | By_view ->
+  | By_view | By_typing ->
       Input
 
 type recorder = {
@@ -709,6 +710,7 @@ type ('p, 's, 'e) listed = {
   component : ('p, 's, 'e) Component.t;
   samples : sample list;
   inputs : 's -> 'e list;
+  texts : string list;
   within : 's -> bool;
   max_instances : int;
   names : string list;
@@ -786,7 +788,13 @@ let empty_world props s =
 
 let describe_cause = function
   | View { handler; element; role; name } ->
-      Printf.sprintf "the view offers %s on %s%s at %s" handler
+      Printf.sprintf "the view offers %s on %s%s at %s"
+        ( if String.starts_with ~prefix:"input " handler then
+            Printf.sprintf "input %S"
+              (String.sub handler 6 (String.length handler - 6))
+          else
+            handler
+        )
         (Option.value role ~default:"the element")
         ( if name = "" then
             ""
@@ -813,14 +821,14 @@ let describe_cause = function
   | Navigation ->
       "the browser history"
 
-let view_cause ~keys view event =
-  match Check_rules.locate ~keys view (fun other -> other = event) with
+let view_cause ~keys ~texts view event =
+  match Check_rules.locate ~keys ~texts view (fun other -> other = event) with
   | Some { handler; element; role; name } ->
       View { handler; element; role; name }
   | None ->
       Input
 
-let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
+let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
     (component : (_, _, _) Component.t) =
   let machine = component.machine in
   let all_props = start_props machine props in
@@ -843,6 +851,11 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
       (List.map
          (fun event -> { event = (Event event : (_, _) input); via = By_view })
          (Check_rules.handlers ~keys view)
+      @ List.map
+          (fun event ->
+            { event = (Event event : (_, _) input); via = By_typing }
+          )
+          (Check_rules.typed ~texts view)
       @ List.map
           (fun event -> { event = (Event event : (_, _) input); via = By_input })
           (source_events (Machine.held machine world.props world.s)
@@ -883,8 +896,8 @@ let component_model ~client_only ~keys ~inputs ~props ~samples ~arrivals
         not_in_child ()
     | Event event -> (
         match move.via with
-        | By_view ->
-            view_cause ~keys view event
+        | By_view | By_typing ->
+            view_cause ~keys ~texts view event
         | via ->
             resource_cause machine world via event
       )
@@ -1015,8 +1028,8 @@ let round_trips ~parse ~print route =
   | exception Failure _ ->
       false
 
-let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
-    ~print ?is_not_found ~url_event root =
+let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
+    ~parse ~print ?is_not_found ~url_event root =
   let first =
     match routes with
     | [] ->
@@ -1083,6 +1096,9 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
          (fun event -> user (Event event))
          (Check_rules.handlers ~keys view)
       @ List.map
+          (fun event -> { event = Event event; via = By_typing })
+          (Check_rules.typed ~texts view)
+      @ List.map
           (fun event -> { event = Event event; via = By_input })
           (source_events (Machine.held machine world.props world.s)
           @ inputs (to_state world)
@@ -1131,8 +1147,8 @@ let app_model ~keys ~max_history ~inputs ~samples ~arrivals ~routes ~parse
     match move.event with
     | Event event -> (
         match move.via with
-        | By_view ->
-            view_cause ~keys view event
+        | By_view | By_typing ->
+            view_cause ~keys ~texts view event
         | via ->
             resource_cause machine world via event
       )

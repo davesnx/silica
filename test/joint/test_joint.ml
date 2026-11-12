@@ -7,6 +7,7 @@ let listed ?(samples = []) ?(max_instances = 3) component =
       component;
       samples;
       inputs = (fun _ -> []);
+      texts = [];
       within = (fun _ -> true);
       max_instances;
       names = [];
@@ -19,7 +20,7 @@ let keys = Check_rules.default_keys
 let model () =
   Check_tree.joint
     ~own_actions:(ref (fun _ -> []))
-    ~keys ~arrivals:2
+    ~keys ~texts:[] ~arrivals:2
     ~own:(fun event : (unit, Board.event) Check.input -> Event event)
     ~own_of:(function
       | (Event event : (unit, Board.event) Check.input) ->
@@ -38,7 +39,7 @@ let model () =
       )
     ~children:
       [ listed Row.component; listed ~samples:job_samples Job.component ]
-    (Check_model.component_model ~client_only:false ~keys
+    (Check_model.component_model ~client_only:false ~keys ~texts:[]
        ~inputs:(fun _ -> [])
        ~props:[] ~samples:[] ~arrivals:2 Board.component
     )

@@ -348,6 +348,20 @@ let conform_trace ~specs ~only ~subjects ~elsewhere file (trace : Trace.t) =
         (names @ data_findings);
   }
 
+let counterexample_note (header : Trace.header) =
+  match header.origin with
+  | Checker { rule; _ } ->
+      Some
+        (Printf.sprintf
+           "this trace is a counterexample of the checker for %s, not a \
+            recorded run: conform compares its steps with the specs and the \
+            code, and says nothing about the rule; run replay to see whether \
+            it still breaks %s"
+           rule rule
+        )
+  | Runtime _ ->
+      None
+
 let text checked =
   let buffer = Buffer.create 1024 in
   let add format = Printf.bprintf buffer format in
@@ -361,6 +375,7 @@ let text checked =
     | dropped ->
         Printf.sprintf " (%d dropped before)" dropped
     );
+  Option.iter (fun note -> add "  note: %s\n" note) (counterexample_note header);
   add "  by names: transitions checked against the golden specs: %d\n"
     checked.named;
   add
@@ -398,6 +413,7 @@ let json_of checked =
       ("build", Check_json.string header.build);
       ("transitions", Check_json.int (List.length checked.trace.transitions));
       ("dropped", Check_json.int header.dropped);
+      ("note", Check_json.option Check_json.string (counterexample_note header));
       ("by_names", Check_json.int checked.named);
       ("steps", Check_json.int checked.steps);
       ("snapshots", Check_json.int checked.snapshots);

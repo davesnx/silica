@@ -142,6 +142,27 @@ let shell =
         [ Node.component (door ~unlock_to:Closed); button "Wait" Noop ]
     )
 
+type twice_event = Go | Wait [@@deriving event_shape]
+type twice_state = First | Second [@@deriving state_shape]
+
+let twice =
+  Component.make
+    (Machine.make ~id:"twice" ~init:First ~shape:twice_state_shape
+       ~events:twice_event_shape (fun state event ->
+         match (state, event) with
+         | First, Go ->
+             Machine.Go Second
+         | _ ->
+             Machine.Ignore
+     )
+    )
+    (function
+      | First ->
+          Node.element "div" [] [ button "Go" Go; button "Wait" Wait ]
+      | Second ->
+          button "Wait" Wait
+      )
+
 let broken =
   Check.app ~routes:[]
     ~parse:(fun _ -> Showing)
@@ -154,6 +175,7 @@ let sets =
     ("pass", [ Check_suite.entry (Check.component (door ~unlock_to:Closed)) ]);
     ("changed", [ Check_suite.entry (Check.component (door ~unlock_to:Opened)) ]);
     ("bug", [ Check_suite.entry (Check.component save) ]);
+    ("twice", [ Check_suite.entry (Check.component twice) ]);
     ( "fixed",
       [
         Check_suite.entry

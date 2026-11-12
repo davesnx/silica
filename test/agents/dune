@@ -54,18 +54,18 @@
     verification.md
     (run
      %{exe:../../site/gen/llms.exe}
-     page
-     https://silica-site.fly.dev
+     reference
      %{project_root}/docs
-     verification))
+     verification
+     verification,checker))
    (with-stdout-to
     checker.md
     (run
      %{exe:../../site/gen/llms.exe}
-     page
-     https://silica-site.fly.dev
+     reference
      %{project_root}/docs
-     checker)))))
+     checker
+     verification,checker)))))
 
 (rule
  (alias runtest)

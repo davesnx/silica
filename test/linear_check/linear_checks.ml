@@ -657,8 +657,7 @@ let composer_check () =
         );
     ]
   in
-  Check.component ~props:[ 1; 2 ]
-    ~inputs:(fun _ -> [ Linear_composer.Typed "x"; Linear_composer.Typed " " ])
+  Check.component ~props:[ 1; 2 ] ~texts:[ "x"; " " ]
     ~samples:
       [
         Check.answers
@@ -676,9 +675,8 @@ let comment_check ?(props = [ (mine, true); (mine, false) ]) () =
   Check.component
     ~props:
       (List.map (fun (comment, own) -> { Linear_comment.comment; own }) props)
-    ~inputs:(fun _ ->
-      [ Linear_comment.Edit; Linear_comment.Typed "x"; Linear_comment.Typed "" ]
-    )
+    ~inputs:(fun _ -> [ Linear_comment.Edit ])
+    ~texts:[ "x"; "" ]
     ~samples:
       [
         Check.answers
@@ -736,7 +734,8 @@ let router_with_detail ?max_states ?max_history () =
     ~routes:[ Issues list; Issue 1; Issue 9 ]
     ()
 
-let joint_dialog = Check.child Linear_create.dialog_component.component
+let joint_dialog =
+  Check.child ~texts:[ "x" ] Linear_create.dialog_component.component
 
 let joint_create =
   Check.child

@@ -437,7 +437,7 @@ let rec attr_events ~keys = function
     ->
       []
 
-let rec attr_handlers ~keys = function
+let rec attr_handlers ~keys ~texts = function
   | Node.On_press event ->
       [ ("press", event) ]
   | Node.On_double_press event ->
@@ -472,10 +472,11 @@ let rec attr_handlers ~keys = function
       List.map
         (fun event -> ("pointer_leave", event))
         (Option.to_list (handler.run Pointer.origin))
+  | Node.On_input input ->
+      List.map (fun text -> ("input " ^ text, input text)) texts
   | Node.Rated (_, attr) ->
-      attr_handlers ~keys attr
-  | Node.String _ | Node.Bool _ | Node.Ref _ | Node.On_input _ | Node.On_reset
-    ->
+      attr_handlers ~keys ~texts attr
+  | Node.String _ | Node.Bool _ | Node.Ref _ | Node.On_reset ->
       []
 
 let has_attribute attrs name =
@@ -549,6 +550,52 @@ let blocked_paths view =
   walk ~blocked:false ~portal:false (Accessibility.items view);
   paths
 
+let rec attr_texts ~texts = function
+  | Node.On_input input ->
+      List.map input texts
+  | Node.Rated (_, attr) ->
+      attr_texts ~texts attr
+  | _ ->
+      []
+
+let text_field tag attrs =
+  match tag with
+  | "textarea" ->
+      true
+  | "input" -> (
+      match
+        List.find_map
+          (function
+            | Node.String ("type", value) ->
+                Some (String.lowercase_ascii value)
+            | _ ->
+                None
+            )
+          attrs
+      with
+      | None
+      | Some
+          ("text" | "search" | "email" | "url" | "tel" | "password" | "number")
+        ->
+          true
+      | Some _ ->
+          false
+    )
+  | _ ->
+      false
+
+let typed ~texts node =
+  dedup
+    (collect_reachable
+       (function
+         | Node.Element (tag, attrs, _) when text_field tag attrs ->
+             List.concat_map (attr_texts ~texts) attrs
+         | _ ->
+             []
+         )
+       node
+    )
+
 let handlers ~keys node =
   dedup
     (collect_reachable
@@ -568,7 +615,7 @@ type located = {
   name : string;
 }
 
-let locate ~keys view matches =
+let locate ~keys ~texts view matches =
   let blocked = blocked_paths view in
   List.find_map
     (fun element ->
@@ -593,7 +640,7 @@ let locate ~keys view matches =
                 else
                   None
               )
-              (attr_handlers ~keys attr)
+              (attr_handlers ~keys ~texts attr)
           )
           attrs
     )

@@ -49,9 +49,13 @@ let command =
               the component in Silica_memory through the steps of \
               $(i,TRACE_FILE), with role queries (press the button \"Save\"), \
               answers to pending calls and clock moves, and ends with a check \
-              of the rule that the counterexample breaks. Save it in \
-              $(b,test/), add its name to the tests of $(b,test/dune), and \
-              $(b,dune test) fails until the bug is fixed.";
+              of the rule that the counterexample breaks. The test is \
+              formatted by $(b,ocamlformat) when it is installed. Standard \
+              error names the file to save it in: \
+              $(b,test/)$(i,NAME)$(b,_replay.ml), where $(i,NAME) is the name \
+              of the trace file (machine, rule and state). Add its name to the \
+              tests of $(b,test/dune), and $(b,dune test) fails until the bug \
+              is fixed.";
            `P
              "Some steps have no input in Silica_memory: a timer that fires \
               before a timer that is due earlier (the checker lets running \

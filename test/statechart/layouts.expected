@@ -393,18 +393,19 @@ node open 401,28 130 78
 edge closed -> open 112,62 160,34 353,34 401,55 label 256,30 props
 edge open -> closed back 401,79 353,100 160,100 112,72 label 256,96 close_request escape-key, | close_request outside-press, | props
 linear_check/router+create-issue+create-issue-dialog.create-issue
-machine create-issue 1017 139
-node closed 40,61 72 44 initial
-node editing 302,29 79 36
-node failed 929,63 72 36
-node submitting 550,39 189 50
-edge closed -> editing 112,72 160,34 254,34 302,42 label 207,30 props
-edge editing -> closed back 302,51 254,72 160,72 112,79 label 207,68 cancel, props
-edge editing -> submitting 380,47 428,47 502,47 550,57 label 465,43 submit
-edge failed -> closed back 929,88 881,119 787,119 739,117 550,117 502,116 428,116 380,115 302,115 254,114 160,114 112,94 label 834,115 cancel, props
-edge failed -> submitting back 929,74 881,43 787,43 739,57 label 834,39 submit
-edge submitting -> closed back 550,71 502,85 428,85 380,89 302,89 254,94 160,94 112,87 label 465,81 created ok
-edge submitting -> failed 739,71 787,81 881,81 929,81 label 834,77 created error
+machine create-issue 1050 168
+node closed 40,81 72 44 initial
+node editing 302,47 79 36
+node failed 962,69 72 44
+node submitting 550,68 189 50
+edge closed -> editing 112,92 160,54 254,54 302,60 label 207,50 props
+edge editing -> closed back 302,70 254,92 160,92 112,99 label 207,88 cancel, props
+edge editing -> submitting 380,70 428,77 502,77 550,86 label 465,73 submit
+edge failed -> closed back 962,101 914,148 787,148 739,144 550,144 502,140 428,140 380,136 302,136 254,134 160,134 112,114 label 851,144 cancel, props
+edge failed -> editing back 962,80 914,34 787,34 739,37 550,37 502,41 428,41 380,60 label 851,30 description, title
+edge failed -> submitting back 962,87 914,72 787,72 739,86 label 851,68 submit
+edge submitting -> closed back 550,100 502,115 428,115 380,114 302,114 254,114 160,114 112,106 label 465,111 created ok
+edge submitting -> failed 739,100 787,110 914,110 962,94 label 851,106 created error
 linear_check/router+create-issue+create-issue-dialog.router
 machine router 454 68
 node /?new&status&assignee&priority&label&group&order 40,16 398 36 initial

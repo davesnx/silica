@@ -75,11 +75,25 @@ let cases =
       };
     Case
       {
+        check = Stepper.typing;
+        mount = (fun () -> Memory.mount Stepper.component);
+        expected = [ ("the step is positive", "counting", Same_view) ];
+      };
+    Case
+      {
         check = Search.check;
         mount = (fun () -> Memory.mount Search.component);
         expected = [ ("ignored-event", "done", Same_view) ];
       };
   ]
+
+let contains text part =
+  let length = String.length part in
+  let rec go index =
+    index + length <= String.length text
+    && (String.sub text index length = part || go (index + 1))
+  in
+  go 0
 
 let round_trip trace =
   match Trace.of_jsonl (Trace.to_jsonl trace) with
@@ -130,7 +144,7 @@ let each_violation () =
               (Check.export check ~rule:violation.rule violation.counterexample)
           in
           ( match trace.header.origin with
-          | Checker { rule } ->
+          | Checker { rule; _ } ->
               Alcotest.(check string) (label ^ ": origin") violation.rule rule
           | Runtime _ ->
               Alcotest.fail (label ^ ": the origin is the runtime")
@@ -468,6 +482,96 @@ let export_not_enabled () =
     ) (fun () -> ignore (Check.export Save.check ~rule:"r" (Path (save @ edit)))
   )
 
+let stepper_trace () =
+  let violation = List.hd (Check.run Stepper.check).violations in
+  ( violation,
+    round_trip
+      (Check.export Stepper.check ~rule:violation.rule violation.counterexample)
+  )
+
+let exact_without_codecs () =
+  let violation, trace = stepper_trace () in
+  Alcotest.(check (list bool))
+    "the trace holds no event data" [ false; false ]
+    (List.map
+       (fun (record : Transition.t) -> Option.is_some record.data)
+       trace.transitions
+    );
+  match Check.replay_trace Stepper.check trace with
+  | Error message ->
+      Alcotest.fail message
+  | Ok replay ->
+      let last = last_point replay in
+      Alcotest.(check (list string))
+        "the typed 0 of the counterexample, not the first typed input"
+        [ violation.rule ]
+        (List.map (fun (failure : Check.failure) -> failure.rule) last.failing)
+
+let never_a_false_pass () =
+  let _, trace = stepper_trace () in
+  let names_only =
+    {
+      trace with
+      header = { trace.header with origin = Runtime { platform = "browser" } };
+    }
+  in
+  ( match Check.replay_trace Stepper.check names_only with
+  | Ok _ ->
+      Alcotest.fail "a trace with no data and no choices replayed"
+  | Error message ->
+      Alcotest.(check bool)
+        ("says why: " ^ message) true
+        (String.starts_with
+           ~prefix:"transition 2 (typed) has no event data and no choice"
+           message
+        )
+  );
+  let other_build =
+    {
+      trace with
+      header =
+        {
+          trace.header with
+          origin = Checker { rule = "the step is positive"; choices = [ 7 ] };
+        };
+    }
+  in
+  match Check.replay_trace Stepper.check other_build with
+  | Ok _ ->
+      Alcotest.fail "a choice that the check does not offer replayed"
+  | Error message ->
+      Alcotest.(check bool)
+        ("says why: " ^ message) true
+        (String.starts_with
+           ~prefix:
+             "step 1 of the trace is move 7 with the event typed, which this \
+              check does not offer there, and 2 moves"
+           message
+        )
+
+let typing_cause () =
+  let violation = List.hd (Check.run Stepper.typing).violations in
+  Alcotest.(check (list string))
+    "typed into the named field"
+    [ "the view offers input \"0\" on spinbutton \"Step size\" at div > input" ]
+    (List.map
+       (fun (step : _ Check.step) -> Check.describe_cause step.cause)
+       (Check.steps violation.counterexample)
+    );
+  let trace =
+    Check.export Stepper.typing ~rule:violation.rule violation.counterexample
+  in
+  match Check.script Stepper.typing trace with
+  | Error message ->
+      Alcotest.fail message
+  | Ok text ->
+      Alcotest.(check bool)
+        ("the script types into the field:\n" ^ text)
+        true
+        (contains text
+           {|Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0"|}
+        )
+
 let () =
   Alcotest.run "replay"
     [
@@ -495,6 +599,12 @@ let () =
           Alcotest.test_case "props at the start and as a step" `Quick props;
           Alcotest.test_case "an element that is not in the view" `Quick
             not_found;
+          Alcotest.test_case "the checker types texts into a named field" `Quick
+            typing_cause;
+          Alcotest.test_case "a checker trace replays exactly with no codec"
+            `Quick exact_without_codecs;
+          Alcotest.test_case "a trace that cannot replay faithfully is an error"
+            `Quick never_a_false_pass;
           Alcotest.test_case "export of a step that is not enabled" `Quick
             export_not_enabled;
         ]

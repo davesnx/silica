@@ -67,15 +67,15 @@ Each violation has its rule, its state, a hint and a trace file.
             "rule": "no-save-while-saving",
             "hint": "Disable Save in saving: a second save waits for the answer of the first.",
             "element": null,
-            "trace_file": "traces/counter-1.jsonl"
+            "trace_file": "traces/counter_no_save_while_saving_saving.jsonl",
             "rule": "ignored-event",
             "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.",
             "element": "main > button[3]",
-            "trace_file": "traces/counter-2.jsonl"
+            "trace_file": "traces/counter_ignored_event_saving.jsonl",
             "rule": "ignored-event",
             "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
             "element": "main > button[3]",
-            "trace_file": "traces/counter-3.jsonl"
+            "trace_file": "traces/counter_ignored_event_saved.jsonl",
   $ grep -E '^ *"(name|event|text)"' report.json | head -12
               "name": "saving",
                 "event": "save",
@@ -92,8 +92,8 @@ Each violation has its rule, its state, a hint and a trace file.
 
 Replay the third violation in the checker: each step, and the rule that fails.
 
-  $ silica replay counter traces/counter-3.jsonl
-  replay counter: traces/counter-3.jsonl
+  $ silica replay counter traces/counter_ignored_event_saved.jsonl
+  replay counter: traces/counter_ignored_event_saved.jsonl
   start: counting
   1. counting -> saving: save, by the view offers press on button "Save" at main > button[3]
     fails no-save-while-saving: The property "no-save-while-saving" does not hold in state saving.
@@ -118,41 +118,39 @@ Replay the third violation in the checker: each step, and the rule that fails.
 Make it a test that fails for the same reason: one test for each violation
 that you fix, named after its trace file.
 
-  $ silica script counter traces/counter-3.jsonl > test/counter_3_replay.ml
-  $ cat test/counter_3_replay.ml
+  $ silica script counter traces/counter_ignored_event_saved.jsonl > test/counter_ignored_event_saved_replay.ml
+  script: the test of the violation ignored-event of counter, from traces/counter_ignored_event_saved.jsonl. Save it as test/counter_ignored_event_saved_replay.ml, and add counter_ignored_event_saved_replay to the names of the tests in test/dune.
+  $ cat test/counter_ignored_event_saved_replay.ml
   open Silica
   module Memory = Silica_memory
   
   let broken =
     Check_expect.rule "ignored-event" ~state:"saved"
-      ~message:"In state saved, the view offers press on button \"Save\" at main > \
-                button[3] gives the event save, and the update returns Ignore."
-      ~hint:"Handle save in state saved, or do not offer it there: disable the \
-             element with Machine.can, or leave its timer or call out of owns \
-             of saved."
+      ~message:
+        "In state saved, the view offers press on button \"Save\" at main > \
+         button[3] gives the event save, and the update returns Ignore."
+      ~hint:
+        "Handle save in state saved, or do not offer it there: disable the \
+         element with Machine.can, or leave its timer or call out of owns of \
+         saved."
   
   let () =
     let page = Memory.mount Counter.component in
     Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
     Memory.reply (Memory.pending_request page "/api/save") "null";
-    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
-  $ sed 's/(names counter_steps counter_page)/(names counter_steps counter_page counter_3_replay)/' test/dune > test/dune.new
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button
+      Memory.press
+  $ sed 's/(names counter_steps counter_page)/(names counter_steps counter_page counter_ignored_event_saved_replay)/' test/dune > test/dune.new
   $ mv test/dune.new test/dune
-The generated test is not formatted yet. dune fmt prints a diff, writes the
-file and exits 1; a second run prints nothing and exits 0.
+The generated test is formatted already: the format check passes on it.
 
-  $ dune fmt 2> fmt.log
-  [1]
-  $ grep -E '^(File|Promoting)' fmt.log
-  File "test/counter_3_replay.ml", line 1, characters 0-0:
-  Promoting _build/default/test/counter_3_replay.ml.corrected to
-  $ dune fmt
+  $ dune build @fmt 2>&1
 
 The red test fails with the rule and hint. The page test fails too: it
 compares the whole view, and the first try changed the view of saved.
 
   $ dune test 2>&1 | grep -E '^(ignored-event|hint|view:)'
-  view: expected "main\n  heading \"Counter\" level=1\n  status\n    text \"2\"\n  button \"Decrement\" [press]\n  button \"Increment\" [press]\n  button \"Save\" disabled [press]\n  text \"Saved\"\n", got "main\n  heading \"Counter\" level=1\n  status\n    text \"2\"\n  button \"Decrement\" [press]\n  button \"Increment\" [press]\n  button \"Save\" [press]\n  text \"Saved\"\n"
+  view: the text differs (- expected, + got):
   ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
   hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
 
@@ -177,7 +175,9 @@ edge and the changed view. The page test still expects the old view.
   golden-drift: The golden file spec/counter.views.txt differs from what the check found.
     +     button "Save" [press]
     -     button "Save" disabled [press]
-  view: expected "main\n  heading \"Counter\" level=1\n  status\n    text \"2\"\n  button \"Decrement\" [press]\n  button \"Increment\" [press]\n  button \"Save\" disabled [press]\n  text \"Saved\"\n", got "main\n  heading \"Counter\" level=1\n  status\n    text \"2\"\n  button \"Decrement\" [press]\n  button \"Increment\" [press]\n  button \"Save\" [press]\n  text \"Saved\"\n"
+  view: the text differs (- expected, + got):
+  -   button "Save" disabled [press]
+  +   button "Save" [press]
 
 The change is intended: write the golden files again and update the page
 test. Now everything passes.
@@ -193,7 +193,8 @@ test. Now everything passes.
   golden-drift: The golden file check/spec/counter.views.txt differs from what the check found.
     +     button "Save" [press]
     -     button "Save" disabled [press]
-  golden: wrote the changes into check/spec
+  golden: wrote 4 files into check/spec: counter.spec.txt (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
+  golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
   passed (exit 0)
   $ sed 's/  button "Save" disabled \[press\]/  button "Save" [press]/' test/counter_page.ml > counter_page.ml.new
   $ mv counter_page.ml.new test/counter_page.ml

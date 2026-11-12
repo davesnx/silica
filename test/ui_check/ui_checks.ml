@@ -413,7 +413,7 @@ let command_menu () =
 let command_menu_search children =
   Check.component
     ~props:(Check.props children Combobox.component)
-    ~inputs:(fun _ -> [ Combobox.Typed ""; Combobox.Typed "sign" ])
+    ~texts:[ ""; "sign" ]
     ~allow:
       [
         Check.allow ~rule:"unreached-state" ~state:"closed"

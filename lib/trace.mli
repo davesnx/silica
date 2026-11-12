@@ -31,7 +31,13 @@
     of a call no longer holds its encoded input (see {!Source.key}). *)
 
 type origin =
-  | Checker of { rule : string }  (** A counterexample of the checker. *)
+  | Checker of { rule : string; choices : int list }
+      (** A counterexample of the checker that breaks [rule]. [choices] has one
+          number for each step after the start: the position of the move of the
+          step among the moves that the check offered at that point (the
+          handlers of the view, the inputs, the answers of each call, the
+          timers, in the order of [Check.component]). With the same check, it
+          replays each step exactly, with no codec. *)
   | Runtime of { platform : string }
       (** A run of the runtime: ["browser"], ["memory"] or ["server"]. *)
 

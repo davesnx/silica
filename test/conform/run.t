@@ -1,6 +1,7 @@
-Four traces of mini Linear, from one visit in Silica_memory: open an issue,
-type a comment, send it. The suite of mini Linear compares each trace with
-its golden specs (by names) and with its code (by data).
+Five traces of mini Linear, from visits in Silica_memory: open an issue, type
+a comment, send it; one visit creates an issue first. The suite of mini Linear
+compares each trace with its golden specs (by names) and with its code (by
+data).
 
   $ ./fixtures.exe traces
   $ conform () {
@@ -75,6 +76,24 @@ comment.
       button "Sending..." disabled [press]
   a trace does not conform (exit 1)
   [1]
+
+A visit that also creates an issue: it types the title in the create
+dialog, a step of the dialog that the joint checks of the create page and its
+dialog explore with the texts of the dialog. It conforms:
+
+  $ conform traces/creates.jsonl
+  conform traces/creates.jsonl: root router, build dev, 52 transitions
+    by names: transitions checked against the golden specs: 33
+    by data: steps run again in the code: 9; snapshots checked by the properties: 9
+  every trace conforms (exit 0)
+
+replay takes counterexamples of the checker, and recorded runs whose steps
+all have data. This recorded run has a step with no data, so replay refuses
+it with exit 3 and points to conform:
+
+  $ ../linear_check/main.exe replay router traces/conforms.jsonl
+  replay: transition 17 (url changed) has no event data and no choice of the checker, so it cannot be replayed faithfully: the trace was recorded with names only, or the machine has no event codec (see Silica.Machine.register_codecs). To compare a recorded run with the specs and the code, run conform
+  [3]
 
 The JSON form, for a program:
 

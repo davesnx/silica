@@ -98,4 +98,5 @@ let () =
   write dir "conforms.jsonl" trace;
   write dir "missing-edge.jsonl" (missing_edge trace);
   write dir "old-build.jsonl" (old_build trace);
-  write dir "breaks-property.jsonl" (resumed_blank trace)
+  write dir "breaks-property.jsonl" (resumed_blank trace);
+  write dir "creates.jsonl" (with_build "dev" (Record.visit ~create:true ()))

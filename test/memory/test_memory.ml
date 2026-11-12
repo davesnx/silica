@@ -1226,6 +1226,14 @@ module Reach = struct
             Node.element "input"
               [ Attr.bool "disabled" true; Attr.on_input (fun _ -> ()) ]
               [];
+            Node.element "input"
+              [
+                Attr.string "type" "checkbox";
+                Attr.string "aria-label" "Done";
+                Attr.bool "checked" true;
+              ]
+              [];
+            button [ Attr.string "aria-expanded" "false" ] "Menu";
           ]
       )
 end
@@ -1236,10 +1244,27 @@ let unreachable_elements_refuse_input () =
     match run () with
     | () ->
         Alcotest.fail (label ^ ": the input was delivered")
-    | exception Memory.Not_reachable message ->
-        string label message message;
+    | exception Memory.Not_reachable { message; _ } ->
         message
   in
+  let reason run =
+    match run () with
+    | () ->
+        Alcotest.fail "the input was delivered"
+    | exception Memory.Not_reachable { reason; _ } ->
+        reason
+  in
+  Alcotest.(check bool)
+    "the reason of a disabled button" true
+    (reason (fun () -> Memory.press (Memory.by_text memory "Off"))
+    = Memory.Disabled
+    );
+  Alcotest.(check bool)
+    "the reason of a hidden button" true
+    (reason (fun () -> Memory.press (Memory.by_text memory "Gone")) = Hidden);
+  Alcotest.(check bool)
+    "the reason inside an inert element" true
+    (reason (fun () -> Memory.press (Memory.by_text memory "Inert")) = Inert);
   string "a disabled button"
     "Silica_memory: the button \"Off\" at main > button[1] is disabled, so a \
      browser does not deliver a press to it."
@@ -1266,6 +1291,31 @@ let unreachable_elements_refuse_input () =
   string "nothing reached the machine" "0" (text memory "count");
   Memory.press (Memory.by_role memory Accessibility.Button ~name:"Aria");
   string "aria-disabled does not stop a press" "1" (text memory "count")
+
+let element_states () =
+  let memory = Memory.mount Reach.component in
+  let flags label element =
+    Printf.sprintf "%s: disabled %b, hidden %b" label (Memory.disabled element)
+      (Memory.hidden element)
+  in
+  Alcotest.(check (list string))
+    "disabled and hidden"
+    [
+      "Off: disabled true, hidden false";
+      "In set: disabled true, hidden false";
+      "Gone: disabled false, hidden true";
+      "Aria: disabled true, hidden false";
+    ]
+    (List.map
+       (fun label -> flags label (Memory.by_text memory label))
+       [ "Off"; "In set"; "Gone"; "Aria" ]
+    );
+  let done_box = Memory.by_role memory Accessibility.Checkbox ~name:"Done" in
+  Alcotest.(check (option bool)) "checked" (Some true) (Memory.checked done_box);
+  Alcotest.(check (option bool)) "not selectable" None (Memory.selected done_box);
+  Alcotest.(check (option bool))
+    "expanded" (Some false)
+    (Memory.expanded (Memory.by_text memory "Menu"))
 
 let () =
   let case name f = Alcotest.test_case name `Quick f in
@@ -1367,6 +1417,7 @@ let () =
           case "view_text" view_text_of_the_page;
           case "a disabled, inert or hidden element refuses input"
             unreachable_elements_refuse_input;
+          case "the states of an element" element_states;
         ]
       );
       ( "props",

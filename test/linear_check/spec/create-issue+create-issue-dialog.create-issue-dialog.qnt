@@ -1,7 +1,7 @@
 // Generated from the spec of the machine "create-issue-dialog". Do not edit.
 module create_issue_dialog {
   type State = | Closed | Open
-  type Event = OnStart | OnAny | OnCancel | OnCloseRequestEscapeKey | OnCloseRequestOutsidePress | OnProps | OnSubmit
+  type Event = OnStart | OnAny | OnCancel | OnCloseRequestEscapeKey | OnCloseRequestOutsidePress | OnDescription | OnProps | OnSubmit | OnTitle
 
   var state: State
   var running: Set[str]
@@ -34,7 +34,9 @@ module create_issue_dialog {
   action open_stays_on_cancel = all { state == Open, state' = state, running' = running, last' = OnCancel }
   action open_stays_on_close_request_escape_key = all { state == Open, state' = state, running' = running, last' = OnCloseRequestEscapeKey }
   action open_stays_on_close_request_outside_press = all { state == Open, state' = state, running' = running, last' = OnCloseRequestOutsidePress }
+  action open_stays_on_description = all { state == Open, state' = state, running' = running, last' = OnDescription }
   action open_stays_on_submit = all { state == Open, state' = state, running' = running, last' = OnSubmit }
+  action open_stays_on_title = all { state == Open, state' = state, running' = running, last' = OnTitle }
 
   action step = any {
     closed_to_open_on_props,
@@ -44,7 +46,9 @@ module create_issue_dialog {
     open_stays_on_cancel,
     open_stays_on_close_request_escape_key,
     open_stays_on_close_request_outside_press,
+    open_stays_on_description,
     open_stays_on_submit,
+    open_stays_on_title,
   }
 
   val resources_owned = running.subseteq(owned(state))

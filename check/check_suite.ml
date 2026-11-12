@@ -551,8 +551,10 @@ let pp formatter result =
         Format.fprintf formatter "%a@." Check.pp_report report;
         List.iteri
           (fun index file ->
-            Format.fprintf formatter "trace of violation %d: %s@." (index + 1)
-              file
+            Format.fprintf formatter
+              "trace of violation %d: %s; its test: silica script %s %s > %s@."
+              (index + 1) file (Check.id check) file
+              (Check_json.test_file file)
           )
           (Option.value ~default:[]
              (List.assoc_opt (Check.id check) result.trace_files)
@@ -586,10 +588,31 @@ let pp formatter result =
         | [] ->
             ()
         | (name, _) :: _ ->
-            if golden.written then
-              Format.fprintf formatter "golden: wrote the changes into %s@."
+            if golden.written then (
+              Format.fprintf formatter "golden: wrote %d files into %s: %s@."
+                (List.length golden.changes)
                 golden.dir
-            else
+                (String.concat ", "
+                   (List.map
+                      (fun (name, change) ->
+                        Printf.sprintf "%s (%s)" name
+                          ( match change with
+                          | Missing ->
+                              "new"
+                          | Changed _ ->
+                              "changed"
+                          | Stale ->
+                              "removed"
+                          )
+                      )
+                      golden.changes
+                   )
+                );
+              Format.fprintf formatter
+                "golden: the golden files now match what the check found, so \
+                 the changes above are written, not findings; commit them with \
+                 the change of code.@."
+            ) else
               Format.fprintf formatter "  hint: %s@."
                 (snd (golden_texts golden name))
       )
@@ -723,18 +746,91 @@ let parse arguments =
   | rest ->
       check ~json:false ~only:[] ~traces:None rest
 
+let identifier text =
+  let mapped =
+    String.map
+      (fun character ->
+        match Char.lowercase_ascii character with
+        | ('a' .. 'z' | '0' .. '9') as kept ->
+            kept
+        | _ ->
+            '_'
+      )
+      text
+  in
+  String.concat "_"
+    (List.filter (fun part -> part <> "") (String.split_on_char '_' mapped))
+
+let trace_names id (violations : (_, _) Check.violation list) =
+  let seen = Hashtbl.create 8 in
+  List.map
+    (fun (violation : (_, _) Check.violation) ->
+      let state = identifier violation.state_name in
+      let base =
+        identifier (id ^ "_" ^ violation.rule)
+        ^ "_"
+        ^ identifier (String.sub state 0 (min 20 (String.length state)))
+      in
+      let count = 1 + Option.value ~default:0 (Hashtbl.find_opt seen base) in
+      Hashtbl.replace seen base count;
+      if count = 1 then
+        base
+      else
+        Printf.sprintf "%s_%d" base count
+    )
+    violations
+
+let test_file = Check_json.test_file
+
+let remove_stale dir result trace_files =
+  let written =
+    List.concat_map
+      (fun (_, files) -> List.map Filename.basename files)
+      trace_files
+  in
+  let prefixes =
+    List.map
+      (fun (Ran { check; _ }) -> identifier (Check.id check) ^ "_")
+      result.ran
+  in
+  let owner name =
+    List.fold_left
+      (fun best prefix ->
+        if
+          String.starts_with ~prefix name
+          &&
+          match best with
+          | Some other ->
+              String.length prefix > String.length other
+          | None ->
+              true
+        then
+          Some prefix
+        else
+          best
+      )
+      None prefixes
+  in
+  Array.iter
+    (fun name ->
+      if
+        Filename.check_suffix name ".jsonl"
+        && (not (List.mem name written))
+        && Option.is_some (owner name)
+      then
+        Sys.remove (Filename.concat dir name)
+    )
+    (Sys.readdir dir)
+
 let write_traces dir result =
   match
     if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
     List.map
       (fun (Ran { check; report }) ->
         ( Check.id check,
-          List.mapi
-            (fun index (violation : (_, _) Check.violation) ->
-              let file =
-                Filename.concat dir
-                  (Printf.sprintf "%s-%d.jsonl" (Check.id check) (index + 1))
-              in
+          List.map2
+            (fun (violation : (_, _) Check.violation) name ->
+              let file = Filename.concat dir (name ^ ".jsonl") in
               write_file file
                 (Silica.Trace.to_jsonl
                    (Check.export check ~rule:violation.rule
@@ -744,11 +840,13 @@ let write_traces dir result =
               file
             )
             report.violations
+            (trace_names (Check.id check) report.violations)
         )
       )
       result.ran
   with
   | trace_files ->
+      remove_stale dir result trace_files;
       { result with trace_files }
   | exception (Sys_error message | Invalid_argument message) ->
       {
@@ -934,6 +1032,30 @@ let replay_command entries ~id ~file ~json =
           code
     )
 
+let formatted ~name text =
+  let source = Filename.temp_file "silica_script" ".ml" in
+  let output = Filename.temp_file "silica_script" ".formatted" in
+  write_file source text;
+  let result =
+    match
+      Sys.command
+        (Filename.quote_command "ocamlformat" ~stdout:output
+           ~stderr:Filename.null
+           [ "--impl"; "--name=" ^ name; source ]
+        )
+    with
+    | 0 ->
+        read_file output
+    | _ ->
+        text
+    | exception Sys_error _ ->
+        text
+  in
+  List.iter
+    (fun path -> try Sys.remove path with Sys_error _ -> ())
+    [ source; output ];
+  result
+
 let script_command entries ~id ~file ~component =
   match load entries ~id ~file with
   | Error message ->
@@ -941,7 +1063,21 @@ let script_command entries ~id ~file ~component =
   | Ok (Found check, trace) -> (
       match Check.script ?component check trace with
       | Ok text ->
-          print_string text;
+          let target = test_file file in
+          print_string (formatted ~name:target text);
+          prerr_endline
+            (Printf.sprintf
+               "script: the test of the violation %s of %s, from %s. Save it \
+                as %s, and add %s to the names of the tests in test/dune."
+               ( match trace.header.origin with
+               | Checker { rule; _ } ->
+                   rule
+               | Runtime _ ->
+                   "?"
+               )
+               id file target
+               (Filename.remove_extension (Filename.basename target))
+            );
           0
       | Error message ->
           prerr_endline

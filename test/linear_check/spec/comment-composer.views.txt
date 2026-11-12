@@ -7,14 +7,14 @@ view
 
 state drafting
 path
-  empty -> drafting on typed, by an input
+  empty -> drafting on typed, by the view offers input "x" on textbox "Comment" at div > textarea
 view
   textbox "Comment" value="x" [input, key_down]
   button "Comment" [press]
 
 state sending
 path
-  empty -> drafting on typed, by an input
+  empty -> drafting on typed, by the view offers input "x" on textbox "Comment" at div > textarea
   drafting -> sending on send, by the view offers press on button "Comment" at div > div > button
 view
   textbox "Comment" value="x" disabled [input, key_down]
@@ -22,7 +22,7 @@ view
 
 state failed
 path
-  empty -> drafting on typed, by an input
+  empty -> drafting on typed, by the view offers input "x" on textbox "Comment" at div > textarea
   drafting -> sending on send, by the view offers press on button "Comment" at div > div > button
   sending -> failed on sent error, by the answer of the call comment-composer/sending//api/comments/add {"number":1,"body":"x"} to /api/comments/add
 view

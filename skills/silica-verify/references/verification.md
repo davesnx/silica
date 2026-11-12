@@ -8,7 +8,7 @@ The examples come from `test/agents/loop.t`, which runs this loop on a new app i
 
 Where to read these docs: in a checkout of Silica they are `docs/*.mld` (this page is `docs/verification.mld`), and the same pages as Markdown are in `skills/silica-verify/references/`. `dune build site/server/llms-full.txt` writes every page as one Markdown file in `_build/default/site/server/`. The Silica site serves them at `/llms.txt`, `/llms-full.txt` and `/docs/<page>.md`.
 
-Run every command from the root of the app: the directory with `dune-project` and `check/main.ml`. `silica new DIR` makes such an app (see [A new app](https://silica-site.fly.dev/docs/install#new)). The parts that the loop uses:
+Run every command from the root of the app: the directory with `dune-project` and `check/main.ml`. `silica new DIR` makes such an app (see [A new app](../../../docs/install.mld)). The parts that the loop uses:
 
 - `check/main.ml`: the suite. One `Check_suite.entry` for each component.
 - `check/spec/`: the golden files of each machine. `<id>.spec.txt` lists its states and edges, `<id>.views.txt` the view of each state as text.
@@ -24,32 +24,31 @@ The commands:
 | `dune exec ./check/main.exe -- --only ID` | Runs only the entry `ID`. `silica check` has no `--only`. | as `silica check` |
 | `dune exec ./check/main.exe -- golden check/spec` | Compares the golden files with what the checks find. `dune test` runs it. Add `--write` to accept a change. | 0 no change, 1 drift |
 | `dune exec ./check/main.exe -- rules` | Lists every built-in rule with its message and hint. Add `--json` for JSON. | 0 |
-| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart and reload (see [Development: silica dev](https://silica-site.fly.dev/docs/install#dev)). | runs until stopped |
+| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart and reload (see [Development: silica dev](../../../docs/install.mld)). | runs until stopped |
 
 ## The loop
 
-1. **Write the requirement as a check.** Before you change the component, add what must hold to its entry in `check/main.ml`: a property (see [Write a requirement as a property](https://silica-site.fly.dev/docs/verification#properties)), and the `samples` and `inputs` that reach the new states. A new component gets its own `Check_suite.entry`; the suite reports a rendered component with no entry as `unchecked-component`.
+1. **Write the requirement as a check.** Before you change the component, add what must hold to its entry in `check/main.ml`: a property (see [Write a requirement as a property](verification.md#write-a-requirement-as-a-property)), and the `samples`, `texts` (text that the checker types into each field of the view) and `inputs` (other events that no element gives) that reach the new states. A new component gets its own `Check_suite.entry`; the suite reports a rendered component with no entry as `unchecked-component`.
 
-2. **Change the machine and the view.** See [Write the machine](https://silica-site.fly.dev/docs/verification#machine).
+2. **Change the machine and the view.** See [Write the machine](verification.md#write-the-machine).
 
-3. **Run the suite.** `silica check --json --traces traces > report.json`. Read the exit code first. 0: go to step 8. 1: read the findings. 2: the search stopped at its state limit; bound it (see `state-limit` in [the rules](https://silica-site.fly.dev/docs/verification#rules)). 3: a setup error; read stderr, which has the compiler errors when `check/main.exe` does not build.
+3. **Run the suite.** `silica check --json --traces traces > report.json`. Read the exit code first. 0: go to step 8. 1: read the findings. 2: the search stopped at its state limit; bound it (see `state-limit` in [the rules](verification.md#the-rules)). 3: a setup error; read stderr, which has the compiler errors when `check/main.exe` does not build.
 
-4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](https://silica-site.fly.dev/docs/verification#rules). Also read `unreached` and the top-level `unchecked` and `errors`.
+4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](verification.md#the-rules). Also read `unreached` and the top-level `unchecked` and `errors`.
 
-5. **Make a red test.** Make one test for each violation that you fix, named after its trace file. For `traces/ID-N.jsonl` (the `trace_file` of the violation), run `silica script ID traces/ID-N.jsonl > test/ID_N_replay.ml`, add `ID_N_replay` to the `names` in `test/dune`, run `dune fmt`, then `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, use `silica replay ID traces/ID-N.jsonl` instead.
+5. **Make a red test.** Make one test for each violation that you fix. Each violation has a `trace_file`, such as `traces/counter_ignored_event_saving.jsonl` (the machine, the rule and the state), and a `test_file`, such as `test/counter_ignored_event_saving_replay.ml`. Run `silica script ID TRACE_FILE > TEST_FILE` (standard error repeats which file to save it in), add its name to the `names` in `test/dune`, then run `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, use `silica replay ID TRACE_FILE` instead.
 
-   - The printed test is not formatted. The first `dune fmt` prints a diff that starts with `File "test/ID_N_replay.ml"`, writes the file and exits 1. Run it again: it prints nothing and exits 0.
-   - The formatter may wrap the last line, the assertion. Keep what it asserts.
-   - A test that compares a whole view, such as the `Expect.string "view"` in `test/counter_page.ml`, fails in this `dune test` too when your change changed that view. Read its `expected` and `got`: when the difference is the change you want, update the expected text in step 8; when it is not, it is one more bug to fix.
-   - `silica script` cannot write a typing step yet, and `silica replay` needs codecs for a step with data: see [Limits today](https://silica-site.fly.dev/docs/verification#limits).
+   - The printed test is formatted with the `.ocamlformat` of the app when `ocamlformat` is installed, so `dune build @fmt` passes on it. Do not edit its last line, the assertion.
+   - A test that compares a whole view, such as the `Expect.string "view"` in `test/counter_page.ml`, fails in this `dune test` too when your change changed that view; it prints the lines that differ, `-` expected and `+` got. When the difference is the change you want, update the expected text in step 8; when it is not, it is one more bug to fix.
+   - A step that types into a field is a step of the script: see [Type into a field](verification.md#type-into-a-field).
 
 6. **Fix the machine or the view.** Follow the hint. Do not remove the property, lower a bound or add an allowance to make a finding go away; an allowance is right only for the cases in the table.
 
 7. **Run the suite again.** `silica check` must exit 0, and the red test must pass. Keep the test.
 
-8. **Run the tests.** `dune test`. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then `golden: wrote the changes into check/spec` and `passed (exit 0)` (see the example below). If not, fix the code. Update each test that expects the old behaviour, such as a test that compares a whole view.
+8. **Run the tests.** `dune test`. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then the files it wrote, a line that says the golden files now match, and `passed (exit 0)`. If not, fix the code. Update each test that expects the old behaviour, such as a test that compares a whole view.
 
-9. **Finish.** `dune build`, `dune test` and `dune build @fmt` all pass with no output. Delete `report.json` and `traces/`. They are the output of one run, the trace files are only valid for the code they came from, and the red tests you kept hold the steps. Do not commit them.
+9. **Finish.** `dune build`, `dune test` and `dune build @fmt` all pass with no output. `report.json` and `traces/` are the output of one run, and the `.gitignore` of `silica new` leaves them out; the red tests you kept hold the steps. A new `silica check --traces traces` removes the trace files of a check that it no longer writes.
 
 ## Write the machine
 
@@ -67,7 +66,7 @@ let typed : string -> (state, event) Machine.next = function
       Reenter (Typing text)
 ```
 
-See [Machines and states](https://silica-site.fly.dev/docs/machines) for the update and `owns`.
+See [Machines and states](../../../docs/machines.mld) for the update and `owns`.
 
 ## The loop on an example
 
@@ -110,15 +109,15 @@ From `test/agents/loop.t`:
             "rule": "no-save-while-saving",
             "hint": "Disable Save in saving: a second save waits for the answer of the first.",
             "element": null,
-            "trace_file": "traces/counter-1.jsonl"
+            "trace_file": "traces/counter_no_save_while_saving_saving.jsonl",
             "rule": "ignored-event",
             "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.",
             "element": "main > button[3]",
-            "trace_file": "traces/counter-2.jsonl"
+            "trace_file": "traces/counter_ignored_event_saving.jsonl",
             "rule": "ignored-event",
             "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
             "element": "main > button[3]",
-            "trace_file": "traces/counter-3.jsonl"
+            "trace_file": "traces/counter_ignored_event_saved.jsonl",
 ```
 
 `silica replay` shows each step of a trace and the rules that fail at each step:
@@ -126,8 +125,8 @@ From `test/agents/loop.t`:
 From `test/agents/loop.t`:
 
 ```sh
-  $ silica replay counter traces/counter-3.jsonl
-  replay counter: traces/counter-3.jsonl
+  $ silica replay counter traces/counter_ignored_event_saved.jsonl
+  replay counter: traces/counter_ignored_event_saved.jsonl
   start: counting
   1. counting -> saving: save, by the view offers press on button "Save" at main > button[3]
     fails no-save-while-saving: The property "no-save-while-saving" does not hold in state saving.
@@ -159,7 +158,8 @@ From `test/agents/loop.t`:
     let page = Memory.mount Counter.component in
     Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
     Memory.reply (Memory.pending_request page "/api/save") "null";
-    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button
+      Memory.press
 ```
 
 From `test/agents/loop.t`:
@@ -200,7 +200,8 @@ From `test/agents/loop.t`:
 From `test/agents/loop.t`:
 
 ```sh
-  golden: wrote the changes into check/spec
+  golden: wrote 4 files into check/spec: counter.spec.txt (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
+  golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
   passed (exit 0)
 ```
 
@@ -208,7 +209,7 @@ Then update the page test that expected the old view, and run `dune test` again:
 
 ## Read the report
 
-The fields that the loop uses. The full shape is in [The JSON report](https://silica-site.fly.dev/docs/checker#json).
+The fields that the loop uses. The full shape is in [The JSON report](checker.md#the-json-report).
 
 - `exit_code`: 0, 1, 2 or 3, as the exit code of the command.
 - `entries`: one for each entry of the suite, with `id`, `passed` and `complete`.
@@ -268,9 +269,9 @@ The counts of states and transitions, such as `counter: 16 states, 45 transition
 
 ## Write a requirement as a property
 
-A requirement such as "X is not offered in state S", "after X, eventually Y" or "after X, never Y" is a property in `properties` of the check. Write it before the change, so that the first wrong try fails. See [Properties](https://silica-site.fly.dev/docs/checker#properties) and [Temporal properties](https://silica-site.fly.dev/docs/checker#temporal) for the full API.
+A requirement such as "X is not offered in state S", "after X, eventually Y" or "after X, never Y" is a property in `properties` of the check. Write it before the change, so that the first wrong try fails. See [Properties](checker.md#properties) and [Temporal properties](checker.md#temporal-properties) for the full API.
 
-- `Check.always`` ~name ?hint condition`: holds in every state (but see [A rule about steps](https://silica-site.fly.dev/docs/verification#step_rules)).
+- `Check.always`` ~name ?hint condition`: holds at every point of every run: in every state, and on every step when the condition reads the step (see [A rule about steps](verification.md#a-rule-about-steps)).
 - `Check.leads_to`` ~name ~from ~to_ ()`: every run that meets `from` meets `to_` later.
 - `Check.never_after`` ~name ~after ~never ()`: after `after`, `never` never holds.
 
@@ -285,9 +286,10 @@ A condition is a test of one point of a run: the state, its view, and the step t
 | `Check.event`` test` | `('e -> bool) -> ('s, 'e) condition` | the event of the step that reached the state passes `test` |
 | `Check.action`` test` | `('e Silica.Action.host -> bool) -> ('s, 'e) condition` | the step that reached the state ran an action that passes `test` |
 | `Check.entered`` name` | `string -> ('s, 'e) condition` | the step came from a state with another name into the state `name` |
+| `Check.transition`` test` | `('s -> 'e -> 's -> bool) -> ('s, 'e) condition` | the step has an event, and `test before event after` holds with the states before and after it |
 | `a &&& b`, `a ||| b`, `not_ a` | `('s, 'e) condition -> ...` | both hold, one holds, `a` does not hold |
 
-One example of each, on the lamp of [Components and JSX](https://silica-site.fly.dev/docs/components) (states `Off` and `On`, event `Toggle`):
+One example of each, on the lamp of [Components and JSX](../../../docs/components.mld) (states `Off` and `On`, event `Toggle`):
 
 ```ocaml
 # let examples : (Doc_lamp.state, Doc_lamp.event) Check.condition list =
@@ -304,13 +306,14 @@ One example of each, on the lamp of [Components and JSX](https://silica-site.fly
           | Silica.Action.Run (Silica.Action.Focus _) -> true
           | _ -> false);
         entered "on";
+        transition (fun before _ after -> before <> after);
         state_named "on" &&& event (fun event -> event = Doc_lamp.Toggle);
         state_named "on" ||| state_named "off";
         not_ (state_named "off");
       ];;
 val examples : (Doc_lamp.state, Doc_lamp.event) Check.condition list =
   [<abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>;
-   <abstr>; <abstr>]
+   <abstr>; <abstr>; <abstr>]
 # Check.passed
     (Check.run
        (Check.component
@@ -329,19 +332,32 @@ val examples : (Doc_lamp.state, Doc_lamp.event) Check.condition list =
 
 ### A rule about steps
 
-**Warning: today, `Check.always` does not read every step.** In `Check.always`, the checker visits each state once, through a shortest path, so `Check.event`, `Check.action` and `Check.entered` read only that one step into the state. Another step into the same state is not read, so an `always` property about steps can pass on a broken machine. In `Check.never_after` and `Check.leads_to`, a condition reads every step. For a rule about steps, use `never_after` with an `~after` that holds from the start. "No Reset step leaves a count other than 0":
+`Check.event`, `Check.action`, `Check.entered` and `Check.transition` read the step into a point. In `Check.always`, a condition that reads the step is read on every start and on every step that the search explored, not only on the first step into each state, so a rule about steps cannot pass on a machine that breaks it. "A Reset step leaves the count at 0", from the test that breaks it with a Reset that keeps the count:
+
+From `test/check/test_temporal.ml`:
 
 ```ocaml
-Check.never_after ~name:"reset-sets-zero"
-  ~after:(Check.state (fun _ -> true))
-  ~never:
-    Check.(
-      event (fun event -> event = Counter.Reset)
-      &&& state (fun state -> Counter.count state <> 0))
-  ()
+        Check.always ~name:"a reset step leaves the count at 0"
+          Check.(
+            not_ (event (( = ) Reset)) ||| state (fun (Count count) -> count = 0)
+          );
 ```
 
-A condition sees one point, not the state before the step, so a rule that compares before and after is not a property today (see [Limits today](https://silica-site.fly.dev/docs/verification#limits)).
+`Check.transition` reads the state before the step and the state after it. "Increment adds one":
+
+From `test/check/test_temporal.ml`:
+
+```ocaml
+           Check.always ~name:"increment adds one"
+             Check.(
+               not_ (event (( = ) Increment))
+               ||| transition (fun (Count before) _ (Count after) ->
+                   after = before + 1
+               )
+             );
+```
+
+The `not_ (event ...)` part makes the property hold at a start and on the other steps. A property of a `Check.child` reads only states and views; one that reads the step raises `Check.Invalid_check`.
 
 ### A rule about an element
 
@@ -372,10 +388,10 @@ A test in `test/` mounts the component in `Silica_memory`, the same runtime with
 - `Memory.pending page` and `Memory.reply request body`: answer a call.
 - `Memory.advance page ms`: move the clock, so timers fire.
 - `Memory.view_text page`: the view as text, the same text as the report. A test that compares it whole fails on any change of the view.
-- The role of each element is in [Roles](https://silica-site.fly.dev/docs/verification#roles): a number field is `Accessibility.Spinbutton`, an `<output>` is `Accessibility.Status`.
+- The role of each element is in [Roles](verification.md#roles): a number field is `Accessibility.Spinbutton`, an `<output>` is `Accessibility.Status`.
 - `Memory.trace page`: the transitions so far.
 
-See [The memory platform](https://silica-site.fly.dev/docs/testing#memory).
+See [The memory platform](../../../docs/testing.mld).
 
 ### Roles
 
@@ -436,33 +452,33 @@ The roles of `Silica.Accessibility.role`, and the elements that have each one wi
 | `Tree` | only ``role=`tree`` |
 | `Treeitem` | only ``role=`treeitem`` |
 
-## Limits today
+## Type into a field
 
-Each part of this section describes a limit that is being removed. It will change when the fix lands. The warning in [A rule about steps](https://silica-site.fly.dev/docs/verification#step_rules) is one more.
+`~texts` gives the text that the checker types into each field of the view, through its `on_input` handler. The cause of such a step is the field by role and name, and the text, so `silica script` types it with `Memory.input`. A step size field that breaks "the step is positive" when the text is `"0"`:
 
-### silica script cannot type in a field
-
-`silica script` exits 1 on a step from `~inputs`, such as the text of a field: "step 1 is the event step_typed from ~inputs of the check; no element of the view gives it, so Silica_memory cannot replay it". Write the red test by hand. Type the value with `Memory.input`, then assert what the property asserts. For "Increment is not offered while the step is invalid":
+From `test/replay/run.t`:
 
 ```ocaml
-let () =
-  let page = Memory.mount Counter.component in
-  let step = Memory.by_role page Accessibility.Spinbutton ~name:"Step size" in
-  Memory.input step "0";
-  match Memory.press (Memory.by_role page Accessibility.Button ~name:"Increment") with
-  | () ->
-      failwith "Increment is offered with the step 0"
-  | exception Memory.Not_reachable _ ->
-      ()
+  let () =
+    let page = Memory.mount Stepper.component in
+    Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0";
+    Check_expect.not_view broken page broken_view
 ```
 
-### silica replay needs codecs for data
+Keep `~inputs` for events that no element gives. `silica script` still exits 1 on a step from `~inputs`, and says to give the text with `~texts` when the event is text typed into a field.
 
-A trace keeps the data of an event, such as the text that was typed, only when the machine has codecs (see [Events and codecs](https://silica-site.fly.dev/docs/machines#events)). The app that `silica new` writes has none. Without codecs, `silica replay` runs a step with data with no value, so it can print "no rule fails (exit 0)" while the bug is still there. Do not take exit 0 of `silica replay` as proof for a trace with data; use a hand-written test as above.
+## Replay proves only what it can replay
 
-### A property cannot compare before and after
+A trace that the checker writes holds, for each step, which move the check took among the moves it offered there. `silica replay` takes the same moves, so a trace replays exactly with no codec, such as in the app that `silica new` writes. When the check changed, a step is the one move that fits its event name, data and cause; with no such move the step is not enabled (exit 1).
 
-A condition sees the point that a step reaches, not the state before it. So "Increment adds the step" is not a property. Test it in a test that steps the machine with `Silica.Machine.step`, as `test/counter_steps.ml` does.
+A trace that cannot be replayed faithfully is a setup error, exit 3, never a pass: a trace recorded with names only, or one where several moves fit a step:
+
+From `test/check_suite/run.t`:
+
+```sh
+  replay: transition 2 (save) has no event data and no choice of the checker, so it cannot be replayed faithfully: the trace was recorded with names only, or the machine has no event codec (see Silica.Machine.register_codecs). To compare a recorded run with the specs and the code, run conform
+  [3]
+```
 
 ## Commands that are coming
 

@@ -649,7 +649,9 @@ let accessible_element (element : element) =
        (accessible element.owner)
     )
 
-exception Not_reachable of string
+type unreachable = Disabled | Hidden | Inert
+
+exception Not_reachable of { reason : unreachable; message : string }
 
 let describe_element (element : element) =
   let item = accessible_element element in
@@ -677,14 +679,24 @@ let natively_disabled (found : found) =
 
 let reachable action (element : element) =
   let chain = chain element in
-  let refuse reason =
+  let refuse cause text =
     raise
       (Not_reachable
-         (Printf.sprintf
-            "Silica_memory: the %s %s, so a browser does not deliver %s to it."
-            (describe_element element) reason action
-         )
+         {
+           reason = cause;
+           message =
+             Printf.sprintf
+               "Silica_memory: the %s %s, so a browser does not deliver %s to \
+                it."
+               (describe_element element) text action;
+         }
       )
+  in
+  let blocked (found : found) =
+    if attr_value found.attrs "inert" <> None then
+      Inert
+    else
+      Hidden
   in
   ( match
       List.find_opt
@@ -695,14 +707,14 @@ let reachable action (element : element) =
         chain
     with
   | Some found when found.el.path = element.path ->
-      refuse
+      refuse (blocked found)
         ( if attr_value found.attrs "inert" <> None then
             "is inert"
           else
             "is hidden"
         )
   | Some found ->
-      refuse
+      refuse (blocked found)
         (Printf.sprintf "is inside the %s %s" found.tag
            ( if attr_value found.attrs "inert" <> None then
                "that is inert"
@@ -715,9 +727,9 @@ let reachable action (element : element) =
   );
   match List.find_opt natively_disabled chain with
   | Some found when found.el.path = element.path ->
-      refuse "is disabled"
+      refuse Disabled "is disabled"
   | Some found ->
-      refuse (Printf.sprintf "is inside the disabled %s" found.tag)
+      refuse Disabled (Printf.sprintf "is inside the disabled %s" found.tag)
   | None ->
       ()
 
@@ -1088,6 +1100,14 @@ let leave_asks t =
 
 let announcements t = List.rev t.announced
 
+let disabled element =
+  Accessibility.disabled (accessible_element element)
+  || List.exists natively_disabled (chain element)
+
+let hidden element = Accessibility.hidden (accessible_element element)
+let checked element = Accessibility.checked (accessible_element element)
+let selected element = Accessibility.selected (accessible_element element)
+let expanded element = Accessibility.expanded (accessible_element element)
 let role element = Accessibility.role (accessible_element element)
 let accessible_name element = Accessibility.name (accessible_element element)
 

@@ -249,6 +249,39 @@ A key handler: focus the field, then the key.
   The update still ignores the input.
   [1]
 
+Typing: the checker types each text of ~texts into each field, and the script
+types it into the field by role and name.
+
+  $ cat typing_script.ml
+  open Silica
+  module Memory = Silica_memory
+  
+  let broken =
+    Check_expect.rule "the step is positive" ~state:"counting"
+      ~message:"The property \"the step is positive\" does not hold in state \
+                counting."
+      ~hint:"Change the update or the view so that \"the step is positive\" \
+             holds in state counting, or correct the property."
+  
+  let broken_view = {|text "0"
+  spinbutton "Step size" value="0" [input]
+  button "Add" [press]
+  |}
+  
+  let () =
+    let page = Memory.mount Stepper.component in
+    Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0";
+    Check_expect.not_view broken page broken_view
+  $ ./typing_script.exe
+  the step is positive: The property "the step is positive" does not hold in state counting.
+  hint: Change the update or the view so that "the step is positive" holds in state counting, or correct the property.
+  The view is still the view that broke it:
+  text "0"
+  spinbutton "Step size" value="0" [input]
+  button "Add" [press]
+  
+  [1]
+
 A timer that real time fires second has no script; the command says why.
 
   $ ./gen_script.exe clock accessible-name
