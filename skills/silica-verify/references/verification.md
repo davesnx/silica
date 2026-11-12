@@ -35,21 +35,20 @@ The commands:
 
 3. **Run the suite.** `silica check --json --traces traces > report.json`. Read the exit code first. 0: go to step 8, but on the first run of a new property, prove that it can fail first: break the machine once in a way the requirement forbids, see the suite exit 1, make the red tests of step 5 from those traces, then undo the break. 1: read the findings. 2: the search stopped at its state limit; bound it (see `state-limit` in [the rules](verification.md#the-rules)). 3: a setup error; read stderr, which has the compiler errors when `check/main.exe` does not build.
 
-4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](verification.md#the-rules). Also read `unreached` and the top-level `unchecked` and `errors`.
+4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](verification.md#the-rules). Also read `unreached`, `vacuous` and the top-level `unchecked` and `errors`.
 
-5. **Make a red test.** Make one test for each violation that you fix. Each violation has a `trace_file`, such as `traces/counter_ignored_event_saving.jsonl` (the machine, the rule and the state), and a `test_file`, such as `test/counter_ignored_event_saving_replay.ml`. Run `silica script ID TRACE_FILE > TEST_FILE` (standard error repeats which file to save it in), add its name to the `names` in `test/dune`, then run `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, use `silica replay ID TRACE_FILE` instead.
+5. **Make a red test.** Make one test for each violation that you fix. Each violation has a `trace_file`, such as `traces/counter_ignored_event_saving.jsonl` (the machine, the rule and the state), and a `test_file`, such as `test/counter_ignored_event_saving_replay.ml`. Run `silica script ID TRACE_FILE > TEST_FILE` (standard error repeats which file to save it in), add its name to the `names` in `test/dune`, then run `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, it prints why on standard error and writes no test, so delete the empty `TEST_FILE` and use `silica replay ID TRACE_FILE` instead.
 
    - The printed test is formatted with the `.ocamlformat` of the app when `ocamlformat` is installed, so `dune build @fmt` passes on it. Do not edit its last line, the assertion.
    - A test that compares a whole view, such as the `Expect.string "view"` in `test/counter_page.ml`, fails in this `dune test` too when your change changed that view; it prints the lines that differ, `-` expected and `+` got. When the difference is the change you want, update the expected text in step 8; when it is not, it is one more bug to fix.
    - A step that types into a field is a step of the script: see [Type into a field](verification.md#type-into-a-field).
-   - The last line asserts what the trace showed, not the property itself. `Check_expect.not_view` fails while the page shows the view where the property broke, so any other view passes it. Keep the property in the suite, and test the behaviour you want in a page test too.
-   - A child with props (see [Check a parent with its children](verification.md#check-a-parent-with-its-children)) needs its props codec registered before the script runs and before the generated test mounts the page; call the same registration at the start of the generated test.
+   - The last line evaluates the rule itself: for a property or most built-in rules it is `Check_expect.holds broken Checks.NAME page (fun () -> steps)`, which replays the run of the page in the check and fails while the rule fails on the states and views the steps reached. So the test passes exactly when the fix makes the rule hold on that run.
 
 6. **Fix the machine or the view.** Follow the hint. Do not remove the property, lower a bound or add an allowance to make a finding go away; an allowance is right only for the cases in the table.
 
 7. **Run the suite again.** `silica check` must exit 0, and the red test must pass. Keep the test.
 
-8. **Run the tests.** `dune test`. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then the files it wrote, a line that says the golden files now match, and `passed (exit 0)`. It lists only the files that changed. If not, fix the code. `<id>.views.txt` holds one view for each state name: the first one the search reached. Another view of the same state, such as the view with an error message, is not in it, so cover it in a page test. Update each test that expects the old behaviour, such as a test that compares a whole view.
+8. **Run the tests.** `dune test`. `silica check` does not compare the golden files, so a new machine with no golden files yet, or a change of behaviour, shows only here. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then the files it wrote, a line that says the golden files now match, and `passed (exit 0)`. It lists only the files that changed. If not, fix the code. `<id>.views.txt` holds each distinct view of a state, up to 16 for each state name, so a view with an error message is in it, and the drift names each added, removed and changed view. Update each test that expects the old behaviour, such as a test that compares a whole view.
 
 9. **Finish.** `dune build`, `dune test` and `dune build @fmt` all pass with no output. `report.json` and `traces/` are the output of one run, and the `.gitignore` of `silica new` leaves them out; the red tests you kept hold the steps. A new `silica check --traces traces` removes the trace files of a check that it no longer writes.
 
@@ -220,6 +219,7 @@ The fields that the loop uses. The full shape is in [The JSON report](checker.md
 - `entries[].violations`: `rule`, `message`, `hint`, `state.name`, `element` (for a rule of the view), `view` (the view as text at the last step), `kind` (`path`, `waits` or `loop`), `trace` (the steps), `loop` (the cycle, for `kind = "loop"`), and `trace_file` (with `--traces`).
 - Each step of `trace`: `from`, `event`, `target`, and `cause` with its `type` and a `text` in words.
 - `entries[].unreached`: states that no step reached, each with its hint.
+- `entries[].vacuous`: properties that passed without being tested, because their `from`, their `after` or the left side of their implication never held. It is a warning: the exit code stays 0. The text output prints it as `vacuous: the property "NAME": ...`. Reach that state with `samples`, `texts` or `inputs`, or fix the condition.
 - `entries[].allowed`: each allowance, its reason, and how many violations it turned off.
 - `unchecked`: components that a checked view renders and that no entry checks.
 - `errors`: setup errors, such as an `--only` id that no entry has.
@@ -382,7 +382,7 @@ From `test/agents/loop.t`:
   >     (Accessibility.elements view)
 ```
 
-For text with no role, such as a message in a `<p>`, search for it in `Silica.View_text.to_string`` view`. The standard library has no substring search, so write a small helper.
+For text with no role, such as a message in a `<p>`, use `Check.shows`` "text"`. Inside `Check.holds`, where the text depends on the state, use `Silica.View_text.shows`` view text`: `Check.holds (fun state view -> Silica.View_text.shows view state.reason)`.
 
 Give each property a `hint` that says what to change; `{state}` in it is the name of the failing state.
 
@@ -391,8 +391,7 @@ Give each property a `hint` that says what to change; `{state}` in it is the nam
 To check a parent with a child component, list the child in `children` of the entry: `Check.component ~children:[ Check.child Row.component ] ...`. The child runs inside the check of the parent; each instance gets the props of its node in the view of the parent, so `Check.child` takes no props. See [Children](checker.md#children) for the bounds.
 
 - The entry id becomes the parent and the child joined by `"+"`, and so do the golden files: `counter.spec.txt` becomes `counter+saved-row.counter.spec.txt` and `counter+saved-row.saved-row.spec.txt`. `golden --write` writes the new names and removes the old files.
-- The traces of a child carry its props only when the child machine has a props codec: `Silica.Machine.register_codecs Row.machine ~props:Silica.Codec.int ()`. Without it, `silica script` exits 1 with "the trace has no props of ...". Put the call in a module of the app, call it first in `check/main.ml` and in each test that mounts the page.
-- At most `max_instances` instances of a child run (default 2); a further instance is listed in `not_explored`, such as "component saved-row (instances 3 to 3 not run)".
+- At most `max_instances` instances of a child run at once (default 2). A further instance shows its start view and takes no step, and the report lists it in `not_explored` with how many were shown and how to raise `~max_instances`. The `~within` of the parent does not bound how many children run.
 - Check the child alone too, with its own entry and `~props`, for the properties that read its steps.
 
 ## Write a test with Silica_memory
@@ -402,9 +401,9 @@ A test in `test/` mounts the component in `Silica_memory`, the same runtime with
 - `Memory.mount component` starts the page.
 - `Memory.by_role page Accessibility.Button ~name:"Save"` finds an element as a screen reader names it. A failed query lists the elements of that role.
 - `Memory.press`, `Memory.input element text`, `Memory.submit`: act. A press on a disabled or hidden element raises `Silica_memory.Not_reachable` with a message, as a user cannot do it. To test that a button is off: `match Memory.press button with () -> failwith "pressed" | exception Memory.Not_reachable _ -> ()`.
-- `Memory.pending page` and `Memory.reply request body`: answer a call.
+- `Memory.pending page`, or `Memory.pending_request page "/api/rename"` for the oldest call to one path, gives the calls that wait for an answer. `Memory.reply request body` answers with status 200 and the output as JSON, such as `"null"` for `()`. `Memory.reply ~status:422 request {|"Enter a name."|}` gives the answer `Rejected "Enter a name."`: the server answers an application error with 422. `Memory.network_error request "down"` gives `Failed (Network "down")`.
 - `Memory.advance page ms`: move the clock, so timers fire.
-- `Memory.view_text page`: the view as text, the same text as the report. A test that compares it whole fails on any change of the view.
+- `Memory.view_text page`: the view as text, the same text as the report. A test that compares it whole fails on any change of the view. It shows the view of each child component in full, while the check of the parent alone shows a child as one line, `component counter`. A link shows as `link "History" href="/history"`, with no `[press]`: following it is a navigation, not an event of the machine.
 - The role of each element is in [Roles](verification.md#roles): a number field is `Accessibility.Spinbutton`, an `<output>` is `Accessibility.Status`.
 - `Memory.trace page`: the transitions so far.
 

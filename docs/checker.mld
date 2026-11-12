@@ -526,8 +526,13 @@ an answer of the page ([Measure], [Copy], [Load_script]) is a violation of
 {!Check.app} explores the root of a router app with a simulated history: link
 presses, back, forward and the navigation actions. [routes] lists route
 values to check: for a route with a query, give one value with the default and
-one without. [inputs] gives the URLs that a user can type. Two more rules
-hold:
+one without. [inputs] gives the URLs that a user can type. [max_history]
+(default 4) bounds the simulated history; the oldest entries are dropped.
+[within] and [properties] read a {!Check.type-app_state}: the snapshot of the
+root machine in [router], the [history] (oldest first) and the [index] of the
+current URL. To bound a search that stops at [max_states], lower
+[max_history], bound the pages listed in [pages] with their own [within], or
+list fewer pages. Two more rules hold:
 
 - [route-round-trip]: each route reads back from its own URL.
 - [link-parses]: the [href] of each link in a view prints back to the same
@@ -730,8 +735,8 @@ From [test/example_check/dune]:
 
 [golden DIR] runs every entry, prints the findings, and compares, for each
 machine, [<id>.spec.txt] ({!Silica.Spec.to_text}), [<id>.qnt], [<id>.dot] and
-[<id>.views.txt]: the text view of the first snapshot of each state, with the
-path that reaches it. The files of a joint check start with its id:
+[<id>.views.txt]: each distinct text view of each state, up to
+{!Check.views_per_state}, with the path that reaches it. The files of a joint check start with its id:
 [router+issue-list.router.spec.txt], [router+issue-list.issue-list.spec.txt]
 and [router+issue-list.views.txt]. A missing file, a changed file and a file that no entry
 makes are [golden-drift] findings. A changed spec is described in words by

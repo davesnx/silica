@@ -95,8 +95,8 @@ Run every command from this directory.
    view, such as `test/counter_page.ml`, fails here too when the change
    changed that view, and prints the lines that differ: if the difference is
    intended, update it in step 8. When `silica script` exits 1 (a step that
-   cannot run in memory, such as a timer that real time fires later), use
-   `silica replay ID TRACE_FILE`: it replays the steps that the checker
+   cannot run in memory, such as a timer that real time fires later), delete
+   the empty test file and use `silica replay ID TRACE_FILE`: it replays the steps that the checker
    chose, with no codec, and exits 1 while a rule fails at the last step, 3
    when the trace cannot be replayed faithfully (recorded with names only, or
    from another version of the check).
