@@ -4,6 +4,6 @@
  (name silica_linear_app_melange)
  (wrapped false)
  (modes melange)
- (libraries silica silica-ui silica-jsonkit-melange jsonkit-melange)
+ (libraries silica silica-ui silica.jsonkit-melange jsonkit-melange)
  (preprocess
   (pps jsonkit-melange.ppx silica.ppx melange.ppx)))

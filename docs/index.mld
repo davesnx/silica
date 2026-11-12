@@ -103,7 +103,7 @@ Package [silica]:
   ([silica.adapter], native only).
 - {!Check}: the model checker ([silica.check]).
 - {!Silica_jsonkit}: codecs from [jsonkit] ([silica.jsonkit], native only).
-  The package [silica-jsonkit-melange] has the same module for Melange.
+  The library [silica.jsonkit-melange] has the same module for Melange.
 - {!Silica_json}: the JSON value that the codecs use ([silica.json]).
 
 Package [silica-ui]: headless components after Base UI, such as dialog, menu,

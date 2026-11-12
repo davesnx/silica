@@ -177,7 +177,7 @@ const hotCodec = `let register () =
 
 const makeProject = (): string => {
   const project = mkdtempSync(join(tmpdir(), "silica-dev-"));
-  for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam", "silica-jsonkit-melange.opam"])
+  for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam"])
     copyFileSync(join(root, file), join(project, file));
   for (const directory of ["lib", "browser", "server", "ppx"]) symlinkSync(join(root, directory), join(project, directory));
   cpSync(join(root, "example"), join(project, "example"), { recursive: true, verbatimSymlinks: true });
