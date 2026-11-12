@@ -241,6 +241,29 @@ let test_settle_empty_nonce () =
   check_contains "the answers are written" response.body "id=\"silica-answers\"";
   check_absent "no empty nonce" response.body "nonce=\"\""
 
+let test_early_input_script () =
+  reset ();
+  let calls = ref 0 in
+  let with_scripts =
+    Server.render_page_settled
+      (fun (_ : Url.t) -> Page.component)
+      ~status:(fun _ -> 200)
+      ~scripts:[ "/app.js" ]
+      (page ~nonce:"abc" (handlers ~calls))
+  in
+  check_contains "the early input script, with the nonce, in the head"
+    with_scripts.body
+    ("<script nonce=\"abc\">" ^ Early_input.script ^ "</script><title>");
+  let without_scripts =
+    Server.render_page_settled
+      (fun (_ : Url.t) -> Page.component)
+      ~status:(fun _ -> 200)
+      ~scripts:[]
+      (page ~nonce:"abc" (handlers ~calls))
+  in
+  check_absent "a page with no script holds no early input script"
+    without_scripts.body Early_input.script
+
 let island_codec =
   Codec.make
     ~encode:(fun Page.Page -> Codec.int.encode 0)
@@ -743,6 +766,8 @@ let () =
             test_settle_answers_and_embeds;
           t "nonce on the answers element" test_settle_nonce;
           t "no nonce attribute for an empty nonce" test_settle_empty_nonce;
+          t "a page with scripts holds presses until its code runs"
+            test_early_input_script;
           t "a failed call stays loading" test_failed_call_stays_loading;
           t "a rejected call stays loading" test_rejected_call_stays_loading;
           t "the page record gives csrf, nonce, islands and handlers"

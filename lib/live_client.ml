@@ -21,7 +21,27 @@ type t = {
   mutable next_id : int;
   mutable cancel_timer : unit -> unit;
   mutable detach : unit -> unit;
+  mutable stated : bool;
+  mutable held : held list;
 }
+
+and held = { encode : int -> string; mutable expire : unit -> unit }
+
+let held_limit = 16
+let held_ms = 10_000
+
+let rec newest count = function
+  | [] ->
+      []
+  | held :: rest when count > 0 ->
+      held :: newest (count - 1) rest
+  | held :: rest ->
+      held.expire ();
+      newest 0 rest
+
+let drop_held t =
+  List.iter (fun held -> held.expire ()) t.held;
+  t.held <- []
 
 let fatal_code code =
   code = Protocol.close_version
@@ -35,12 +55,14 @@ let finish_socket t =
   t.cancel_timer ();
   t.cancel_timer <- ignore;
   t.ready <- false;
+  t.stated <- false;
   Option.iter (fun (ws : Platform.socket) -> ws.close 1000) t.socket;
   t.socket <- None
 
 let stop t =
   t.stopped <- true;
-  finish_socket t
+  finish_socket t;
+  drop_held t
 
 let fail t fatal =
   if not t.stopped then (
@@ -90,7 +112,17 @@ let rec connect t =
             if ack >= t.next_id then t.next_id <- ack + 1;
             t.attempt <- 0;
             t.down <- false;
-            t.on_state ~seq ~state ~actions
+            t.stated <- true;
+            t.on_state ~seq ~state ~actions;
+            let all = List.rev t.held in
+            t.held <- [];
+            List.iter
+              (fun held ->
+                held.expire ();
+                send (held.encode t.next_id);
+                t.next_id <- t.next_id + 1
+              )
+              all
           )
   in
   let ws =
@@ -156,18 +188,28 @@ let start ?(config = default_config) ~io ~sub ~on_state ~on_down ~on_fatal () =
       next_id = 1;
       cancel_timer = ignore;
       detach = ignore;
+      stated = false;
+      held = [];
     }
   in
   connect t;
   t
 
 let send_event t codec event =
+  let encode id = Protocol.encode_event codec ~id event in
   match t.socket with
-  | Some ws when t.ready && not t.stopped ->
-      ws.Platform.send (Protocol.encode_event codec ~id:t.next_id event);
+  | Some ws when t.ready && t.stated && not t.stopped ->
+      ws.Platform.send (encode t.next_id);
       t.next_id <- t.next_id + 1
-  | _ ->
+  | _ when t.stopped ->
       ()
+  | _ ->
+      let held = { encode; expire = ignore } in
+      held.expire <-
+        t.io.schedule held_ms (fun () ->
+            t.held <- List.filter (fun other -> other != held) t.held
+        );
+      t.held <- held :: newest (held_limit - 1) t.held
 
 let subscribe ?config ~io topic key ~deliver =
   let last = ref None in

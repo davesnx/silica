@@ -1,0 +1,2 @@
+let script =
+  {|(function(){var q=[],d=document,s="a,input,select,textarea,label,summary,[contenteditable]",c=function(e){var t=e.target;if(t&&t.closest&&!t.closest(s))q.push([t,Date.now(),0])},f=function(e){e.preventDefault();if(!e.submitter)q.push([e.target,Date.now(),1])};d.addEventListener("click",c,true);d.addEventListener("submit",f,true);window.__silica_early={q:q,stop:function(){d.removeEventListener("click",c,true);d.removeEventListener("submit",f,true)}}})()|}

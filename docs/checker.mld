@@ -333,6 +333,13 @@ timer, so it does not wait. A state that the search did not expand because
 - Which answer a call gets. Fairness delivers an answer, not a good one: a
   retry on failure can fail forever, and that is a [Loop].
 - Runs outside [within] or past [max_states].
+- The time before a page or an island can react. The server HTML is on screen
+  before the first paint (and an island before its first state), and the
+  checker starts each machine at its first view. It needs no rule for that
+  time: the browser host holds a press made then and runs it after the first
+  paint, against the first view, which the checker explores (see
+  {!Silica_browser.mount}, Early input). What it does not prove is the limit:
+  a press held more than 10 seconds, or past the 16th, is dropped.
 
 {2:cost Cost}
 

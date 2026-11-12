@@ -1263,7 +1263,7 @@ test("heartbeat: no pong closes the socket and reconnects", async () => {
   await until(() => sockets.length === 2, "reconnect");
 });
 
-test("events are dropped while the socket is down; offline attribute; ids continue", async () => {
+test("events while the socket is down are sent after the next state; offline attribute; ids continue", async () => {
   const w = setup("http://localhost:8080/");
   const sockets = fakeSockets();
   App.mount_live("root");
@@ -1282,13 +1282,56 @@ test("events are dropped while the socket is down; offline attribute; ids contin
   click(w, $("plus"));
   assert.equal(ws.messages().filter((m) => m.t === "event").length, 0);
   ws.receive('{"t":"hello","v":2}');
+  assert.equal(ws.messages().filter((m) => m.t === "event").length, 0, "held until the first state");
   assert.equal(root.hasAttribute("data-silica-offline"), true);
-  ws.state(1, 2);
+  ws.state(1, 2, [], 1);
   assert.equal(root.hasAttribute("data-silica-offline"), false);
   click(w, $("plus"));
   assert.deepEqual(ws.messages().filter((m) => m.t === "event"), [
     { t: "event", id: 2, event: "inc" },
+    { t: "event", id: 3, event: "inc" },
+    { t: "event", id: 4, event: "inc" },
   ]);
+});
+
+const islandHtml = '<div><p id="n">0</p><button id="plus" data-silica-ref="plus">+</button></div>';
+
+test("a press on an island before its first state counts once the state arrives", async () => {
+  const w = setup("http://localhost:8080/");
+  $("root").innerHTML = islandHtml;
+  const sockets = fakeSockets();
+  App.mount_live("root");
+  click(w, $("plus"));
+  sockets[0].welcome();
+  assert.equal(sockets[0].messages().filter((m) => m.t === "event").length, 0);
+  sockets[0].state(1, 0);
+  assert.deepEqual(sockets[0].messages().filter((m) => m.t === "event"), [
+    { t: "event", id: 1, event: "inc" },
+  ]);
+});
+
+test("presses held before the first state are bounded by count and age", async () => {
+  const run = (presses, wait) => {
+    const w = setup("http://localhost:8080/");
+    $("root").innerHTML = islandHtml;
+    const sockets = fakeSockets();
+    App.mount_live("root");
+    const now = Date.now;
+    try {
+      let clock = now();
+      Date.now = () => clock;
+      for (let press = 0; press < presses; press++) click(w, $("plus"));
+      clock += wait;
+      sockets[0].welcome();
+      sockets[0].state(1, 0);
+    } finally {
+      Date.now = now;
+    }
+    return sockets[0].messages().filter((m) => m.t === "event").length;
+  };
+  assert.equal(run(20, 0), 16, "at most 16 presses are held");
+  assert.equal(run(3, 9000), 3, "a press younger than 10 s counts");
+  assert.equal(run(3, 11000), 0, "a press older than 10 s is dropped");
 });
 
 test("a new client of an island the server knows starts its event ids after the server's ack", async () => {

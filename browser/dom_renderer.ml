@@ -262,11 +262,40 @@ let on_node node name handler =
   | None ->
       ()
 
-let delegate (type e) (v : e Vdom.t) ~(dispatch : e -> unit)
-    ~(link : (replace:bool -> Url.t -> unit) option)
+let held_limit = 16
+let held_ms = 10_000.
+
+type held = { at : float; run : unit -> unit }
+
+let rec newest count = function
+  | held :: rest when count > 0 ->
+      held :: newest (count - 1) rest
+  | _ ->
+      []
+
+let hold (held : held list ref) run =
+  held := { at = Js.Date.now (); run } :: newest (held_limit - 1) !held
+
+let release (held : held list ref) =
+  let now = Js.Date.now () in
+  let all = List.rev !held in
+  held := [];
+  List.iter (fun held -> if now -. held.at <= held_ms then held.run ()) all
+
+let delegate (type e) (v : e Vdom.t) ~(held : held list ref)
+    ~(dispatch : e -> unit) ~(link : (replace:bool -> Url.t -> unit) option)
     ~(preload : (Url.t -> unit) option) =
   let root = v.Vdom.root in
-  let on name f = on_node root name f in
+  let on name f =
+    on_node root name (fun ev ->
+        if v.Vdom.adopting then (
+          if name = "submit" then Dom.prevent_default ev;
+          hold held (fun () -> f ev)
+        ) else
+          f ev
+    )
+  in
+  let watch name f = on_node root name f in
   let press_handler t =
     first_handler v t (function Node.On_press e -> Some e | _ -> None)
   in
@@ -365,11 +394,11 @@ let delegate (type e) (v : e Vdom.t) ~(dispatch : e -> unit)
       (function Node.On_pointer_enter h -> Some h | _ -> None)
       "pointerenter"
   in
-  on "pointerover" (fun ev ->
+  watch "pointerover" (fun ev ->
       enter ev;
       preload_intent ~preload ev
   );
-  on "pointerout"
+  watch "pointerout"
     (crossing
        (function Node.On_pointer_leave h -> Some h | _ -> None)
        "pointerleave"
@@ -383,7 +412,7 @@ let delegate (type e) (v : e Vdom.t) ~(dispatch : e -> unit)
               None
           ))
   );
-  on "input" (fun ev ->
+  watch "input" (fun ev ->
       let t = Dom.target ev in
       Option.iter
         (fun (dom, f, rate) -> emit ~dispatch dom "input" rate (f (Dom.value t)))
@@ -404,7 +433,7 @@ let delegate (type e) (v : e Vdom.t) ~(dispatch : e -> unit)
       | None ->
           ()
   );
-  on "focusin" (fun ev ->
+  watch "focusin" (fun ev ->
       deliver_handler
         (first_handler v (Dom.target ev) (function
           | Node.On_focus e ->
@@ -414,7 +443,7 @@ let delegate (type e) (v : e Vdom.t) ~(dispatch : e -> unit)
           ));
       preload_intent ~preload ev
   );
-  on "focusout" (fun ev ->
+  watch "focusout" (fun ev ->
       deliver_handler
         (first_handler v (Dom.target ev) (function
           | Node.On_blur e ->
@@ -1014,9 +1043,10 @@ let make (type e) ~dev ~adopt ~hooks ~root
     | None ->
         hooks
   in
-  let delegate_portal sub = delegate sub ~dispatch ~link ~preload in
+  let held = ref [] in
+  let delegate_portal sub = delegate sub ~held ~dispatch ~link ~preload in
   let v = Vdom.make ~hooks ~adopt ~dev ~on_portal:delegate_portal root in
-  delegate v ~dispatch ~link ~preload;
+  delegate v ~held ~dispatch ~link ~preload;
   if Option.is_some on_route then (
     Scroll.start ();
     on_node Dom.window "popstate" (fun _ -> popped ());
@@ -1103,6 +1133,7 @@ let make (type e) ~dev ~adopt ~hooks ~root
       (fun node ->
         Vdom.render v node;
         List.iter Dom.dispatch_input (Vdom.take_typed v);
+        release held;
         Scroll.after_paint ()
       );
     run;

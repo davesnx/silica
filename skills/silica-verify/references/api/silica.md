@@ -848,6 +848,18 @@ val node_with_props :
 
 The node that renders the component, with its props (`()` for a machine made by `Machine.make`). See `Node.child`.
 
+## Silica.Early_input
+
+Presses made on a page before its code runs.
+
+The server puts `script` in the head of each page that loads scripts. Until the browser host mounts, it keeps each click on the page, except on links, form fields, labels and summaries (the browser does those itself), and each form submit made with the Enter key, which it stops. When the host has mounted and painted, it presses them again, in order, against the adopted page: at most 16, and none older than 10 seconds.
+
+```ocaml
+val script : string
+```
+
+The JavaScript of the script element, with no `<script>` tag.
+
 ## Silica.Endpoint
 
 The types of `Remote`, in a module below `Source` and `Action`. Use them through `Remote`.
@@ -1532,7 +1544,7 @@ Connect with `io.connect` and keep the connection. `on_state` runs for each stat
 val send_event : t -> 'e Codec.t -> 'e -> unit
 ```
 
-Send the event with the next event id. While the socket is not ready (no `Hello_ok` yet, or lost), the event is dropped and uses no id. The ids continue across reconnects, and never go below the `ack` of a state plus one: a new client for an island that the server already knows, such as after a hot reload, does not reuse ids the server has seen.
+Send the event with the next event id. Before the first state of the socket (no `Hello_ok` yet, no state yet, or lost and not back), the client holds the event and sends it, in order, right after the next first state: at most 16 events, the oldest dropped first, and an event held for more than 10 seconds is dropped. The ids continue across reconnects, and never go below the `ack` of a state plus one: a new client for an island that the server already knows, such as after a hot reload, does not reuse ids the server has seen. After `stop` an event is dropped.
 
 ```ocaml
 val stop : t -> unit

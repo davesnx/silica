@@ -917,3 +917,5 @@ let mount_fake () =
 
 let fake_press () = Fake.press ()
 let fake_log () = Array.of_list (List.rev !Fake.log)
+
+let early_script () = Early_input.script

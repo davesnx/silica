@@ -74,6 +74,29 @@ function silenceErrors() {
 
 const rootElements = () => [...document.querySelectorAll("#root *")];
 
+test("presses before the code runs count once the page is mounted, in order", () => {
+  const html = App.hydrate_html();
+  const dom = new JSDOM(`<body><div id="root">${html}</div></body>`, {
+    url: "http://localhost/",
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+  });
+  const w = dom.window;
+  Object.assign(globalThis, { window: w, document: w.document, location: w.location, history: w.history });
+  delete globalThis.ResizeObserver;
+  delete globalThis.IntersectionObserver;
+  w.eval(App.early_script());
+  const inc = $("inc");
+  click(w, inc);
+  click(w, inc);
+  assert.equal(text("inc"), "count 0", "nothing runs before the mount");
+  App.mount_hydrate(false, "root");
+  assert.equal(text("inc"), "count 2", "both presses count");
+  assert.ok($("inc") === inc, "the server node is kept");
+  click(w, inc);
+  assert.equal(text("inc"), "count 3", "the early listener is gone");
+});
+
 test("hydration keeps the server DOM nodes", () => {
   const html = App.hydrate_html();
   assert.match(html, /a<!-- -->b/, "the server writes the marker");

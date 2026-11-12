@@ -207,19 +207,6 @@ after(async () => {
   if (project) rmSync(project, { recursive: true, force: true });
 });
 
-const islandLive = (page: Page): Promise<void> =>
-  new Promise((ok) => {
-    page.on("websocket", (socket) => {
-      let island = false;
-      socket.on("framesent", (frame) => {
-        if (String(frame.payload).includes('"island":"counter"')) island = true;
-      });
-      socket.on("framereceived", (frame) => {
-        if (island && String(frame.payload).includes('"t":"state"')) ok();
-      });
-    });
-  });
-
 const open = async (path: string): Promise<Page> => {
   const page = await browser.newPage();
   page.setDefaultTimeout(30000);
@@ -291,12 +278,10 @@ describe("hot reload", () => {
     const page = await browser.newPage();
     page.setDefaultTimeout(30000);
     await page.addInitScript(countLeaks);
-    const live = islandLive(page);
     await page.goto(base + "/");
     await page.locator("#silica-root[data-silica-ready]").waitFor();
     const originals = { hot: readFileSync(hot(), "utf8"), home: readFileSync(home(), "utf8") };
     try {
-      await live;
       await page.waitForFunction(() => document.querySelector("[data-silica-live=counter] span")?.textContent === "0");
       for (let press = 0; press < 3; press++) await page.getByRole("button", { name: "Increment" }).click();
       await page.waitForFunction(() => document.querySelector("[data-silica-live=counter] span")?.textContent === "3");
@@ -486,12 +471,7 @@ describe("silica dev", () => {
   });
 
   test("the Live counter and the session keep their values across a server restart", async () => {
-    const page = await browser.newPage();
-    page.setDefaultTimeout(30000);
-    const live = islandLive(page);
-    await page.goto(base + "/");
-    await page.locator("#silica-root[data-silica-ready]").waitFor();
-    await live;
+    const page = await open("/");
     const counter = page.locator("[data-silica-live=counter] span");
     const increment = page.getByRole("button", { name: "Increment" });
     await page.waitForFunction(() => document.querySelector("[data-silica-live=counter] span")?.textContent === "0");

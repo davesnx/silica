@@ -249,8 +249,8 @@ let csrf_meta = function
   | Some token ->
       Printf.sprintf "<meta name=\"silica-csrf\" content=\"%s\">" (escape token)
 
-let document ?(answers = "") ?(attributes = []) ?csrf ?(preload = []) ~status
-    ~title ~scripts ~head body =
+let document ?(answers = "") ?(attributes = []) ?csrf ?nonce ?(preload = [])
+    ~status ~title ~scripts ~head body =
   let b = Buffer.create 16384 in
   let add = Buffer.add_string b in
   add "<!doctype html><html";
@@ -266,6 +266,20 @@ let document ?(answers = "") ?(attributes = []) ?csrf ?(preload = []) ~status
   add "><head><meta charset=\"utf-8\">";
   add "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">";
   add (csrf_meta csrf);
+  if scripts <> [] then (
+    add "<script";
+    ( match nonce with
+    | Some nonce when nonce <> "" ->
+        add " nonce=\"";
+        add (escape nonce);
+        add "\""
+    | Some _ | None ->
+        ()
+    );
+    add ">";
+    add Early_input.script;
+    add "</script>"
+  );
   add "<title>";
   add (escape title);
   add "</title>";
@@ -409,7 +423,8 @@ module Make (Io : IO) = struct
         )
       outcome actions
 
-  let respond ?answers ?csrf ?preload ~status ~scripts ~head outcome body =
+  let respond ?answers ?csrf ?nonce ?preload ~status ~scripts ~head outcome body
+      =
     match outcome.redirect with
     | Some url ->
         {
@@ -425,7 +440,7 @@ module Make (Io : IO) = struct
                outcome.attributes
             )
         in
-        document ?answers ~attributes ?csrf ?preload
+        document ?answers ~attributes ?csrf ?nonce ?preload
           ~status:(Option.value outcome.status ~default:status)
           ~title:outcome.title ~scripts ~head body
 
@@ -629,8 +644,8 @@ module Make (Io : IO) = struct
                     else
                       Answers.to_script ?nonce answers
                   )
-                ?csrf ?preload ~status:(status state) ~scripts ~head outcome
-                body
+                ?csrf ?nonce ?preload ~status:(status state) ~scripts ~head
+                outcome body
             with
           | Render_failed error ->
               page error

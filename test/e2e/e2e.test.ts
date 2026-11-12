@@ -257,6 +257,58 @@ describe("silica example", () => {
     await page.close();
   });
 
+  test("presses on the Live counter before its first state count", async () => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    let release = () => {};
+    const released = new Promise<void>((ok) => (release = ok));
+    await page.routeWebSocket(/\/_silica\/live/, (socket) => {
+      const server = socket.connectToServer();
+      let island = false;
+      let holding = true;
+      const held: (string | Buffer)[] = [];
+      socket.onMessage((message) => {
+        if (String(message).includes('"island"')) island = true;
+        server.send(message);
+      });
+      server.onMessage((message) => {
+        if (island && holding) held.push(message);
+        else socket.send(message);
+      });
+      void released.then(() => {
+        holding = false;
+        for (const message of held) socket.send(message);
+      });
+    });
+    await page.goto(base + "/");
+    await page.locator("#silica-root[data-silica-ready]").waitFor();
+    const inc = page.getByRole("button", { name: "Increment" });
+    for (let press = 0; press < 3; press++) await inc.click();
+    assert.equal(await counterText(page).textContent(), "0", "no state yet");
+    release();
+    await page.waitForFunction(() => document.querySelector("[data-silica-live=counter] span")?.textContent === "3");
+    await page.close();
+  });
+
+  test("a todo typed and added before the code of the page runs is added", async () => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    let release = () => {};
+    const released = new Promise<void>((ok) => (release = ok));
+    await page.route(/\/static\/client_main-[A-Z0-9]+\.js$/, async (route) => {
+      await released;
+      await route.continue();
+    });
+    await page.goto(base + "/", { waitUntil: "commit" });
+    await page.getByLabel("New todo").fill("early milk");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    assert.equal(await page.locator("#silica-root[data-silica-ready]").count(), 0, "the code has not run");
+    release();
+    await page.locator("li button", { hasText: "early milk" }).waitFor();
+    assert.equal(await page.locator("li").count(), 1, "added once");
+    await page.close();
+  });
+
   test("link navigation without reload; remote item; failing item", async () => {
     const page = await open("/");
     await interactive(page);
@@ -468,7 +520,7 @@ describe("silica example", () => {
     await page.close();
   });
 
-  test("live reconnect: offline shows old data, then a fresh state arrives and the island state is kept", async () => {
+  test("live reconnect: offline shows old data, a press made offline counts after the reconnect, and the island state is kept", async () => {
     const proxy = new Proxy(Number(new URL(base).port));
     const proxied = await proxy.listen();
     const page = await browser.newPage();
@@ -491,7 +543,7 @@ describe("silica example", () => {
       await page.waitForFunction(() => document.querySelector("[data-silica-live]")?.hasAttribute("data-silica-offline"));
       assert.equal(await votes(), String(start + 1), "old data stays while offline");
       await inc.click();
-      assert.equal(await counterText(page).textContent(), "2", "an event sent while offline is dropped");
+      assert.equal(await counterText(page).textContent(), "2", "an event made while offline is held");
 
       const other = await open("/");
       await other.waitForFunction(() => document.querySelector("#votes-count")?.textContent !== "...");
@@ -506,9 +558,14 @@ describe("silica example", () => {
       await page.locator("#votes-offline").waitFor({ state: "detached" });
       await page.waitForFunction((n) => document.querySelector("#votes-count")?.textContent === String(n), start + 3);
       await page.waitForFunction(() => !document.querySelector("[data-silica-live]")?.hasAttribute("data-silica-offline"));
-      assert.equal(await counterText(page).textContent(), "2", "the island state was kept on the server");
-      await inc.click();
       await page.waitForFunction(() => document.querySelector("[data-silica-live=counter] span")?.textContent === "3");
+      assert.equal(
+        await counterText(page).textContent(),
+        "3",
+        "the island state was kept on the server, and the held press counted once",
+      );
+      await inc.click();
+      await page.waitForFunction(() => document.querySelector("[data-silica-live=counter] span")?.textContent === "4");
     } finally {
       await page.close();
       proxy.close();

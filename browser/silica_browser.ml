@@ -43,6 +43,19 @@ let instance_id root =
       Dom.set_property root "__silica_instance" instance;
       instance
 
+let press_early : unit -> unit =
+  [%mel.raw
+    {|function () {
+  var e = window.__silica_early, n = Date.now();
+  if (!e) return;
+  delete window.__silica_early;
+  e.stop();
+  e.q.slice(-16).forEach(function (p) {
+    var t = p[0];
+    if (n - p[1] < 10000 && t.isConnected) p[2] ? t.requestSubmit() : t.click();
+  });
+}|}]
+
 let rec session :
     'a 'b.
     ?live_config:live_config ->
@@ -132,7 +145,8 @@ let run (type p s e) ?live_config ?on_session_gone ?(dev = false) ?on_error
   in
   Runtime.start ?live_config ~dev ?on_error ~answers:(read_answers ()) ?on_route
     ~platform ~create ();
-  Dom.set_attribute root "data-silica-ready" ""
+  Dom.set_attribute root "data-silica-ready" "";
+  press_early ()
 
 let recorder ?capacity ?data ~build () =
   Trace.Recorder.create ?capacity ?data ~clock:Js.Date.now ~platform:"browser"
@@ -163,7 +177,7 @@ let mount_live ?live_config ?on_session_gone ?(dev = false) ~root
     session ?live_config ?on_session_gone ~dev ~lives:[ Live live ] live
       (root_of root)
   in
-  ()
+  press_early ()
 
 let mount_with_renderer ?dev ?on_error ?answers ?observe ~renderer
     (component : (_, _, _) Component.t) =

@@ -39,11 +39,14 @@ val start :
     callback runs. *)
 
 val send_event : t -> 'e Codec.t -> 'e -> unit
-(** Send the event with the next event id. While the socket is not ready (no
-    [Hello_ok] yet, or lost), the event is dropped and uses no id. The ids
-    continue across reconnects, and never go below the [ack] of a state plus
-    one: a new client for an island that the server already knows, such as after
-    a hot reload, does not reuse ids the server has seen. *)
+(** Send the event with the next event id. Before the first state of the socket
+    (no [Hello_ok] yet, no state yet, or lost and not back), the client holds
+    the event and sends it, in order, right after the next first state: at most
+    16 events, the oldest dropped first, and an event held for more than 10
+    seconds is dropped. The ids continue across reconnects, and never go below
+    the [ack] of a state plus one: a new client for an island that the server
+    already knows, such as after a hot reload, does not reuse ids the server has
+    seen. After {!stop} an event is dropped. *)
 
 val stop : t -> unit
 (** Close the socket with code 1000, cancel all timers, and never connect again.

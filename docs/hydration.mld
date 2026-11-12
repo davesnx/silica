@@ -75,6 +75,12 @@ The first paint walks the HTML in the root next to the view:
 - It adds no handler to the nodes: events are delegated.
 - A field whose text the user changed before the first paint keeps that text,
   and the machine gets it as an input event.
+- A press made before the first paint runs after it, against the adopted
+  view, in order. Before the code of the page runs, a small script that the
+  server puts in the head of the page keeps the clicks (not on links, fields,
+  labels or summaries, which the browser handles itself) and stops a form
+  submit; after the first paint the browser presses them again. At most 16
+  presses are kept, none older than 10 seconds.
 
 When the structure differs, the browser clears the root, renders again, and
 logs the first difference to the console. In dev mode it raises an exception
@@ -127,8 +133,12 @@ And the server lists them in [islands] (see {!page-server.islands}). Then:
   closes it when the element goes away. The browser never changes the
   children of the island element: the server HTML stays until the first state
   arrives, and that paint adopts it.
-- While the socket is down, the island root has [data-silica-offline], and
-  events are dropped, not queued. The client connects again after a delay.
+- A press on the island before its first state is held and runs after that
+  state, against the adopted view. While the socket is down, the island root
+  has [data-silica-offline]; events are held and sent after the next state.
+  Both keep at most 16 events, none older than 10 seconds, so a socket that
+  never connects does not fire stale presses later. The client connects again
+  after a delay.
 
 {!Silica_browser.mount_live} mounts a Live component as the root of an
 element, with no app around it.

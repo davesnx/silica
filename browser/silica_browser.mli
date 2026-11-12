@@ -66,6 +66,16 @@ val mount :
     instead, after the error page shows. With [hydrate:false] the root is
     cleared first.
 
+    Early input. The server HTML looks ready before the page can react. A press
+    (click, double click, key, submit) that comes after the host made its
+    renderer but before its first paint, as while a lazy chunk of the first page
+    loads or before the first state of an island, is held and runs after that
+    paint, against the adopted view, in order: at most 16, none older than 10
+    seconds; a submit is stopped at once, so the browser does not send the form.
+    A press that comes before the code of the page runs at all is kept by the
+    script that the server puts in the head of the page ({!Silica.Early_input}),
+    and the host presses it again after its first paint, with the same limits.
+
     Live topics. A state with a {!Silica.Source.live} subscribes to its topic.
     The host sends [Loading None] at once, then a [Ready] for each state. While
     the socket is down it sends the old data once with [stale = true] and
@@ -178,11 +188,16 @@ val mount_live :
     Reconnection. When the socket closes or fails, the host connects again after
     a delay ({!Silica.Backoff.delay_ms}) and the server sends a full state.
     While the socket is down the root has the attribute [data-silica-offline]
-    (removed at the next state) and events are dropped, not queued. The host
-    closes a socket that gets no pong in time (see {!live_config}). It does not
-    connect again after a fatal close code ({!Silica.Protocol.close_version},
-    {!Silica.Protocol.close_csrf}, {!Silica.Protocol.close_unknown}) or an
-    [Error] message; the page keeps its last render and the console logs it. *)
+    (removed at the next state). An event made before the first state of a
+    socket (at the start, or while it is down) is held and sent after that
+    state, in order: at most 16, none older than 10 seconds (see
+    {!Silica.Live_client.send_event}). A press before the first paint, while the
+    server HTML is on screen, is held the same way and runs against the adopted
+    view (see Early input in {!mount}). The host closes a socket that gets no
+    pong in time (see {!live_config}). It does not connect again after a fatal
+    close code ({!Silica.Protocol.close_version}, {!Silica.Protocol.close_csrf},
+    {!Silica.Protocol.close_unknown}) or an [Error] message; the page keeps its
+    last render and the console logs it. *)
 
 val mount_with_renderer :
   ?dev:bool ->
