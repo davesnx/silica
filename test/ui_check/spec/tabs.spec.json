@@ -1,0 +1,57 @@
+{
+  "id": "tabs",
+  "init": "ready",
+  "states": [
+    {
+      "name": "ready",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "move first",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "move last",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "move next",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "move previous",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "select a",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "select c",
+      "kept": true
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "id": "combobox",
+  "init": "closed",
+  "states": [
+    {
+      "name": "closed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "inline",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "open",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "dismiss",
+        "anchor"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "closed",
+      "target": "closed",
+      "event": "escape",
+      "kept": true
+    },
+    {
+      "from": "closed",
+      "target": "closed",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "closed",
+      "target": "inline",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "move next",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "move previous",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "show",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "typed",
+      "kept": false
+    },
+    {
+      "from": "inline",
+      "target": "closed",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "choose",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "choose_highlighted",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "escape",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "highlight",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "move first",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "move last",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "move next",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "move previous",
+      "kept": true
+    },
+    {
+      "from": "inline",
+      "target": "inline",
+      "event": "typed",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "choose",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "choose_highlighted",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "escape",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "focus_out",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "outside_press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "inline",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "highlight",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move first",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move last",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move next",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move previous",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "typed",
+      "kept": true
+    }
+  ]
+}

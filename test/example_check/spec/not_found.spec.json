@@ -1,0 +1,14 @@
+{
+  "id": "not_found",
+  "init": "not_found",
+  "states": [
+    {
+      "name": "not_found",
+      "final": true,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": []
+}

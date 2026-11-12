@@ -26,46 +26,42 @@ let new_command =
     Term.(const New_project.run $ directory)
 
 let check json graphs traces no_golden =
-  match graphs with
-  | Some _ ->
-      prerr_endline
-        "silica check: --graphs is not available yet; run 'silica check' \
-         without it.";
-      3
-  | None ->
-      if not (Sys.file_exists (Filename.concat "check" "main.ml")) then (
-        prerr_endline
-          "silica check: no check/main.ml here. Run the command from the root \
-           of the app, which lists its checks in check/main.ml.";
-        3
-      ) else if
-          Sys.command
-            (Filename.quote_command "dune"
-               [ "build"; "--root"; "."; "./check/main.exe" ]
+  if not (Sys.file_exists (Filename.concat "check" "main.ml")) then (
+    prerr_endline
+      "silica check: no check/main.ml here. Run the command from the root of \
+       the app, which lists its checks in check/main.ml.";
+    3
+  ) else if
+      Sys.command
+        (Filename.quote_command "dune"
+           [ "build"; "--root"; "."; "./check/main.exe" ]
+        )
+      <> 0
+    then (
+    prerr_endline "silica check: check/main.exe does not build.";
+    3
+  ) else
+    Silica_graphs.finish graphs
+      (Sys.command
+         (Filename.quote_command
+            (Filename.concat "_build"
+               (Filename.concat "default" (Filename.concat "check" "main.exe"))
             )
-          <> 0
-        then (
-        prerr_endline "silica check: check/main.exe does not build.";
-        3
-      ) else
-        Sys.command
-          (Filename.quote_command
-             (Filename.concat "_build"
-                (Filename.concat "default" (Filename.concat "check" "main.exe"))
+            (( if json then
+                 [ "--json" ]
+               else
+                 []
              )
-             (( if json then
-                  [ "--json" ]
-                else
+            @ (match traces with Some dir -> [ "--traces"; dir ] | None -> [])
+            @ ( if no_golden then
                   []
+                else
+                  [ "--golden"; Filename.concat "check" "spec" ]
               )
-             @ (match traces with Some dir -> [ "--traces"; dir ] | None -> [])
-             @
-             if no_golden then
-               []
-             else
-               [ "--golden"; Filename.concat "check" "spec" ]
-             )
-          )
+            @ Silica_graphs.arguments graphs
+            )
+         )
+      )
 
 let check_command =
   let json =
@@ -83,7 +79,11 @@ let check_command =
       value
       & opt (some string) None
       & info [ "graphs" ] ~docv:"DIR"
-          ~doc:"Write a graph of each checked machine into $(docv)."
+          ~doc:
+            "Also write the graphs of each checked machine into $(docv): \
+             $(i,ID).spec.json (the spec), $(i,ID).svg (the drawing), \
+             $(i,ID).txt (the text form, one fact per line) and $(i,ID).md (a \
+             Mermaid block, which GitHub shows as a chart)."
     )
   in
   let no_golden =

@@ -1,0 +1,33 @@
+{
+  "id": "counter",
+  "init": "counter",
+  "states": [
+    {
+      "name": "counter",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "counter",
+      "target": "counter",
+      "event": "decr",
+      "kept": true
+    },
+    {
+      "from": "counter",
+      "target": "counter",
+      "event": "incr",
+      "kept": true
+    },
+    {
+      "from": "counter",
+      "target": "counter",
+      "event": "reset",
+      "kept": true
+    }
+  ]
+}

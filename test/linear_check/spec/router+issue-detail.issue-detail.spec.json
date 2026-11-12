@@ -1,0 +1,144 @@
+{
+  "id": "issue-detail",
+  "init": "loading",
+  "states": [
+    {
+      "name": "loading",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/issues"
+      ],
+      "held": []
+    },
+    {
+      "name": "failed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "not_found",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "ready",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "live:issues"
+      ],
+      "held": [
+        "keys"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "retry",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "failed",
+      "event": "loaded error",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "loading",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "not_found",
+      "event": "loaded ok",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "ready",
+      "event": "loaded ok",
+      "kept": false
+    },
+    {
+      "from": "not_found",
+      "target": "loading",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "cancel_edit",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "create_key",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "edit",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "menu_open true",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "picker open",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "reconnect",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "reconnected",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "save",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "updated",
+      "kept": true
+    }
+  ]
+}

@@ -52,6 +52,7 @@ let border = color "border" "#d1d5db"
 let surface = color "surface" "#ffffff"
 let accent = color "accent" "#4f46e5"
 let accent_text = color "accent-text" "#ffffff"
+let danger = color "danger" "#dc2626"
 let mono = "font-family: ui-monospace, SFMono-Regular, Menlo, monospace"
 
 let classes names =
@@ -99,11 +100,36 @@ let marker id fill =
         [];
     ]
 
+let label_lines ~fill (label : Statechart_layout.label) =
+  let count = List.length label.lines in
+  List.mapi
+    (fun line content ->
+      text ~x:label.center
+        ~y:(label.bottom -. 3. -. (float_of_int (count - 1 - line) *. 14.))
+        ~size:11 ~fill content
+    )
+    label.lines
+
+let label_chip (label : Statechart_layout.label) =
+  let height = 14. *. float_of_int (List.length label.lines) in
+  Node.element "rect"
+    [
+      Attr.string "x" (number (label.center -. (label.width /. 2.)));
+      Attr.string "y" (number (label.bottom -. height));
+      Attr.string "width" (number label.width);
+      Attr.string "height" (number height);
+      Attr.string "rx" "3";
+      Attr.string "style" ("fill: " ^ surface);
+    ]
+    []
+
 let edge ~taken (edge : Statechart_layout.edge) =
   let is_taken = taken = Some (edge.from, edge.target) in
   let stroke =
     if is_taken then
       accent
+    else if edge.drift then
+      danger
     else
       muted
   in
@@ -111,29 +137,20 @@ let edge ~taken (edge : Statechart_layout.edge) =
     match edge.label with
     | None ->
         []
+    | Some label when edge.from = edge.target ->
+        label_lines ~fill:stroke label
     | Some label ->
-        let count = List.length label.lines in
-        List.mapi
-          (fun line content ->
-            text ~x:label.center
-              ~y:(label.bottom -. 3. -. (float_of_int (count - 1 - line) *. 14.))
-              ~size:11
-              ~fill:
-                ( if is_taken then
-                    accent
-                  else
-                    muted
-                )
-              content
-          )
-          label.lines
+        label_chip label :: label_lines ~fill:stroke label
   in
   Node.element "g"
     [
       Attr.string "class"
         (classes
            [
-             ("chart-edge", true); ("is-taken", is_taken); ("is-back", edge.back);
+             ("chart-edge", true);
+             ("is-taken", is_taken);
+             ("is-back", edge.back);
+             ("is-drift", edge.drift);
            ]
         );
       Attr.string "data-from" edge.from;
@@ -149,16 +166,23 @@ let edge ~taken (edge : Statechart_layout.edge) =
            );
          Attr.string "fill" "none";
          Attr.string "style"
-           (Printf.sprintf "stroke: %s; stroke-width: %s" stroke
+           (Printf.sprintf "stroke: %s; stroke-width: %s%s" stroke
               ( if is_taken then
                   "2.5"
                 else
                   "1.5"
               )
+              ( if edge.drift then
+                  "; stroke-dasharray: 5 4"
+                else
+                  ""
+              )
            );
          Attr.string "marker-end"
            ( if is_taken then
                "url(#chart-arrow-taken)"
+             else if edge.drift then
+               "url(#chart-arrow-drift)"
              else
                "url(#chart-arrow)"
            );
@@ -200,7 +224,7 @@ let node ~current (node : Statechart_layout.node) =
         Attr.string "height" (number (node.height -. (2. *. inset)));
         Attr.string "rx" (number (Float.max 2. (8. -. inset)));
         Attr.string "style"
-          (Printf.sprintf "fill: %s; stroke: %s; stroke-width: 1.5"
+          (Printf.sprintf "fill: %s; stroke: %s; stroke-width: 1.5%s"
              ( if active && inset = 0. then
                  accent
                else if inset = 0. then
@@ -212,8 +236,15 @@ let node ~current (node : Statechart_layout.node) =
                  accent_text
                else if active then
                  accent
+               else if node.drift then
+                 danger
                else
                  border
+             )
+             ( if node.drift then
+                 "; stroke-dasharray: 5 4"
+               else
+                 ""
              )
           );
       ]
@@ -231,6 +262,7 @@ let node ~current (node : Statechart_layout.node) =
              ("is-active", active);
              ("is-final", node.final);
              ("is-initial", node.initial);
+             ("is-drift", node.drift);
            ]
         );
       Attr.string "data-state" node.name;
@@ -295,7 +327,11 @@ let view ?current ?taken (layout : Statechart_layout.t) =
     ]
     [
       Node.element "defs" []
-        [ marker "chart-arrow" muted; marker "chart-arrow-taken" accent ];
+        [
+          marker "chart-arrow" muted;
+          marker "chart-arrow-taken" accent;
+          marker "chart-arrow-drift" danger;
+        ];
       Node.list (List.map (edge ~taken) layout.edges);
       Node.list
         (List.filter_map
@@ -308,4 +344,12 @@ let view ?current ?taken (layout : Statechart_layout.t) =
            layout.nodes
         );
       Node.list (List.map (node ~current) layout.nodes);
+      ( match layout.note with
+      | None ->
+          Node.list []
+      | Some note ->
+          Node.element "g"
+            [ Attr.string "class" "chart-note" ]
+            (label_lines ~fill:muted note)
+      );
     ]

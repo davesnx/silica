@@ -1,0 +1,39 @@
+{
+  "id": "todo",
+  "init": "todo",
+  "states": [
+    {
+      "name": "todo",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "todo",
+      "target": "todo",
+      "event": "add",
+      "kept": true
+    },
+    {
+      "from": "todo",
+      "target": "todo",
+      "event": "delete",
+      "kept": true
+    },
+    {
+      "from": "todo",
+      "target": "todo",
+      "event": "draft",
+      "kept": true
+    },
+    {
+      "from": "todo",
+      "target": "todo",
+      "event": "toggle",
+      "kept": true
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "unsaved",
+  "init": "held",
+  "states": [
+    {
+      "name": "held",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "block"
+      ]
+    },
+    {
+      "name": "asking",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "block"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "asking",
+      "target": "asking",
+      "event": "attempt push",
+      "kept": true
+    },
+    {
+      "from": "asking",
+      "target": "asking",
+      "event": "attempt traverse",
+      "kept": true
+    },
+    {
+      "from": "asking",
+      "target": "held",
+      "event": "discard",
+      "kept": false
+    },
+    {
+      "from": "asking",
+      "target": "held",
+      "event": "keep",
+      "kept": false
+    },
+    {
+      "from": "held",
+      "target": "asking",
+      "event": "attempt push",
+      "kept": false
+    },
+    {
+      "from": "held",
+      "target": "asking",
+      "event": "attempt traverse",
+      "kept": false
+    }
+  ]
+}

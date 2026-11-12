@@ -50,17 +50,25 @@
    (run %{exe:../../gen/embed_gen.exe} %{deps}))))
 
 (rule
- (target site_facts.ml)
- (deps
-  (glob_files %{project_root}/test/ui_check/spec/*.dot))
- (action
-  (with-stdout-to
-   %{target}
-   (run %{exe:../../gen/facts_gen.exe} %{deps}))))
-
-(rule
- (target site_landing_chart.ml)
+ (target landing.spec.json)
  (action
   (with-stdout-to
    %{target}
    (run %{exe:../../gen/landing_gen.exe}))))
+
+(rule
+ (target site_landing_chart.ml)
+ (deps landing.spec.json)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/spec_gen.exe} %{deps}))))
+
+(rule
+ (target site_charts.ml)
+ (deps
+  (glob_files %{project_root}/test/ui_check/spec/*.spec.json))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../gen/spec_gen.exe} %{deps}))))

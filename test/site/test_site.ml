@@ -357,69 +357,90 @@ let test_story () =
       ignore (Story.choice "size" ~label:"Size" [ ("s", "Small") ] "m")
   )
 
-let test_facts () =
-  let names (f : Site_facts.t) =
-    List.map (fun (s : Site_facts.state) -> s.name) f.states
+let layout_text (chart : Silica.Statechart_layout.t) =
+  Silica.Statechart_layout.to_string chart
+
+let test_charts () =
+  let names (chart : Silica.Statechart_layout.t) =
+    List.map
+      (fun (node : Silica.Statechart_layout.node) -> node.name)
+      chart.nodes
   in
   Alcotest.(check (list string))
-    "select states" [ "closed"; "open" ] (names Site_facts.select);
+    "select states" [ "closed"; "open" ] (names Site_charts.select);
   Alcotest.(check (list string))
     "tooltip timers of opening" [ "after 600ms" ]
     (List.find
-       (fun (s : Site_facts.state) -> s.name = "opening")
-       Site_facts.tooltip.states
+       (fun (node : Silica.Statechart_layout.node) -> node.name = "opening")
+       Site_charts.tooltip.nodes
     )
       .details;
+  let charts =
+    List.filter_map
+      (fun (entry : Site_catalog.entry) -> entry.chart)
+      Site_catalog.entries
+  in
+  Alcotest.(check int)
+    "a chart for each checked component" 12 (List.length charts);
   List.iter
-    (fun (e : Site_catalog.entry) ->
-      Option.iter
-        (fun (f : Site_facts.t) ->
-          if f.states = [] || (List.length f.states > 1 && f.edges = []) then
-            Alcotest.failf "%s: no facts" e.info.slug;
-          List.iter
-            (fun (edge : Site_facts.edge) ->
-              if
-                not
-                  (List.mem edge.from (names f)
-                  && List.mem edge.target (names f)
-                  )
-              then
-                Alcotest.failf "%s: edge %s -> %s outside the states"
-                  e.info.slug edge.from edge.target
-            )
-            f.edges
-        )
-        e.facts
+    (fun (chart : Silica.Statechart_layout.t) ->
+      let path = "../../test/ui_check/spec/" ^ chart.machine ^ ".spec.json" in
+      match
+        Result.bind
+          (Silica_json.Json.of_string
+             (In_channel.with_open_bin path In_channel.input_all)
+          )
+          Silica.Spec.of_json
+      with
+      | Error message ->
+          Alcotest.failf "%s: %s" path message
+      | Ok spec ->
+          Alcotest.(check string)
+            (chart.machine ^ ": the layout of the golden spec")
+            (layout_text (Silica.Statechart_layout.layout spec))
+            (layout_text chart)
     )
-    Site_catalog.entries
+    charts
 
 let test_landing_chart () =
-  let spec = Site_landing_chart.spec in
-  let names = List.map (fun (s : Silica.Spec.state) -> s.name) spec.states in
+  let chart = Site_landing_chart.landing in
+  let names =
+    List.map
+      (fun (node : Silica.Statechart_layout.node) -> node.name)
+      chart.nodes
+  in
   Alcotest.(check (list string))
     "every state of the save machine"
     (List.sort compare (Silica.Machine.shape_names Landing_save.state_shape))
     (List.sort compare names);
-  Alcotest.(check string)
+  Alcotest.(check (list string))
     "the initial state"
-    ((Silica.Machine.shape_name Landing_save.state_shape)
-       (Silica.Machine.init Landing_save.machine)
-    )
-    spec.init;
-  Alcotest.(check bool) "edges were found" true (spec.edges <> []);
-  List.iter
-    (fun (edge : Silica.Spec.label) ->
-      if not (List.mem edge.from names && List.mem edge.target names) then
-        Alcotest.failf "edge %s -> %s outside the states" edge.from edge.target
-    )
-    spec.edges;
+    [
+      (Silica.Machine.shape_name Landing_save.state_shape)
+        (Silica.Machine.init Landing_save.machine);
+    ]
+    (List.filter_map
+       (fun (node : Silica.Statechart_layout.node) ->
+         if node.initial then
+           Some node.name
+         else
+           None
+       )
+       chart.nodes
+    );
+  Alcotest.(check bool) "edges were found" true (chart.edges <> []);
   let html = (get "/").body in
   List.iter
     (fun name ->
       if not (contains html ("data-state=\"" ^ name ^ "\"")) then
         Alcotest.failf "the landing chart has no state %s" name
     )
-    names
+    names;
+  Alcotest.(check bool)
+    "the initial state is marked" true
+    (contains html
+       "class=\"chart-node is-active is-initial\" data-state=\"idle\""
+    )
 
 let test_nav_covers_the_docs () =
   Alcotest.(check (list string))
@@ -645,7 +666,7 @@ let () =
           Alcotest.test_case "search results open their page" `Quick
             test_search_targets;
           Alcotest.test_case "story values" `Quick test_story;
-          Alcotest.test_case "statechart facts" `Quick test_facts;
+          Alcotest.test_case "statecharts of the components" `Quick test_charts;
           Alcotest.test_case "landing chart from a checker run" `Quick
             test_landing_chart;
           Alcotest.test_case "site tokens have contrast 4.5" `Quick

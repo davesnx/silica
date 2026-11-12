@@ -1,0 +1,58 @@
+{
+  "id": "switch",
+  "init": "unchecked",
+  "states": [
+    {
+      "name": "unchecked",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "checked",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "checked",
+      "target": "checked",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "checked",
+      "target": "unchecked",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "checked",
+      "target": "unchecked",
+      "event": "toggle",
+      "kept": false
+    },
+    {
+      "from": "unchecked",
+      "target": "checked",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "unchecked",
+      "target": "checked",
+      "event": "toggle",
+      "kept": false
+    },
+    {
+      "from": "unchecked",
+      "target": "unchecked",
+      "event": "props",
+      "kept": true
+    }
+  ]
+}

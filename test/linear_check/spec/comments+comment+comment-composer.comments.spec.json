@@ -1,0 +1,57 @@
+{
+  "id": "comments",
+  "init": "loading",
+  "states": [
+    {
+      "name": "loading",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/comments"
+      ],
+      "held": []
+    },
+    {
+      "name": "failed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "ready",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "live:comments"
+      ],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "retry",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "failed",
+      "event": "loaded error",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "ready",
+      "event": "loaded ok",
+      "kept": false
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "updated",
+      "kept": true
+    }
+  ]
+}

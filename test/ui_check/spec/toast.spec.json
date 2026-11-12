@@ -1,0 +1,260 @@
+{
+  "id": "toast",
+  "init": "empty",
+  "states": [
+    {
+      "name": "empty",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "expired",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "paused",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "running",
+      "final": false,
+      "timers": [
+        100
+      ],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "empty",
+      "target": "empty",
+      "event": "focus false",
+      "kept": true
+    },
+    {
+      "from": "empty",
+      "target": "empty",
+      "event": "focus true",
+      "kept": true
+    },
+    {
+      "from": "empty",
+      "target": "empty",
+      "event": "hover false",
+      "kept": true
+    },
+    {
+      "from": "empty",
+      "target": "empty",
+      "event": "hover true",
+      "kept": true
+    },
+    {
+      "from": "empty",
+      "target": "paused",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "empty",
+      "target": "running",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "expired",
+      "target": "empty",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "expired",
+      "target": "expired",
+      "event": "close a",
+      "kept": true
+    },
+    {
+      "from": "expired",
+      "target": "expired",
+      "event": "close b",
+      "kept": true
+    },
+    {
+      "from": "expired",
+      "target": "expired",
+      "event": "focus false",
+      "kept": true
+    },
+    {
+      "from": "expired",
+      "target": "expired",
+      "event": "focus true",
+      "kept": true
+    },
+    {
+      "from": "expired",
+      "target": "expired",
+      "event": "hover false",
+      "kept": true
+    },
+    {
+      "from": "expired",
+      "target": "expired",
+      "event": "hover true",
+      "kept": true
+    },
+    {
+      "from": "expired",
+      "target": "paused",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "expired",
+      "target": "running",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "paused",
+      "target": "empty",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "close a",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "close b",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "focus false",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "focus true",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "hover false",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "hover true",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "paused",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "paused",
+      "target": "running",
+      "event": "close a",
+      "kept": false
+    },
+    {
+      "from": "paused",
+      "target": "running",
+      "event": "close b",
+      "kept": false
+    },
+    {
+      "from": "paused",
+      "target": "running",
+      "event": "focus false",
+      "kept": false
+    },
+    {
+      "from": "paused",
+      "target": "running",
+      "event": "hover false",
+      "kept": false
+    },
+    {
+      "from": "running",
+      "target": "empty",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "running",
+      "target": "expired",
+      "event": "tick",
+      "kept": false
+    },
+    {
+      "from": "running",
+      "target": "paused",
+      "event": "focus true",
+      "kept": false
+    },
+    {
+      "from": "running",
+      "target": "paused",
+      "event": "hover true",
+      "kept": false
+    },
+    {
+      "from": "running",
+      "target": "running",
+      "event": "close a",
+      "kept": true
+    },
+    {
+      "from": "running",
+      "target": "running",
+      "event": "close b",
+      "kept": true
+    },
+    {
+      "from": "running",
+      "target": "running",
+      "event": "focus false",
+      "kept": true
+    },
+    {
+      "from": "running",
+      "target": "running",
+      "event": "hover false",
+      "kept": true
+    },
+    {
+      "from": "running",
+      "target": "running",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "running",
+      "target": "running",
+      "event": "tick",
+      "kept": false
+    }
+  ]
+}

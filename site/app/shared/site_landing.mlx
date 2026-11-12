@@ -4,147 +4,16 @@ open Jsonkit.Primitives
 type event = Moved of string [@@deriving json, event_shape]
 type state = Watching of string [@@deriving json, state_shape]
 
-let spec = Site_landing_chart.spec
+let chart = Site_landing_chart.landing
+
+let initial =
+  (List.find (fun (node : Statechart_layout.node) -> node.initial) chart.nodes)
+    .name
 
 let machine =
-  Machine.make ~id:"landing" ~init:(Watching spec.init) ~shape:state_shape
+  Machine.make ~id:"landing" ~init:(Watching initial) ~shape:state_shape
     ~events:event_shape (fun (Watching _) (Moved name) -> Go (Watching name)
   )
-
-let place = function
-  | "idle" ->
-      (70, 120)
-  | "saving" ->
-      (250, 120)
-  | "saved" ->
-      (430, 60)
-  | "failed" ->
-      (430, 180)
-  | _ ->
-      (250, 220)
-
-let width = 112
-let height = 40
-
-let edge (a, b) =
-  let ax, ay = place a and bx, by = place b in
-  if a = b then
-    Node.list []
-  else
-    let half = height / 2 in
-    let path =
-      if bx > ax then
-        let x1 = ax + (width / 2) and x2 = bx - (width / 2) - 3 in
-        Printf.sprintf "M %d %d C %d %d, %d %d, %d %d" x1 ay
-          ((x1 + x2) / 2)
-          ay
-          ((x1 + x2) / 2)
-          by x2 by
-      else if ay <= 120 then
-        Printf.sprintf "M %d %d C %d %d, %d %d, %d %d" ax (ay - half) ax 4 bx 4
-          bx
-          (by - half - 3)
-      else
-        Printf.sprintf "M %d %d C %d %d, %d %d, %d %d" ax (ay + half) ax 236 bx
-          236 bx
-          (by + half + 3)
-    in
-    <path
-      d=path
-      fill="none"
-      class_="stroke-ui-border"
-      strokeWidth="1.5"
-      markerEnd="url(#arrow)"
-    />
-
-let node ~current (state : Spec.state) =
-  let x, y = place state.name in
-  let active = state.name = current in
-  Node.element "g"
-    [
-      Attr.string "data-state" state.name;
-      Attr.string "class"
-        ( if active then
-            "chart-node is-active"
-          else
-            "chart-node"
-        );
-    ]
-    [
-      <rect
-        x=(string_of_int (x - (width / 2)))
-        y=(string_of_int (y - (height / 2)))
-        width=(string_of_int width)
-        height=(string_of_int height)
-        rx="10"
-        class_=( if active then
-                   "fill-ui-accent stroke-ui-accent transition-colors \
-                    duration-300"
-                 else
-                   "fill-ui-surface stroke-ui-border transition-colors \
-                    duration-300"
-               )
-        strokeWidth="1.5"
-      />;
-      <text
-        x=(string_of_int x)
-        y=(string_of_int (y + 5))
-        textAnchor="middle"
-        class_=( if active then
-                   "fill-ui-accent-text font-mono text-[13px] font-semibold"
-                 else
-                   "fill-ui-text font-mono text-[13px]"
-               )>
-        (Node.text state.name)
-      </text>;
-      ( match state.timers with
-      | [] ->
-          Node.list []
-      | ms :: _ ->
-          <text
-            x=(string_of_int x)
-            y=(string_of_int (y + 36))
-            textAnchor="middle"
-            class_="fill-ui-muted font-mono text-[11px]">
-            (Node.text (Printf.sprintf "after %d ms" ms))
-          </text>
-      );
-      ( match state.sources with
-      | [] ->
-          Node.list []
-      | path :: _ ->
-          <text
-            x=(string_of_int x)
-            y=(string_of_int (y - 30))
-            textAnchor="middle"
-            class_="fill-ui-muted font-mono text-[11px]">
-            (Node.text ("call " ^ path))
-          </text>
-      );
-    ]
-
-let chart current =
-  <svg
-    viewBox="0 0 500 240"
-    role=`img
-    aria_label=("Statechart of the save machine. Current state: " ^ current)
-    id="hero-chart"
-    class_="w-full">
-    <defs>
-      <marker
-        id="arrow"
-        viewBox="0 0 10 10"
-        refX="9"
-        refY="5"
-        markerWidth="7"
-        markerHeight="7"
-        orient="auto-start-reverse">
-        <path d="M 0 0 L 10 5 L 0 10 z" class_="fill-ui-muted" />
-      </marker>
-    </defs>
-    (Node.list (List.map edge (Spec.arrows spec)))
-    (Node.list (List.map (node ~current) spec.states))
-  </svg>
 
 let ideas =
   [
@@ -238,7 +107,9 @@ let view (Watching current) : event Node.t =
           </span>
           <span>"live"</span>
         </div>
-        <div class_="px-4 pt-4">(chart current)</div>
+        <div id="hero-chart" class_="overflow-x-auto px-4 pt-4">
+          (Site_chart.view ~current ~smallest:0. chart)
+        </div>
         <div
           id="hero-live"
           class_="flex min-h-20 items-center justify-center border-t \

@@ -1,0 +1,105 @@
+{
+  "id": "vote",
+  "init": "idle",
+  "states": [
+    {
+      "name": "idle",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "failed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "loading",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/vote"
+      ],
+      "held": []
+    },
+    {
+      "name": "ready",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "rejected",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "load",
+      "kept": false
+    },
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "retry",
+      "kept": false
+    },
+    {
+      "from": "idle",
+      "target": "loading",
+      "event": "load",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "failed",
+      "event": "settled error",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "loading",
+      "event": "load",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "ready",
+      "event": "settled ok",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "rejected",
+      "event": "settled rejected",
+      "kept": false
+    },
+    {
+      "from": "ready",
+      "target": "loading",
+      "event": "load",
+      "kept": false
+    },
+    {
+      "from": "rejected",
+      "target": "loading",
+      "event": "load",
+      "kept": false
+    },
+    {
+      "from": "rejected",
+      "target": "loading",
+      "event": "retry",
+      "kept": false
+    }
+  ]
+}

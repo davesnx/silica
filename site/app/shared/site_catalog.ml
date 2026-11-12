@@ -2,7 +2,7 @@ open Silica_ui
 
 type entry = {
   info : Site_components.info;
-  facts : Site_facts.t option;
+  chart : Silica.Statechart_layout.t option;
   stories : (string * Story.t) list;
       (** The file name of each story in [site/stories/], and the story. *)
   grid : Story.t option;
@@ -34,7 +34,7 @@ let dialog_basic =
 let dialog =
   {
     info = Site_components.dialog;
-    facts = Some Site_facts.note_dialog;
+    chart = Some Site_charts.note_dialog;
     stories =
       [
         ("dialog_basic.mlx", dialog_basic);
@@ -61,7 +61,7 @@ let popover_basic =
 let popover =
   {
     info = Site_components.popover;
-    facts = Some Site_facts.filter_popover;
+    chart = Some Site_charts.filter_popover;
     stories =
       [
         ("popover_basic.mlx", popover_basic);
@@ -99,7 +99,7 @@ let tooltip_basic =
 let tooltip =
   {
     info = Site_components.tooltip;
-    facts = Some Site_facts.tooltip;
+    chart = Some Site_charts.tooltip;
     stories =
       [
         ("tooltip_basic.mlx", tooltip_basic);
@@ -126,7 +126,7 @@ let menu_basic =
 let menu =
   {
     info = Site_components.menu;
-    facts = Some Site_facts.menu;
+    chart = Some Site_charts.menu;
     stories =
       [
         ("menu_basic.mlx", menu_basic);
@@ -158,7 +158,7 @@ let select_basic =
 let select =
   {
     info = Site_components.select;
-    facts = Some Site_facts.select;
+    chart = Some Site_charts.select;
     stories =
       [
         ("select_basic.mlx", select_basic);
@@ -193,7 +193,7 @@ let combobox_basic =
 let combobox =
   {
     info = Site_components.combobox;
-    facts = Some Site_facts.combobox;
+    chart = Some Site_charts.combobox;
     stories =
       [
         ("combobox_basic.mlx", combobox_basic);
@@ -220,7 +220,7 @@ let command_menu_basic =
 let command_menu =
   {
     info = Site_components.command_menu;
-    facts = Some Site_facts.command_menu;
+    chart = Some Site_charts.command_menu;
     stories =
       [
         ("command_menu_basic.mlx", command_menu_basic);
@@ -252,7 +252,7 @@ let checkbox_basic =
 let checkbox =
   {
     info = Site_components.checkbox;
-    facts = Some Site_facts.checkbox;
+    chart = Some Site_charts.checkbox;
     stories =
       [
         ("checkbox_basic.mlx", checkbox_basic);
@@ -291,7 +291,7 @@ let switch_basic =
 let switch =
   {
     info = Site_components.switch;
-    facts = Some Site_facts.switch;
+    chart = Some Site_charts.switch;
     stories =
       [
         ("switch_basic.mlx", switch_basic);
@@ -331,7 +331,7 @@ let tabs_basic =
 let tabs =
   {
     info = Site_components.tabs;
-    facts = Some Site_facts.tabs;
+    chart = Some Site_charts.tabs;
     stories =
       [
         ("tabs_basic.mlx", tabs_basic);
@@ -363,7 +363,7 @@ let toast_basic =
 let toast =
   {
     info = Site_components.toast;
-    facts = Some Site_facts.toast;
+    chart = Some Site_charts.toast;
     stories =
       [
         ("toast_basic.mlx", toast_basic);
@@ -390,7 +390,7 @@ let theme_switcher_tokens =
 let theme_switcher =
   {
     info = Site_components.theme_switcher;
-    facts = Some Site_facts.theme;
+    chart = Some Site_charts.theme;
     stories =
       [
         ("theme_switcher_tokens.mlx", theme_switcher_tokens);
@@ -409,7 +409,7 @@ let theme_switcher =
 let theme_scope =
   {
     info = Site_components.theme_scope;
-    facts = None;
+    chart = None;
     stories =
       [
         ( "theme_scope_basic.mlx",

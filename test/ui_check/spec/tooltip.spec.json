@@ -1,0 +1,160 @@
+{
+  "id": "tooltip",
+  "init": "closed",
+  "states": [
+    {
+      "name": "closed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "closing",
+      "final": false,
+      "timers": [
+        300
+      ],
+      "sources": [],
+      "held": [
+        "dismiss",
+        "anchor"
+      ]
+    },
+    {
+      "name": "open",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "dismiss",
+        "anchor"
+      ]
+    },
+    {
+      "name": "opening",
+      "final": false,
+      "timers": [
+        600
+      ],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "focus",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "hover",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "opening",
+      "event": "hover",
+      "kept": false
+    },
+    {
+      "from": "closing",
+      "target": "closed",
+      "event": "close escape-key",
+      "kept": false
+    },
+    {
+      "from": "closing",
+      "target": "closed",
+      "event": "close trigger-focus",
+      "kept": false
+    },
+    {
+      "from": "closing",
+      "target": "closed",
+      "event": "close trigger-press",
+      "kept": false
+    },
+    {
+      "from": "closing",
+      "target": "closed",
+      "event": "elapsed 0",
+      "kept": false
+    },
+    {
+      "from": "closing",
+      "target": "closed",
+      "event": "elapsed 300",
+      "kept": false
+    },
+    {
+      "from": "closing",
+      "target": "closing",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "closing",
+      "target": "open",
+      "event": "resume",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close escape-key",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close trigger-focus",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close trigger-press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "leave",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closing",
+      "event": "leave",
+      "kept": false
+    },
+    {
+      "from": "opening",
+      "target": "closed",
+      "event": "cancel",
+      "kept": false
+    },
+    {
+      "from": "opening",
+      "target": "open",
+      "event": "elapsed 0",
+      "kept": false
+    },
+    {
+      "from": "opening",
+      "target": "open",
+      "event": "elapsed 600",
+      "kept": false
+    },
+    {
+      "from": "opening",
+      "target": "opening",
+      "event": "props",
+      "kept": true
+    }
+  ]
+}

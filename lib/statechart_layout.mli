@@ -15,18 +15,20 @@ type node = {
   final : bool;
   initial : bool;
   details : string list;  (** {!Spec.details} of the state. *)
+  drift : bool;
+      (** The state is not in the spec: only an [observed] step names it. *)
 }
 
 type label = {
   lines : string list;  (** The events, wrapped at about 24 characters. *)
   center : float;  (** The x of the middle of the lines. *)
   bottom : float;  (** The y under the last line. *)
+  width : float;  (** The width of the widest line, with a small margin. *)
 }
 
 type edge = {
   from : string;
   target : string;
-  events : string list;
   points : (float * float) list;
       (** From the border of [from] to the border of [target]. Between two
           points with the same y the edge is a straight line; between two points
@@ -35,7 +37,15 @@ type edge = {
           ([from = target]) the four points are the start, the two control
           points and the end of one cubic curve above the node. *)
   back : bool;  (** The edge goes right to left, against the main direction. *)
-  label : label option;  (** [None] when the edge has no events. *)
+  label : label option;
+      (** [None] when the edge has no events, or when {!t.note} holds them. The
+          label of an edge between two states sits on the edge, in the middle
+          column of its path, centered on its horizontal part, so the line runs
+          into the label and out of it. The label of a self edge sits above its
+          loop. *)
+  drift : bool;
+      (** The edge is not an arrow of the spec: only an [observed] step took it.
+      *)
 }
 
 type t = {
@@ -43,16 +53,27 @@ type t = {
   width : float;
   height : float;
   nodes : node list;  (** In the order of the spec states. *)
-  edges : edge list;  (** In the order of {!Spec.arrows}. *)
+  edges : edge list;
+      (** In the order of {!Spec.arrows}, then the [drift] edges, sorted. *)
+  note : label option;
+      (** When every arrow of the spec has the same events, and there are three
+          arrows or more (the routers: ["url changed"] on each), the edges have
+          no label and the note says it once, as ["every edge: url changed"],
+          under the drawing. *)
 }
 
-val layout : Spec.t -> t
-(** Layers by longest path after the back edges of a depth first search from the
+val layout : ?observed:(string * string) list -> Spec.t -> t
+(** [observed] are the [(from, target)] of steps that entered a state at run
+    time, such as the transition log gives. A pair that is not an arrow of the
+    spec is drawn as a [drift] edge, and a state that the spec lacks as a
+    [drift] node.
+
+    Layers by longest path after the back edges of a depth first search from the
     initial state are turned around. Edge labels and long edges get places of
     their own in the columns between the layers, so labels and edges do not
     cover nodes. The order in each column comes from barycenter sweeps and
     adjacent swaps that reduce crossings; heights come from the median of the
-    neighbours. Edges whose states are not in the spec are left out. *)
+    neighbours. *)
 
 val to_string : t -> string
 (** One line for the size, each node and each edge, with positions rounded to

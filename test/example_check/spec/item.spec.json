@@ -1,0 +1,80 @@
+{
+  "id": "item",
+  "init": "loading",
+  "states": [
+    {
+      "name": "loading",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/item"
+      ],
+      "held": []
+    },
+    {
+      "name": "failed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "loaded",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "missing",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "loaded",
+      "target": "loading",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "failed",
+      "event": "settled error",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "loaded",
+      "event": "settled ok",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "loading",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "loading",
+      "target": "missing",
+      "event": "settled rejected",
+      "kept": false
+    },
+    {
+      "from": "missing",
+      "target": "loading",
+      "event": "props",
+      "kept": false
+    }
+  ]
+}

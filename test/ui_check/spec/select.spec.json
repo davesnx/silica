@@ -1,0 +1,133 @@
+{
+  "id": "select",
+  "init": "closed",
+  "states": [
+    {
+      "name": "closed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "open",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "dismiss",
+        "anchor"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "closed",
+      "target": "closed",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "open_key list-navigation",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "open_key trigger-press",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "trigger_press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close escape-key",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close focus-out",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close item-press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close outside-press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "select focus-out",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "select item-press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "trigger_press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "highlight",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move first",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move last",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move letter",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move next",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "move previous",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "props",
+      "kept": true
+    }
+  ]
+}

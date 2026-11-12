@@ -446,13 +446,16 @@ The executable has five commands:
 
 ```
 dune exec ./check/main.exe -- [check] [--json] [--only ID]... [--traces DIR]
+    [--specs DIR]
 dune exec ./check/main.exe -- golden DIR [--write] [--json]
 dune exec ./check/main.exe -- replay ID TRACE_FILE [--json]
 dune exec ./check/main.exe -- script ID TRACE_FILE [--component EXPR]
 dune exec ./check/main.exe -- rules [--json]
 ```
 
-`silica check` builds and runs `check/main.exe`; `silica check --json` adds `--json`, and `silica check --traces DIR` adds `--traces DIR`. `silica replay` and `silica script` run the commands of the same names. `--only ID` runs the entries with these ids. `rules` lists `Check.rules`. `replay` and `script` are in [Replay a finding](checker.md#replay-a-finding).
+`silica check` builds and runs `check/main.exe`; `silica check --json` adds `--json`, and `silica check --traces DIR` adds `--traces DIR`. `silica replay` and `silica script` run the commands of the same names. `--only ID` runs the entries with these ids. `--specs DIR` also writes the `<id>.spec.json` golden file (`Silica.Spec.to_json`) of each machine into `DIR`. `rules` lists `Check.rules`. `replay` and `script` are in [Replay a finding](checker.md#replay-a-finding).
+
+`silica check --graphs DIR` passes `--specs DIR`, then writes three more files for each machine into `DIR`, for review in a pull request: `<id>.svg` (the chart of `Silica.Statechart_view`), `<id>.txt` (`Silica.Spec.to_text`, one fact per line) and `<id>.md` (a Mermaid block, which GitHub shows as a chart).
 
 ### Exit codes
 
@@ -480,7 +483,7 @@ From `test/example_check/dune`:
   (run ./main.exe golden spec)))
 ```
 
-`golden DIR` runs every entry, prints the findings, and compares, for each machine, `<id>.spec.txt` (`Silica.Spec.to_text`), `<id>.qnt`, `<id>.dot` and `<id>.views.txt`: each distinct text view of each state, up to `Check.views_per_state`, with the path that reaches it. The files of a joint check start with its id: `router+issue-list.router.spec.txt`, `router+issue-list.issue-list.spec.txt` and `router+issue-list.views.txt`. A missing file, a changed file and a file that no entry makes are `golden-drift` findings. A changed spec is described in words by `Silica.Spec.diff`; a changed view by its changed lines. When one edge of the door changes its target:
+`golden DIR` runs every entry, prints the findings, and compares, for each machine, `<id>.spec.txt` (`Silica.Spec.to_text`), `<id>.spec.json` (`Silica.Spec.to_json`), `<id>.qnt`, `<id>.dot` and `<id>.views.txt`: each distinct text view of each state, up to `Check.views_per_state`, with the path that reaches it. The files of a joint check start with its id: `router+issue-list.router.spec.txt`, `router+issue-list.issue-list.spec.txt` and `router+issue-list.views.txt`. A missing file, a changed file and a file that no entry makes are `golden-drift` findings. A changed spec is described in words by `Silica.Spec.diff`; a changed view by its changed lines. When one edge of the door changes its target:
 
 From `test/check_suite/run.t`:
 

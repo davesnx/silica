@@ -13,6 +13,7 @@ Make a new app.
   created check/main.ml
   created check/spec/counter.dot
   created check/spec/counter.qnt
+  created check/spec/counter.spec.json
   created check/spec/counter.spec.txt
   created check/spec/counter.views.txt
   created client/client_main.ml
@@ -103,6 +104,37 @@ the command that writes it. --no-golden leaves them out.
   $ silica check --no-golden 2>&1 | tail -1
   passed (exit 0)
   $ mv counter.dot.saved check/spec/counter.dot
+
+With a directory, the command also writes the graphs of each machine for
+review: its spec, a drawing, the text form and a Mermaid block. Standard
+output keeps the report alone.
+
+  $ silica check --graphs graphs
+  counter: 16 states, 45 transitions
+  passed (exit 0)
+  silica check: wrote the graphs of 1 machine into graphs
+  $ ls graphs
+  counter.md
+  counter.spec.json
+  counter.svg
+  counter.txt
+  $ cmp graphs/counter.txt check/spec/counter.spec.txt
+  $ cmp graphs/counter.spec.json check/spec/counter.spec.json
+  $ grep -o 'class="chart-node[^"]*" data-state="[a-z]*"' graphs/counter.svg
+  class="chart-node is-initial" data-state="counting"
+  class="chart-node" data-state="saved"
+  class="chart-node" data-state="saving"
+  $ head -5 graphs/counter.md
+  # counter
+  
+  ```mermaid
+  stateDiagram-v2
+    direction LR
+  $ silica check --json --graphs graphs 2> /dev/null | grep -E '"(exit_code|outcome)"'
+    "exit_code": 0,
+    "outcome": "passed",
+  $ ls graphs | wc -l
+  4
 
 A change of behaviour fails the tests: the golden spec names the changed edge.
 

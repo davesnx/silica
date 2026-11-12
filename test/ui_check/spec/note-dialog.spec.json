@@ -1,0 +1,86 @@
+{
+  "id": "note-dialog",
+  "init": "closed",
+  "states": [
+    {
+      "name": "closed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "open",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "focus_trap",
+        "scroll_lock",
+        "dismiss"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "open_request trigger-press",
+      "kept": false
+    },
+    {
+      "from": "closed",
+      "target": "open",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close_request close-press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close_request escape-key",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "close_request outside-press",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "closed",
+      "event": "save",
+      "kept": false
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "close_request escape-key",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "close_request outside-press",
+      "kept": true
+    },
+    {
+      "from": "open",
+      "target": "open",
+      "event": "edit",
+      "kept": true
+    }
+  ]
+}

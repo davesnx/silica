@@ -270,6 +270,9 @@ let golden_files (Ran { check; report }) =
     (fun (spec : Silica.Spec.t) ->
       [
         (prefix ^ spec.id ^ ".spec.txt", Silica.Spec.to_text spec);
+        ( prefix ^ spec.id ^ ".spec.json",
+          Check_json.pretty (Silica.Spec.to_json spec)
+        );
         (prefix ^ spec.id ^ ".qnt", Silica.Spec.to_quint spec);
         (prefix ^ spec.id ^ ".dot", Silica.Spec.to_dot spec);
       ]
@@ -277,7 +280,7 @@ let golden_files (Ran { check; report }) =
     report.specs
   @ [ (id ^ ".views.txt", views_text report) ]
 
-let suffixes = [ ".spec.txt"; ".views.txt"; ".qnt"; ".dot" ]
+let suffixes = [ ".spec.txt"; ".spec.json"; ".views.txt"; ".qnt"; ".dot" ]
 
 let is_golden name =
   List.exists (fun suffix -> String.ends_with ~suffix name) suffixes
@@ -556,7 +559,12 @@ let golden_with ~program ~write dir result =
           else if String.ends_with ~suffix:".views.txt" name then
             Some (name, Changed (views_lines ~before ~after:text))
           else
-            let id = Filename.remove_extension name in
+            let id =
+              if String.ends_with ~suffix:".spec.json" name then
+                Filename.chop_suffix name ".spec.json"
+              else
+                Filename.remove_extension name
+            in
             if spec_changed id then
               Some
                 (name, Changed [ "follows the changes of " ^ id ^ ".spec.txt" ])
@@ -841,7 +849,8 @@ let pp formatter result =
 
 let usage =
   "Usage:\n\
-  \  main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR]\n\
+  \  main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR] \
+   [--specs DIR]\n\
   \  main.exe golden DIR [--write] [--json]\n\
   \  main.exe replay ID TRACE_FILE [--json]\n\
   \  main.exe script ID TRACE_FILE [--output FILE] [--component EXPR] [--check \
@@ -856,6 +865,7 @@ type command =
       only : string list;
       traces : string option;
       golden : string option;
+      specs : string option;
     }
   | Golden of { dir : string; write : bool; json : bool }
   | Replay of { id : string; file : string; json : bool }
@@ -876,17 +886,19 @@ type command =
   | Help
 
 let parse arguments =
-  let rec check ~json ~only ~traces ~golden = function
+  let rec check ~json ~only ~traces ~golden ~specs = function
     | [] ->
-        Ok (Check { json; only = List.rev only; traces; golden })
+        Ok (Check { json; only = List.rev only; traces; golden; specs })
     | "--json" :: rest ->
-        check ~json:true ~only ~traces ~golden rest
+        check ~json:true ~only ~traces ~golden ~specs rest
     | "--only" :: id :: rest ->
-        check ~json ~only:(id :: only) ~traces ~golden rest
+        check ~json ~only:(id :: only) ~traces ~golden ~specs rest
     | "--traces" :: dir :: rest ->
-        check ~json ~only ~traces:(Some dir) ~golden rest
+        check ~json ~only ~traces:(Some dir) ~golden ~specs rest
     | "--golden" :: dir :: rest ->
-        check ~json ~only ~traces ~golden:(Some dir) rest
+        check ~json ~only ~traces ~golden:(Some dir) ~specs rest
+    | "--specs" :: dir :: rest ->
+        check ~json ~only ~traces ~golden ~specs:(Some dir) rest
     | argument :: _ ->
         Error ("check: unknown argument " ^ argument)
   in
@@ -967,7 +979,7 @@ let parse arguments =
   | "conform" :: rest ->
       conform ~spec:"spec" ~only:[] ~json:false ~files:[] rest
   | "check" :: rest ->
-      check ~json:false ~only:[] ~traces:None ~golden:None rest
+      check ~json:false ~only:[] ~traces:None ~golden:None ~specs:None rest
   | "golden" :: rest ->
       golden ~dir:None ~write:false ~json:false rest
   | "replay" :: rest ->
@@ -981,7 +993,7 @@ let parse arguments =
   | argument :: _ when not (String.starts_with ~prefix:"-" argument) ->
       Error ("unknown command " ^ argument)
   | rest ->
-      check ~json:false ~only:[] ~traces:None ~golden:None rest
+      check ~json:false ~only:[] ~traces:None ~golden:None ~specs:None rest
 
 let identifier text =
   let mapped =
@@ -1390,6 +1402,17 @@ let conform_command entries ~spec ~only ~json ~files =
           )
         files
 
+let write_specs dir result =
+  if result.errors = [] then (
+    if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
+    List.iter
+      (fun (name, text) ->
+        if String.ends_with ~suffix:".spec.json" name then
+          write_file (Filename.concat dir name) text
+      )
+      (List.concat_map golden_files result.ran)
+  )
+
 let print ~json result =
   if json then
     print_string (Check_json.pretty (to_json result))
@@ -1426,7 +1449,7 @@ let main ?(argv = Sys.argv) entries =
             )
             Check.rules;
         0
-    | Ok (Check { json; only; traces; golden }) ->
+    | Ok (Check { json; only; traces; golden; specs }) ->
         let only = match only with [] -> None | ids -> Some ids in
         let result = run ?only entries in
         let result =
@@ -1446,6 +1469,7 @@ let main ?(argv = Sys.argv) entries =
           | None ->
               result
         in
+        Option.iter (fun dir -> write_specs dir result) specs;
         print ~json result;
         exit_code result
     | Ok (Replay { id; file; json }) ->

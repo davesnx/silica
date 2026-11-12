@@ -266,9 +266,9 @@ _Avoid_: missing check
 
 **Golden files**:
 The files of a machine that review reads, in the `spec/` directory of a
-suite: the spec as text (`.spec.txt`), Quint (`.qnt`) and Graphviz (`.dot`),
-and the text view of the first snapshot of each state with its path
-(`.views.txt`).
+suite: the spec as text (`.spec.txt`) and JSON (`.spec.json`), Quint (`.qnt`)
+and Graphviz (`.dot`), and the text view of the first snapshot of each state
+with its path (`.views.txt`).
 _Avoid_: snapshots, exports
 
 **Golden drift**:

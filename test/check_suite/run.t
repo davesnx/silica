@@ -189,7 +189,7 @@ Bad arguments print the usage and exit 3.
   $ FIXTURE=pass ./fixtures.exe --verbose
   check: unknown argument --verbose
   Usage:
-    main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR]
+    main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR] [--specs DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
     main.exe script ID TRACE_FILE [--output FILE] [--component EXPR] [--check EXPR]
@@ -217,6 +217,8 @@ Golden files: missing files are a finding until they are written.
   door: 3 states, 4 transitions
   golden-drift: The golden file spec/door.spec.txt differs from what the check found.
     the file is not there yet
+  golden-drift: The golden file spec/door.spec.json differs from what the check found.
+    the file is not there yet
   golden-drift: The golden file spec/door.qnt differs from what the check found.
     the file is not there yet
   golden-drift: The golden file spec/door.dot differs from what the check found.
@@ -230,6 +232,7 @@ Golden files: missing files are a finding until they are written.
   $ ls spec
   door.dot
   door.qnt
+  door.spec.json
   door.spec.txt
   door.views.txt
   $ cat spec/door.spec.txt spec/door.views.txt
@@ -270,6 +273,8 @@ edge, removed and added, and nothing else.
   golden-drift: The golden file spec/door.spec.txt differs from what the check found.
     removed edge locked -> closed on unlock
     added edge locked -> opened on unlock
+  golden-drift: The golden file spec/door.spec.json differs from what the check found.
+    follows the changes of door.spec.txt
   golden-drift: The golden file spec/door.qnt differs from what the check found.
     follows the changes of door.spec.txt
   golden-drift: The golden file spec/door.dot differs from what the check found.
@@ -293,10 +298,16 @@ edge, removed and added, and nothing else.
           "lines": [
             "follows the changes of door.spec.txt"
           ]
+        },
+        {
+  --
+          "lines": [
+            "follows the changes of door.spec.txt"
+          ]
         }
       ]
   $ FIXTURE=changed ./fixtures.exe golden spec --write | tail -3
-  golden: wrote 3 files into spec: door.spec.txt (changed), door.qnt (changed), door.dot (changed)
+  golden: wrote 4 files into spec: door.spec.txt (changed), door.spec.json (changed), door.qnt (changed), door.dot (changed)
   golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
   passed (exit 0)
   $ FIXTURE=changed ./fixtures.exe golden spec
@@ -315,6 +326,7 @@ A file that no entry makes is stale.
   $ ls spec
   door.dot
   door.qnt
+  door.spec.json
   door.spec.txt
   door.views.txt
 
@@ -443,3 +455,13 @@ A trace that does not read, or an unknown machine, is a setup error.
   $ FIXTURE=bug ./fixtures.exe script door traces/save_ignored_event_saved.jsonl
   script: no entry checks the machine door
   [3]
+
+With --specs DIR, a check also writes the spec of each machine as JSON, the
+same file as the golden one; silica check --graphs reads it.
+
+  $ FIXTURE=changed ./fixtures.exe --specs specs
+  door: 3 states, 4 transitions
+  passed (exit 0)
+  $ ls specs
+  door.spec.json
+  $ cmp specs/door.spec.json spec/door.spec.json

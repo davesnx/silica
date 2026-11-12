@@ -1,0 +1,43 @@
+{
+  "id": "me",
+  "init": "loading",
+  "states": [
+    {
+      "name": "loading",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/me"
+      ],
+      "held": []
+    },
+    {
+      "name": "failed",
+      "final": true,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "ready",
+      "final": true,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "loading",
+      "target": "failed",
+      "event": "loaded error",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "ready",
+      "event": "loaded ok",
+      "kept": false
+    }
+  ]
+}

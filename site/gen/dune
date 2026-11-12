@@ -1,6 +1,6 @@
 (executables
- (names docs_gen embed_gen facts_gen)
- (modules docs_gen embed_gen facts_gen)
+ (names docs_gen embed_gen)
+ (modules docs_gen embed_gen)
  (libraries odoc-parser str))
 
 (executable
@@ -12,3 +12,8 @@
  (name llms)
  (modules llms)
  (libraries odoc-parser compiler-libs.common))
+
+(executable
+ (name spec_gen)
+ (modules spec_gen)
+ (libraries silica silica.json))

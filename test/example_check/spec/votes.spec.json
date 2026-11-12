@@ -1,0 +1,29 @@
+{
+  "id": "votes",
+  "init": "watching",
+  "states": [
+    {
+      "name": "watching",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "live:votes"
+      ],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "watching",
+      "target": "watching",
+      "event": "reconnect",
+      "kept": false
+    },
+    {
+      "from": "watching",
+      "target": "watching",
+      "event": "update",
+      "kept": true
+    }
+  ]
+}

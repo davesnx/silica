@@ -1,0 +1,113 @@
+{
+  "id": "issue-list",
+  "init": "loading",
+  "states": [
+    {
+      "name": "loading",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/issues"
+      ],
+      "held": []
+    },
+    {
+      "name": "failed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "ready",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "live:issues"
+      ],
+      "held": [
+        "keys"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "failed",
+      "target": "loading",
+      "event": "retry",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "failed",
+      "event": "loaded error",
+      "kept": false
+    },
+    {
+      "from": "loading",
+      "target": "ready",
+      "event": "loaded ok",
+      "kept": false
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "create_key",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "cursor_next",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "cursor_previous",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "filter_open true",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "menu_open true",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "reconnect",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "reconnected",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "row_focused",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "toggle_group",
+      "kept": true
+    },
+    {
+      "from": "ready",
+      "target": "ready",
+      "event": "updated",
+      "kept": true
+    }
+  ]
+}

@@ -284,7 +284,7 @@ From [test/agents/loop.t]:
 
 From [test/agents/loop.t]:
 {@sh skip[
-  golden: wrote 4 files into check/spec: counter.spec.txt (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
+  golden: wrote 5 files into check/spec: counter.spec.txt (changed), counter.spec.json (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
   golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
   passed (exit 0)
 ]}

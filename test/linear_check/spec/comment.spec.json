@@ -1,0 +1,104 @@
+{
+  "id": "comment",
+  "init": "viewing",
+  "states": [
+    {
+      "name": "viewing",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "edited",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "editing",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "saving",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/comments/edit"
+      ],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "edited",
+      "target": "editing",
+      "event": "edit",
+      "kept": false
+    },
+    {
+      "from": "edited",
+      "target": "viewing",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "editing",
+      "event": "save",
+      "kept": true
+    },
+    {
+      "from": "editing",
+      "target": "editing",
+      "event": "typed",
+      "kept": true
+    },
+    {
+      "from": "editing",
+      "target": "saving",
+      "event": "save",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "viewing",
+      "event": "cancel",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "viewing",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "saving",
+      "target": "edited",
+      "event": "saved ok",
+      "kept": false
+    },
+    {
+      "from": "saving",
+      "target": "editing",
+      "event": "saved error",
+      "kept": false
+    },
+    {
+      "from": "saving",
+      "target": "viewing",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "viewing",
+      "target": "editing",
+      "event": "edit",
+      "kept": false
+    }
+  ]
+}

@@ -36,8 +36,8 @@ Docs for agents, as Markdown, in the Silica repository
   `silica script` writes evaluates its rule with the check.
 - `check/main.ml`: the suite of the model checker, one `Check_suite.entry`
   for each check of `Checks`. `check/spec/` holds the golden files of each machine:
-  its states and edges (`.spec.txt`) and the text view of each state
-  (`.views.txt`).
+  its states and edges (`.spec.txt`, and `.spec.json` for programs) and the
+  text view of each state (`.views.txt`).
 
 ## Commands
 
@@ -51,6 +51,9 @@ Run every command from this directory.
   `--traces DIR` writes a trace file for each violation. Exit code 0: passed;
   1: findings; 2: a check stopped at its state limit; 3: a setup error
   (stderr has the reason, such as a compile error).
+- Draw the machines: `silica check --graphs graphs` also writes, for each
+  machine, `graphs/<id>.svg` (the chart), `graphs/<id>.txt` (one fact per
+  line, the form to read) and `graphs/<id>.md` (Mermaid).
 - Run one entry: `dune exec ./check/main.exe -- --only ID`.
 - List the rules with their hints: `dune exec ./check/main.exe -- rules`.
 - Replay a trace: `silica replay ID FILE`. Make a test of it:

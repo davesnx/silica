@@ -7,17 +7,23 @@ type node = {
   final : bool;
   initial : bool;
   details : string list;
+  drift : bool;
 }
 
-type label = { lines : string list; center : float; bottom : float }
+type label = {
+  lines : string list;
+  center : float;
+  bottom : float;
+  width : float;
+}
 
 type edge = {
   from : string;
   target : string;
-  events : string list;
   points : (float * float) list;
   back : bool;
   label : label option;
+  drift : bool;
 }
 
 type t = {
@@ -26,6 +32,7 @@ type t = {
   height : float;
   nodes : node list;
   edges : edge list;
+  note : label option;
 }
 
 let name_character = 7.8
@@ -71,6 +78,9 @@ let wrap events =
        [] events
     )
 
+let caption_half lines =
+  (float_of_int (List.length lines) *. line_height /. 2.) +. label_room
+
 let text_width lines =
   List.fold_left
     (fun widest line ->
@@ -95,6 +105,7 @@ type route = {
   destination : int;
   events : string list;
   back : bool;
+  drift : bool;
 }
 
 let median values =
@@ -138,8 +149,32 @@ let isotonic values =
   done;
   result
 
-let layout (spec : Spec.t) =
-  let states = Array.of_list spec.states in
+let layout ?(observed = []) (spec : Spec.t) =
+  let in_spec name =
+    List.exists (fun (state : Spec.state) -> state.name = name) spec.states
+  in
+  let unknown =
+    List.fold_left
+      (fun found name ->
+        if in_spec name || List.mem name found then
+          found
+        else
+          found @ [ name ]
+      )
+      []
+      (List.concat_map (fun (source, target) -> [ source; target ]) observed)
+  in
+  let states =
+    Array.of_list
+      (spec.states
+      @ List.map
+          (fun name ->
+            { Spec.name; final = false; timers = []; sources = []; held = [] }
+          )
+          unknown
+      )
+  in
+  let checked = List.length spec.states in
   let count = Array.length states in
   let index name =
     let rec find position =
@@ -167,24 +202,61 @@ let layout (spec : Spec.t) =
          spec.edges
       )
   in
+  let arrows = Spec.arrows spec in
+  let drifted =
+    List.filter
+      (fun pair -> not (List.mem pair arrows))
+      (List.sort_uniq compare observed)
+  in
   let known =
     List.filter_map
-      (fun (source, destination) ->
+      (fun ((source, destination), drift) ->
         match (index source, index destination) with
         | Some source_index, Some destination_index ->
             Some
-              (source_index, destination_index, events_of (source, destination))
+              ( source_index,
+                destination_index,
+                events_of (source, destination),
+                drift
+              )
         | _ ->
             None
       )
-      (Spec.arrows spec)
+      (List.map (fun pair -> (pair, false)) arrows
+      @ List.map (fun pair -> (pair, true)) drifted
+      )
+  in
+  let every_edge =
+    match
+      List.filter_map
+        (fun (_, _, events, drift) ->
+          if drift then
+            None
+          else
+            Some events
+        )
+        known
+    with
+    | first :: _ :: _ :: _ as all
+      when first <> [] && List.for_all (( = ) first) all ->
+        first
+    | _ ->
+        []
+  in
+  let known =
+    if every_edge = [] then
+      known
+    else
+      List.map
+        (fun (source, destination, _, drift) -> (source, destination, [], drift))
+        known
   in
   let numbered = List.mapi (fun position edge -> (position, edge)) known in
   let loops =
     List.filter_map
-      (fun (position, (source, destination, events)) ->
+      (fun (position, (source, destination, events, drift)) ->
         if source = destination then
-          Some (position, source, events)
+          Some (position, source, events, drift)
         else
           None
       )
@@ -192,7 +264,7 @@ let layout (spec : Spec.t) =
   in
   let links =
     List.filter
-      (fun (_, (source, destination, _)) -> source <> destination)
+      (fun (_, (source, destination, _, _)) -> source <> destination)
       numbered
   in
   let visit_state = Array.make count 0 in
@@ -204,7 +276,7 @@ let layout (spec : Spec.t) =
     discovery.(state) <- !discovered;
     incr discovered;
     List.iter
-      (fun (position, (source, destination, _)) ->
+      (fun (position, (source, destination, _, _)) ->
         if source = state then
           match visit_state.(destination) with
           | 0 ->
@@ -223,13 +295,14 @@ let layout (spec : Spec.t) =
   done;
   let routes =
     List.map
-      (fun (position, (source, destination, events)) ->
+      (fun (position, (source, destination, events, drift)) ->
         {
           position;
           source;
           destination;
           events;
           back = List.mem position !backs;
+          drift;
         }
       )
       links
@@ -256,7 +329,7 @@ let layout (spec : Spec.t) =
   done;
   let loop_lines state =
     List.concat_map
-      (fun (_, source, events) ->
+      (fun (_, source, events, _) ->
         if source = state then
           wrap events
         else
@@ -265,7 +338,7 @@ let layout (spec : Spec.t) =
       loops
   in
   let has_loop state =
-    List.exists (fun (_, source, _) -> source = state) loops
+    List.exists (fun (_, source, _, _) -> source = state) loops
   in
   let node_size state =
     let details = Spec.details states.(state) in
@@ -331,11 +404,15 @@ let layout (spec : Spec.t) =
       (fun route ->
         let first = 2 * layer.(lower route)
         and last = 2 * layer.(upper route) in
+        let gaps = (last - first) / 2 in
         let caption_rank =
-          if route.back then
-            last - 1
-          else
-            first + 1
+          first + 1
+          + 2
+            *
+            if route.back then
+              (gaps - 1) / 2
+            else
+              gaps / 2
         in
         let middle =
           List.init
@@ -349,10 +426,8 @@ let layout (spec : Spec.t) =
                     kind = Caption route.position;
                     rank;
                     width = text_width lines;
-                    above =
-                      (float_of_int (List.length lines) *. line_height)
-                      +. label_room;
-                    below = label_room;
+                    above = caption_half lines;
+                    below = caption_half lines;
                   }
               else
                 add { kind = Bend; rank; width = 0.; above = 2.; below = 2. }
@@ -692,11 +767,13 @@ let layout (spec : Spec.t) =
             (fun item ->
               match items.(item).kind with
               | Caption _ ->
+                  let lines = wrap route.events in
                   Some
                     {
-                      lines = wrap route.events;
+                      lines;
                       center = center item;
-                      bottom = level.(item) -. label_room;
+                      bottom = level.(item) +. caption_half lines -. label_room;
+                      width = text_width lines;
                     }
               | State _ | Bend ->
                   None
@@ -707,7 +784,6 @@ let layout (spec : Spec.t) =
           {
             from = states.(route.source).name;
             target = states.(route.destination).name;
-            events = route.events;
             points =
               ( if route.back then
                   List.rev points
@@ -716,6 +792,7 @@ let layout (spec : Spec.t) =
               );
             back = route.back;
             label;
+            drift = route.drift;
           }
         )
       )
@@ -723,14 +800,13 @@ let layout (spec : Spec.t) =
   in
   let loop_edges =
     List.map
-      (fun (position, state, events) ->
+      (fun (position, state, events, drift) ->
         let _, height = sizes.(state) in
         let middle = center state and top = level.(state) -. (height /. 2.) in
         ( position,
           {
             from = states.(state).name;
             target = states.(state).name;
-            events;
             points =
               [
                 (middle -. loop_foot, top);
@@ -749,8 +825,10 @@ let layout (spec : Spec.t) =
                       lines = wrap events;
                       center = middle;
                       bottom = top -. loop_label;
+                      width = text_width (wrap events);
                     }
               );
+            drift;
           }
         )
       )
@@ -776,21 +854,51 @@ let layout (spec : Spec.t) =
           final = source.final;
           initial = source.name = spec.init;
           details = Spec.details source;
+          drift = state >= checked;
         }
     )
   in
-  let width =
+  let drawing_width =
     if ranks = 0 then
       start_margin +. margin
     else
       column_right (ranks - 1) +. margin
   in
+  let drawing_height = bottom -. top +. (2. *. margin) in
+  let note =
+    match every_edge with
+    | [] ->
+        None
+    | events ->
+        let lines = [ "every edge: " ^ String.concat ", " events ] in
+        let width = text_width lines in
+        Some
+          {
+            lines;
+            center = margin +. (width /. 2.);
+            bottom = drawing_height -. margin +. line_height +. 8.;
+            width;
+          }
+  in
   {
     machine = spec.id;
-    width;
-    height = bottom -. top +. (2. *. margin);
+    width =
+      ( match note with
+      | None ->
+          drawing_width
+      | Some note ->
+          Float.max drawing_width (note.width +. (2. *. margin))
+      );
+    height =
+      ( match note with
+      | None ->
+          drawing_height
+      | Some note ->
+          note.bottom +. margin
+      );
     nodes;
     edges;
+    note;
   }
 
 let round value = string_of_int (int_of_float (Float.round value))
@@ -802,7 +910,7 @@ let to_string t =
     (round t.height);
   List.iter
     (fun node ->
-      Printf.bprintf buffer "node %s %s %s %s%s%s\n" node.name
+      Printf.bprintf buffer "node %s %s %s %s%s%s%s\n" node.name
         (point (node.x, node.y))
         (round node.width) (round node.height)
         ( if node.initial then
@@ -815,13 +923,23 @@ let to_string t =
           else
             ""
         )
+        ( if node.drift then
+            " drift"
+          else
+            ""
+        )
     )
     t.nodes;
   List.iter
     (fun edge ->
-      Printf.bprintf buffer "edge %s -> %s%s %s%s\n" edge.from edge.target
+      Printf.bprintf buffer "edge %s -> %s%s%s %s%s\n" edge.from edge.target
         ( if edge.back then
             " back"
+          else
+            ""
+        )
+        ( if edge.drift then
+            " drift"
           else
             ""
         )
@@ -836,4 +954,11 @@ let to_string t =
         )
     )
     t.edges;
+  Option.iter
+    (fun note ->
+      Printf.bprintf buffer "note %s %s\n"
+        (point (note.center, note.bottom))
+        (String.concat " | " note.lines)
+    )
+    t.note;
   Buffer.contents buffer

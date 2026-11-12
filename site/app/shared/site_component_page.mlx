@@ -61,70 +61,11 @@ let section_heading ~slug ~anchor text =
     )
   </h2>
 
-let facts_view (facts : Site_facts.t) =
-  <div class_="grid gap-6 lg:grid-cols-2">
-    <div>
-      <h3 class_="mb-2 text-sm font-semibold">"States"</h3>
-      <ul
-        class_="divide-y divide-ui-border rounded-ui border border-ui-border \
-                text-sm">
-        (Node.list
-           (List.map
-              (fun (s : Site_facts.state) ->
-                <li
-                  class_="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 \
-                          py-2">
-                  <code class_="font-mono font-semibold">
-                    (Node.text s.name)
-                  </code>
-                  ( if s.name = facts.init then
-                      <span class_="text-xs text-ui-muted">"initial"</span>
-                    else
-                      Node.list []
-                  )
-                  ( if s.final then
-                      <span class_="text-xs text-ui-muted">"final"</span>
-                    else
-                      Node.list []
-                  )
-                  <span class_="font-mono text-xs text-ui-muted">
-                    (Node.text (String.concat ", " s.details))
-                  </span>
-                </li>
-              )
-              facts.states
-           )
-        )
-      </ul>
-    </div>
-    <div>
-      <h3 class_="mb-2 text-sm font-semibold">"Transitions"</h3>
-      <table class_="w-full text-left text-sm">
-        <thead class_="text-ui-muted">
-          <tr>
-            <th class_="py-1 pr-3 font-medium">"From"</th>
-            <th class_="py-1 pr-3 font-medium">"To"</th>
-            <th class_="py-1 font-medium">"Events"</th>
-          </tr>
-        </thead>
-        <tbody class_="font-mono">
-          (Node.list
-             (List.map
-                (fun (e : Site_facts.edge) ->
-                  <tr class_="border-t border-ui-border">
-                    <td class_="py-1.5 pr-3">(Node.text e.from)</td>
-                    <td class_="py-1.5 pr-3">(Node.text e.target)</td>
-                    <td class_="py-1.5 text-ui-muted">
-                      (Node.text (String.concat ", " e.events))
-                    </td>
-                  </tr>
-                )
-                facts.edges
-             )
-          )
-        </tbody>
-      </table>
-    </div>
+let chart_view chart =
+  <div
+    class_="overflow-x-auto rounded-ui border border-ui-border bg-ui-raised \
+            p-4 [&>div]:mx-0">
+    (Site_chart.view chart)
   </div>
 
 let story_view ~(entry : Site_catalog.entry) values (file, (story : Story.t)) =
@@ -266,21 +207,21 @@ let view slug state : event Node.t =
             <p class_="mt-3 font-mono text-sm text-ui-muted">
               (Node.text entry.info.modules)
             </p>
-            ( match entry.facts with
-            | Some facts ->
+            ( match entry.chart with
+            | Some chart ->
                 <section class_="mt-12">
                   (section_heading ~slug:entry.info.slug ~anchor:"statechart"
                      "Statechart"
                   )
                   <p class_="mb-4 max-w-[65ch] text-ui-muted">
                     (Node.text
-                       ("The states of the machine " ^ facts.machine
-                      ^ " and the events that move it, from the checker run in \
-                         test/ui_check."
+                       ("The states of the machine " ^ chart.machine
+                      ^ " and the events that move it, as the checker run in \
+                         test/ui_check found them."
                        )
                     )
                   </p>
-                  (facts_view facts)
+                  (chart_view chart)
                 </section>
             | None ->
                 Node.list []

@@ -1,0 +1,96 @@
+{
+  "id": "theme",
+  "init": "system",
+  "states": [
+    {
+      "name": "system",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "media"
+      ]
+    },
+    {
+      "name": "fixed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "fixed",
+      "target": "fixed",
+      "event": "choose high-contrast",
+      "kept": true
+    },
+    {
+      "from": "fixed",
+      "target": "fixed",
+      "event": "choose light",
+      "kept": true
+    },
+    {
+      "from": "fixed",
+      "target": "fixed",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "fixed",
+      "target": "system",
+      "event": "choose system",
+      "kept": false
+    },
+    {
+      "from": "fixed",
+      "target": "system",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "system",
+      "target": "fixed",
+      "event": "choose high-contrast",
+      "kept": false
+    },
+    {
+      "from": "system",
+      "target": "fixed",
+      "event": "choose light",
+      "kept": false
+    },
+    {
+      "from": "system",
+      "target": "fixed",
+      "event": "props",
+      "kept": false
+    },
+    {
+      "from": "system",
+      "target": "system",
+      "event": "choose system",
+      "kept": true
+    },
+    {
+      "from": "system",
+      "target": "system",
+      "event": "props",
+      "kept": true
+    },
+    {
+      "from": "system",
+      "target": "system",
+      "event": "system_dark false",
+      "kept": true
+    },
+    {
+      "from": "system",
+      "target": "system",
+      "event": "system_dark true",
+      "kept": true
+    }
+  ]
+}

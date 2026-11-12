@@ -1,0 +1,46 @@
+{
+  "id": "router",
+  "init": "/?new&status&assignee&priority&label&group&order",
+  "states": [
+    {
+      "name": "/?new&status&assignee&priority&label&group&order",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "/issue/:int",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "/?new&status&assignee&priority&label&group&order",
+      "target": "/?new&status&assignee&priority&label&group&order",
+      "event": "url changed",
+      "kept": true
+    },
+    {
+      "from": "/?new&status&assignee&priority&label&group&order",
+      "target": "/issue/:int",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/issue/:int",
+      "target": "/?new&status&assignee&priority&label&group&order",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/issue/:int",
+      "target": "/issue/:int",
+      "event": "url changed",
+      "kept": true
+    }
+  ]
+}

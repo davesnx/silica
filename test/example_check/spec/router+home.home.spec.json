@@ -1,0 +1,14 @@
+{
+  "id": "home",
+  "init": "home",
+  "states": [
+    {
+      "name": "home",
+      "final": true,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,104 @@
+{
+  "id": "counter",
+  "init": "counting",
+  "states": [
+    {
+      "name": "counting",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "save_failed",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "saved",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "saving",
+      "final": false,
+      "timers": [],
+      "sources": [
+        "/api/save"
+      ],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "counting",
+      "target": "counting",
+      "event": "decrement",
+      "kept": true
+    },
+    {
+      "from": "counting",
+      "target": "counting",
+      "event": "increment",
+      "kept": true
+    },
+    {
+      "from": "counting",
+      "target": "saving",
+      "event": "save",
+      "kept": false
+    },
+    {
+      "from": "save_failed",
+      "target": "counting",
+      "event": "decrement",
+      "kept": false
+    },
+    {
+      "from": "save_failed",
+      "target": "counting",
+      "event": "increment",
+      "kept": false
+    },
+    {
+      "from": "save_failed",
+      "target": "saving",
+      "event": "save",
+      "kept": false
+    },
+    {
+      "from": "saved",
+      "target": "counting",
+      "event": "decrement",
+      "kept": false
+    },
+    {
+      "from": "saved",
+      "target": "counting",
+      "event": "increment",
+      "kept": false
+    },
+    {
+      "from": "saving",
+      "target": "save_failed",
+      "event": "answered error",
+      "kept": false
+    },
+    {
+      "from": "saving",
+      "target": "save_failed",
+      "event": "answered rejected",
+      "kept": false
+    },
+    {
+      "from": "saving",
+      "target": "saved",
+      "event": "answered ok",
+      "kept": false
+    }
+  ]
+}

@@ -24,9 +24,11 @@ call.
   (`Site_story_sources`), so the source on a page is the compiled file.
 - `gen/`: build-time generators. `docs_gen` reads the `.mld` pages of `docs/`
   (the same files odoc builds) and fails on unknown markup or a dead link;
-  `embed_gen` embeds file text; `facts_gen` reads the statechart goldens of
-  `test/ui_check/spec/`; `landing_gen` runs the checker on the landing save
-  machine and writes the spec that the landing diagram draws.
+  `embed_gen` embeds file text; `landing_gen` runs the checker on the landing
+  save machine and writes its spec as JSON; `spec_gen` lays out that spec and
+  the `.spec.json` goldens of `test/ui_check/spec/` with
+  `Statechart_layout`, and writes the layouts as OCaml values, so the browser
+  only draws them with `Statechart_view`.
 - `client/`: the Melange entry, Tailwind and esbuild rules, `themes.css`.
 - `server/`: the page, the `/api/doc` endpoint and the endpoints of the live
   samples.

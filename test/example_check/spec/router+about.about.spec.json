@@ -1,0 +1,21 @@
+{
+  "id": "about",
+  "init": "about",
+  "states": [
+    {
+      "name": "about",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "about",
+      "target": "about",
+      "event": "go back",
+      "kept": true
+    }
+  ]
+}

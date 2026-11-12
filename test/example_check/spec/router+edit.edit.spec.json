@@ -1,0 +1,93 @@
+{
+  "id": "edit",
+  "init": "clean",
+  "states": [
+    {
+      "name": "clean",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "asking",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "block"
+      ]
+    },
+    {
+      "name": "dirty",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": [
+        "block"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "asking",
+      "target": "asking",
+      "event": "attempt",
+      "kept": true
+    },
+    {
+      "from": "asking",
+      "target": "asking",
+      "event": "save",
+      "kept": true
+    },
+    {
+      "from": "asking",
+      "target": "clean",
+      "event": "leave",
+      "kept": false
+    },
+    {
+      "from": "asking",
+      "target": "dirty",
+      "event": "stay",
+      "kept": false
+    },
+    {
+      "from": "clean",
+      "target": "clean",
+      "event": "save",
+      "kept": true
+    },
+    {
+      "from": "clean",
+      "target": "dirty",
+      "event": "draft",
+      "kept": false
+    },
+    {
+      "from": "dirty",
+      "target": "asking",
+      "event": "attempt",
+      "kept": false
+    },
+    {
+      "from": "dirty",
+      "target": "clean",
+      "event": "draft",
+      "kept": false
+    },
+    {
+      "from": "dirty",
+      "target": "clean",
+      "event": "save",
+      "kept": false
+    },
+    {
+      "from": "dirty",
+      "target": "dirty",
+      "event": "draft",
+      "kept": true
+    }
+  ]
+}

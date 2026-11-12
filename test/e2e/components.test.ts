@@ -406,7 +406,8 @@ describe("components: tooltip", () => {
 
   test("position: the popup is next to the trigger on the side from the props", async () => {
     const page = await open("tooltip");
-    await tabTo(page, "save-trigger");
+    await page.locator("#save-trigger").evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await page.locator("#save-trigger").focus();
     await page.locator("#save-popup[data-side]").waitFor();
     let t = await box(page, "#save-trigger");
     let p = await box(page, "#save-popup");

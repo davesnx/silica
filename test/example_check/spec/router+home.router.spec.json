@@ -1,0 +1,193 @@
+{
+  "id": "router",
+  "init": "/",
+  "states": [
+    {
+      "name": "/",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "/*",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "/about",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "/edit",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    },
+    {
+      "name": "/item/:int",
+      "final": false,
+      "timers": [],
+      "sources": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "/",
+      "target": "/",
+      "event": "url changed",
+      "kept": true
+    },
+    {
+      "from": "/",
+      "target": "/*",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/",
+      "target": "/about",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/",
+      "target": "/edit",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/",
+      "target": "/item/:int",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/*",
+      "target": "/",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/*",
+      "target": "/*",
+      "event": "url changed",
+      "kept": true
+    },
+    {
+      "from": "/*",
+      "target": "/about",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/*",
+      "target": "/edit",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/*",
+      "target": "/item/:int",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/about",
+      "target": "/",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/about",
+      "target": "/*",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/about",
+      "target": "/about",
+      "event": "url changed",
+      "kept": true
+    },
+    {
+      "from": "/about",
+      "target": "/edit",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/about",
+      "target": "/item/:int",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/edit",
+      "target": "/",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/edit",
+      "target": "/*",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/edit",
+      "target": "/about",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/edit",
+      "target": "/edit",
+      "event": "url changed",
+      "kept": true
+    },
+    {
+      "from": "/edit",
+      "target": "/item/:int",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/item/:int",
+      "target": "/",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/item/:int",
+      "target": "/*",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/item/:int",
+      "target": "/about",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/item/:int",
+      "target": "/edit",
+      "event": "url changed",
+      "kept": false
+    },
+    {
+      "from": "/item/:int",
+      "target": "/item/:int",
+      "event": "url changed",
+      "kept": true
+    }
+  ]
+}

@@ -163,6 +163,7 @@ them.
 
   $ silica check 2>&1 | grep -E '^(golden-drift|  hint|findings)'
   golden-drift: The golden file check/spec/counter.spec.txt differs from what the check found.
+  golden-drift: The golden file check/spec/counter.spec.json differs from what the check found.
   golden-drift: The golden file check/spec/counter.qnt differs from what the check found.
   golden-drift: The golden file check/spec/counter.dot differs from what the check found.
   golden-drift: The golden file check/spec/counter.views.txt differs from what the check found.
@@ -176,6 +177,7 @@ dune test says the same, and the page test still expects the old view.
   $ dune test 2>&1 | grep -E '^ *(golden-drift|added|removed|[+-] )|^view:'
   golden-drift: The golden file spec/counter.spec.txt differs from what the check found.
     added edge saved -> saving on save
+  golden-drift: The golden file spec/counter.spec.json differs from what the check found.
   golden-drift: The golden file spec/counter.qnt differs from what the check found.
   golden-drift: The golden file spec/counter.dot differs from what the check found.
   golden-drift: The golden file spec/counter.views.txt differs from what the check found.
@@ -198,6 +200,8 @@ test. Now everything passes.
   counter: 16 states, 49 transitions
   golden-drift: The golden file check/spec/counter.spec.txt differs from what the check found.
     added edge saved -> saving on save
+  golden-drift: The golden file check/spec/counter.spec.json differs from what the check found.
+    follows the changes of counter.spec.txt
   golden-drift: The golden file check/spec/counter.qnt differs from what the check found.
     follows the changes of counter.spec.txt
   golden-drift: The golden file check/spec/counter.dot differs from what the check found.
@@ -215,7 +219,7 @@ test. Now everything passes.
     changed the view of state saved, view 4
         +     button "Save" [press]
         -     button "Save" disabled [press]
-  golden: wrote 4 files into check/spec: counter.spec.txt (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
+  golden: wrote 5 files into check/spec: counter.spec.txt (changed), counter.spec.json (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
   golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
   passed (exit 0)
   $ sed 's/  button "Save" disabled \[press\]/  button "Save" [press]/' test/counter_page.ml > counter_page.ml.new

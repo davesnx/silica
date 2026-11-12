@@ -3741,6 +3741,8 @@ type node = {
   final : bool;
   initial : bool;
   details : string list;  (** {!Spec.details} of the state. *)
+  drift : bool;
+      (** The state is not in the spec: only an [observed] step names it. *)
 }
 ```
 
@@ -3749,6 +3751,7 @@ type label = {
   lines : string list;  (** The events, wrapped at about 24 characters. *)
   center : float;  (** The x of the middle of the lines. *)
   bottom : float;  (** The y under the last line. *)
+  width : float;  (** The width of the widest line, with a small margin. *)
 }
 ```
 
@@ -3756,7 +3759,6 @@ type label = {
 type edge = {
   from : string;
   target : string;
-  events : string list;
   points : (float * float) list;
       (** From the border of [from] to the border of [target]. Between two
           points with the same y the edge is a straight line; between two points
@@ -3765,7 +3767,15 @@ type edge = {
           ([from = target]) the four points are the start, the two control
           points and the end of one cubic curve above the node. *)
   back : bool;  (** The edge goes right to left, against the main direction. *)
-  label : label option;  (** [None] when the edge has no events. *)
+  label : label option;
+      (** [None] when the edge has no events, or when {!t.note} holds them. The
+          label of an edge between two states sits on the edge, in the middle
+          column of its path, centered on its horizontal part, so the line runs
+          into the label and out of it. The label of a self edge sits above its
+          loop. *)
+  drift : bool;
+      (** The edge is not an arrow of the spec: only an [observed] step took it.
+      *)
 }
 ```
 
@@ -3775,15 +3785,23 @@ type t = {
   width : float;
   height : float;
   nodes : node list;  (** In the order of the spec states. *)
-  edges : edge list;  (** In the order of {!Spec.arrows}. *)
+  edges : edge list;
+      (** In the order of {!Spec.arrows}, then the [drift] edges, sorted. *)
+  note : label option;
+      (** When every arrow of the spec has the same events, and there are three
+          arrows or more (the routers: ["url changed"] on each), the edges have
+          no label and the note says it once, as ["every edge: url changed"],
+          under the drawing. *)
 }
 ```
 
 ```ocaml
-val layout : Spec.t -> t
+val layout : ?observed:(string * string) list -> Spec.t -> t
 ```
 
-Layers by longest path after the back edges of a depth first search from the initial state are turned around. Edge labels and long edges get places of their own in the columns between the layers, so labels and edges do not cover nodes. The order in each column comes from barycenter sweeps and adjacent swaps that reduce crossings; heights come from the median of the neighbours. Edges whose states are not in the spec are left out.
+`observed` are the `(from, target)` of steps that entered a state at run time, such as the transition log gives. A pair that is not an arrow of the spec is drawn as a `drift` edge, and a state that the spec lacks as a `drift` node.
+
+Layers by longest path after the back edges of a depth first search from the initial state are turned around. Edge labels and long edges get places of their own in the columns between the layers, so labels and edges do not cover nodes. The order in each column comes from barycenter sweeps and adjacent swaps that reduce crossings; heights come from the median of the neighbours.
 
 ```ocaml
 val to_string : t -> string
@@ -3793,9 +3811,11 @@ One line for the size, each node and each edge, with positions rounded to whole 
 
 ## Silica.Statechart_view
 
-An SVG drawing of a `Statechart_layout.t`. Colors come from the silica-ui theme variables (`--ui-text`, `--ui-muted`, `--ui-border`, `--ui-surface`, `--ui-accent`, `--ui-accent-text`), with the light theme as fallback, so the same node works in a themed page and as a standalone SVG file (render it with `Render.to_string`).
+An SVG drawing of a `Statechart_layout.t`. Colors come from the silica-ui theme variables (`--ui-text`, `--ui-muted`, `--ui-border`, `--ui-surface`, `--ui-accent`, `--ui-accent-text`, `--ui-danger`), with the light theme as fallback, so the same node works in a themed page and as a standalone SVG file (render it with `Render.to_string`).
 
-Class names for styles and tests: `chart` on the `svg`; `chart-node` on each state group, with `is-active`, `is-final` and `is-initial`, and the state name in `data-state`; `chart-edge` on each edge group, with `is-taken` and `is-back`, and the states in `data-from` and `data-target`; `chart-start` on the start mark.
+Class names for styles and tests: `chart` on the `svg`; `chart-node` on each state group, with `is-active`, `is-final`, `is-initial` and `is-drift`, and the state name in `data-state`; `chart-edge` on each edge group, with `is-taken`, `is-back` and `is-drift`, and the states in `data-from` and `data-target`; `chart-start` on the start mark; `chart-note` on the `Statechart_layout.t.note`.
+
+The label of an edge between two states is drawn on a box of the surface color, so the line stops at the label and goes on after it. Drift nodes and edges (`Statechart_layout.layout` with `observed`) are dashed, in the danger color.
 
 ```ocaml
 val view :

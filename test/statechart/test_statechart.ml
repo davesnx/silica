@@ -303,7 +303,7 @@ let edges_avoid_nodes () =
 
 let labels_are_clear () =
   List.iter
-    (fun (name, _, (layout : Statechart_layout.t)) ->
+    (fun (name, (spec : Spec.t), (layout : Statechart_layout.t)) ->
       let labelled =
         List.filter_map
           (fun (edge : Statechart_layout.edge) ->
@@ -312,10 +312,22 @@ let labels_are_clear () =
           layout.edges
       in
       List.iter
-        (fun ((edge : Statechart_layout.edge), box) ->
-          if edge.events <> [] && edge.label = None then
+        (fun (edge : Statechart_layout.edge) ->
+          let named =
+            List.exists
+              (fun (label : Spec.label) ->
+                label.from = edge.from && label.target = edge.target
+                && (not label.kept) && label.event <> ""
+              )
+              spec.edges
+          in
+          if named && edge.label = None && layout.note = None then
             Alcotest.failf "%s: %s -> %s has no label" name edge.from
-              edge.target;
+              edge.target
+        )
+        layout.edges;
+      List.iter
+        (fun ((edge : Statechart_layout.edge), box) ->
           List.iter
             (fun (node : Statechart_layout.node) ->
               if overlaps box (node_box node) then
@@ -325,7 +337,9 @@ let labels_are_clear () =
             layout.nodes;
           List.iter
             (fun (other : Statechart_layout.edge) ->
-              if List.exists (overlaps box) (segment_boxes other) then
+              if
+                other != edge && List.exists (overlaps box) (segment_boxes other)
+              then
                 Alcotest.failf "%s: %s -> %s crosses the label of %s -> %s" name
                   other.from other.target edge.from edge.target
             )
@@ -343,6 +357,209 @@ let labels_are_clear () =
         (pairs labelled)
     )
     (layouts ())
+
+let occurrences pattern text =
+  let length = String.length pattern in
+  let rec count from total =
+    if from + length > String.length text then
+      total
+    else
+      count (from + 1)
+        ( if String.sub text from length = pattern then
+            total + 1
+          else
+            total
+        )
+  in
+  count 0 0
+
+let label_middle (label : Statechart_layout.label) =
+  label.bottom -. (7. *. float_of_int (List.length label.lines))
+
+let labels_on_their_edge () =
+  let seen = ref 0 in
+  List.iter
+    (fun (name, _, (layout : Statechart_layout.t)) ->
+      List.iter
+        (fun (edge : Statechart_layout.edge) ->
+          match edge.label with
+          | Some label when edge.from <> edge.target ->
+              incr seen;
+              let left = label.center -. (label.width /. 2.)
+              and right = label.center +. (label.width /. 2.) in
+              let rec carries = function
+                | (first_x, first_y) :: ((second_x, second_y) :: _ as rest) ->
+                    Float.abs (first_y -. second_y) < 0.01
+                    && Float.abs (first_y -. label_middle label) < 0.5
+                    && Float.min first_x second_x <= left +. 0.01
+                    && Float.max first_x second_x >= right -. 0.01
+                    || carries rest
+                | [ _ ] | [] ->
+                    false
+              in
+              if not (carries edge.points) then
+                Alcotest.failf "%s: the label of %s -> %s is not on its line"
+                  name edge.from edge.target
+          | _ ->
+              ()
+        )
+        layout.edges
+    )
+    (layouts ());
+  Alcotest.(check bool) "the goldens have labels" true (!seen > 50)
+
+let labels_in_the_middle () =
+  let seen = ref 0 in
+  List.iter
+    (fun (name, _, (layout : Statechart_layout.t)) ->
+      List.iter
+        (fun (edge : Statechart_layout.edge) ->
+          match edge.label with
+          | Some label when edge.from <> edge.target ->
+              let xs = List.map fst edge.points in
+              let low = List.fold_left Float.min Float.infinity xs
+              and high = List.fold_left Float.max Float.neg_infinity xs in
+              let columns =
+                List.sort_uniq Float.compare
+                  (List.filter_map
+                     (fun (node : Statechart_layout.node) ->
+                       let middle = node.x +. (node.width /. 2.) in
+                       if middle > low && middle < high then
+                         Some middle
+                       else
+                         None
+                     )
+                     layout.nodes
+                  )
+              in
+              if List.length columns >= 2 then (
+                incr seen;
+                let quarter = (high -. low) /. 4. in
+                if
+                  label.center < low +. quarter
+                  || label.center > high -. quarter
+                then
+                  Alcotest.failf
+                    "%s: the label of %s -> %s is not in the middle of its edge"
+                    name edge.from edge.target
+              )
+          | _ ->
+              ()
+        )
+        layout.edges
+    )
+    (layouts ());
+  Alcotest.(check bool) "the goldens have long labelled edges" true (!seen > 0)
+
+let shared_events_once () =
+  let routers =
+    List.filter
+      (fun (name, _, _) ->
+        name = "example_check/router" || name = "linear_check/router"
+      )
+      (layouts ())
+  in
+  Alcotest.(check int) "two routers" 2 (List.length routers);
+  List.iter
+    (fun (name, _, (layout : Statechart_layout.t)) ->
+      ( match layout.note with
+      | Some note ->
+          Alcotest.(check (list string))
+            name
+            [ "every edge: url changed" ]
+            note.lines;
+          if note.bottom > layout.height || note.center < 0. then
+            Alcotest.failf "%s: the note is outside the drawing" name
+      | None ->
+          Alcotest.failf "%s: no note" name
+      );
+      List.iter
+        (fun (edge : Statechart_layout.edge) ->
+          if edge.label <> None then
+            Alcotest.failf "%s: %s -> %s has a label" name edge.from edge.target
+        )
+        layout.edges
+    )
+    routers;
+  let _, _, toast =
+    List.find (fun (name, _, _) -> name = "ui_check/toast") (layouts ())
+  in
+  Alcotest.(check bool) "toast has no note" true (toast.note = None)
+
+let drift () =
+  let _, _, spec =
+    List.find (fun (name, _, _) -> name = "ui_check/toast") goldens
+  in
+  let arrows = Spec.arrows spec in
+  let kept = List.hd arrows in
+  let missing = ("paused", "expired") in
+  Alcotest.(check bool) "not an arrow" false (List.mem missing arrows);
+  let observed = [ ("ghost", "empty"); missing; kept; missing ] in
+  let layout = Statechart_layout.layout ~observed spec in
+  Alcotest.(check (list (pair string string)))
+    "the arrows, then the drift edges, sorted"
+    (arrows @ [ ("ghost", "empty"); missing ])
+    (List.map
+       (fun (edge : Statechart_layout.edge) -> (edge.from, edge.target))
+       layout.edges
+    );
+  Alcotest.(check (list string))
+    "drift edges"
+    [ "ghost -> empty"; "paused -> expired" ]
+    (List.filter_map
+       (fun (edge : Statechart_layout.edge) ->
+         if edge.drift then
+           Some (edge.from ^ " -> " ^ edge.target)
+         else
+           None
+       )
+       layout.edges
+    );
+  Alcotest.(check (list string))
+    "drift nodes" [ "ghost" ]
+    (List.filter_map
+       (fun (node : Statechart_layout.node) ->
+         if node.drift then
+           Some node.name
+         else
+           None
+       )
+       layout.nodes
+    );
+  List.iter
+    (fun (edge : Statechart_layout.edge) ->
+      if edge.drift && edge.label <> None then
+        Alcotest.failf "%s -> %s: a drift edge has a label" edge.from
+          edge.target
+    )
+    layout.edges;
+  List.iter
+    (fun ((first : Statechart_layout.node), (second : Statechart_layout.node))
+       ->
+      if overlaps (node_box first) (node_box second) then
+        Alcotest.failf "%s overlaps %s" first.name second.name
+    )
+    (pairs layout.nodes);
+  let plain = Statechart_layout.layout spec in
+  Alcotest.(check string)
+    "no observed steps, no change"
+    (Statechart_layout.to_string plain)
+    (Statechart_layout.to_string (Statechart_layout.layout ~observed:[] spec));
+  Alcotest.(check string)
+    "observed arrows change nothing"
+    (Statechart_layout.to_string plain)
+    (Statechart_layout.to_string
+       (Statechart_layout.layout ~observed:arrows spec)
+    );
+  let svg = Render.to_string (Statechart_view.view layout) in
+  Alcotest.(check int) "marked in the view" 3 (occurrences "is-drift" svg);
+  Alcotest.(check int)
+    "the ghost state" 1
+    (occurrences "class=\"chart-node is-drift\" data-state=\"ghost\"" svg);
+  Alcotest.(check int) "dashed" 3 (occurrences "stroke-dasharray" svg);
+  Alcotest.(check int)
+    "nothing marked without observed steps" 0
+    (occurrences "is-drift" (Render.to_string (Statechart_view.view plain)))
 
 let inner points =
   match points with
@@ -430,21 +647,6 @@ let deterministic () =
     )
     goldens
 
-let occurrences pattern text =
-  let length = String.length pattern in
-  let rec count from total =
-    if from + length > String.length text then
-      total
-    else
-      count (from + 1)
-        ( if String.sub text from length = pattern then
-            total + 1
-          else
-            total
-        )
-  in
-  count 0 0
-
 let view () =
   let _, _, spec =
     List.find (fun (name, _, _) -> name = "ui_check/toast") goldens
@@ -478,6 +680,22 @@ let view () =
     (occurrences "is-active" plain + occurrences "is-taken" plain);
   Alcotest.(check int) "one start mark" 1 (occurrences "chart-start" plain);
   Alcotest.(check int) "labels" 1 (occurrences ">focus true, hover true<" plain);
+  Alcotest.(check int)
+    "a box under each label of an edge between two states" 10
+    (occurrences "rx=\"3\"" plain);
+  Alcotest.(check int) "no note" 0 (occurrences "chart-note" plain);
+  let _, _, router =
+    List.find (fun (name, _, _) -> name = "linear_check/router") goldens
+  in
+  let router =
+    Render.to_string (Statechart_view.view (Statechart_layout.layout router))
+  in
+  Alcotest.(check int)
+    "the shared events once" 1
+    (occurrences "class=\"chart-note\"" router
+    * occurrences ">every edge: url changed<" router
+    );
+  Alcotest.(check int) "no edge label" 1 (occurrences "url changed" router);
   Alcotest.(check int) "details" 1 (occurrences ">after 100ms<" plain);
   Alcotest.(check int)
     "accessible name" 1
@@ -506,6 +724,10 @@ let () =
           Alcotest.test_case "edges on borders" `Quick edges_on_borders;
           Alcotest.test_case "edges avoid nodes" `Quick edges_avoid_nodes;
           Alcotest.test_case "labels are clear" `Quick labels_are_clear;
+          Alcotest.test_case "labels on their edge" `Quick labels_on_their_edge;
+          Alcotest.test_case "labels in the middle" `Quick labels_in_the_middle;
+          Alcotest.test_case "shared events once" `Quick shared_events_once;
+          Alcotest.test_case "drift" `Quick drift;
           Alcotest.test_case "two way pairs apart" `Quick two_way_pairs_apart;
           Alcotest.test_case "self edges apart" `Quick self_edges_apart;
           Alcotest.test_case "deterministic" `Quick deterministic;
