@@ -1,5 +1,8 @@
 # silica
 
+> [!WARNING]
+> silica is experimental.
+
 silica is a view framework for OCaml where all behaviour lives in statecharts. A component is a machine and a view.
 
 silica is also a model checker: it explores every state that a component can reach and verifies its properties, with no browser and before a user finds the bug.
@@ -11,17 +14,91 @@ silica is also a model checker: it explores every state that a component can rea
 - All browser actions and states are represented as state machines as well.
 - Machines can compose.
 
+## Example
+
+A button that saves a draft: it calls the server, shows the time of the save for two seconds, and goes back to idle.
+
+```ocaml
+open Silica
+
+(* The endpoint. The browser calls it and the server implements it. *)
+let save =
+  Remote.declare ~path:"/api/save" ~input:Codec.string ~output:Codec.string
+    ~rejected:Codec.string
+
+(* The events of the machine. *)
+type event = Save | Answer of (string, string) Remote.answer | Reset
+
+(* The states. [Saved] carries the time of the save. *)
+type state = Idle | Saving | Saved of string | Failed
+
+(* The state names, used by the checker, the traces and the diagrams. *)
+let name = function
+  | Idle -> "idle"
+  | Saving -> "saving"
+  | Saved _ -> "saved"
+  | Failed -> "failed"
+
+let machine =
+  Machine.make ~id:"save" ~init:Idle ~name
+    (* What runs in each state. The call runs while the machine is in
+       [Saving], and the timer while it is in [Saved]. Leaving the state
+       stops them. *)
+    ~during:(function
+      | Saving -> [ Remote.call save "draft" (fun answer -> Answer answer) ]
+      | Saved _ -> [ Source.after 2000 Reset ]
+      | Idle | Failed -> [])
+    (* The transitions. [Saving] ignores [Save], so a double click sends
+       one request. *)
+    (fun state event ->
+      match (state, event) with
+      | (Idle | Failed), Save -> Go Saving
+      | Saving, Answer (Ok time) -> Go (Saved time)
+      | Saving, Answer (Rejected _ | Failed _) -> Go Failed
+      | Saved _, Reset -> Go Idle
+      | _ -> Ignore)
+
+(* The view of each state. [on_press] takes an event value, so the
+   checker can list the events of a view. *)
+let view (state : state) : event Node.t =
+  <div>
+    (match state with
+     | Idle -> <button on_press=Save>"Save the draft"</button>
+     | Saving -> <button disabled=true>"Saving"</button>
+     | Saved time -> <p>(Node.text ("Saved at " ^ time))</p>
+     | Failed -> <button on_press=Save>"Not saved. Try again"</button>)
+  </div>
+
+let component = Component.make machine view
+```
+
+silica draws the statechart of this component from the code:
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  state "idle" as s0
+  state "failed" as s1
+  state "saved (after 2000ms)" as s2
+  state "saving (invoke /api/save)" as s3
+  [*] --> s0
+  s1 --> s3 : press button #quot;Not saved. Try again#quot;
+  s0 --> s3 : press button #quot;Save the draft#quot;
+  s2 --> s0 : after 2000ms
+  s3 --> s1 : failed /api/save, rejected /api/save
+  s3 --> s2 : ok /api/save
+```
+
 ## What this makes possible
 
 Every state of the app is encoded, so silica can be more than a view framework:
 
 - **A contract for AI agents**: an agent writes the machine, the model checker judges it, and you review the statechart diff, not the code.
+- **An app that agents can use**: silica can expose the events of a machine and the routes of the router as MCP tools, so an agent uses the app through its states and not through the screen.
 - **Design conformance**: check that the code follows the statechart of a design or a spec.
 - **Client and server monitoring**: a transition that the spec does not allow is an alert, and a funnel is a path in the graph.
 - **Whole-app diagrams**: the statechart of every component and route, drawn from the code, so it is never out of date.
 - **Tests from the graph**: every path is a test, and every reachable state is a story and a screenshot.
-
-silica is experimental.
 
 ## License
 
