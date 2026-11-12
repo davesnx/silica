@@ -1,6 +1,8 @@
 /.*
 !/.gitignore
 !/.dockerignore
+!/.devcontainer
+!/.github
 !/.ocamlformat
 _build/
 _opam

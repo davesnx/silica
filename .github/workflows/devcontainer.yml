@@ -1,0 +1,23 @@
+name: devcontainer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .devcontainer/Dockerfile
+      - .github/workflows/devcontainer.yml
+      - silica.opam
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - run: docker build -f .devcontainer/Dockerfile -t ghcr.io/davesnx/silica-devcontainer .
+      - run: docker push ghcr.io/davesnx/silica-devcontainer
