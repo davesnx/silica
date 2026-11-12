@@ -37,7 +37,8 @@ Docs for agents, as Markdown, in the Silica repository
 
 Run every command from this directory.
 
-- Build: `dune build`. Test: `dune test`. Format: `dune fmt`.
+- Build: `dune build`. Test: `dune test`. Format: `dune fmt` (it exits 1
+  when it rewrote a file; then `dune build @fmt` must pass).
 - Check the machines: `silica check`; `silica check --json` for a report that
   a program reads; `--traces DIR` writes a trace file for each violation.
   Exit code 0: passed; 1: findings; 2: a check stopped at its state limit;

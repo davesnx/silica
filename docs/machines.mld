@@ -211,7 +211,10 @@ timer or an answer of a left state never arrives.
 
 Each source has a key ({!Silica.Source.key}): the path and the input of a
 call, the topic and key of a subscription, the delay of a timer. After each
-step, the machine compares the keys of the old and the new list. It stops the
+step, the machine compares the keys of the old and the new list. Each key
+starts with the name of the state, so a step to a state with another name
+stops every source and starts the sources of the new state, even the ones
+that look the same. It stops the
 sources whose key went away and starts the new ones. The other sources keep
 running. So a state can own a set of calls that changes with its data, and a
 call whose input changes starts again. See {!page-actions} for the sources.

@@ -32,7 +32,7 @@ The commands:
 
 2. **Change the machine and the view.** See [Write the machine](verification.md#write-the-machine).
 
-3. **Run the suite.** `silica check --json --traces traces > report.json`. Read the exit code first. 0: go to step 8. 1: read the findings. 2: the search stopped at its state limit; bound it (see `state-limit` in [the rules](verification.md#the-rules)). 3: a setup error; read stderr, which has the compiler errors when `check/main.exe` does not build.
+3. **Run the suite.** `silica check --json --traces traces > report.json`. Read the exit code first. 0: go to step 8, but on the first run of a new property, prove that it can fail first: break the machine once in a way the requirement forbids, see the suite exit 1, make the red tests of step 5 from those traces, then undo the break. 1: read the findings. 2: the search stopped at its state limit; bound it (see `state-limit` in [the rules](verification.md#the-rules)). 3: a setup error; read stderr, which has the compiler errors when `check/main.exe` does not build.
 
 4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](verification.md#the-rules). Also read `unreached` and the top-level `unchecked` and `errors`.
 
@@ -41,12 +41,14 @@ The commands:
    - The printed test is formatted with the `.ocamlformat` of the app when `ocamlformat` is installed, so `dune build @fmt` passes on it. Do not edit its last line, the assertion.
    - A test that compares a whole view, such as the `Expect.string "view"` in `test/counter_page.ml`, fails in this `dune test` too when your change changed that view; it prints the lines that differ, `-` expected and `+` got. When the difference is the change you want, update the expected text in step 8; when it is not, it is one more bug to fix.
    - A step that types into a field is a step of the script: see [Type into a field](verification.md#type-into-a-field).
+   - The last line asserts what the trace showed, not the property itself. `Check_expect.not_view` fails while the page shows the view where the property broke, so any other view passes it. Keep the property in the suite, and test the behaviour you want in a page test too.
+   - A child with props (see [Check a parent with its children](verification.md#check-a-parent-with-its-children)) needs its props codec registered before the script runs and before the generated test mounts the page; call the same registration at the start of the generated test.
 
 6. **Fix the machine or the view.** Follow the hint. Do not remove the property, lower a bound or add an allowance to make a finding go away; an allowance is right only for the cases in the table.
 
 7. **Run the suite again.** `silica check` must exit 0, and the red test must pass. Keep the test.
 
-8. **Run the tests.** `dune test`. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then the files it wrote, a line that says the golden files now match, and `passed (exit 0)`. If not, fix the code. Update each test that expects the old behaviour, such as a test that compares a whole view.
+8. **Run the tests.** `dune test`. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then the files it wrote, a line that says the golden files now match, and `passed (exit 0)`. It lists only the files that changed. If not, fix the code. `<id>.views.txt` holds one view for each state name: the first one the search reached. Another view of the same state, such as the view with an error message, is not in it, so cover it in a page test. Update each test that expects the old behaviour, such as a test that compares a whole view.
 
 9. **Finish.** `dune build`, `dune test` and `dune build @fmt` all pass with no output. `report.json` and `traces/` are the output of one run, and the `.gitignore` of `silica new` leaves them out; the red tests you kept hold the steps. A new `silica check --traces traces` removes the trace files of a check that it no longer writes.
 
@@ -54,7 +56,7 @@ The commands:
 
 - Put behaviour in the machine. A view only reads the state and names events.
 - Disable each element whose event the state does not handle: `disabled=(not (Machine.can machine () state Event))`. The checker offers no event of a disabled element, and `Silica_memory` refuses to press it.
-- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
+- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. The state name is part of that key: a step to a state with another name stops every source of the old state and starts the sources of the new one, even when both own the same `Source.after 3000 Expire`. To keep a timer running across a change, such as a row that asks for confirmation while it shows "New", keep the change as data inside one state. `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
 
 From `docs/examples/shared/doc_debounce.mlx`:
 
@@ -376,7 +378,18 @@ From `test/agents/loop.t`:
   >     (Accessibility.elements view)
 ```
 
+For text with no role, such as a message in a `<p>`, search for it in `Silica.View_text.to_string`` view`. The standard library has no substring search, so write a small helper.
+
 Give each property a `hint` that says what to change; `{state}` in it is the name of the failing state.
+
+## Check a parent with its children
+
+To check a parent with a child component, list the child in `children` of the entry: `Check.component ~children:[ Check.child Row.component ] ...`. The child runs inside the check of the parent; each instance gets the props of its node in the view of the parent, so `Check.child` takes no props. See [Children](checker.md#children) for the bounds.
+
+- The entry id becomes the parent and the child joined by `"+"`, and so do the golden files: `counter.spec.txt` becomes `counter+saved-row.counter.spec.txt` and `counter+saved-row.saved-row.spec.txt`. `golden --write` writes the new names and removes the old files.
+- The traces of a child carry its props only when the child machine has a props codec: `Silica.Machine.register_codecs Row.machine ~props:Silica.Codec.int ()`. Without it, `silica script` exits 1 with "the trace has no props of ...". Put the call in a module of the app, call it first in `check/main.ml` and in each test that mounts the page.
+- At most `max_instances` instances of a child run (default 2); a further instance is listed in `not_explored`, such as "component saved-row (instances 3 to 3 not run)".
+- Check the child alone too, with its own entry and `~props`, for the properties that read its steps.
 
 ## Write a test with Silica_memory
 
