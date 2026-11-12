@@ -11,15 +11,60 @@ let report name (report : _ Check.report) =
     report.states report.transitions
     (String.concat "; " report.not_explored)
 
-let router_report = lazy (router ())
+let slot () = ref None
+
+let router_slot = slot ()
+let list_slot = slot ()
+let detail_slot = slot ()
+let create_slot = slot ()
+let create_dialog_slot = slot ()
+let unsaved_slot = slot ()
+let me_slot = slot ()
+let comments_slot = slot ()
+let composer_slot = slot ()
+let comment_slot = slot ()
+
+let suite_result =
+  lazy
+    ( Linear_codecs.register ();
+      let keep cell report = cell := Some report in
+      let result =
+        Check_suite.run
+          (suite ~router:(keep router_slot) ~list:(keep list_slot)
+             ~detail:(keep detail_slot) ~create:(keep create_slot)
+             ~create_dialog:(keep create_dialog_slot)
+             ~unsaved:(keep unsaved_slot) ~me:(keep me_slot)
+             ~comments:(keep comments_slot) ~composer:(keep composer_slot)
+             ~comment:(keep comment_slot) ()
+          )
+      in
+      let program = Sys.argv.(0) in
+      Sys.argv.(0) <- "main.exe";
+      Fun.protect
+        ~finally:(fun () -> Sys.argv.(0) <- program)
+        (fun () -> Check_suite.golden "spec" result)
+    )
+
+let from_suite name cell =
+  ignore (Lazy.force suite_result);
+  match !cell with
+  | Some report ->
+      report
+  | None ->
+      Alcotest.failf "the suite did not run the check of %s" name
+
+let test_suite () =
+  let result = Lazy.force suite_result in
+  if Check_suite.exit_code result <> 0 then
+    Alcotest.fail (Format.asprintf "%a" Check_suite.pp result)
 
 let children () =
-  let report = Lazy.force router_report in
+  let report = from_suite "the router" router_slot in
   passed report;
   report.children
 
 let test_router () =
-  let routed = Lazy.force router_report in
+  let routed = from_suite "the router" router_slot in
   report "router" routed;
   let { Check.states; transitions; not_explored; _ } = routed in
   Alcotest.(check bool) "explored something" true (states > 1 && transitions > 1);
@@ -50,16 +95,7 @@ let test_props_from_the_router () =
        )
     )
 
-let test_list () = report "list" (list ())
-
-let test_detail () =
-  report "detail"
-    (detail ~props:(Check.props (children ()) Linear_detail.component) ())
-
-let create_report () =
-  create ~props:(Check.props (children ()) Linear_create.component) ()
-
-let test_create () = report "create" (create_report ())
+let create_report () = from_suite "create" create_slot
 
 let test_create_dialog () =
   let create_report = create_report () in
@@ -72,7 +108,7 @@ let test_create_dialog () =
      sending"
     [ "props busy"; "props closed"; "props open" ]
     (List.sort_uniq compare (List.map dialog_props_label props));
-  report "create dialog" (create_dialog ~props ())
+  report "create dialog" (from_suite "create dialog" create_dialog_slot)
 
 let test_create_reaches_submitting () =
   let never =
@@ -120,11 +156,9 @@ let test_create_reaches_submitting () =
       Alcotest.fail (print_report report)
 
 let test_me () =
-  let me_report = me () in
+  let me_report = from_suite "me" me_slot in
   report "me" me_report;
   Alcotest.(check int) "loading, ready, failed" 3 me_report.states
-
-let alone name check () = report name (check ())
 
 let spec name (report : _ Check.report) =
   if not (Check.passed report) then
@@ -141,11 +175,6 @@ let test_comment_of_another_author () =
         unreached
   | _ ->
       Alcotest.fail (print_report report)
-
-let list_report = lazy (list ())
-
-let detail_report =
-  lazy (detail ~props:(Check.props (children ()) Linear_detail.component) ())
 
 let round_trip_path_events name machine (report : _ Check.report) =
   let codec =
@@ -213,14 +242,17 @@ let test_every_machine_registered () =
 
 let test_codecs () =
   Linear_codecs.register ();
-  round_trip_path_events "list" Linear_list.machine (Lazy.force list_report);
+  round_trip_path_events "list" Linear_list.machine (from_suite "list" list_slot);
   round_trip_path_events "detail" Linear_detail.machine
-    (Lazy.force detail_report);
+    (from_suite "detail" detail_slot);
   round_trip_path_events "create" Linear_create.machine (create_report ());
-  round_trip_path_events "me" Linear_me.machine (me ());
-  round_trip_path_events "comments" Linear_comments.machine (comments ());
-  round_trip_path_events "composer" Linear_composer.machine (composer ());
-  round_trip_path_events "comment" Linear_comment.machine (comment ());
+  round_trip_path_events "me" Linear_me.machine (from_suite "me" me_slot);
+  round_trip_path_events "comments" Linear_comments.machine
+    (from_suite "comments" comments_slot);
+  round_trip_path_events "composer" Linear_composer.machine
+    (from_suite "composer" composer_slot);
+  round_trip_path_events "comment" Linear_comment.machine
+    (from_suite "comment" comment_slot);
   round_trip_states "me" Linear_me.machine
     Linear_me.[ Loading; Ready Linear_model.User.Ada; Failed ];
   round_trip_states "comments" Linear_comments.machine
@@ -258,27 +290,19 @@ let test_codecs () =
 
 let test_lint () =
   let open Silica in
-  let create_report = create_report () in
   let issues =
     List.concat_map Spec.lint
       [
-        spec "router" (Lazy.force router_report);
-        spec "list" (Lazy.force list_report);
-        spec "detail" (Lazy.force detail_report);
-        spec "create" create_report;
-        spec "create dialog"
-          (create_dialog
-             ~props:
-               (Check.props create_report.children
-                  Linear_create.dialog_component.component
-               )
-             ()
-          );
-        spec "me" (me ());
-        spec "comments" (comments ());
-        spec "composer" (composer ());
-        spec "comment" (comment ());
-        spec "unsaved" (unsaved ());
+        spec "router" (from_suite "router" router_slot);
+        spec "list" (from_suite "list" list_slot);
+        spec "detail" (from_suite "detail" detail_slot);
+        spec "create" (create_report ());
+        spec "create dialog" (from_suite "create dialog" create_dialog_slot);
+        spec "me" (from_suite "me" me_slot);
+        spec "comments" (from_suite "comments" comments_slot);
+        spec "composer" (from_suite "composer" composer_slot);
+        spec "comment" (from_suite "comment" comment_slot);
+        spec "unsaved" (from_suite "unsaved" unsaved_slot);
       ]
   in
   Alcotest.(check (list string))
@@ -296,24 +320,18 @@ let () =
     [
       ( "mini linear",
         [
+          Alcotest.test_case "the suite passes and matches its golden files"
+            `Quick test_suite;
           Alcotest.test_case "router" `Quick test_router;
           Alcotest.test_case "props from the router" `Quick
             test_props_from_the_router;
-          Alcotest.test_case "list alone" `Quick test_list;
           Alcotest.test_case "list toasts, three saves" `Quick (fun () ->
               report "list toasts" (list_toasts ())
           );
-          Alcotest.test_case "detail alone" `Quick test_detail;
-          Alcotest.test_case "unsaved alone" `Quick (alone "unsaved" unsaved);
-          Alcotest.test_case "create alone" `Quick test_create;
           Alcotest.test_case "create dialog alone" `Quick test_create_dialog;
           Alcotest.test_case "a send is reachable" `Quick
             test_create_reaches_submitting;
           Alcotest.test_case "me alone" `Quick test_me;
-          Alcotest.test_case "comments alone" `Quick (alone "comments" comments);
-          Alcotest.test_case "composer alone" `Quick (alone "composer" composer);
-          Alcotest.test_case "comment alone" `Quick
-            (alone "comment" (fun () -> comment ()));
           Alcotest.test_case "a comment of another author" `Quick
             test_comment_of_another_author;
           Alcotest.test_case "every machine passes lint" `Quick test_lint;

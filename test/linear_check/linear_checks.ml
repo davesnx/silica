@@ -158,8 +158,6 @@ let router_check () =
     ~url_event:(fun u -> Silica.Router.Url_changed u)
     Linear_app.app
 
-let router () = Check.run (router_check ())
-
 let shown_view view =
   let value id =
     List.find_map
@@ -343,8 +341,6 @@ let list_check () =
     ~properties:(properties @ list_temporal)
     Linear_list.component
 
-let list () = Check.run (list_check ())
-
 let list_toasts_check () =
   let open Linear_list in
   Check.component ~max_states:400_000
@@ -439,8 +435,6 @@ let detail_check ~props () =
     ~properties:(properties @ detail_temporal)
     Linear_detail.component
 
-let detail ~props () = Check.run (detail_check ~props ())
-
 let unsaved_check () =
   let open Linear_unsaved in
   let properties =
@@ -456,8 +450,6 @@ let unsaved_check () =
     ]
   in
   Check.component ~properties Linear_unsaved.component
-
-let unsaved () = Check.run (unsaved_check ())
 
 let pp_create_props f ({ create; view } : Linear_routes.issues) =
   Format.fprintf f "props %b%s" create
@@ -589,14 +581,10 @@ let dialog_props_label :
 let create_dialog_check ~props () =
   Check.component ~props Linear_create.dialog_component.component
 
-let create_dialog ~props () = Check.run (create_dialog_check ~props ())
-
 let me_check () =
   Check.component
     ~samples:[ Check.answers me_endpoint [ User.Ada ] ]
     Linear_me.component
-
-let me () = Check.run (me_check ())
 
 let a_comment ?(author = User.Ada) id body : Comment.t =
   { id; number = 1; author; body; created_at = 0; edited = false }
@@ -641,8 +629,6 @@ let comments_check () =
       ]
     ~properties Linear_comments.component
 
-let comments () = Check.run (comments_check ())
-
 let composer_check () =
   let properties =
     [
@@ -666,8 +652,6 @@ let composer_check () =
           [ a_comment 3 "x" ];
       ]
     ~properties Linear_composer.component
-
-let composer () = Check.run (composer_check ())
 
 let mine = a_comment 1 "Mine"
 
@@ -832,3 +816,77 @@ let comments_with_rows () =
           Linear_composer.component;
       ]
     Linear_comments.component
+
+let kept ?keep ?dependents check =
+  match keep with
+  | None ->
+      Check_suite.entry ?dependents check
+  | Some keep ->
+      Check_suite.entry check ~dependents:(fun report ->
+          keep report;
+          Option.fold ~none:[] ~some:(fun make -> make report) dependents
+      )
+
+let suite ?router ?detail ?create ?create_dialog ?list ?unsaved ?me ?comments
+    ?composer ?comment () =
+  [
+    kept ?keep:router (router_check ()) ~dependents:(fun routed ->
+        [
+          kept ?keep:detail
+            (detail_check
+               ~props:(Check.props routed.children Linear_detail.component)
+               ()
+            );
+          kept ?keep:create
+            (create_check
+               ~props:(Check.props routed.children Linear_create.component)
+               ()
+            )
+            ~dependents:(fun created ->
+              [
+                kept ?keep:create_dialog
+                  (create_dialog_check
+                     ~props:
+                       (Check.props created.children
+                          Linear_create.dialog_component.component
+                       )
+                     ()
+                  );
+              ]
+            );
+          Check_suite.entry
+            (create_with_dialog
+               ~props:(Check.props routed.children Linear_create.component)
+               ()
+            );
+        ]
+    );
+    Check_suite.entry (router_with_list ());
+    Check_suite.entry (router_with_detail ());
+    Check_suite.entry (router_with_create ());
+    Check_suite.entry (comments_with_rows ());
+    kept ?keep:list (list_check ());
+    kept ?keep:unsaved (unsaved_check ());
+    kept ?keep:me (me_check ());
+    kept ?keep:comments (comments_check ());
+    kept ?keep:composer (composer_check ());
+    kept ?keep:comment (comment_check ());
+    Check_suite.elsewhere ~machine:"command-menu"
+      ~reason:"a Silica_ui component, checked in test/ui_check";
+    Check_suite.elsewhere ~machine:"menu"
+      ~reason:"a Silica_ui component, checked in test/ui_check";
+    Check_suite.elsewhere ~machine:"select"
+      ~reason:"a Silica_ui component, checked in test/ui_check";
+    Check_suite.elsewhere ~machine:"theme"
+      ~reason:"a Silica_ui component, checked in test/ui_check";
+    Check_suite.elsewhere ~machine:"toast"
+      ~reason:"a Silica_ui component, checked in test/ui_check";
+    Check_suite.elsewhere ~machine:"issue-filter-content"
+      ~reason:
+        "a Silica_ui.Popover with another id, checked as filter-popover in \
+         test/ui_check";
+    Check_suite.elsewhere ~machine:"labels-picker-content"
+      ~reason:
+        "a Silica_ui.Popover with another id, checked as filter-popover in \
+         test/ui_check";
+  ]

@@ -54,73 +54,117 @@ let component_of entry =
       None
 
 let run ?only entries =
-  let ran = ref [] in
-  let errors = ref [] in
-  let elsewhere = ref [] in
-  let seen = ref [] in
   let selected id =
     match only with None -> true | Some ids -> List.mem id ids
   in
-  let unseen () =
-    match only with
-    | None ->
-        false
-    | Some ids ->
-        List.exists (fun id -> not (List.mem id !seen)) ids
-  in
-  let error ?id message = errors := { id; message } :: !errors in
-  let rec go entries =
-    List.iter
-      (function
-        | Elsewhere { machine; reason } ->
-            elsewhere := (machine, reason) :: !elsewhere
-        | Entry { check; dependents } -> (
-            match safe_id check with
-            | Error message ->
-                error message
-            | Ok id -> (
-                let wanted = selected id in
-                if wanted then seen := id :: !seen;
-                if wanted || (Option.is_some dependents && unseen ()) then
-                  match Check.run check with
-                  | report -> (
-                      if wanted then ran := Ran { check; report } :: !ran;
-                      match
-                        Option.fold ~none:[]
-                          ~some:(fun make -> make report)
-                          dependents
-                      with
-                      | children ->
-                          go children
-                      | exception exn ->
-                          error ~id
-                            ("the dependents of " ^ id ^ " raised "
-                           ^ Printexc.to_string exn
-                            )
-                    )
-                  | exception Check.Invalid_check message ->
-                      error ~id message
-                  | exception exn ->
-                      error ~id ("the check raised " ^ Printexc.to_string exn)
-              )
-          )
-        )
-      entries
-  in
-  go entries;
-  ( match only with
-  | Some ids ->
+  let walk entries =
+    let ran = ref [] in
+    let errors = ref [] in
+    let elsewhere = ref [] in
+    let seen = ref [] in
+    let unseen () =
+      match only with
+      | None ->
+          false
+      | Some ids ->
+          List.exists (fun id -> not (List.mem id !seen)) ids
+    in
+    let error ?id message = errors := { id; message } :: !errors in
+    let rec go entries =
       List.iter
-        (fun id ->
-          if not (List.mem id !seen) then
-            error ("no entry checks the machine " ^ id)
-        )
-        ids
-  | None ->
-      ()
-  );
-  let ran = List.rev !ran in
-  let elsewhere = List.rev !elsewhere in
+        (function
+          | Elsewhere { machine; reason } ->
+              elsewhere := (machine, reason) :: !elsewhere
+          | Entry { check; dependents } -> (
+              match safe_id check with
+              | Error message ->
+                  error message
+              | Ok id -> (
+                  let wanted = selected id in
+                  if wanted then seen := id :: !seen;
+                  if wanted || (Option.is_some dependents && unseen ()) then
+                    match Check.run check with
+                    | report -> (
+                        if wanted then ran := Ran { check; report } :: !ran;
+                        match
+                          Option.fold ~none:[]
+                            ~some:(fun make -> make report)
+                            dependents
+                        with
+                        | children ->
+                            go children
+                        | exception exn ->
+                            error ~id
+                              ("the dependents of " ^ id ^ " raised "
+                             ^ Printexc.to_string exn
+                              )
+                      )
+                    | exception Check.Invalid_check message ->
+                        error ~id message
+                    | exception exn ->
+                        error ~id ("the check raised " ^ Printexc.to_string exn)
+                )
+            )
+          )
+        entries
+    in
+    go entries;
+    ( match only with
+    | Some ids ->
+        List.iter
+          (fun id ->
+            if not (List.mem id !seen) then
+              error ("no entry checks the machine " ^ id)
+          )
+          ids
+    | None ->
+        ()
+    );
+    (List.rev !ran, List.rev !errors, List.rev !elsewhere)
+  in
+  let parts =
+    match only with
+    | Some _ ->
+        [ walk entries ]
+    | None ->
+        let items = Array.of_list entries in
+        let results = Array.make (Array.length items) (Ok ([], [], [])) in
+        let next = Atomic.make 0 in
+        let rec work () =
+          let index = Atomic.fetch_and_add next 1 in
+          if index < Array.length items then (
+            results.(index) <-
+              ( match walk [ items.(index) ] with
+              | part ->
+                  Ok part
+              | exception exn ->
+                  Error exn
+              );
+            work ()
+          )
+        in
+        let helpers =
+          List.init
+            (max 0
+               (min
+                  (min (Domain.recommended_domain_count ()) 8)
+                  (Array.length items)
+               - 1
+               )
+            )
+            (fun _ -> Domain.spawn work)
+        in
+        work ();
+        List.iter Domain.join helpers;
+        Array.to_list
+          (Array.map
+             (function Ok part -> part | Error exn -> raise exn)
+             results
+          )
+  in
+  let ran = List.concat_map (fun (ran, _, _) -> ran) parts in
+  let errors = List.concat_map (fun (_, errors, _) -> errors) parts in
+  let elsewhere = List.concat_map (fun (_, _, elsewhere) -> elsewhere) parts in
   let unchecked =
     match only with
     | Some _ ->
@@ -159,7 +203,7 @@ let run ?only entries =
     trace_files = [];
     unchecked;
     elsewhere;
-    errors = List.rev !errors;
+    errors;
     golden = None;
   }
 

@@ -1174,9 +1174,12 @@ let rules_of (type n e ev) (model : (n, _, ev, e) Check_model.model) properties
     else
       [ Check_rules.finding "dead-end" ]
   in
+  let accessibility = Hashtbl.create 64 in
   [
     ("view", fun _ view _ _ -> Check_rules.view_rules view);
-    ("view", fun _ view _ _ -> Check_accessibility.view_rules view);
+    ( "view",
+      fun _ view _ _ -> Check_accessibility.view_rules ~memo:accessibility view
+    );
     ("view", dead_end);
     ("machine", fun node view _ _ -> model.state_rules node view);
     ( "child",

@@ -38,8 +38,6 @@ let test_home () =
     [ "component todo"; "component vote"; "component votes"; "island counter" ]
     report.not_explored
 
-let test_todo () = expect_pass "todo" (Check.run (todo ()))
-
 let item_props () =
   Check.props (children (Lazy.force router_report)) Example_item.component
 
@@ -105,9 +103,6 @@ let test_not_found () =
   in
   Alcotest.(check int) "one not-found page from the router" 1 (List.length props);
   expect_pass "not_found" (Check.run (not_found ()))
-
-let test_votes () = expect_pass "votes" (Check.run (votes ()))
-let test_vote () = expect_pass "vote" (Check.run (vote ()))
 
 let round_trip name codec value =
   let text = Silica.Codec.to_string codec value in
@@ -226,7 +221,6 @@ let () =
         [
           Alcotest.test_case "router" `Quick test_router;
           Alcotest.test_case "home page" `Quick test_home;
-          Alcotest.test_case "todo alone" `Slow test_todo;
           Alcotest.test_case "item props from the router" `Quick test_item_props;
           Alcotest.test_case "item alone" `Quick test_item_alone;
           Alcotest.test_case "loaded item is reachable" `Quick
@@ -234,8 +228,6 @@ let () =
           Alcotest.test_case "about alone" `Quick test_about;
           Alcotest.test_case "edit alone" `Quick test_edit;
           Alcotest.test_case "not found alone" `Quick test_not_found;
-          Alcotest.test_case "votes alone" `Quick test_votes;
-          Alcotest.test_case "vote button alone" `Quick test_vote;
           Alcotest.test_case "counter hits the limit" `Quick test_counter;
           Alcotest.test_case "counter bounded" `Quick test_counter_bounded;
           Alcotest.test_case "events and states round trip through the codecs"

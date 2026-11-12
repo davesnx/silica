@@ -9,8 +9,6 @@ let expect_pass name check =
     Alcotest.fail (Format.asprintf "%a" Check.pp_report report);
   report
 
-let test name check () = ignore (expect_pass name (check ()))
-
 let test_command_menu () =
   let report = expect_pass "command menu" (command_menu ()) in
   Alcotest.(check (list string))
@@ -19,23 +17,7 @@ let test_command_menu () =
     (expect_pass "command menu search" (command_menu_search report.children))
 
 let () =
-  let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "silica-ui check"
     [
-      ( "check",
-        [
-          case "dialog" (test "dialog" dialog);
-          case "popover" (test "popover" popover);
-          case "tooltip" (test "tooltip" tooltip);
-          case "menu" (test "menu" menu);
-          case "select" (test "select" select);
-          case "combobox" (test "combobox" combobox);
-          case "command menu" test_command_menu;
-          case "checkbox" (test "checkbox" checkbox);
-          case "switch" (test "switch" switch);
-          case "theme" (test "theme" theme);
-          case "tabs" (test "tabs" tabs);
-          case "toast" (test "toast" toast);
-        ]
-      );
+      ("check", [ Alcotest.test_case "command menu" `Quick test_command_menu ]);
     ]

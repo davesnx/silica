@@ -788,31 +788,108 @@ let name_spacing placed =
                 ];
           ]
 
-let view_rules view =
-  let items = Accessibility.items view in
-  let placed = walk ~ancestors:[] items in
-  let ids = Hashtbl.create 16 in
-  List.iter
-    (fun item ->
-      Option.iter (fun id -> Hashtbl.replace ids id ()) (attribute item "id")
-    )
-    placed;
-  let unseen = has_unseen items in
-  let each =
-    List.concat_map
+let view_rules ?memo view =
+  let compute () =
+    let items = Accessibility.items view in
+    let placed = walk ~ancestors:[] items in
+    let ids = Hashtbl.create 16 in
+    List.iter
       (fun item ->
-        accessible_name item @ field_label item @ img_alt item
-        @ ( if unseen then
-              []
-            else
-              aria_reference ~ids item
-          )
-        @ valid_role item @ required_children item @ nested_interactive item
-        @ keyboard_access item @ dialog_name item @ name_spacing item
+        Option.iter (fun id -> Hashtbl.replace ids id ()) (attribute item "id")
       )
-      (document_order placed)
+      placed;
+    let unseen = has_unseen items in
+    let each =
+      List.concat_map
+        (fun item ->
+          accessible_name item @ field_label item @ img_alt item
+          @ ( if unseen then
+                []
+              else
+                aria_reference ~ids item
+            )
+          @ valid_role item @ required_children item @ nested_interactive item
+          @ keyboard_access item @ dialog_name item @ name_spacing item
+        )
+        (document_order placed)
+    in
+    each @ unique_ids (document_order placed) @ heading_order placed
   in
-  each @ unique_ids (document_order placed) @ heading_order placed
+  match memo with
+  | None ->
+      compute ()
+  | Some table -> (
+      let rec attribute = function
+        | Node.String (key, value) ->
+            `String (key, value)
+        | Node.Bool (key, value) ->
+            `Bool (key, value)
+        | Node.Ref reference ->
+            `Ref (Ref.name reference)
+        | Node.On_press _ ->
+            `On_press
+        | Node.On_double_press _ ->
+            `On_double_press
+        | Node.On_input _ ->
+            `On_input
+        | Node.On_submit _ ->
+            `On_submit
+        | Node.On_focus _ ->
+            `On_focus
+        | Node.On_blur _ ->
+            `On_blur
+        | Node.On_key_down { prevent; _ } ->
+            `On_key_down prevent
+        | Node.On_key_up { prevent; _ } ->
+            `On_key_up prevent
+        | Node.On_pointer_enter { prevent; _ } ->
+            `On_pointer_enter prevent
+        | Node.On_pointer_leave { prevent; _ } ->
+            `On_pointer_leave prevent
+        | Node.On_reset ->
+            `On_reset
+        | Node.Rated (rate, inner) ->
+            `Rated (rate, attribute inner)
+      in
+      let rec shape : type e. e Node.t -> _ =
+       fun node ->
+        match Node.view node with
+        | Node.Element (tag, attrs, children) ->
+            `Element (tag, List.map attribute attrs, List.map shape children)
+        | Node.Text text ->
+            `Text text
+        | Node.List nodes ->
+            `List (List.map shape nodes)
+        | Node.Keyed (key, child) ->
+            `Keyed (key, shape child)
+        | Node.Portal (id, nodes) ->
+            `Portal (id, List.map shape nodes)
+        | Node.Boundary { body; _ } ->
+            `Boundary (shape body)
+        | Node.Component { component; _ } ->
+            `Component (Machine.id component.machine)
+        | Node.Chunk (Node.Chunk_view { chunk; render; loading = _ }) -> (
+            match Chunk.get chunk with
+            | Some value ->
+                `Chunk (shape (render value))
+            | None ->
+                `Loading
+          )
+      in
+      match shape view with
+      | exception _ ->
+          compute ()
+      | key -> (
+          let key = (Hashtbl.hash_param 256 1024 key, key) in
+          match Hashtbl.find_opt table key with
+          | Some findings ->
+              findings
+          | None ->
+              let findings = compute () in
+              Hashtbl.replace table key findings;
+              findings
+        )
+    )
 
 let dialog_focus ~held view =
   let traps =

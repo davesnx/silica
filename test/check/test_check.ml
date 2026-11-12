@@ -1983,6 +1983,59 @@ let test_dialog_with_trap_passes () =
        )
     )
 
+let test_dialog_focus_follows_the_traps () =
+  let panel = Ref.make "panel" in
+  let machine =
+    Machine.make ~id:"traps" ~init:0
+      ~shape:
+        (Machine.shape ~name:(function 0 -> "trapped" | _ -> "untrapped") ())
+      ~owns:(function 0 -> [ Source.focus_trap panel ] | _ -> [])
+      (fun state (event : ev) ->
+        match (state, event) with
+        | 0, Inc ->
+            Machine.Go 1
+        | _, Dec ->
+            Machine.Go 0
+        | _ ->
+            Machine.Stay []
+      )
+  in
+  let report =
+    Check.run
+      (Check.component
+         (Component.make machine (fun _ ->
+              Node.element "div"
+                [
+                  Attr.ref_ panel;
+                  Attr.string "role" "dialog";
+                  Attr.string "aria-modal" "true";
+                  Attr.string "aria-label" "Edit";
+                ]
+                [
+                  Node.element "button"
+                    [ Attr.on_press (Inc : ev) ]
+                    [ Node.text "+" ];
+                  Node.element "button"
+                    [ Attr.on_press (Dec : ev) ]
+                    [ Node.text "-" ];
+                ]
+          )
+         )
+      )
+  in
+  Alcotest.(check (list string))
+    "the same view gives dialog-focus only in the state that holds no trap"
+    [ "untrapped" ]
+    (List.filter_map
+       (fun (violation : _ Check.violation) ->
+         if violation.rule = "dialog-focus" then
+           Some violation.state_name
+         else
+           None
+       )
+       report.violations
+    )
+
 let view_breach rule (breach : ev Node.t) =
   finding rule
     (Check.component
@@ -2383,6 +2436,8 @@ let () =
             test_accessible_views_pass;
           Alcotest.test_case "a modal dialog with a focus trap" `Quick
             test_dialog_with_trap_passes;
+          Alcotest.test_case "dialog-focus follows the traps, not the view"
+            `Quick test_dialog_focus_follows_the_traps;
           Alcotest.test_case "aria-label is a name" `Quick
             test_aria_label_is_a_name;
           Alcotest.test_case "focus to missing ref" `Quick

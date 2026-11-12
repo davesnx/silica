@@ -7,7 +7,8 @@
  (name test_linear_check)
  (modules test_linear_check)
  (deps
-  (glob_files %{project_root}/linear/app/shared/*.{ml,mlx}))
+  (glob_files %{project_root}/linear/app/shared/*.{ml,mlx})
+  (glob_files_rec spec/**))
  (libraries
   silica
   silica.check
@@ -20,13 +21,6 @@
  (name main)
  (modules main)
  (libraries silica silica.check linear_checks silica_linear_app_native))
-
-(rule
- (alias runtest)
- (deps
-  (glob_files_rec spec/**))
- (action
-  (run ./main.exe golden spec)))
 
 (executable
  (name joint_traces)
