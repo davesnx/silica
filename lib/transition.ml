@@ -911,3 +911,170 @@ let observer ?clock record =
       );
     handler;
   }
+
+let path_only url =
+  let cut = String.length url in
+  let cut = Option.value (String.index_opt url '?') ~default:cut |> min cut in
+  let cut = Option.value (String.index_opt url '#') ~default:cut |> min cut in
+  String.sub url 0 cut
+
+let find_from text start pattern =
+  let size = String.length pattern and length = String.length text in
+  let rec look index =
+    if index + size > length then
+      None
+    else if String.sub text index size = pattern then
+      Some index
+    else
+      look (index + 1)
+  in
+  look start
+
+let tail text index = String.sub text index (String.length text - index)
+
+let numbered_suffix text =
+  text = ""
+  || String.length text > 1
+     && text.[0] = '#'
+     && String.for_all (fun c -> c >= '0' && c <= '9') (tail text 1)
+
+let live_id rest =
+  match find_from rest 0 "/live:" with
+  | None ->
+      None
+  | Some marker -> (
+      let start = marker + 6 in
+      match String.index_from_opt rest start ' ' with
+      | None ->
+          None
+      | Some space ->
+          let topic = String.sub rest start (space - start) in
+          let between = " " ^ topic ^ " " in
+          let rec candidate from =
+            match find_from rest from between with
+            | None ->
+                None
+            | Some at ->
+                let id = String.sub rest 0 at in
+                let key = tail rest (at + String.length between) in
+                let in_id = tail id (space + 1) in
+                if
+                  String.starts_with ~prefix:key in_id
+                  && numbered_suffix (tail in_id (String.length key))
+                then
+                  Some (id, topic)
+                else
+                  candidate (at + 1)
+          in
+          candidate (space + 1)
+    )
+
+let renamer () =
+  let table = Hashtbl.create 16 in
+  fun id ->
+    let number =
+      match Hashtbl.find_opt table id with
+      | Some number ->
+          number
+      | None ->
+          let number = Hashtbl.length table + 1 in
+          Hashtbl.add table id number;
+          number
+    in
+    let kept =
+      match String.index_opt id '/' with
+      | None ->
+          ""
+      | Some first -> (
+          match String.index_from_opt id (first + 1) '/' with
+          | Some second ->
+              String.sub id 0 (second + 1)
+          | None ->
+              String.sub id 0 (first + 1)
+        )
+    in
+    kept ^ "#" ^ string_of_int number
+
+let names_only_action rename action =
+  let after prefix =
+    if String.starts_with ~prefix action then
+      Some (tail action (String.length prefix))
+    else
+      None
+  in
+  let with_last verb rest =
+    match String.rindex_opt rest ' ' with
+    | Some space ->
+        verb ^ " " ^ rename (String.sub rest 0 space) ^ tail rest space
+    | None ->
+        verb
+  in
+  match
+    List.find_map
+      (fun (prefix, rewrite) -> Option.map rewrite (after prefix))
+      [
+        ("stop ", fun id -> "stop " ^ rename id);
+        ("start timer ", with_last "start timer");
+        ("start call ", with_last "start call");
+        ("start source ", with_last "start source");
+        ( "start live ",
+          fun rest ->
+            match live_id rest with
+            | Some (id, topic) ->
+                "start live " ^ rename id ^ " " ^ topic
+            | None ->
+                "start live"
+        );
+        ("set_title ", fun _ -> "set_title");
+        ("navigate ", fun url -> "navigate " ^ path_only url);
+        ("replace ", fun url -> "replace " ^ path_only url);
+        ( "set_document_attribute ",
+          fun rest ->
+            "set_document_attribute "
+            ^
+            match String.index_opt rest '=' with
+            | Some equal ->
+                String.sub rest 0 equal
+            | None ->
+                rest
+        );
+      ]
+  with
+  | Some rewritten ->
+      rewritten
+  | None ->
+      action
+
+let names_only records =
+  let rename = renamer () in
+  List.map
+    (fun record ->
+      let record = strip record in
+      let cause =
+        match record.cause with
+        | Element element ->
+            Element { element with name = "" }
+        | Timer timer ->
+            Timer { timer with id = rename timer.id }
+        | Answer answer ->
+            Answer { answer with id = rename answer.id }
+        | Live live ->
+            Live { live with id = rename live.id }
+        | Held held ->
+            Held { held with id = rename held.id }
+        | Action_result { action } ->
+            Action_result { action = names_only_action rename action }
+        | Url url ->
+            Url (path_only url)
+        | Preload url ->
+            Preload (path_only url)
+        | (Start | Props | Child _ | Message | Ended) as cause ->
+            cause
+      in
+      {
+        record with
+        cause;
+        actions = List.map (names_only_action rename) record.actions;
+      }
+    )
+    records

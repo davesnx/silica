@@ -891,3 +891,116 @@ let change_to_string = function
       "added " ^ label_text label
   | Edge_removed label ->
       "removed " ^ label_text label
+
+type problem = No_spec | Unknown_state of string | Unknown_edge of label
+
+type deviation = {
+  seq : int;
+  machine : string;
+  instance : string;
+  problem : problem;
+}
+
+let event_of (record : Transition.t) =
+  match record.cause with
+  | Props ->
+      "props"
+  | Start
+  | Element _
+  | Timer _
+  | Answer _
+  | Live _
+  | Held _
+  | Action_result _
+  | Child _
+  | Url _
+  | Preload _
+  | Message
+  | Ended ->
+      record.event
+
+let label_of (record : Transition.t) : label option =
+  match record.change with
+  | Kept ->
+      Some
+        {
+          from = record.from;
+          target = record.target;
+          event = event_of record;
+          kept = true;
+        }
+  | Entered ->
+      Some
+        {
+          from = record.from;
+          target = record.target;
+          event = event_of record;
+          kept = false;
+        }
+  | Started | Resumed | Unhandled | Ended ->
+      None
+
+let states_of (record : Transition.t) =
+  match record.change with
+  | Started | Resumed | Ended ->
+      [ record.target ]
+  | Unhandled ->
+      [ record.from ]
+  | Kept | Entered ->
+      [ record.from; record.target ]
+
+let conforms specs (trace : Trace.t) =
+  List.filter_map
+    (fun (record : Transition.t) ->
+      let deviation problem =
+        Some
+          {
+            seq = record.seq;
+            machine = record.machine;
+            instance = record.instance;
+            problem;
+          }
+      in
+      match List.filter (fun spec -> spec.id = record.machine) specs with
+      | [] ->
+          deviation No_spec
+      | own -> (
+          let known name =
+            List.exists
+              (fun spec ->
+                List.exists
+                  (fun (state : state) -> state.name = name)
+                  spec.states
+              )
+              own
+          in
+          match
+            List.find_opt (fun name -> not (known name)) (states_of record)
+          with
+          | Some name ->
+              deviation (Unknown_state name)
+          | None -> (
+              match label_of record with
+              | Some label
+                when not
+                       (List.exists (fun spec -> List.mem label spec.edges) own)
+                ->
+                  deviation (Unknown_edge label)
+              | Some _ | None ->
+                  None
+            )
+        )
+    )
+    trace.transitions
+
+let deviation_to_string deviation =
+  Printf.sprintf "transition %d, machine %s, instance %s: %s" deviation.seq
+    deviation.machine deviation.instance
+    ( match deviation.problem with
+    | No_spec ->
+        "no spec of the machine"
+    | Unknown_state name ->
+        "no spec has the state " ^ token name
+    | Unknown_edge label ->
+        "no spec has the " ^ label_text label
+    )

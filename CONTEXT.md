@@ -305,6 +305,19 @@ platform (`Silica_memory.replay`). A script is the OCaml text of a memory test
 that replays a counterexample (`Check.script`).
 _Avoid_: rerun, playback
 
+**Names-only trace**:
+A trace with no user data, as a recorder keeps it by default: state and event
+names, causes without their data, actions, and ids of timers, calls and
+sources as numbers (`Silica.Trace.names_only`). The default for production.
+_Avoid_: anonymous trace, redacted trace
+
+**Conformance**:
+Whether a recorded trace stays inside the checked model: by names, each step
+is an edge of a golden spec (`Silica.Spec.conforms`); by data, the code gives
+the same step from the recorded snapshot and the properties hold on it
+(`Check.conforms`). A difference is a deviation.
+_Avoid_: validation, drift check
+
 ## Navigation
 
 **Page**:

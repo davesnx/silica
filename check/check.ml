@@ -227,6 +227,15 @@ let child_json children (Check_model.Child_event { witness; event; _ }) =
     )
     children
 
+type 's root =
+  | Root : {
+      component : url:string option -> ('p, 'm, 'e) Component.t;
+      lift : 'm -> url:string option -> 's;
+      properties : ('s, 'e) property list;
+      routed : bool;
+    }
+      -> 's root
+
 type ('s, 'ev) t =
   | Check : {
       id : string Lazy.t;
@@ -245,6 +254,8 @@ type ('s, 'ev) t =
       input_of : Transition.t -> ('ev option, string) result;
       url : 's -> string option;
       subject : subject;
+      root_of : 's root;
+      children : Check_model.child list;
     }
       -> ('s, 'ev) t
 
@@ -375,6 +386,15 @@ let component ?(max_states = 100_000) ?(max_violations = 50)
           input_of = component_input_of component.machine;
           url = (fun _ -> None);
           subject = subject_of component.machine;
+          root_of =
+            Root
+              {
+                component = (fun ~url:_ -> component);
+                lift = (fun snapshot ~url:_ -> snapshot);
+                properties;
+                routed = false;
+              };
+          children = [];
         }
   | children ->
       let own_actions = joint_actions () in
@@ -416,6 +436,15 @@ let component ?(max_states = 100_000) ?(max_violations = 50)
             joint_input_of ~into children (component_input_of component.machine);
           url = (fun _ -> None);
           subject = subject_of component.machine;
+          root_of =
+            Root
+              {
+                component = (fun ~url:_ -> component);
+                lift = (fun snapshot ~url:_ -> snapshot);
+                properties;
+                routed = false;
+              };
+          children;
         }
 
 let live ?(max_states = 100_000) ?(max_violations = 50)
@@ -444,6 +473,15 @@ let live ?(max_states = 100_000) ?(max_violations = 50)
       input_of = component_input_of live.component.machine;
       url = (fun _ -> None);
       subject = Plain;
+      root_of =
+        Root
+          {
+            component = (fun ~url:_ -> live.component);
+            lift = (fun snapshot ~url:_ -> snapshot);
+            properties;
+            routed = false;
+          };
+      children = [];
     }
 
 let root_machine ~routes ~print root =
@@ -516,6 +554,24 @@ let app_input_of ~routes ~print root (record : Transition.t) =
           Ok None
     )
 
+let app_root ~routes ~print ~properties root =
+  let url_of url =
+    match (url, routes) with
+    | Some url, _ ->
+        Url.of_string url
+    | None, first :: _ ->
+        print first
+    | None, [] ->
+        raise (Invalid_check "Check.app needs at least one route in ~routes")
+  in
+  Root
+    {
+      component = (fun ~url -> root (url_of url));
+      lift = (fun router ~url -> { router; history = [ url_of url ]; index = 0 });
+      properties;
+      routed = true;
+    }
+
 let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ?(max_history = 4) ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
     ?(keys = Check_rules.default_keys) ?(pages = []) ?(properties = [])
@@ -568,6 +624,8 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
           input_of = app_input_of ~routes ~print root;
           url;
           subject = Routed;
+          root_of = app_root ~routes ~print ~properties root;
+          children = [];
         }
   | pages ->
       let own_actions = joint_actions () in
@@ -610,6 +668,8 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
             joint_input_of ~into pages (app_input_of ~routes ~print root);
           url;
           subject = Routed;
+          root_of = app_root ~routes ~print ~properties root;
+          children = pages;
         }
 
 type cause = Check_model.cause =
@@ -2570,3 +2630,393 @@ let script (type s ev) ?component (Check check as subject : (s, ev) t)
       result
   | Error error ->
       Error ("the start of the check raised " ^ Printexc.to_string error)
+
+type difference =
+  | Different_step of { logged : string; checked : string }
+  | Property_fails of {
+      property : string;
+      message : string;
+      hint : string;
+      snapshot : Silica_json.Json.t;
+      view : string;
+    }
+  | Not_decodable of { error : string }
+
+type deviation = {
+  seq : int;
+  machine : string;
+  instance : string;
+  difference : difference;
+}
+
+type conformance = {
+  steps : int list;
+  snapshots : int list;
+  deviations : deviation list;
+}
+
+exception View_unavailable
+
+type target =
+  | Target : {
+      machine : ('p, 'm, 'e) Machine.t;
+      routed : bool;
+      view : url:string option -> 'p -> 'm -> 'e Node.t;
+      findings :
+        url:string option ->
+        snapshot:'m ->
+        view:'e Node.t Lazy.t ->
+        event:'e option ->
+        name:string ->
+        from:string option ->
+        Check_rules.finding list;
+    }
+      -> target
+
+let root_target (Root root) =
+  Target
+    {
+      machine = (root.component ~url:None).machine;
+      routed = root.routed;
+      view = (fun ~url props state -> (root.component ~url).view props state);
+      findings =
+        (fun ~url ~snapshot ~view ~event ~name ~from ->
+          List.concat_map
+            (function
+              | Always { name = property; hint; condition } ->
+                  property_finding ~name:property ~hint ~condition
+                    {
+                      snapshot = root.lift snapshot ~url;
+                      view;
+                      event;
+                      name;
+                      from;
+                      actions = Lazy.from_val [];
+                    }
+              | Never_after _ | Leads_to _ ->
+                  []
+              )
+            root.properties
+        );
+    }
+
+let child_target (Check_model.Child listed) =
+  Target
+    {
+      machine = listed.component.machine;
+      routed = false;
+      view = (fun ~url:_ props state -> listed.component.view props state);
+      findings =
+        (fun ~url:_ ~snapshot ~view ~event ~name ~from:_ ->
+          listed.check ~snapshot ~view:(Lazy.force view) ~event ~name
+        );
+    }
+
+type kept = {
+  props : Silica_json.Json.t option;
+  snapshot : Silica_json.Json.t option;
+}
+
+let change_of_how : Machine.how -> Transition.change = function
+  | Unhandled ->
+      Unhandled
+  | Kept ->
+      Kept
+  | Entered ->
+      Entered
+
+let decode codec json =
+  Result.bind codec (fun (codec : _ Codec.t) -> codec.decode json)
+
+let change_text : Transition.change -> string = function
+  | Started ->
+      "started"
+  | Resumed ->
+      "resumed"
+  | Unhandled ->
+      "unhandled"
+  | Kept ->
+      "kept"
+  | Entered ->
+      "entered"
+  | Ended ->
+      "ended"
+
+let step_text ~from ~target ~change snapshot =
+  Printf.sprintf "%s -> %s (%s)%s"
+    (match from with "" -> "start" | from -> from)
+    target (change_text change)
+    (match snapshot with Some text -> ", snapshot " ^ text | None -> "")
+
+let conform_record (Target target) ~allow ~url ~(before : kept)
+    (record : Transition.t) =
+  let machine = target.machine in
+  let props_json =
+    match record.props with Some _ as props -> props | None -> before.props
+  in
+  let props_of json =
+    match (Machine.default_props machine, json) with
+    | Some props, _ ->
+        Some props
+    | None, Some json ->
+        Result.to_option (decode (Machine.props_codec machine) json)
+    | None, None ->
+        None
+  in
+  let state_text state =
+    Result.to_option
+      (Result.map
+         (fun (codec : _ Codec.t) ->
+           Silica_json.Json.to_string (codec.encode state)
+         )
+         (Machine.state_codec machine)
+      )
+  in
+  let recorded = Option.map Silica_json.Json.to_string record.snapshot in
+  let logged =
+    step_text ~from:record.from ~target:record.target ~change:record.change
+      recorded
+  in
+  let compare ~change state =
+    let name = Machine.name machine state in
+    let text = Option.bind recorded (fun _ -> state_text state) in
+    if
+      name = record.target && change = record.change
+      && (text = None || text = recorded)
+    then
+      []
+    else
+      [
+        Different_step
+          {
+            logged;
+            checked = step_text ~from:record.from ~target:name ~change text;
+          };
+      ]
+  in
+  let run work =
+    match work () with
+    | differences ->
+        Some differences
+    | exception exn ->
+        Some
+          [
+            Different_step
+              { logged; checked = "the code raised " ^ Printexc.to_string exn };
+          ]
+  in
+  let snapshot_before () =
+    Option.bind before.snapshot (fun json ->
+        Result.to_option (decode (Machine.state_codec machine) json)
+    )
+  in
+  let event, event_problems =
+    match record.data with
+    | None ->
+        (None, [])
+    | Some json -> (
+        match decode (Machine.event_codec machine) json with
+        | Ok event ->
+            (Some event, [])
+        | Error error ->
+            (None, [ Not_decodable { error = "the event: " ^ error } ])
+      )
+  in
+  let step =
+    match (record.change, record.cause, event) with
+    | Started, _, _ when target.routed ->
+        None
+    | Started, _, _ ->
+        Option.bind (props_of props_json) (fun props ->
+            run (fun () ->
+                compare ~change:Started (fst (Machine.start machine props))
+            )
+        )
+    | (Kept | Entered | Unhandled), Props, _ -> (
+        match
+          (snapshot_before (), props_of before.props, props_of props_json)
+        with
+        | Some state, Some previous, Some props ->
+            run (fun () ->
+                let state, _, how =
+                  Machine.set_props machine ~previous props state
+                in
+                compare ~change:(change_of_how how) state
+            )
+        | _ ->
+            None
+      )
+    | (Kept | Entered | Unhandled), _, Some event -> (
+        match (snapshot_before (), props_of props_json) with
+        | Some state, Some props ->
+            run (fun () ->
+                let state, _, how = Machine.step machine props state event in
+                compare ~change:(change_of_how how) state
+            )
+        | _ ->
+            None
+      )
+    | (Resumed | Ended | Kept | Entered | Unhandled), _, _ ->
+        None
+  in
+  let checked_snapshot, property_problems =
+    match record.snapshot with
+    | None ->
+        (false, [])
+    | Some json -> (
+        match decode (Machine.state_codec machine) json with
+        | Error error ->
+            (false, [ Not_decodable { error = "the snapshot: " ^ error } ])
+        | Ok snapshot -> (
+            let view =
+              lazy
+                ( match props_of props_json with
+                | Some props ->
+                    target.view ~url props snapshot
+                | None ->
+                    raise View_unavailable
+                )
+            in
+            match
+              target.findings ~url ~snapshot ~view ~event ~name:record.target
+                ~from:(match record.from with "" -> None | from -> Some from)
+            with
+            | findings ->
+                let findings =
+                  List.filter
+                    (fun (finding : Check_rules.finding) ->
+                      not
+                        (List.exists
+                           (fun allowance ->
+                             Check_rules.allows allowance ~rule:finding.rule
+                               ~state:record.target ~element:None
+                           )
+                           allow
+                        )
+                    )
+                    findings
+                in
+                ( true,
+                  List.map
+                    (fun (finding : Check_rules.finding) ->
+                      let message, hint =
+                        Check_rules.render finding ~state:record.target
+                      in
+                      Property_fails
+                        {
+                          property = finding.rule;
+                          message;
+                          hint;
+                          snapshot = json;
+                          view =
+                            ( match Lazy.force view with
+                            | view ->
+                                View_text.to_string view
+                            | exception _ ->
+                                ""
+                            );
+                        }
+                    )
+                    findings
+                )
+            | exception View_unavailable ->
+                (false, [])
+            | exception exn ->
+                ( true,
+                  [
+                    Property_fails
+                      {
+                        property = "raised";
+                        message =
+                          "A property raised " ^ Printexc.to_string exn ^ ".";
+                        hint = "Make the properties total on every snapshot.";
+                        snapshot = json;
+                        view = "";
+                      };
+                  ]
+                )
+          )
+      )
+  in
+  ( { props = props_json; snapshot = record.snapshot },
+    Option.is_some step,
+    checked_snapshot,
+    event_problems @ Option.value step ~default:[] @ property_problems
+  )
+
+let conforms (type s ev) (Check check : (s, ev) t) (trace : Trace.t) =
+  let root = Lazy.force check.root in
+  let targets =
+    (root, root_target check.root_of)
+    :: List.map
+         (fun (Check_model.Child listed as child) ->
+           (Machine.id listed.component.machine, child_target child)
+         )
+         check.children
+  in
+  let instances = Hashtbl.create 16 in
+  let url = ref trace.header.url in
+  let steps = ref [] and snapshots = ref [] in
+  let deviations =
+    List.concat_map
+      (fun (record : Transition.t) ->
+        ( match record.cause with
+        | Url address when record.machine = root ->
+            url := Some address
+        | Url _
+        | Start
+        | Element _
+        | Timer _
+        | Answer _
+        | Live _
+        | Held _
+        | Action_result _
+        | Props
+        | Child _
+        | Preload _
+        | Message
+        | Ended ->
+            ()
+        );
+        match List.assoc_opt record.machine targets with
+        | None ->
+            []
+        | Some target ->
+            let before =
+              Option.value
+                (Hashtbl.find_opt instances record.instance)
+                ~default:{ props = None; snapshot = None }
+            in
+            let kept, stepped, tested, differences =
+              conform_record target ~allow:check.allow ~url:!url ~before record
+            in
+            if stepped then steps := record.seq :: !steps;
+            if tested then snapshots := record.seq :: !snapshots;
+            ( match record.change with
+            | Ended ->
+                Hashtbl.remove instances record.instance
+            | Started | Resumed | Unhandled | Kept | Entered ->
+                Hashtbl.replace instances record.instance kept
+            );
+            List.map
+              (fun difference ->
+                {
+                  seq = record.seq;
+                  machine = record.machine;
+                  instance = record.instance;
+                  difference;
+                }
+              )
+              differences
+      )
+      trace.transitions
+  in
+  { steps = List.rev !steps; snapshots = List.rev !snapshots; deviations }
+
+let difference_to_string = function
+  | Different_step { logged; checked } ->
+      Printf.sprintf "the trace has %s; the code gives %s" logged checked
+  | Property_fails { message; _ } ->
+      message
+  | Not_decodable { error } ->
+      "the data does not decode: " ^ error

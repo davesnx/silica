@@ -43,6 +43,13 @@ let () =
          ~default:1024
       )
   in
+  let traces =
+    ref
+      (Option.value
+         (Sys.getenv_opt "SILICA_LINEAR_TRACES")
+         ~default:(Filename.concat "linear" "traces")
+      )
+  in
   let origins = ref [] in
   Arg.parse
     [
@@ -63,6 +70,11 @@ let () =
       ( "--issues",
         Arg.Set_int count,
         "number of seed issues (default 30, env SILICA_LINEAR_ISSUES)"
+      );
+      ( "--traces",
+        Arg.Set_string traces,
+        "directory of the traces that the client posts in development (default \
+         linear/traces, env SILICA_LINEAR_TRACES)"
       );
       ( "--origin",
         Arg.String (fun o -> origins := o :: !origins),
@@ -98,7 +110,7 @@ let () =
         exit 1
   in
   let server =
-    Linear_server.create ~count:!count config ~assets
+    Linear_server.create ~count:!count ~traces:!traces config ~assets
       ~read:(Adapter.read_dir !static) ()
   in
   Adapter.run ~port:!port ~max_connections:!max_connections

@@ -116,6 +116,7 @@ let () =
             check_command;
             Replay_command.command;
             Script_command.command;
+            Conform_command.command;
             Silica_dev.Dev_command.command;
           ]
        )

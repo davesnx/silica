@@ -149,3 +149,15 @@ test.
   $ dune test 2>&1
   $ silica check 2>&1 | tail -1
   passed (exit 0)
+
+The traces conform to the specs and to the code: the steps are the same. A
+trace with a step that no spec has does not conform:
+
+  $ silica conform traces/counter-1.jsonl traces/counter-2.jsonl 2>&1 | tail -1
+  every trace conforms (exit 0)
+  $ sed 's/"from":"counting","to":"saving"/"from":"counting","to":"saved"/' traces/counter-1.jsonl > traces/changed.jsonl
+  $ silica conform traces/changed.jsonl 2>&1 | grep -E '^(deviation|  step|  difference)|exit'
+  deviation 1 (unknown-step): transition 2, machine counter, instance counter
+    step: counting -> saved on save
+    difference: no spec of the machine has this step. The specs allow from counting: stay on decrement, stay on increment, -> saving on save.
+  a trace does not conform (exit 1)

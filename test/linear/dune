@@ -3,7 +3,8 @@
   test_linear
   test_linear_server
   test_linear_features
-  test_linear_memory)
+  test_linear_memory
+  test_linear_trace)
  (libraries
   silica
   silica_test_support

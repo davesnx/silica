@@ -612,6 +612,7 @@ let usage =
   \  main.exe replay ID TRACE_FILE [--json]\n\
   \  main.exe script ID TRACE_FILE [--component EXPR]\n\
   \  main.exe rules [--json]\n\
+  \  main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...\n\
    Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.\n"
 
 type command =
@@ -620,6 +621,12 @@ type command =
   | Replay of { id : string; file : string; json : bool }
   | Script of { id : string; file : string; component : string option }
   | Rules of { json : bool }
+  | Conform of {
+      spec : string;
+      only : string list;
+      json : bool;
+      files : string list;
+    }
   | Help
 
 let parse arguments =
@@ -672,9 +679,33 @@ let parse arguments =
     | argument :: _ ->
         Error ("golden: unknown argument " ^ argument)
   in
+  let rec conform ~spec ~only ~json ~files = function
+    | [] -> (
+        match files with
+        | [] ->
+            Error "conform: give at least one trace file"
+        | files ->
+            Ok
+              (Conform
+                 { spec; only = List.rev only; json; files = List.rev files }
+              )
+      )
+    | "--json" :: rest ->
+        conform ~spec ~only ~json:true ~files rest
+    | "--spec" :: dir :: rest ->
+        conform ~spec:dir ~only ~json ~files rest
+    | "--only" :: id :: rest ->
+        conform ~spec ~only:(id :: only) ~json ~files rest
+    | argument :: _ when String.starts_with ~prefix:"-" argument ->
+        Error ("conform: unknown argument " ^ argument)
+    | file :: rest ->
+        conform ~spec ~only ~json ~files:(file :: files) rest
+  in
   match arguments with
   | ("--help" | "-help" | "help") :: _ ->
       Ok Help
+  | "conform" :: rest ->
+      conform ~spec:"spec" ~only:[] ~json:false ~files:[] rest
   | "check" :: rest ->
       check ~json:false ~only:[] ~traces:None rest
   | "golden" :: rest ->
@@ -923,6 +954,50 @@ let script_command entries ~id ~file ~component =
           1
     )
 
+let conform_command entries ~spec ~only ~json ~files =
+  let found =
+    match only with
+    | [] ->
+        Ok
+          (List.filter_map
+             (function
+               | Entry { check; _ } ->
+                   Some (Check_conform.Subject check)
+               | Elsewhere _ ->
+                   None
+               )
+             entries
+          )
+    | ids ->
+        List.fold_left
+          (fun found id ->
+            Result.bind found (fun found ->
+                match find id entries with
+                | Some (Found check) ->
+                    Ok (found @ [ Check_conform.Subject check ])
+                | None ->
+                    Error ("no entry checks the machine " ^ id)
+            )
+          )
+          (Ok []) ids
+  in
+  match found with
+  | Error message ->
+      setup_error ~json ~command:"conform" message
+  | Ok subjects ->
+      Check_conform.run ~json ~spec_dir:spec ~only ~subjects
+        ~elsewhere:
+          (List.filter_map
+             (function
+               | Elsewhere { machine; reason } ->
+                   Some (machine, reason)
+               | Entry _ ->
+                   None
+               )
+             entries
+          )
+        files
+
 let print ~json result =
   if json then
     print_string (Check_json.pretty (to_json result))
@@ -975,6 +1050,8 @@ let main ?(argv = Sys.argv) entries =
         replay_command entries ~id ~file ~json
     | Ok (Script { id; file; component }) ->
         script_command entries ~id ~file ~component
+    | Ok (Conform { spec; only; json; files }) ->
+        conform_command entries ~spec ~only ~json ~files
     | Ok (Golden { dir; write; json }) ->
         let result = golden_with ~program:argv.(0) ~write dir (run entries) in
         print ~json result;

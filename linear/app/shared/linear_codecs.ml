@@ -19,7 +19,7 @@ let register () =
          ~of_json:Linear_comment.event_of_json
       )
     ();
-  Machine.register_codecs Linear_comments.machine
+  Machine.register_codecs Linear_comments.machine ~props:Codec.int
     ~state:
       (json ~to_json:Linear_comments.state_to_json
          ~of_json:Linear_comments.state_of_json
@@ -29,7 +29,7 @@ let register () =
          ~of_json:Linear_comments.event_of_json
       )
     ();
-  Machine.register_codecs Linear_composer.machine
+  Machine.register_codecs Linear_composer.machine ~props:Codec.int
     ~state:
       (json ~to_json:Linear_composer.state_to_json
          ~of_json:Linear_composer.state_of_json

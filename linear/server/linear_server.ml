@@ -27,7 +27,75 @@ let assigned_user ~(config : Silica_server.config) ~next_user
         { session with data = (user_key, User.name user) :: session.data };
       user
 
-let create ?count (config : Silica_server.config) ~assets ~read () =
+let max_trace_bytes = 512 * 1024
+let max_trace_transitions = 2000
+let max_trace_files = 200
+
+let trace_number = Atomic.make 0
+
+let trace_name () =
+  let time = Unix.gmtime (Unix.gettimeofday ()) in
+  Printf.sprintf "trace-%04d%02d%02dT%02d%02d%02d-%d.jsonl"
+    (time.tm_year + 1900) (time.tm_mon + 1) time.tm_mday time.tm_hour
+    time.tm_min time.tm_sec
+    (Atomic.fetch_and_add trace_number 1)
+
+let write_new path text =
+  match
+    open_out_gen [ Open_wronly; Open_creat; Open_excl; Open_binary ] 0o644 path
+  with
+  | channel ->
+      Fun.protect
+        ~finally:(fun () -> close_out channel)
+        (fun () -> output_string channel text);
+      true
+  | exception Sys_error _ ->
+      false
+
+let save_trace ~dir text =
+  if String.length text > max_trace_bytes then
+    Error (Printf.sprintf "the trace has more than %d bytes" max_trace_bytes)
+  else
+    match Silica.Trace.of_jsonl text with
+    | Error message ->
+        Error ("not a trace file: " ^ message)
+    | Ok trace when List.length trace.transitions > max_trace_transitions ->
+        Error
+          (Printf.sprintf "the trace has more than %d transitions"
+             max_trace_transitions
+          )
+    | Ok trace -> (
+        match
+          if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
+          List.length
+            (List.filter
+               (fun name -> Filename.check_suffix name ".jsonl")
+               (Array.to_list (Sys.readdir dir))
+            )
+        with
+        | exception Sys_error _ ->
+            Error "the traces folder cannot be read"
+        | kept when kept >= max_trace_files ->
+            Error
+              (Printf.sprintf "%d traces are kept already: delete old ones" kept)
+        | _ ->
+            let rec attempt tries =
+              let name = trace_name () in
+              if
+                write_new (Filename.concat dir name)
+                  (Silica.Trace.to_jsonl trace)
+              then
+                Ok name
+              else if tries > 0 then
+                attempt (tries - 1)
+              else
+                Error "the trace cannot be written"
+            in
+            attempt 3
+      )
+
+let create ?count ?(traces = Filename.concat "linear" "traces")
+    (config : Silica_server.config) ~assets ~read () =
   let store = Linear_store.create ?count () in
   let next_user = Linear_store.next_user () in
   let server = ref None in
@@ -111,6 +179,16 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
       Server.implement add_comment_endpoint add_comment;
       Server.implement edit_comment_endpoint edit_comment;
     ]
+    @
+    match config.dev with
+    | Some _ ->
+        [
+          Server.implement Linear_trace.endpoint (fun _ text ->
+              save_trace ~dir:traces text
+          );
+        ]
+    | None ->
+        []
   in
   let t =
     Server.create config ~assets ~read ~handlers ~islands:[]
@@ -155,8 +233,16 @@ let create ?count (config : Silica_server.config) ~assets ~read () =
           ~status:Linear_app.status
           ~scripts:[ page.asset "client_main.js" ]
           ~head:
-            (Printf.sprintf "<link rel=\"stylesheet\" href=\"%s\">"
+            (Printf.sprintf "<link rel=\"stylesheet\" href=\"%s\">%s"
                (page.asset "app.css")
+               ( match config.dev with
+               | Some _ ->
+                   Printf.sprintf "<meta name=\"%s\" content=\"%s\">"
+                     Linear_trace.meta
+                     (Silica.Remote.path Linear_trace.endpoint)
+               | None ->
+                   ""
+               )
             )
           page
       )

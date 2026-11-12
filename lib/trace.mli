@@ -25,8 +25,10 @@
     (the step is not recorded); the records dropped by a full recorder (only
     their number).
 
-    A trace with names only still holds the ids of timers, calls and sources,
-    and the id of a call holds its encoded input (see {!Source.key}). *)
+    A trace with names only (see {!names_only}) holds no event data, props,
+    snapshots, answers, Live updates, input text, accessible names, URL queries
+    or page titles, and its ids of timers, calls and sources are numbers: the id
+    of a call no longer holds its encoded input (see {!Source.key}). *)
 
 type origin =
   | Checker of { rule : string }  (** A counterexample of the checker. *)
@@ -60,6 +62,11 @@ val to_text : t -> string
      /api/issues]. Unhandled steps are marked [(unhandled)]; actions follow on
     the same line after [=>]. *)
 
+val names_only : t -> t
+(** The trace with names only: {!Transition.names_only} of its transitions, and
+    the URL of the header without query and fragment. A recorder without [data]
+    gives this form. *)
+
 (** A ring buffer of transitions, to keep the last ones of a run. *)
 module Recorder : sig
   type trace := t
@@ -76,9 +83,9 @@ module Recorder : sig
   (** [capacity] (default 1000) is the number of transitions kept; older ones
       are dropped and counted. With [data] (default [false]) the records keep
       event data, props, snapshots, answers, Live updates and input text;
-      without it they keep names only (see {!Transition.strip}). [clock] gives
-      the time of each record in milliseconds; with no clock records have no
-      time. [platform] (default ["browser"]) goes in the header. *)
+      without it they keep names only (see {!names_only}). [clock] gives the
+      time of each record in milliseconds; with no clock records have no time.
+      [platform] (default ["browser"]) goes in the header. *)
 
   val observer : t -> Instance.observer
   (** The observer to give a host, such as {!Instance.mount},

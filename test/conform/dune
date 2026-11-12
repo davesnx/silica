@@ -1,0 +1,21 @@
+(library
+ (name conform_record)
+ (wrapped false)
+ (modules record)
+ (libraries silica silica.memory silica_linear_app_native))
+
+(executable
+ (name fixtures)
+ (modules fixtures)
+ (libraries silica silica.json conform_record))
+
+(test
+ (name test_conform)
+ (modules test_conform)
+ (libraries silica silica.json silica.check conform_record alcotest))
+
+(cram
+ (deps
+  fixtures.exe
+  ../linear_check/main.exe
+  (glob_files ../linear_check/spec/*.spec.txt)))

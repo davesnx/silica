@@ -273,6 +273,18 @@ let to_text trace =
        )
     )
 
+let path_only url =
+  let cut = String.length url in
+  let cut = Option.value (String.index_opt url '?') ~default:cut |> min cut in
+  let cut = Option.value (String.index_opt url '#') ~default:cut |> min cut in
+  String.sub url 0 cut
+
+let names_only trace =
+  {
+    header = { trace.header with url = Option.map path_only trace.header.url };
+    transitions = Transition.names_only trace.transitions;
+  }
+
 module Recorder = struct
   type trace = t
 
@@ -327,24 +339,25 @@ module Recorder = struct
         invalid_arg "Silica.Trace.Recorder.observer"
 
   let transitions recorder =
-    List.of_seq
-      (Seq.map
-         (fun pending ->
-           let transition = Transition.resolve pending in
-           if recorder.data then
-             transition
-           else
-             Transition.strip transition
-         )
-         (Queue.to_seq recorder.kept)
-      )
+    let resolved =
+      List.of_seq (Seq.map Transition.resolve (Queue.to_seq recorder.kept))
+    in
+    if recorder.data then
+      resolved
+    else
+      Transition.names_only resolved
 
   let trace recorder ~url : trace =
     {
       header =
         {
           root = Option.value recorder.root ~default:"";
-          url;
+          url =
+            ( if recorder.data then
+                url
+              else
+                Option.map path_only url
+            );
           build = recorder.build;
           origin = Runtime { platform = recorder.platform };
           dropped = recorder.dropped;

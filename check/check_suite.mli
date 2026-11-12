@@ -80,6 +80,7 @@ val main : ?argv:string array -> entry list -> unit
     main.exe replay ID TRACE_FILE [--json]
     main.exe script ID TRACE_FILE [--component EXPR]
     main.exe rules [--json]
+    main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
     v}
     [check] is the default. With [--traces DIR], each violation is also written
     as a trace file [DIR/<id>-<n>.jsonl] ({!Check.export}), and the JSON gives
@@ -91,5 +92,17 @@ val main : ?argv:string array -> entry list -> unit
     does not read. [script ID TRACE_FILE] prints a [Silica_memory] test that
     reproduces the counterexample ({!Check.script}); when the steps cannot run
     in [Silica_memory], it prints why on standard error and exits with [1].
-    [rules] lists {!Check.val-rules}. Bad arguments print the usage on standard
+    [rules] lists {!Check.val-rules}. [conform TRACE_FILE...] compares each
+    trace, such as one that the app recorded in development or in production,
+    with the golden specs in [--spec DIR] (default [spec]) by names
+    ({!Silica.Spec.conforms}) and with the code of each entry by data
+    ({!Check.conforms}); with [--only ID], only with the golden specs and the
+    check of that entry, such as a joint check of a parent with its children
+    ([router+issue-list]). Without [--only], dependents are not run, and
+    machines named by {!elsewhere} or with no spec in the selected files are
+    listed as not checked. Each deviation names the transition, the machine, the
+    instance, the step and the difference, with a hint: the spec is out of date,
+    the check does not explore the behaviour, or the trace is from another
+    build. Exit [0] when every trace conforms, [1] on a deviation, [3] when a
+    trace or a spec does not read. Bad arguments print the usage on standard
     error and exit with [3]. *)

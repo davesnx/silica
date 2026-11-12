@@ -1,4 +1,5 @@
 let () =
+  Linear_codecs.register ();
   let open Linear_checks in
   Check_suite.main
     [

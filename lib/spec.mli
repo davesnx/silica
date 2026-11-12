@@ -139,3 +139,37 @@ val change_to_string : change -> string
     added edge idle -> saving on save
     added stay running on tick
     v} *)
+
+(** {1 Conformance}
+
+    Does a run of the app, as a trace file holds it, stay inside the specs that
+    a check found? This level reads names only, so it works on a trace with no
+    user data (see {!Trace.names_only}). *)
+
+type problem =
+  | No_spec  (** No spec is of the machine of the record. *)
+  | Unknown_state of string  (** No spec of the machine has this state. *)
+  | Unknown_edge of label
+      (** No spec of the machine has this step: an edge, or a kept step. *)
+
+type deviation = {
+  seq : int;  (** The [seq] of the record in the trace. *)
+  machine : string;
+  instance : string;  (** The instance path of the record. *)
+  problem : problem;
+}
+
+val conforms : t list -> Trace.t -> deviation list
+(** [conforms specs trace]: the records of [trace] that [specs] do not allow, in
+    the order of the trace. A start, a resume and an end must be in a state of a
+    spec of the machine; an unhandled event in a state of it; a step that
+    entered a state must be an edge, and a step that kept it a kept step, with
+    the same event name ([props] for new props). A machine can have several
+    specs, such as the specs of the joint checks of a parent with each of its
+    children: a record conforms when one of them allows it. [[]] when the whole
+    trace conforms. *)
+
+val deviation_to_string : deviation -> string
+(** One line, such as
+    ["transition 14, machine comment-composer, instance app/0:comment-composer:
+     no spec has the edge drafting -> archived on send"]. *)

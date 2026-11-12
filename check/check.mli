@@ -644,3 +644,69 @@ val view_violations :
     apply to ["view"], but [dead-end] and [link-parses]) that fail on the view,
     or of the one [rule]. [state] names the state in the messages. A test reads
     it on the view of [Silica_memory.view]. *)
+
+(** {1 Conformance}
+
+    Did a run of the app, from development or from production, do what the
+    checked code does? {!Silica.Spec.conforms} reads the names of a trace;
+    {!conforms} reads its data. *)
+
+type difference =
+  | Different_step of { logged : string; checked : string }
+      (** From the snapshot before, with the event (or the props) of the record,
+          the code of this build gives another state name, another change
+          ([unhandled], [kept], [entered]) or another snapshot. [logged] and
+          [checked] are the step as ["from -> to (change), snapshot <json>"]. *)
+  | Property_fails of {
+      property : string;
+      message : string;
+      hint : string;
+      snapshot : Silica_json.Json.t;  (** The snapshot of the record. *)
+      view : string;
+          (** {!Silica.View_text} of the view of the snapshot, or [""]. *)
+    }  (** An {!always} property does not hold on the snapshot of the record. *)
+  | Not_decodable of { error : string }
+      (** The event or the snapshot of the record does not decode with the
+          codecs of this build. *)
+
+type deviation = {
+  seq : int;  (** The [seq] of the record in the trace. *)
+  machine : string;
+  instance : string;  (** The instance path of the record. *)
+  difference : difference;
+}
+
+type conformance = {
+  steps : int list;  (** The [seq] of each record whose step the code ran. *)
+  snapshots : int list;
+      (** The [seq] of each record whose snapshot the properties read. *)
+  deviations : deviation list;  (** In the order of the trace. *)
+}
+
+val conforms : ('s, 'ev) t -> Silica.Trace.t -> conformance
+(** [conforms check trace] runs, for each record of the root machine of [check]
+    and of its listed children (see {!val-child}), the code of this build on the
+    data of the trace, with no search:
+    - The step: a start runs {!Silica.Machine.start} with the props of the
+      record (not for the root of an app, whose start depends on the URL, which
+      the record does not hold); a step runs {!Silica.Machine.step} on the
+      snapshot of the record before it in the same instance, with the event of
+      the record; new props run {!Silica.Machine.set_props}. The state name, the
+      change and the snapshot (by the state codec) must be the ones of the
+      record.
+    - The properties: every {!always} property of the check (of the child, for a
+      child) holds on the snapshot of the record and its view, with the event of
+      the record. For an app, the URL is the last [Url] cause of the root, or
+      the URL of the header. The view is the view of that machine alone, with
+      its children as component nodes. {!action} never holds; temporal
+      properties are not checked here. Allowances apply.
+
+    A record is skipped when the data it needs is not there: a trace with names
+    only, a machine with no registered codecs, a step whose snapshot before was
+    dropped by a full recorder, a machine with props and no props codec (no
+    view, so no properties). [steps] and [snapshots] say what ran. *)
+
+val difference_to_string : difference -> string
+(** One sentence, such as
+    ["the trace has drafting -> sending (entered); the code gives drafting ->
+     drafting (unhandled)"]. *)

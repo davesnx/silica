@@ -117,6 +117,27 @@ val strip : t -> t
     an [Answer], the [update] of a [Live] and the [value] of an [input] are
     [None]. *)
 
+val names_only : t list -> t list
+(** The records of one trace with names only, as a recorder without data keeps
+    them: each record is {!strip}ped, and also:
+    - Each id of a timer, call, subscription or held source, in causes and in
+      actions, becomes ["<number>.<entry>/<machine id>/#<n>"], where [n] counts
+      the distinct ids of the list from 1. The same id gets the same [n], so a
+      start, its answer and its stop still match, but the id no longer holds the
+      state, the path, the encoded input of a call or the key of a subscription
+      (see {!Source.key}).
+    - The accessible [name] of the element of a handler is [""]: it can be text
+      that a user typed, such as the title of an issue in a link.
+    - A URL keeps its path only, without query and fragment: in [Url] and
+      [Preload] causes and in [navigate] and [replace] actions.
+    - [set_title] actions lose their title, [start live] actions their key, and
+      [set_document_attribute] actions their value.
+
+    What stays: the sequence numbers, times, instance paths (with the keys that
+    the app gave component nodes), machine ids, state and event names, changes,
+    handler names, roles and element paths, timer delays, endpoint paths, topic
+    and source names, and the other actions as {!describe} writes them. *)
+
 (** {1 Observers} *)
 
 type pending

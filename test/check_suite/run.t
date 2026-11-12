@@ -192,6 +192,7 @@ Bad arguments print the usage and exit 3.
     main.exe replay ID TRACE_FILE [--json]
     main.exe script ID TRACE_FILE [--component EXPR]
     main.exe rules [--json]
+    main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
   Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.
   [3]
 

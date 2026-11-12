@@ -992,6 +992,7 @@ test("a recorder with no data keeps no input text", async () => {
   field.dispatchEvent(new w.Event("input", { bubbles: true }));
   await until(() => /debounced:secret/.test(text("log")), "the debounced input");
   const text_form = App.trace_text();
-  assert.match(text_form, /input textbox "debounced" \(main > input\[3\]\)\n/);
+  assert.match(text_form, /input textbox "" \(main > input\[3\]\)\n/);
   assert.doesNotMatch(text_form, /secret/);
+  assert.doesNotMatch(text_form, /debounced/, "names only drop the accessible name");
 });

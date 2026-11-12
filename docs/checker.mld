@@ -904,3 +904,87 @@ Use [replay] for those. {!Silica_memory.val-replay} runs a trace, of the checker
 or recorded in a runtime, in the memory platform and says at which step it
 differs, or why a step cannot run there.
 
+
+{2:conform Conform a trace}
+
+The checker explores the samples and inputs of a check; the app meets real
+data. [conform TRACE_FILE...] compares a trace that the app recorded, in
+development or in production (see {!page-testing.trace}), with the checked
+model, and reports each difference. [silica conform TRACE_FILE...] runs it from
+the root of an app, with the golden specs in [check/spec].
+
+It compares at two levels:
+
+- By names, {!Silica.Spec.conforms}: each start, end and ignored event is in a
+  state of a golden spec of its machine, and each step is an edge or a kept
+  step of it, with the same event name. A machine can have several specs (the
+  specs of each joint check of a parent with a child): one of them must allow
+  the step. This level needs no user data, so it works on the default trace of
+  a recorder, with names only.
+- By data, {!Check.conforms}, when the trace holds event data and snapshots:
+  for each record of the root machine of an entry and of its listed children,
+  the code of this build runs the step again from the snapshot before, and it
+  must give the same state name, change and snapshot; then every [always]
+  property of the check holds on the snapshot of the record and its view. So
+  the properties also run on states that the search never reached.
+
+[--spec DIR] (default [spec]) names the golden specs. [--only ID] compares
+with the golden specs and the check of one entry only, such as the joint check
+[comments+comment+comment-composer] of a parent with its children; machines
+outside it are listed as not checked. Machines named by
+{!Check_suite.elsewhere} are listed as not checked too; a machine that no spec
+has is a deviation. Without [--only] the dependents of entries do not run.
+
+From [test/conform/run.t], a trace from an older build that did not trim a
+comment: the names conform, the data does not:
+{v
+conform traces/old-build.jsonl: root router, build 2026-10-01, 39 transitions
+  by names: transitions checked against the golden specs: 20
+  by data: steps run again in the code: 9; snapshots checked by the properties: 9
+deviation 1 (different-step): transition 38, machine comment-composer, instance router/1.0:issue-detail/1.6:comments/1.1:comment-composer
+  step: drafting -> sending on send
+  difference: the trace has drafting -> sending (entered), snapshot ["Sending","  Purple elephant memo  "]; the code gives drafting -> sending (entered), snapshot ["Sending","Purple elephant memo"]
+  hint: The trace is from another build (2026-10-01), or the update changed since it was recorded: check the trace with the code and specs of that build. If it is this build, the update depends on something outside the snapshot and the event: make it a function of them.
+a trace does not conform (exit 1)
+v}
+
+Each deviation has a kind, the transition, the machine, the instance, the step
+and the difference, and a hint that says what to do:
+
+- [unknown-step] or [unknown-state]: no golden spec has it. When the trace
+  holds data and the code of this build takes the same step, the spec is out
+  of date (the golden check reports the step as added: review the diff and
+  write it) or the check does not explore it (no golden change: add samples,
+  inputs or props that reach it). With names only, the hint gives both, and
+  says to use the specs of the build that recorded the trace, when it is
+  another build;
+- [different-step]: the code gives another state, change or snapshot: the
+  trace is from another build, or the update depends on something outside the
+  snapshot and the event;
+- [not-decodable]: the event or snapshot types changed: another build;
+- [property-fails]: the app reached a snapshot that breaks an [always]
+  property, with the view at that point;
+- [no-spec]: no check of the suite covers the machine.
+
+It exits [0] when every trace conforms, [1] on a deviation, and [3] when a
+trace or a spec does not read or an [--only] id has no entry. With [--json],
+each trace has its counts, the machines not checked and the deviations, with
+[kind], [seq], [machine], [instance], [step], [difference], [hint] and [view].
+
+What conformance does not prove:
+
+- That the app is right: it compares the steps of the traces it gets, not
+  every run. A step that the spec allows can still do the wrong thing, and a
+  bug in a run that nobody recorded is not seen.
+- Anything about data with names only: an event with the wrong payload, or a
+  snapshot that breaks a property, has the same names as a good one.
+- Temporal properties ([leads_to], [never_after]): a trace is one finite run,
+  often cut by the recorder, so "eventually" cannot fail on it.
+- The actions, the timing and the order of timers: the actions of a step and
+  the time between steps are not compared.
+- The view of a child inside its parent: the properties see the view of each
+  machine alone, and a machine with props and no props codec has no view, so
+  its properties do not run.
+- The steps before the first record of an instance that a full recorder
+  dropped, and the start of the root of an app, whose state depends on a URL
+  that the record does not hold.

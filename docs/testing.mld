@@ -202,6 +202,25 @@ observer, such as [Silica.Trace.Recorder.observer]. With no observer nothing
 is recorded, and a release bundle that does not make a recorder has no
 recorder code.
 
+A recorder without [~data:true] keeps names only ({!Silica.Trace.names_only}),
+the default for production. Such a trace holds: the header (root machine,
+build, platform, the path of the URL, the number of dropped records), and for
+each record its number and time, the instance path (with the keys that the app
+gave component nodes), the machine id, the state names before and after, the
+change, the event name, the handler, role and element path of an element, the
+delay of a timer, the endpoint path of a call, the topic of a Live update, the
+name of a held source and the actions. The ids of timers, calls and sources
+are numbers, such as [21.2/comment-composer/#3]: the same id gets the same
+number in one trace. It holds no event data, props, snapshots, answers, Live
+updates, input text, accessible names, URL queries or fragments, page titles
+or document attribute values, and no encoded input of a call (which the id of a
+call holds with data). Key component nodes by ids, not by text that users type:
+keys stay in the instance paths. A test in [test/conform] types an issue title
+and a comment in mini Linear and checks that the names-only trace holds
+neither. Names are enough to compare a trace with the golden specs; to run the
+code and the properties again on it, the app opts in to data, for example in
+development or staging (see {!page-checker.conform}).
+
 [mount ~answers] answers calls before the first paint, as a server render
 does. {!Silica_memory.mount_app} runs a router app with a history: see
 {!page-router.app}. The platform also records the actions, the running
