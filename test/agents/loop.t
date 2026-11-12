@@ -7,7 +7,7 @@ the user save again after a save. Start from a new app.
 Write the requirements as checks first. Save is never offered while a save
 runs, and every save ends.
 
-  $ cat > check/main.ml <<'OCAML'
+  $ cat > check/checks.ml <<'OCAML'
   > open Silica
   > 
   > let save_offered view =
@@ -19,28 +19,23 @@ runs, and every save ends.
   >     )
   >     (Accessibility.elements view)
   > 
-  > let () =
-  >   Check_suite.main
-  >     [
-  >       Check_suite.entry
-  >         (Check.component
-  >            ~within:(fun state -> Counter.count state <= 3)
-  >            ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
-  >            ~properties:
-  >              [
-  >                Check.always ~name:"no-save-while-saving"
-  >                  ~hint:
-  >                    "Disable Save in {state}: a second save waits for the \
-  >                     answer of the first."
-  >                  Check.(not_ (state_named "saving" &&& view save_offered));
-  >                Check.leads_to ~name:"save-ends"
-  >                  ~from:(Check.state_named "saving")
-  >                  ~to_:Check.(state_named "saved" ||| state_named "save_failed")
-  >                  ();
-  >              ]
-  >            Counter.component
-  >         );
-  >     ]
+  > let counter =
+  >   Check.component
+  >     ~within:(fun state -> Counter.count state <= 3)
+  >     ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
+  >     ~properties:
+  >       [
+  >         Check.always ~name:"no-save-while-saving"
+  >           ~hint:
+  >             "Disable Save in {state}: a second save waits for the answer of \
+  >              the first."
+  >           Check.(not_ (state_named "saving" &&& view save_offered));
+  >         Check.leads_to ~name:"save-ends"
+  >           ~from:(Check.state_named "saving")
+  >           ~to_:Check.(state_named "saved" ||| state_named "save_failed")
+  >           ();
+  >       ]
+  >     Counter.component
   > OCAML
   $ dune build @fmt 2>&1
   $ silica check 2>&1
@@ -173,8 +168,14 @@ edge and the changed view. The page test still expects the old view.
   golden-drift: The golden file spec/counter.qnt differs from what the check found.
   golden-drift: The golden file spec/counter.dot differs from what the check found.
   golden-drift: The golden file spec/counter.views.txt differs from what the check found.
-    +     button "Save" [press]
-    -     button "Save" disabled [press]
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
   view: the text differs (- expected, + got):
   -   button "Save" disabled [press]
   +   button "Save" [press]
@@ -191,8 +192,18 @@ test. Now everything passes.
   golden-drift: The golden file check/spec/counter.dot differs from what the check found.
     follows the changes of counter.spec.txt
   golden-drift: The golden file check/spec/counter.views.txt differs from what the check found.
-    +     button "Save" [press]
-    -     button "Save" disabled [press]
+    changed the view of state saved
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
+    changed the view of state saved, view 2
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
+    changed the view of state saved, view 3
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
+    changed the view of state saved, view 4
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
   golden: wrote 4 files into check/spec: counter.spec.txt (changed), counter.qnt (changed), counter.dot (changed), counter.views.txt (changed)
   golden: the golden files now match what the check found, so the changes above are written, not findings; commit them with the change of code.
   passed (exit 0)

@@ -11,6 +11,48 @@ view
     button "Save" [press]
     text "Not saved"
 
+state counting, view 2
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+view
+  main
+    heading "Counter" level=1
+    status
+      text "1"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" [press]
+    text "Not saved"
+
+state counting, view 3
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+view
+  main
+    heading "Counter" level=1
+    status
+      text "2"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" [press]
+    text "Not saved"
+
+state counting, view 4
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+view
+  main
+    heading "Counter" level=1
+    status
+      text "3"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" [press]
+    text "Not saved"
+
 state saving
 path
   counting -> saving on save, by the view offers press on button "Save" at main > button[3]
@@ -19,6 +61,51 @@ view
     heading "Counter" level=1
     status
       text "0"
+    button "Decrement" disabled [press]
+    button "Increment" disabled [press]
+    button "Save" disabled [press]
+    text "Saving"
+
+state saving, view 2
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+view
+  main
+    heading "Counter" level=1
+    status
+      text "1"
+    button "Decrement" disabled [press]
+    button "Increment" disabled [press]
+    button "Save" disabled [press]
+    text "Saving"
+
+state saving, view 3
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+view
+  main
+    heading "Counter" level=1
+    status
+      text "2"
+    button "Decrement" disabled [press]
+    button "Increment" disabled [press]
+    button "Save" disabled [press]
+    text "Saving"
+
+state saving, view 4
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+view
+  main
+    heading "Counter" level=1
+    status
+      text "3"
     button "Decrement" disabled [press]
     button "Increment" disabled [press]
     button "Save" disabled [press]
@@ -38,6 +125,54 @@ view
     button "Save" disabled [press]
     text "Saved"
 
+state saved, view 2
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+  saving -> saved on answered ok, by the answer of the call counter/saving//api/save 1 to /api/save
+view
+  main
+    heading "Counter" level=1
+    status
+      text "1"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" disabled [press]
+    text "Saved"
+
+state saved, view 3
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+  saving -> saved on answered ok, by the answer of the call counter/saving//api/save 2 to /api/save
+view
+  main
+    heading "Counter" level=1
+    status
+      text "2"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" disabled [press]
+    text "Saved"
+
+state saved, view 4
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+  saving -> saved on answered ok, by the answer of the call counter/saving//api/save 3 to /api/save
+view
+  main
+    heading "Counter" level=1
+    status
+      text "3"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" disabled [press]
+    text "Saved"
+
 state save_failed
 path
   counting -> saving on save, by the view offers press on button "Save" at main > button[3]
@@ -48,6 +183,54 @@ view
     status
       text "0"
     button "Decrement" disabled [press]
+    button "Increment" [press]
+    button "Save" [press]
+    text "The save failed. Try again."
+
+state save_failed, view 2
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+  saving -> save_failed on answered rejected, by the answer of the call counter/saving//api/save 1 to /api/save
+view
+  main
+    heading "Counter" level=1
+    status
+      text "1"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" [press]
+    text "The save failed. Try again."
+
+state save_failed, view 3
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+  saving -> save_failed on answered rejected, by the answer of the call counter/saving//api/save 2 to /api/save
+view
+  main
+    heading "Counter" level=1
+    status
+      text "2"
+    button "Decrement" [press]
+    button "Increment" [press]
+    button "Save" [press]
+    text "The save failed. Try again."
+
+state save_failed, view 4
+path
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> counting on increment, by the view offers press on button "Increment" at main > button[2]
+  counting -> saving on save, by the view offers press on button "Save" at main > button[3]
+  saving -> save_failed on answered rejected, by the answer of the call counter/saving//api/save 3 to /api/save
+view
+  main
+    heading "Counter" level=1
+    status
+      text "3"
+    button "Decrement" [press]
     button "Increment" [press]
     button "Save" [press]
     text "The save failed. Try again."

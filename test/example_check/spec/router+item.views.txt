@@ -18,6 +18,85 @@ view
     link "Credits" href="/about#credits"
   text "Loading item 1..."
 
+state /item/:int, view 2
+path
+  / -> /item/:int on url changed, by an input
+  /item/:int -> /item/:int on link /item/2, by the view offers press on link "Item 2" at div > nav > a[3]
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "Loading item 2..."
+
+state /item/:int, view 3
+path
+  / -> /item/:int on url changed, by an input
+  loading -> loaded on settled ok, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  heading "Item 1" level=2
+  text "$19.99"
+  list
+    listitem
+      text "a"
+
+state /item/:int, view 4
+path
+  / -> /item/:int on url changed, by an input
+  loading -> missing on settled rejected, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "no item"
+
+state /item/:int, view 5
+path
+  / -> /item/:int on url changed, by an input
+  loading -> failed on settled error, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "The server answered 500"
+
+state /item/:int, view 6
+path
+  / -> /item/:int on url changed, by an input
+  loading -> failed on settled error, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "The network failed"
+
 state /about
 path
   / -> /about on url changed, by an input

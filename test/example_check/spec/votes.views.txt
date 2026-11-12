@@ -4,3 +4,66 @@ path
 view
   heading "Votes" level=2
   text "Votes: ..."
+
+state watching, view 2
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: 3"
+
+state watching, view 3
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: 4"
+
+state watching, view 4
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: ..."
+  button "Reconnect" [press]
+
+state watching, view 5
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: 3 Offline, showing old data"
+
+state watching, view 6
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: 3"
+  button "Reconnect" [press]
+
+state watching, view 7
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: 4 Offline, showing old data"
+
+state watching, view 8
+path
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+  watching -> watching on update, by an update of the subscription votes/watching/live:votes main to votes
+view
+  heading "Votes" level=2
+  text "Votes: 4"
+  button "Reconnect" [press]

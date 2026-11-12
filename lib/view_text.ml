@@ -210,3 +210,31 @@ let to_string node =
   in
   emit None (pieces 0 ~skip_text:false (Accessibility.items node));
   Buffer.contents buffer
+
+let visible node =
+  let buffer = Buffer.create 256 in
+  let rec walk items =
+    List.iter
+      (function
+        | Accessibility.Element element ->
+            if not (Accessibility.hidden element) then
+              walk (Accessibility.children element)
+        | Accessibility.Text text ->
+            Buffer.add_string buffer text
+        | Accessibility.Component _ | Accessibility.Loading ->
+            ()
+        )
+      items
+  in
+  walk (Accessibility.items node);
+  Buffer.contents buffer
+
+let contains text part =
+  let length = String.length part in
+  let rec go index =
+    index + length <= String.length text
+    && (String.sub text index length = part || go (index + 1))
+  in
+  go 0
+
+let shows node text = contains (visible node) text

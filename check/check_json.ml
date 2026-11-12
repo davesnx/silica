@@ -219,6 +219,13 @@ let report ?(trace_files = []) check (report : (_, _) Check.report) =
           report.allowed
       );
       ("not_explored", list string report.not_explored);
+      ( "vacuous",
+        list
+          (fun (property, reason) ->
+            record [ ("property", string property); ("reason", string reason) ]
+          )
+          report.vacuous
+      );
     ]
 
 let rule (rule : Check.rule) =

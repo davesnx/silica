@@ -13,6 +13,18 @@ view
       text "Saved Saved."
       button "Close" [press]
 
+state running, view 2
+path
+  (start)
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+    dialog "Saved" [key_down]
+      text "Saved Saved."
+      button "Close" [press]
+    alertdialog "Failed" [key_down]
+      text "Failed"
+      button "Close" [press]
+
 state paused
 path
   running -> paused on hover true, by the view offers pointer_enter on region "Notifications" at div
@@ -20,6 +32,18 @@ view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
       text "Saved Saved."
+      button "Close" [press]
+
+state paused, view 2
+path
+  running -> paused on hover true, by the view offers pointer_enter on region "Notifications" at div
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+    dialog "Saved" [key_down]
+      text "Saved Saved."
+      button "Close" [press]
+    alertdialog "Failed" [key_down]
+      text "Failed"
       button "Close" [press]
 
 state expired
@@ -30,4 +54,17 @@ view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
       text "Saved Saved."
+      button "Close" [press]
+
+state expired, view 2
+path
+  running -> running on tick, by the timer toast/running/after 100ms (100 ms)
+  running -> expired on tick, by the timer toast/running/after 100ms (100 ms)
+view
+  region "Notifications" [pointer_enter, pointer_leave, focus, blur]
+    dialog "Saved" [key_down]
+      text "Saved Saved."
+      button "Close" [press]
+    alertdialog "Failed" [key_down]
+      text "Failed"
       button "Close" [press]

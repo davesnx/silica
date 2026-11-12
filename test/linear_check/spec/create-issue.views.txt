@@ -5,11 +5,29 @@ view
   link "New issue" href="/?new=true"
   component create-issue-dialog
 
+state closed, view 2
+path
+  (start)
+view
+  link "New issue" href="/?new=true&status=done"
+  component create-issue-dialog
+
 state editing
 path
   (start)
 view
   link "New issue" href="/?new=true"
+  component create-issue-dialog
+
+state editing, view 2
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+  failed -> editing on title, by an input
+view
+  link "New issue" href="/?new=true&status=done"
   component create-issue-dialog
 
 state submitting
@@ -20,6 +38,15 @@ view
   link "New issue" href="/?new=true"
   component create-issue-dialog
 
+state submitting, view 2
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+view
+  link "New issue" href="/?new=true&status=done"
+  component create-issue-dialog
+
 state failed
 path
   editing -> editing on title, by an input
@@ -27,4 +54,14 @@ path
   submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
 view
   link "New issue" href="/?new=true"
+  component create-issue-dialog
+
+state failed, view 2
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true&status=done"
   component create-issue-dialog

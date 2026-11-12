@@ -26,15 +26,24 @@ let component =
            $(b,issue-list)."
   )
 
-let script id trace_file component =
+let check =
+  Arg.(
+    value
+    & opt (some string) None
+    & info [ "check" ] ~docv:"EXPR"
+        ~doc:
+          "The OCaml expression of the check, which the test evaluates the \
+           rule with. Default: the value named after the machine id in the \
+           module $(b,Checks) of $(b,check/checks.ml), such as \
+           $(b,Checks.issue_list) for $(b,issue-list)."
+  )
+
+let script id trace_file component check =
+  let option name = function Some value -> [ name; value ] | None -> [] in
   Check_executable.run ~command:"script"
     ([ "script"; id; trace_file ]
-    @
-    match component with
-    | Some component ->
-        [ "--component"; component ]
-    | None ->
-        []
+    @ option "--component" component
+    @ option "--check" check
     )
 
 let command =
@@ -72,4 +81,4 @@ let command =
          ]
        ~exits:[]
     )
-    Term.(const script $ id $ trace_file $ component)
+    Term.(const script $ id $ trace_file $ component $ check)

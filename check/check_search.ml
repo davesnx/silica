@@ -37,7 +37,7 @@ type ('n, 's, 'ev, 'e) result = {
   violations : ('s, 'ev) found list;
   allowed : (Check_rules.allowance * int) list;
   firsts : (string * int) list;
-  views : (string * string) list;
+  views : (string * (string * int) list * int) list;
   not_explored : string list;
   children : Check_model.children;
   graph : ('ev, 'e) graph option;
@@ -97,7 +97,7 @@ let path parents index =
 
 let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
     ~(rules : ('n, 'e, 'ev) rule list) ~max_states ~max_violations ~within
-    ~(allow : Check_rules.allowance list) ~graph =
+    ~(allow : Check_rules.allowance list) ~graph ~views_per_state =
   let machine = model.machine in
   let graph_starts = ref [] in
   let expanded = ref 0 in
@@ -118,7 +118,9 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
   let allowed = Array.make (List.length allow) 0 in
   let firsts = Hashtbl.create 16 in
   let first_order = ref [] in
-  let views = ref [] in
+  let distinct = Hashtbl.create 64 in
+  let kept = Hashtbl.create 16 in
+  let more = Hashtbl.create 16 in
   let not_explored = Hashtbl.create 16 in
   let children = ref [] in
   let known_children = Hashtbl.create 16 in
@@ -241,8 +243,21 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
                     let name = model.name node in
                     if not (Hashtbl.mem firsts name) then (
                       Hashtbl.replace firsts name index;
-                      first_order := name :: !first_order;
-                      views := (name, View_text.to_string view) :: !views
+                      first_order := name :: !first_order
+                    );
+                    let text = View_text.to_string view in
+                    if not (Hashtbl.mem distinct (name, text)) then (
+                      Hashtbl.replace distinct (name, text) ();
+                      let listed =
+                        Option.value ~default:[] (Hashtbl.find_opt kept name)
+                      in
+                      if List.length listed < views_per_state then
+                        Hashtbl.replace kept name ((text, index) :: listed)
+                      else
+                        Hashtbl.replace more name
+                          (1
+                          + Option.value ~default:0 (Hashtbl.find_opt more name)
+                          )
                     );
                     List.iter
                       (fun entry -> Hashtbl.replace not_explored entry ())
@@ -439,7 +454,15 @@ let run ~(model : ('n, 's, 'ev, 'e) Check_model.model)
       List.mapi (fun index allowance -> (allowance, allowed.(index))) allow;
     firsts =
       List.rev_map (fun name -> (name, Hashtbl.find firsts name)) !first_order;
-    views = List.rev !views;
+    views =
+      List.rev_map
+        (fun name ->
+          ( name,
+            List.rev (Option.value ~default:[] (Hashtbl.find_opt kept name)),
+            Option.value ~default:0 (Hashtbl.find_opt more name)
+          )
+        )
+        !first_order;
     not_explored =
       List.sort String.compare
         (Hashtbl.fold (fun entry () entries -> entry :: entries) not_explored []);

@@ -1737,13 +1737,21 @@ let test_views_per_state () =
   Alcotest.(check (list string))
     "one view for each state, in the order of the paths"
     (List.map fst report.paths)
-    (List.map fst report.views);
+    (List.map (fun (views : _ Check.state_views) -> views.state) report.views);
   Alcotest.(check string)
     "the view of the first snapshot of failed"
     "textbox \"query\" [input]\n\
      button \"retry\" [press]\n\
      button \"clear\" [press]\n"
-    (List.assoc "failed" report.views)
+    (fst
+       (List.hd
+          (List.find
+             (fun (views : _ Check.state_views) -> views.state = "failed")
+             report.views
+          )
+            .views
+       )
+    )
 
 let test_causes () =
   let report = Search.check () in

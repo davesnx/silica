@@ -8,6 +8,7 @@ Make a new app.
   created app/native/dune
   created app/shared/api.ml
   created app/shared/counter.mlx
+  created check/checks.ml
   created check/dune
   created check/main.ml
   created check/spec/counter.dot

@@ -19,6 +19,287 @@ view
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
+state ready, view 2
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" [input, key_down]
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 3
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  empty -> drafting on typed, by an input
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01 Mine"
+      button "Edit" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="x" [input, key_down]
+  button "Comment" [press]
+
+state ready, view 4
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01 Mine"
+      button "Edit" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+    listitem
+      text "Ada on 1970-01-01 New"
+      button "Edit" [press]
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 5
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> saving on save, by the view offers press on button "Save" at section > div > ul > li[1] > div > div > button[1]
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" disabled [input, key_down]
+      button "Saving..." disabled [press]
+      button "Cancel" disabled [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 6
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> editing on typed, by an input
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="x" [input, key_down]
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 7
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  empty -> drafting on typed, by an input
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" [input, key_down]
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="x" [input, key_down]
+  button "Comment" [press]
+
+state ready, view 8
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  empty -> drafting on typed, by an input
+  drafting -> sending on send, by the view offers press on button "Comment" at section > div > div > div > button
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01 Mine"
+      button "Edit" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="x" disabled [input, key_down]
+  button "Sending..." disabled [press]
+
+state ready, view 9
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" [input, key_down]
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+    listitem
+      text "Ada on 1970-01-01 New"
+      button "Edit" [press]
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 10
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+  empty -> drafting on typed, by an input
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01 Mine"
+      button "Edit" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+    listitem
+      text "Ada on 1970-01-01 New"
+      button "Edit" [press]
+  textbox "Comment" value="x" [input, key_down]
+  button "Comment" [press]
+
+state ready, view 11
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> saving on save, by the view offers press on button "Save" at section > div > ul > li[1] > div > div > button[1]
+  saving -> edited on saved ok, by the answer of the call comment/saving//api/comments/edit {"id":1,"body":"Mine"} to /api/comments/edit
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01 (edited) x"
+      button "Edit" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 12
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> saving on save, by the view offers press on button "Save" at section > div > ul > li[1] > div > div > button[1]
+  saving -> editing on saved error, by the answer of the call comment/saving//api/comments/edit {"id":1,"body":"Mine"} to /api/comments/edit
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" [input, key_down]
+      alert
+        text "Only the author can edit"
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 13
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> saving on save, by the view offers press on button "Save" at section > div > ul > li[1] > div > div > button[1]
+  saving -> editing on saved error, by the answer of the call comment/saving//api/comments/edit {"id":1,"body":"Mine"} to /api/comments/edit
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" [input, key_down]
+      alert
+        text "Could not save the comment. Try again."
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 14
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> saving on save, by the view offers press on button "Save" at section > div > ul > li[1] > div > div > button[1]
+  empty -> drafting on typed, by an input
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="Mine" disabled [input, key_down]
+      button "Saving..." disabled [press]
+      button "Cancel" disabled [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="x" [input, key_down]
+  button "Comment" [press]
+
+state ready, view 15
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> editing on typed, by an input
+  editing -> saving on save, by the view offers press on button "Save" at section > div > ul > li[1] > div > div > button[1]
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="x" disabled [input, key_down]
+      button "Saving..." disabled [press]
+      button "Cancel" disabled [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="" [input, key_down]
+  button "Comment" disabled [press]
+
+state ready, view 16
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  viewing -> editing on edit, by the view offers press on button "Edit" at section > div > ul > li[1] > button
+  editing -> editing on typed, by an input
+  empty -> drafting on typed, by an input
+view
+  heading "Comments" level=2
+  list
+    listitem
+      text "Ada on 1970-01-01"
+      textbox "Edit comment" value="x" [input, key_down]
+      button "Save" [press]
+      button "Cancel" [press]
+    listitem
+      text "Ben on 1970-01-01 Ben's"
+  textbox "Comment" value="x" [input, key_down]
+  button "Comment" [press]
+
+state ready: 104 more views, past the bound of 16 views a state
+
 state failed
 path
   loading -> failed on loaded error, by the answer of the call comments/loading//api/comments 1 to /api/comments

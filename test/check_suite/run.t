@@ -94,7 +94,8 @@ state, and the update ignores it there.
         "unreached": [],
         "state_limit": null,
         "allowed": [],
-        "not_explored": []
+        "not_explored": [],
+        "vacuous": []
       }
     ],
     "unchecked": [],
@@ -191,7 +192,7 @@ Bad arguments print the usage and exit 3.
     main.exe [check] [--json] [--only ID]... [--traces DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
-    main.exe script ID TRACE_FILE [--component EXPR]
+    main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]
     main.exe rules [--json]
     main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
   Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.
@@ -322,7 +323,7 @@ With --traces, each violation is also a trace file, and the JSON names it.
   $ FIXTURE=bug ./fixtures.exe --json --traces traces | grep trace_file
             "trace_file": "traces/save_ignored_event_saved.jsonl",
   $ cat traces/save_ignored_event_saved.jsonl
-  {"root":"save","build":"check","origin":{"type":"checker","rule":"ignored-event","choices":[1,0]},"dropped":0}
+  {"root":"save","build":"check","origin":{"type":"checker","rule":"ignored-event","start":0,"choices":[1,0]},"dropped":0}
   {"seq":1,"instance":"save","number":1,"entry":0,"machine":"save","from":"","to":"editing","change":"started","event":"","snapshot":["Editing",0],"cause":{"type":"start"}}
   {"seq":2,"instance":"save","number":1,"entry":0,"machine":"save","from":"editing","to":"saved","change":"entered","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"form > button[2]"}}
   {"seq":3,"instance":"save","number":1,"entry":0,"machine":"save","from":"saved","to":"saved","change":"unhandled","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"div > button"}}
@@ -395,17 +396,19 @@ rule.
   every trace conforms (exit 0)
 
 A new run removes the trace files of a check that ran and that it no longer
-writes, so a stale trace cannot be replayed by mistake. It keeps the files of
-other checks and files that are not traces:
+writes, so a stale trace cannot be replayed by mistake. It knows its own files
+from the list it keeps in .silica-traces, so it keeps the files of other
+checks, even one whose name starts with the same id, and files that are not
+its traces:
 
-  $ touch traces/twice_ignored_event_gone.jsonl traces/door_dead_end_closed.jsonl traces/notes.txt
-  $ FIXTURE=twice ./fixtures.exe --traces traces > /dev/null
+  $ FIXTURE=bug ./fixtures.exe --traces stale > /dev/null
   [1]
-  $ ls traces | grep -E '^(twice|door|notes)'
-  door_dead_end_closed.jsonl
+  $ touch stale/save_extra_ignored_event_closed.jsonl stale/notes.txt
+  $ FIXTURE=fixed ./fixtures.exe --traces stale > /dev/null
+  $ ls -A stale
+  .silica-traces
   notes.txt
-  twice_ignored_event_first.jsonl
-  twice_ignored_event_second.jsonl
+  save_extra_ignored_event_closed.jsonl
 
 A trace that cannot be replayed faithfully is a setup error, never a pass,
 such as one recorded with names only (no event data and no choices of the

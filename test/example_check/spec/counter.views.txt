@@ -6,3 +6,58 @@ view
   text "0"
   button "Increment" [press]
   button "Reset" [press]
+
+state counter, view 2
+path
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+view
+  button "Decrement" [press]
+  text "1"
+  button "Increment" [press]
+  button "Reset" [press]
+
+state counter, view 3
+path
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+view
+  button "Decrement" [press]
+  text "2"
+  button "Increment" [press]
+  button "Reset" [press]
+
+state counter, view 4
+path
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+view
+  button "Decrement" [press]
+  text "3"
+  button "Increment" [press]
+  button "Reset" [press]
+
+state counter, view 5
+path
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+view
+  button "Decrement" [press]
+  text "4"
+  button "Increment" [press]
+  button "Reset" [press]
+
+state counter, view 6
+path
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+  counter -> counter on incr, by the view offers press on button "Increment" at div > button[2]
+view
+  button "Decrement" [press]
+  text "5"
+  button "Increment" [press]
+  button "Reset" [press]

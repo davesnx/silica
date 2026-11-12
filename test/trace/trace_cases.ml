@@ -120,7 +120,8 @@ let run () =
       header =
         {
           header with
-          origin = Checker { rule = "press-ignored"; choices = [ 0; 2 ] };
+          origin =
+            Checker { rule = "press-ignored"; start = 0; choices = [ 0; 2 ] };
           url = None;
           loop_from = Some 3;
         };

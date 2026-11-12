@@ -8,3 +8,150 @@ view
     textbox "New todo" value="" [input]
     button "Add"
   list
+
+state todo, view 2
+path
+  todo -> todo on draft, by an input
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="milk" [input]
+    button "Add"
+  list
+
+state todo, view 3
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list
+    listitem
+      button "[ ] milk" [press, double_press]
+
+state todo, view 4
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on toggle, by the view offers press on button "[ ] milk" at section > ul > li > button
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list
+    listitem
+      button "[x] milk" [press, double_press]
+
+state todo, view 5
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on draft, by an input
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="milk" [input]
+    button "Add"
+  list
+    listitem
+      button "[ ] milk" [press, double_press]
+
+state todo, view 6
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on toggle, by the view offers press on button "[ ] milk" at section > ul > li > button
+  todo -> todo on draft, by an input
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="milk" [input]
+    button "Add"
+  list
+    listitem
+      button "[x] milk" [press, double_press]
+
+state todo, view 7
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list
+    listitem
+      button "[ ] milk" [press, double_press]
+    listitem
+      button "[ ] milk" [press, double_press]
+
+state todo, view 8
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on toggle, by the view offers press on button "[ ] milk" at section > ul > li > button
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list
+    listitem
+      button "[x] milk" [press, double_press]
+    listitem
+      button "[ ] milk" [press, double_press]
+
+state todo, view 9
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on toggle, by the view offers press on button "[ ] milk" at section > ul > li[2] > button
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list
+    listitem
+      button "[ ] milk" [press, double_press]
+    listitem
+      button "[x] milk" [press, double_press]
+
+state todo, view 10
+path
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on toggle, by the view offers press on button "[ ] milk" at section > ul > li > button
+  todo -> todo on draft, by an input
+  todo -> todo on add, by the view offers submit on form at section > form
+  todo -> todo on toggle, by the view offers press on button "[ ] milk" at section > ul > li[2] > button
+view
+  heading "Todos" level=2
+  text "Press a todo to toggle it, double press to delete it."
+  form [submit]
+    textbox "New todo" value="" [input]
+    button "Add"
+  list
+    listitem
+      button "[x] milk" [press, double_press]
+    listitem
+      button "[x] milk" [press, double_press]

@@ -1,7 +1,7 @@
 module Json = Silica_json.Json
 
 type origin =
-  | Checker of { rule : string; choices : int list }
+  | Checker of { rule : string; start : int; choices : int list }
   | Runtime of { platform : string }
 
 type header = {
@@ -32,11 +32,12 @@ let encode_header header =
         ("build", string header.build);
         ( "origin",
           match header.origin with
-          | Checker { rule; choices } ->
+          | Checker { rule; start; choices } ->
               object_of
                 [
                   ("type", string "checker");
                   ("rule", string rule);
+                  ("start", int start);
                   ("choices", Json.declassify (`List (List.map int choices)));
                 ]
           | Runtime { platform } ->
@@ -110,8 +111,9 @@ let decode_origin json =
   match kind with
   | "checker" ->
       let* rule = required fields "rule" as_string in
+      let* start = required fields "start" as_int in
       let* choices = required fields "choices" as_ints in
-      Ok (Checker { rule; choices })
+      Ok (Checker { rule; start; choices })
   | "runtime" ->
       let* platform = required fields "platform" as_string in
       Ok (Runtime { platform })

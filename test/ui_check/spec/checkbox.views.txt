@@ -4,11 +4,24 @@ path
 view
   checkbox "Accept" checked=false [press, key_down]
 
+state unchecked, view 2
+path
+  (start)
+view
+  checkbox "Accept" checked=false disabled [press, key_down]
+
 state checked
 path
   (start)
 view
   checkbox "Accept" checked [press, key_down]
+
+state checked, view 2
+path
+  unchecked -> checked on toggle, by the view offers press on checkbox "Accept" at button
+  checked -> checked on props, by new props
+view
+  checkbox "Accept" checked disabled [press, key_down]
 
 state indeterminate
 path

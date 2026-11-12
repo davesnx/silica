@@ -5,6 +5,44 @@ view
   combobox "Status" expanded=false [press, key_down]
     text "Pick a status"
 
+state closed, view 2
+path
+  (start)
+view
+  combobox "Status" expanded=false [press, key_down]
+    text "Done"
+
+state closed, view 3
+path
+  (start)
+view
+  combobox "Status" expanded=false [press, key_down]
+    text "Todo"
+
+state closed, view 4
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+  open -> closed on select focus-out, by the view offers key_down Tab on the element at span
+view
+  combobox "Status" expanded=false [press, key_down]
+    text "Backlog"
+
+state closed, view 5
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+  open -> closed on select item-press, by the view offers press on option "In progress" at portal > div > div[4]
+view
+  combobox "Status" expanded=false [press, key_down]
+    text "In progress"
+
+state closed, view 6
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+  open -> closed on select item-press, by the view offers press on option "Duplicate" at portal > div > div[6]
+view
+  combobox "Status" expanded=false [press, key_down]
+    text "Duplicate"
+
 state open
 path
   closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
@@ -19,3 +57,84 @@ view
     option "In progress" [press, pointer_enter]
     option "Done" [press, pointer_enter]
     option "Duplicate" [press, pointer_enter]
+
+state open, view 2
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+view
+  span [key_down]
+    combobox "Status" expanded [press, key_down]
+      text "Done"
+  listbox "Status"
+    option "Backlog" [press, pointer_enter]
+    option "Todo" [press, pointer_enter]
+    option "Blocked" disabled
+    option "In progress" [press, pointer_enter]
+    option "Done" selected [press, pointer_enter]
+    option "Duplicate" [press, pointer_enter]
+
+state open, view 3
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+view
+  span [key_down]
+    combobox "Status" expanded [press, key_down]
+      text "Todo"
+  listbox "Status"
+    option "Backlog" [press, pointer_enter]
+    option "Todo" selected [press, pointer_enter]
+    option "Blocked" disabled
+    option "In progress" [press, pointer_enter]
+    option "Done" [press, pointer_enter]
+    option "Duplicate" [press, pointer_enter]
+
+state open, view 4
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+  open -> closed on select focus-out, by the view offers key_down Tab on the element at span
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+view
+  span [key_down]
+    combobox "Status" expanded [press, key_down]
+      text "Backlog"
+  listbox "Status"
+    option "Backlog" selected [press, pointer_enter]
+    option "Todo" [press, pointer_enter]
+    option "Blocked" disabled
+    option "In progress" [press, pointer_enter]
+    option "Done" [press, pointer_enter]
+    option "Duplicate" [press, pointer_enter]
+
+state open, view 5
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+  open -> closed on select item-press, by the view offers press on option "In progress" at portal > div > div[4]
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+view
+  span [key_down]
+    combobox "Status" expanded [press, key_down]
+      text "In progress"
+  listbox "Status"
+    option "Backlog" [press, pointer_enter]
+    option "Todo" [press, pointer_enter]
+    option "Blocked" disabled
+    option "In progress" selected [press, pointer_enter]
+    option "Done" [press, pointer_enter]
+    option "Duplicate" [press, pointer_enter]
+
+state open, view 6
+path
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+  open -> closed on select item-press, by the view offers press on option "Duplicate" at portal > div > div[6]
+  closed -> open on trigger_press, by the view offers press on combobox "Status" at span > button
+view
+  span [key_down]
+    combobox "Status" expanded [press, key_down]
+      text "Duplicate"
+  listbox "Status"
+    option "Backlog" [press, pointer_enter]
+    option "Todo" [press, pointer_enter]
+    option "Blocked" disabled
+    option "In progress" [press, pointer_enter]
+    option "Done" [press, pointer_enter]
+    option "Duplicate" selected [press, pointer_enter]

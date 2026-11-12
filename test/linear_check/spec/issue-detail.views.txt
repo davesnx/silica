@@ -28,6 +28,378 @@ view
   component command-menu
   component toast
 
+state ready, view 2
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  link "Back to issues" href="/"
+  text "ENG-2"
+  heading "A title" level=1
+  button "Edit title" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 3
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at section > article > div[1] > button
+view
+  link "Back to issues" href="/"
+  text "ENG-1"
+  textbox "Title" value="A title" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 4
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit description" at section > article > div[2] > button
+view
+  link "Back to issues" href="/"
+  text "ENG-1"
+  heading "A title" level=1
+  button "Edit title" [press]
+  textbox "Description" value="" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 5
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on props, by new props
+view
+  link "Back to issues" href="/"
+  text "There is no issue ENG-9."
+
+state ready, view 6
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at section > article > div[1] > button
+view
+  link "Back to issues" href="/"
+  text "ENG-2"
+  textbox "Title" value="A title" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 7
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit description" at section > article > div[2] > button
+view
+  link "Back to issues" href="/"
+  text "ENG-2"
+  heading "A title" level=1
+  button "Edit title" [press]
+  textbox "Description" value="" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 8
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at section > article > div[1] > button
+  ready -> ready on draft_changed, by an input
+view
+  link "Back to issues" href="/"
+  component unsaved
+  text "ENG-1"
+  textbox "Title" value="x" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 9
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at section > article > div[1] > button
+  ready -> ready on draft_changed, by an input
+view
+  link "Back to issues" href="/"
+  component unsaved
+  text "ENG-1"
+  textbox "Title" value="" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 10
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit description" at section > article > div[2] > button
+  ready -> ready on draft_changed, by an input
+view
+  link "Back to issues" href="/"
+  component unsaved
+  text "ENG-1"
+  heading "A title" level=1
+  button "Edit title" [press]
+  textbox "Description" value="x" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 11
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on pick, by an input
+  ready -> ready on saved ok, by the answer of the call issue-detail/ready//api/issues/update {"number":1,"base":1,"change":["Status",["Done"]]} to /api/issues/update
+view
+  link "Back to issues" href="/"
+  text "ENG-1"
+  heading "saved" level=1
+  button "Edit title" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 12
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on pick, by an input
+  ready -> ready on saved conflict, by the answer of the call issue-detail/ready//api/issues/update {"number":1,"base":1,"change":["Status",["Done"]]} to /api/issues/update
+view
+  link "Back to issues" href="/"
+  text "ENG-1"
+  heading "theirs" level=1
+  button "Edit title" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 13
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+view
+  link "Back to issues" href="/"
+  text "Offline. Showing the last data received."
+  button "Reconnect" [press]
+  text "ENG-1"
+  heading "A title" level=1
+  button "Edit title" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 14
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at section > article > div[1] > button
+  ready -> ready on draft_changed, by an input
+view
+  link "Back to issues" href="/"
+  component unsaved
+  text "ENG-2"
+  textbox "Title" value="x" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 15
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at section > article > div[1] > button
+  ready -> ready on draft_changed, by an input
+view
+  link "Back to issues" href="/"
+  component unsaved
+  text "ENG-2"
+  textbox "Title" value="" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "No description."
+  button "Edit description" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready, view 16
+path
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit description" at section > article > div[2] > button
+  ready -> ready on draft_changed, by an input
+view
+  link "Back to issues" href="/"
+  component unsaved
+  text "ENG-2"
+  heading "A title" level=1
+  button "Edit title" [press]
+  textbox "Description" value="x" [input, key_down]
+  button "Save" [press]
+  button "Cancel" [press]
+  text "Status"
+  component menu
+  text "Priority"
+  component menu
+  text "Assignee"
+  component menu
+  text "Labels"
+  component labels-picker-content
+  text "Created 1970-01-01 Updated 1970-01-01"
+  component comments
+  component command-menu
+  component toast
+
+state ready: 117 more views, past the bound of 16 views a state
+
 state failed
 path
   loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
@@ -35,6 +407,15 @@ view
   link "Back to issues" href="/"
   alert
     text "The server answered 500"
+  button "Try again" [press]
+
+state failed, view 2
+path
+  loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  link "Back to issues" href="/"
+  alert
+    text "The network failed"
   button "Try again" [press]
 
 state not_found

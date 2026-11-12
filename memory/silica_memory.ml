@@ -1788,3 +1788,5 @@ let replay handle (expected : Trace.t) =
           in
           go expected.transitions
     )
+
+let shows handle text = View_text.shows handle.memory.view text

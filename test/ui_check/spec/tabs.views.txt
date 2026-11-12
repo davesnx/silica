@@ -6,3 +6,12 @@ view
     tab "Account" selected
     tab "Billing" disabled [press]
     tab "Closed" [press]
+
+state ready, view 2
+path
+  (start)
+view
+  tablist [key_down]
+    tab "Account" [press]
+    tab "Billing" disabled [press]
+    tab "Closed" selected

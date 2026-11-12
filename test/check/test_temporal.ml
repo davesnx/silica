@@ -646,6 +646,111 @@ let test_transition_reads_both_states () =
     [ "increment"; "increment" ]
     (events (Check.steps violation.counterexample))
 
+let test_shows_reads_plain_text () =
+  let message ~shown =
+    Component.make
+      (Machine.make ~id:"message" ~init:(Count 0) ~shape:count_shape
+         ~events:reset_events (fun (Count count) event ->
+           match event with
+           | Increment ->
+               Machine.Go (Count (min 2 (count + 1)))
+           | Reset ->
+               Machine.Go (Count 0)
+       )
+      )
+      (fun (Count count) ->
+        Node.element "div" []
+          [
+            Node.element "p" []
+              [
+                Node.text
+                  ( if count = 2 && shown then
+                      "Too many"
+                    else
+                      ""
+                  );
+              ];
+            Node.element "p"
+              [ Attr.bool "hidden" true ]
+              [ Node.text "Too many" ];
+            button Increment "Add";
+            button Reset "Reset";
+          ]
+      )
+  in
+  let run ~shown =
+    Check.run
+      (Check.component
+         ~properties:
+           [
+             Check.always ~name:"two shows the warning"
+               Check.(
+                 not_ (state (fun (Count count) -> count = 2))
+                 ||| shows "Too many"
+               );
+           ]
+         (message ~shown)
+      )
+  in
+  Alcotest.(check int)
+    "the warning in a paragraph counts" 0
+    (List.length (run ~shown:true).violations);
+  Alcotest.(check (list string))
+    "a hidden warning does not count"
+    [ "two shows the warning" ]
+    (List.map
+       (fun (violation : _ Check.violation) -> violation.rule)
+       (run ~shown:false).violations
+    )
+
+let test_vacuous_properties () =
+  let report =
+    Check.run
+      (Check.component
+         ~within:(fun (Count count) -> count <= 2)
+         ~properties:
+           [
+             Check.always ~name:"nine is even"
+               Check.(
+                 not_ (state (fun (Count count) -> count = 9))
+                 ||| state (fun (Count count) -> count mod 2 = 0)
+               );
+             Check.always ~name:"two is even"
+               Check.(
+                 not_ (state (fun (Count count) -> count = 2))
+                 ||| state (fun (Count count) -> count mod 2 = 0)
+               );
+             Check.always ~name:"a reset to nine is even"
+               Check.(
+                 not_
+                   (event (( = ) Reset)
+                   &&& state (fun (Count count) -> count = 9)
+                   )
+                 ||| state (fun (Count count) -> count mod 2 = 0)
+               );
+             Check.leads_to ~name:"nine settles"
+               ~from:(Check.state (fun (Count count) -> count = 9))
+               ~to_:(Check.state (fun (Count count) -> count = 0))
+               ();
+             Check.never_after ~name:"after nine, never zero"
+               ~after:(Check.state (fun (Count count) -> count = 9))
+               ~never:(Check.state (fun (Count count) -> count = 0))
+               ();
+           ]
+         (resetting ~keeps:false)
+      )
+  in
+  Alcotest.(check int) "no violation" 0 (List.length report.violations);
+  Alcotest.(check (list string))
+    "the properties that were never tested"
+    [
+      "nine is even";
+      "a reset to nine is even";
+      "nine settles";
+      "after nine, never zero";
+    ]
+    (List.map fst report.vacuous)
+
 let test_child_step_condition () =
   match
     Check.child
@@ -670,6 +775,10 @@ let () =
             test_always_reads_every_step;
           Alcotest.test_case "a transition reads the states before and after"
             `Quick test_transition_reads_both_states;
+          Alcotest.test_case "a property that is never tested is vacuous" `Quick
+            test_vacuous_properties;
+          Alcotest.test_case "shows reads the visible text" `Quick
+            test_shows_reads_plain_text;
           Alcotest.test_case "a child property cannot read the step" `Quick
             test_child_step_condition;
         ]

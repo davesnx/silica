@@ -224,18 +224,36 @@ let indented text =
        (String.split_on_char '\n' text)
     )
 
+let path_text = function
+  | [] ->
+      "  (start)\n"
+  | steps ->
+      String.concat "" (List.map step_line steps)
+
 let views_text (report : (_, _) Check.report) =
   String.concat "\n"
-    (List.map
-       (fun (name, view) ->
-         let path =
-           match List.assoc_opt name report.paths with
-           | None | Some [] ->
-               "  (start)\n"
-           | Some steps ->
-               String.concat "" (List.map step_line steps)
-         in
-         "state " ^ name ^ "\npath\n" ^ path ^ "view\n" ^ indented view
+    (List.concat_map
+       (fun (views : _ Check.state_views) ->
+         List.mapi
+           (fun index (view, steps) ->
+             let header =
+               if index = 0 then
+                 "state " ^ views.state
+               else
+                 Printf.sprintf "state %s, view %d" views.state (index + 1)
+             in
+             header ^ "\npath\n" ^ path_text steps ^ "view\n" ^ indented view
+           )
+           views.views
+         @
+         if views.more > 0 then
+           [
+             Printf.sprintf
+               "state %s: %d more views, past the bound of %d views a state\n"
+               views.state views.more Check.views_per_state;
+           ]
+         else
+           []
        )
        report.views
     )
@@ -307,6 +325,145 @@ let line_diff before after =
       List.rev acc
   in
   walk 0 0 []
+
+type view_block = {
+  header : string;
+  state : string;
+  view : string;
+  path : string;
+}
+
+let view_blocks text =
+  let rec blocks acc current = function
+    | [] ->
+        List.rev (match current with Some block -> block :: acc | None -> acc)
+    | line :: rest when String.starts_with ~prefix:"state " line ->
+        let acc =
+          match current with Some block -> block :: acc | None -> acc
+        in
+        let header = String.sub line 6 (String.length line - 6) in
+        let state =
+          match String.index_opt header ',' with
+          | Some comma ->
+              String.sub header 0 comma
+          | None -> (
+              match String.index_opt header ':' with
+              | Some colon ->
+                  String.sub header 0 colon
+              | None ->
+                  header
+            )
+        in
+        blocks acc
+          (Some ({ header; state; view = ""; path = "" }, `Header))
+          rest
+    | line :: rest -> (
+        match current with
+        | Some (block, part) -> (
+            match (line, part) with
+            | "path", _ ->
+                blocks acc (Some (block, `Path)) rest
+            | "view", _ ->
+                blocks acc (Some (block, `View)) rest
+            | _, `Path ->
+                blocks acc
+                  (Some ({ block with path = block.path ^ line ^ "\n" }, `Path))
+                  rest
+            | _, `View ->
+                blocks acc
+                  (Some ({ block with view = block.view ^ line ^ "\n" }, `View))
+                  rest
+            | _, `Header ->
+                blocks acc current rest
+          )
+        | None ->
+            blocks acc None rest
+      )
+  in
+  List.filter_map
+    (fun (block, _) ->
+      if block.view = "" then
+        None
+      else
+        Some block
+    )
+    (blocks [] None (lines text))
+
+let views_lines ~before ~after =
+  let old_blocks = view_blocks before and new_blocks = view_blocks after in
+  let same_view first second =
+    first.state = second.state && first.view = second.view
+  in
+  let has blocks block = List.exists (same_view block) blocks in
+  let indent lines = List.map (fun line -> "    " ^ line) lines in
+  let shown block =
+    indent
+      (List.filter
+         (fun line -> line <> "")
+         (String.split_on_char '\n' block.view)
+      )
+  in
+  let at header blocks =
+    List.find_opt (fun block -> block.header = header) blocks
+  in
+  let changed =
+    List.filter_map
+      (fun block ->
+        match at block.header old_blocks with
+        | Some old
+          when old.view <> block.view
+               && (not (has old_blocks block))
+               && not (has new_blocks old) ->
+            Some (block.header, old, block)
+        | Some _ | None ->
+            None
+      )
+      new_blocks
+  in
+  let paired header =
+    List.exists (fun (other, _, _) -> other = header) changed
+  in
+  let removed =
+    List.concat_map
+      (fun block ->
+        if has new_blocks block || paired block.header then
+          []
+        else
+          ("removed a view of state " ^ block.header) :: shown block
+      )
+      old_blocks
+  and added =
+    List.concat_map
+      (fun block ->
+        if has old_blocks block || paired block.header then
+          []
+        else
+          ("added a view of state " ^ block.header) :: shown block
+      )
+      new_blocks
+  and modified =
+    List.concat_map
+      (fun (header, old, block) ->
+        ("changed the view of state " ^ header)
+        :: indent (line_diff old.view block.view)
+      )
+      changed
+  and moved =
+    List.filter_map
+      (fun block ->
+        match List.find_opt (same_view block) old_blocks with
+        | Some other when other.path <> block.path ->
+            Some ("changed the path to the view of state " ^ block.header)
+        | Some _ | None ->
+            None
+      )
+      new_blocks
+  in
+  match modified @ removed @ added @ moved with
+  | [] ->
+      line_diff before after
+  | changes ->
+      changes
 
 let spec_lines ~before ~after =
   match (Silica.Spec.of_text before, Silica.Spec.of_text after) with
@@ -387,7 +544,7 @@ let golden_with ~program ~write dir result =
           else if String.ends_with ~suffix:".spec.txt" name then
             Some (name, Changed (spec_lines ~before ~after:text))
           else if String.ends_with ~suffix:".views.txt" name then
-            Some (name, Changed (line_diff before text))
+            Some (name, Changed (views_lines ~before ~after:text))
           else
             let id = Filename.remove_extension name in
             if spec_changed id then
@@ -677,7 +834,7 @@ let usage =
   \  main.exe [check] [--json] [--only ID]... [--traces DIR]\n\
   \  main.exe golden DIR [--write] [--json]\n\
   \  main.exe replay ID TRACE_FILE [--json]\n\
-  \  main.exe script ID TRACE_FILE [--component EXPR]\n\
+  \  main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]\n\
   \  main.exe rules [--json]\n\
   \  main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...\n\
    Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.\n"
@@ -686,7 +843,12 @@ type command =
   | Check of { json : bool; only : string list; traces : string option }
   | Golden of { dir : string; write : bool; json : bool }
   | Replay of { id : string; file : string; json : bool }
-  | Script of { id : string; file : string; component : string option }
+  | Script of {
+      id : string;
+      file : string;
+      component : string option;
+      check : string option;
+    }
   | Rules of { json : bool }
   | Conform of {
       spec : string;
@@ -719,14 +881,22 @@ let parse arguments =
     | _ ->
         Error "replay: give the machine id and the trace file"
   in
-  let script = function
-    | [ id; file ] ->
-        Ok (Script { id; file; component = None })
-    | [ id; file; "--component"; component ]
-    | [ "--component"; component; id; file ] ->
-        Ok (Script { id; file; component = Some component })
-    | _ ->
-        Error "script: give the machine id and the trace file"
+  let rec script ~component ~check ~positional = function
+    | "--component" :: value :: rest ->
+        script ~component:(Some value) ~check ~positional rest
+    | "--check" :: value :: rest ->
+        script ~component ~check:(Some value) ~positional rest
+    | argument :: rest when not (String.starts_with ~prefix:"-" argument) ->
+        script ~component ~check ~positional:(positional @ [ argument ]) rest
+    | [] -> (
+        match positional with
+        | [ id; file ] ->
+            Ok (Script { id; file; component; check })
+        | _ ->
+            Error "script: give the machine id and the trace file"
+      )
+    | argument :: _ ->
+        Error ("script: unknown argument " ^ argument)
   in
   let rec golden ~dir ~write ~json = function
     | [] -> (
@@ -780,7 +950,7 @@ let parse arguments =
   | "replay" :: rest ->
       replay ~json:false rest
   | "script" :: rest ->
-      script rest
+      script ~component:None ~check:None ~positional:[] rest
   | [ "rules" ] ->
       Ok (Rules { json = false })
   | [ "rules"; "--json" ] ->
@@ -826,45 +996,50 @@ let trace_names id (violations : (_, _) Check.violation list) =
 
 let test_file = Check_json.test_file
 
-let remove_stale dir result trace_files =
+let manifest_name = ".silica-traces"
+
+let read_manifest dir =
+  let path = Filename.concat dir manifest_name in
+  if Sys.file_exists path then
+    List.filter_map
+      (fun line ->
+        match String.index_opt line '\t' with
+        | Some tab ->
+            Some
+              ( String.sub line 0 tab,
+                String.sub line (tab + 1) (String.length line - tab - 1)
+              )
+        | None ->
+            None
+      )
+      (String.split_on_char '\n' (read_file path))
+  else
+    []
+
+let remove_stale dir trace_files =
+  let ran = List.map fst trace_files in
+  let kept, owned =
+    List.partition (fun (id, _) -> not (List.mem id ran)) (read_manifest dir)
+  in
   let written =
     List.concat_map
-      (fun (_, files) -> List.map Filename.basename files)
+      (fun (id, files) ->
+        List.map (fun file -> (id, Filename.basename file)) files
+      )
       trace_files
   in
-  let prefixes =
-    List.map
-      (fun (Ran { check; _ }) -> identifier (Check.id check) ^ "_")
-      result.ran
-  in
-  let owner name =
-    List.fold_left
-      (fun best prefix ->
-        if
-          String.starts_with ~prefix name
-          &&
-          match best with
-          | Some other ->
-              String.length prefix > String.length other
-          | None ->
-              true
-        then
-          Some prefix
-        else
-          best
-      )
-      None prefixes
-  in
-  Array.iter
-    (fun name ->
-      if
-        Filename.check_suffix name ".jsonl"
-        && (not (List.mem name written))
-        && Option.is_some (owner name)
-      then
-        Sys.remove (Filename.concat dir name)
+  List.iter
+    (fun (id, name) ->
+      let path = Filename.concat dir name in
+      if (not (List.mem (id, name) written)) && Sys.file_exists path then
+        Sys.remove path
     )
-    (Sys.readdir dir)
+    owned;
+  write_file
+    (Filename.concat dir manifest_name)
+    (String.concat ""
+       (List.map (fun (id, name) -> id ^ "\t" ^ name ^ "\n") (kept @ written))
+    )
 
 let write_traces dir result =
   match
@@ -890,7 +1065,7 @@ let write_traces dir result =
       result.ran
   with
   | trace_files ->
-      remove_stale dir result trace_files;
+      remove_stale dir trace_files;
       { result with trace_files }
   | exception (Sys_error message | Invalid_argument message) ->
       {
@@ -1100,12 +1275,12 @@ let formatted ~name text =
     [ source; output ];
   result
 
-let script_command entries ~id ~file ~component =
+let script_command entries ~id ~file ~component ~check:expression =
   match load entries ~id ~file with
   | Error message ->
       setup_error ~json:false ~command:"script" message
   | Ok (Found check, trace) -> (
-      match Check.script ?component check trace with
+      match Check.script ?component ?check:expression check trace with
       | Ok text ->
           let target = test_file file in
           print_string (formatted ~name:target text);
@@ -1228,8 +1403,8 @@ let main ?(argv = Sys.argv) entries =
         exit_code result
     | Ok (Replay { id; file; json }) ->
         replay_command entries ~id ~file ~json
-    | Ok (Script { id; file; component }) ->
-        script_command entries ~id ~file ~component
+    | Ok (Script { id; file; component; check }) ->
+        script_command entries ~id ~file ~component ~check
     | Ok (Conform { spec; only; json; files }) ->
         conform_command entries ~spec ~only ~json ~files
     | Ok (Golden { dir; write; json }) ->

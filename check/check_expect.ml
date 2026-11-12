@@ -52,33 +52,50 @@ let view_passes broken page =
   | messages ->
       fail broken ("The view still breaks it:\n" ^ String.concat "\n" messages)
 
-let not_view broken page view =
-  if Memory.view_text page = view then
-    fail broken ("The view is still the view that broke it:\n" ^ view)
-
-let does_not_wait broken page view =
-  if
-    Memory.pending page = []
-    && Memory.timers page = []
-    && Memory.view_text page = view
-  then
-    fail broken
-      ("The page still waits for the user, with no request and no timer, in \
-        the view:\n" ^ view
-      )
-
-let leaves_cycle broken page view =
-  if Memory.view_text page = view then
-    fail broken ("The page is back at the view where the cycle starts:\n" ^ view)
-
-let props (component : (_, _, _) Component.t) json =
-  match
-    Result.bind (Machine.props_codec component.machine) (fun codec ->
-        Codec.of_string codec json
+let holds broken ?cycle_from ?start check page steps =
+  let stopped =
+    match steps () with
+    | () ->
+        None
+    | exception Memory.Not_reachable { message; _ } ->
+        Some message
+    | exception Failure message ->
+        Some message
+  in
+  match Check.replay_run ?cycle_from ?start check (Memory.trace page) with
+  | Error reason ->
+      fail broken
+        ("The run in memory cannot be replayed in the check: " ^ reason)
+  | Ok (Not_enabled { at; _ }) ->
+      fail broken
+        (Printf.sprintf
+           "Step %d of the run in memory is not a step that the check offers: \
+            the check and the component disagree; check that they are the same \
+            component and samples."
+           at
+        )
+  | Ok (Replayed points) -> (
+      match
+        List.find_map
+          (fun (point : (_, _) Check.replayed_step) ->
+            List.find_opt
+              (fun (failure : Check.failure) -> failure.rule = broken.rule)
+              point.failing
+            |> Option.map (fun (failure : Check.failure) -> (point, failure))
+          )
+          points
+      with
+      | Some (point, failure) ->
+          fail broken
+            (Printf.sprintf "It still fails in state %s: %s%s" point.state_name
+               failure.message
+               ( match stopped with
+               | Some reason ->
+                   "\n(the steps stopped early: " ^ reason ^ ")"
+               | None ->
+                   ""
+               )
+            )
+      | None ->
+          ()
     )
-  with
-  | Ok props ->
-      props
-  | Error error ->
-      prerr_endline ("the props " ^ json ^ " do not decode: " ^ error);
-      exit 1

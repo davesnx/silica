@@ -4,6 +4,41 @@ path
 view
   combobox "Fruit" value="" expanded=false [input, key_down]
 
+state closed, view 2
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="Grape" expanded=false [input, key_down]
+
+state closed, view 3
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Apple" at portal > div > ul > li[1]
+view
+  combobox "Fruit" value="Apple" expanded=false [input, key_down]
+
+state closed, view 4
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Banana" at portal > div > ul > li[2]
+view
+  combobox "Fruit" value="Banana" expanded=false [input, key_down]
+
+state closed, view 5
+path
+  closed -> open on typed, by an input
+  open -> closed on escape, by the view offers key_down Escape on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="a" expanded=false [input, key_down]
+
+state closed, view 6
+path
+  closed -> open on typed, by an input
+  open -> closed on escape, by the view offers key_down Escape on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="zz" expanded=false [input, key_down]
+
 state inline
 path
   (start)
@@ -14,6 +49,128 @@ view
     option "Banana" [press, pointer_enter]
     option "Cherry" disabled
     option "Grape" [press, pointer_enter]
+  status
+
+state inline, view 2
+path
+  inline -> inline on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="Apple" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+  status
+
+state inline, view 3
+path
+  inline -> inline on choose, by the view offers press on option "Banana" at div > div > ul > li[2]
+view
+  combobox "Fruit" value="Banana" expanded [input, key_down]
+  listbox "Fruit"
+    option "Banana" selected [press, pointer_enter]
+  status
+
+state inline, view 4
+path
+  inline -> inline on choose, by the view offers press on option "Grape" at div > div > ul > li[4]
+view
+  combobox "Fruit" value="Grape" expanded [input, key_down]
+  listbox "Fruit"
+    option "Grape" selected [press, pointer_enter]
+  status
+
+state inline, view 5
+path
+  inline -> inline on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Grape" [press, pointer_enter]
+  status
+
+state inline, view 6
+path
+  inline -> inline on typed, by an input
+view
+  combobox "Fruit" value="zz" expanded [input, key_down]
+  listbox "Fruit"
+  status
+    text "No results"
+
+state inline, view 7
+path
+  inline -> inline on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  inline -> inline on escape, by the view offers key_down Escape on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" [press, pointer_enter]
+  status
+
+state inline, view 8
+path
+  inline -> inline on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  inline -> inline on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Grape" [press, pointer_enter]
+  status
+
+state inline, view 9
+path
+  inline -> inline on choose, by the view offers press on option "Banana" at div > div > ul > li[2]
+  inline -> inline on escape, by the view offers key_down Escape on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" selected [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" [press, pointer_enter]
+  status
+
+state inline, view 10
+path
+  inline -> inline on choose, by the view offers press on option "Banana" at div > div > ul > li[2]
+  inline -> inline on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" selected [press, pointer_enter]
+    option "Grape" [press, pointer_enter]
+  status
+
+state inline, view 11
+path
+  inline -> inline on choose, by the view offers press on option "Grape" at div > div > ul > li[4]
+  inline -> inline on escape, by the view offers key_down Escape on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" selected [press, pointer_enter]
+  status
+
+state inline, view 12
+path
+  inline -> inline on choose, by the view offers press on option "Grape" at div > div > ul > li[4]
+  inline -> inline on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Grape" selected [press, pointer_enter]
   status
 
 state open
@@ -27,3 +184,183 @@ view
     option "Cherry" disabled
     option "Grape" [press, pointer_enter]
   status
+
+state open, view 2
+path
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Grape" [press, pointer_enter]
+  status
+
+state open, view 3
+path
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="zz" expanded [input, key_down]
+  listbox "Fruit"
+  status
+    text "No results"
+
+state open, view 4
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+  status
+
+state open, view 5
+path
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+  status
+
+state open, view 6
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="Grape" expanded [input, key_down]
+  listbox "Fruit"
+    option "Grape" selected [press, pointer_enter]
+  status
+
+state open, view 7
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" selected [press, pointer_enter]
+  status
+
+state open, view 8
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Grape" selected [press, pointer_enter]
+  status
+
+state open, view 9
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Apple" at portal > div > ul > li[1]
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="Apple" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+  status
+
+state open, view 10
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Apple" at portal > div > ul > li[1]
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" [press, pointer_enter]
+  status
+
+state open, view 11
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Apple" at portal > div > ul > li[1]
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+    option "Grape" [press, pointer_enter]
+  status
+
+state open, view 12
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Banana" at portal > div > ul > li[2]
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+view
+  combobox "Fruit" value="Banana" expanded [input, key_down]
+  listbox "Fruit"
+    option "Banana" selected [press, pointer_enter]
+  status
+
+state open, view 13
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Banana" at portal > div > ul > li[2]
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" selected [press, pointer_enter]
+    option "Cherry" disabled
+    option "Grape" [press, pointer_enter]
+  status
+
+state open, view 14
+path
+  closed -> open on move previous, by the view offers key_down ArrowUp on combobox "Fruit" at div > input
+  open -> closed on choose, by the view offers press on option "Banana" at portal > div > ul > li[2]
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" [press, pointer_enter]
+    option "Banana" selected [press, pointer_enter]
+    option "Grape" [press, pointer_enter]
+  status
+
+state open, view 15
+path
+  inline -> inline on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  inline -> closed on props, by new props
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+  status
+
+state open, view 16
+path
+  inline -> inline on choose_highlighted, by the view offers key_down Enter on combobox "Fruit" at div > input
+  inline -> closed on props, by new props
+  closed -> open on typed, by an input
+view
+  combobox "Fruit" value="a" expanded [input, key_down]
+  listbox "Fruit"
+    option "Apple" selected [press, pointer_enter]
+    option "Banana" [press, pointer_enter]
+  status
+
+state open: 3 more views, past the bound of 16 views a state

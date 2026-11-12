@@ -1,6 +1,12 @@
+(library
+ (name checks)
+ (modules checks)
+ (libraries app_native silica silica.check))
+
 (executable
  (name main)
- (libraries app_native silica silica.check))
+ (modules main)
+ (libraries checks silica silica.check))
 
 (rule
  (alias runtest)

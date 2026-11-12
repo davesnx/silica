@@ -9,3 +9,486 @@ view
     component theme
   main
     component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 2
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="" [input]
+        textbox "Description" value="" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 3
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="" [input]
+        textbox "Description" value="" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Title is required"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 4
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 5
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="" [input]
+        textbox "Description" value="x" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 6
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" disabled [input]
+        textbox "Description" value="" disabled [input]
+        combobox "Status" disabled [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" disabled [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        button "Cancel" disabled [press]
+        button "Creating..." disabled
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 7
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="x" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 8
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="" [input]
+        textbox "Description" value="x" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Title is required"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 9
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Could not create the issue. Title is too long"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 10
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Could not create the issue. The server answered 500"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 11
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Could not create the issue. The network failed"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 12
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" disabled [input]
+        textbox "Description" value="x" disabled [input]
+        combobox "Status" disabled [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" disabled [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        button "Cancel" disabled [press]
+        button "Creating..." disabled
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 13
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"x","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="x" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Could not create the issue. Title is too long"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 14
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"x","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="x" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Could not create the issue. The server answered 500"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list
+
+state /?new&status&assignee&priority&label&group&order, view 15
+path
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  open -> open on submit, by the view offers submit on form at portal > div[2] > form
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"x","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  banner
+    link "Mini Linear" current=page href="/"
+    link "New issue" href="/?new=true"
+    dialog "New issue" modal
+      heading "New issue" level=2
+      form [submit, key_down]
+        textbox "Title" value="x" [input]
+        textbox "Description" value="x" [input]
+        combobox "Status" [input]
+          option "Backlog" selected
+          option "Todo"
+          option "In Progress"
+          option "Done"
+          option "Canceled"
+        combobox "Priority" [input]
+          option "No priority" selected
+          option "Urgent"
+          option "High"
+          option "Medium"
+          option "Low"
+        alert
+          text "Could not create the issue. The network failed"
+        button "Cancel" [press]
+        button "Create issue"
+    component me
+    component theme
+  main
+    component issue-list

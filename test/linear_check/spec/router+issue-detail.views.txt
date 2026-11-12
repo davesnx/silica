@@ -22,3 +22,249 @@ view
   main
     link "Back to issues" href="/"
     text "Loading issue..."
+
+state /issue/:int, view 2
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "ENG-1"
+    heading "A title" level=1
+    button "Edit title" [press]
+    text "No description."
+    button "Edit description" [press]
+    text "Status"
+    component menu
+    text "Priority"
+    component menu
+    text "Assignee"
+    component menu
+    text "Labels"
+    component labels-picker-content
+    text "Created 1970-01-01 Updated 1970-01-01"
+    component comments
+    component command-menu
+    component toast
+
+state /issue/:int, view 3
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    alert
+      text "The server answered 500"
+    button "Try again" [press]
+
+state /issue/:int, view 4
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    alert
+      text "The network failed"
+    button "Try again" [press]
+
+state /issue/:int, view 5
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> not_found on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "There is no issue ENG-9."
+
+state /issue/:int, view 6
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at div > main > section > article > div[1] > button
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "ENG-1"
+    textbox "Title" value="A title" [input, key_down]
+    button "Save" [press]
+    button "Cancel" [press]
+    text "No description."
+    button "Edit description" [press]
+    text "Status"
+    component menu
+    text "Priority"
+    component menu
+    text "Assignee"
+    component menu
+    text "Labels"
+    component labels-picker-content
+    text "Created 1970-01-01 Updated 1970-01-01"
+    component comments
+    component command-menu
+    component toast
+
+state /issue/:int, view 7
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit description" at div > main > section > article > div[2] > button
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "ENG-1"
+    heading "A title" level=1
+    button "Edit title" [press]
+    textbox "Description" value="" [input, key_down]
+    button "Save" [press]
+    button "Cancel" [press]
+    text "Status"
+    component menu
+    text "Priority"
+    component menu
+    text "Assignee"
+    component menu
+    text "Labels"
+    component labels-picker-content
+    text "Created 1970-01-01 Updated 1970-01-01"
+    component comments
+    component command-menu
+    component toast
+
+state /issue/:int, view 8
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "Offline. Showing the last data received."
+    button "Reconnect" [press]
+    text "ENG-1"
+    heading "A title" level=1
+    button "Edit title" [press]
+    text "No description."
+    button "Edit description" [press]
+    text "Status"
+    component menu
+    text "Priority"
+    component menu
+    text "Assignee"
+    component menu
+    text "Labels"
+    component labels-picker-content
+    text "Created 1970-01-01 Updated 1970-01-01"
+    component comments
+    component command-menu
+    component toast
+
+state /issue/:int, view 9
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit title" at div > main > section > article > div[1] > button
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "Offline. Showing the last data received."
+    button "Reconnect" [press]
+    text "ENG-1"
+    textbox "Title" value="A title" [input, key_down]
+    button "Save" [press]
+    button "Cancel" [press]
+    text "No description."
+    button "Edit description" [press]
+    text "Status"
+    component menu
+    text "Priority"
+    component menu
+    text "Assignee"
+    component menu
+    text "Labels"
+    component labels-picker-content
+    text "Created 1970-01-01 Updated 1970-01-01"
+    component comments
+    component command-menu
+    component toast
+
+state /issue/:int, view 10
+path
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
+  ready -> ready on edit, by the view offers press on button "Edit description" at div > main > section > article > div[2] > button
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+  ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
+view
+  banner
+    link "Mini Linear" href="/"
+    component create-issue
+    component me
+    component theme
+  main
+    link "Back to issues" href="/"
+    text "Offline. Showing the last data received."
+    button "Reconnect" [press]
+    text "ENG-1"
+    heading "A title" level=1
+    button "Edit title" [press]
+    textbox "Description" value="" [input, key_down]
+    button "Save" [press]
+    button "Cancel" [press]
+    text "Status"
+    component menu
+    text "Priority"
+    component menu
+    text "Assignee"
+    component menu
+    text "Labels"
+    component labels-picker-content
+    text "Created 1970-01-01 Updated 1970-01-01"
+    component comments
+    component command-menu
+    component toast

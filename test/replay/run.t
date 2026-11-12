@@ -83,10 +83,7 @@ A property: the view must not be the view that broke it.
   $ ./upload_error_script.exe
   short-error: The property "short-error" does not hold in state failed.
   hint: Keep the error under five letters.
-  The view is still the view that broke it:
-  text "too many"
-  button "Retry" [press]
-  
+  It still fails in state failed: The property "short-error" does not hold in state failed.
   [1]
 
 A timer that fires first in real time: the script moves the clock to it.
@@ -127,20 +124,16 @@ no request and no timer, in the view that broke the property.
              condition (for example a retry with a limit, or a failure state \
              that the to_ condition accepts), or correct the property."
   
-  let broken_view = {|button "Sync" [press]
-  |}
-  
   let () =
     let page = Memory.mount Sync.component in
-    Memory.press (Memory.by_role page Accessibility.Button ~name:"Sync");
-    Memory.reply ~status:500 (Memory.pending_request page "/api/sync") "";
-    Check_expect.does_not_wait broken page broken_view
+    Check_expect.holds broken Sync.check page (fun () ->
+        Memory.press (Memory.by_role page Accessibility.Button ~name:"Sync");
+        Memory.reply ~status:500 (Memory.pending_request page "/api/sync") ""
+    )
   $ ./sync_script.exe
   sync leads to synced: The property "sync leads to synced" does not hold: after its from condition held, the run reaches state offline, where no timer and no call runs, so the app waits for the user, who may do nothing; its to_ condition did not hold on the way.
   hint: Make state offline own a timer or a call that leads to the to_ condition (for example a retry with a limit, or a failure state that the to_ condition accepts), or correct the property.
-  The page still waits for the user, with no request and no timer, in the view:
-  button "Sync" [press]
-  
+  It still fails in state offline: The property "sync leads to synced" does not hold: after its from condition held, the run reaches state offline, where no timer and no call runs, so the app waits for the user, who may do nothing; its to_ condition did not hold on the way.
   [1]
 
 A Loop counterexample: the answer is lost and the call starts again forever.
@@ -163,20 +156,16 @@ at the view where the cycle starts.
              that repeats (call lost/saving//api/save null) by going on instead \
              of starting it again, or correct the property."
   
-  let broken_view = {|text "saving"
-  |}
-  
   let () =
     let page = Memory.mount Lost.component in
-    Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
-    Memory.reply (Memory.pending_request page "/api/save") "1";
-    Check_expect.leaves_cycle broken page broken_view
+    Check_expect.holds broken ~cycle_from:1 Lost.check page (fun () ->
+        Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
+        Memory.reply (Memory.pending_request page "/api/save") "1"
+    )
   $ ./lost_script.exe
   save leads to saved or failed: The property "save leads to saved or failed" does not hold: after its from condition held, the run can repeat saving -> saving forever; each timer and call that runs all along is delivered (call lost/saving//api/save null), so this run is fair, and its to_ condition never holds.
   hint: Make a step of the cycle leave it toward the to_ condition: count the repeats and stop after a limit, or handle the answer or timer that repeats (call lost/saving//api/save null) by going on instead of starting it again, or correct the property.
-  The page is back at the view where the cycle starts:
-  text "saving"
-  
+  It still fails in state saving: The property "save leads to saved or failed" does not hold: after its from condition held, the run can repeat saving -> saving forever; each timer and call that runs all along is delivered (call lost/saving//api/save null), so this run is fair, and its to_ condition never holds.
   [1]
 
 A routed app: a link press, then the back button of the browser.
@@ -194,24 +183,16 @@ A routed app: a link press, then the back button of the browser.
              never condition forbids once the after condition held, or correct \
              the property."
   
-  let broken_view = {|main
-    heading "Home" level=1
-    link "About" href="/about"
-  |}
-  
   let () =
     let page = Memory.mount_app ~url:"/" Pages.app in
-    Memory.press (Memory.by_role page Accessibility.Link ~name:"About");
-    Memory.back page;
-    Check_expect.not_view broken page broken_view
+    Check_expect.holds broken Pages.check page (fun () ->
+        Memory.press (Memory.by_role page Accessibility.Link ~name:"About");
+        Memory.back page
+    )
   $ ./pages_back_script.exe
   home stays behind: The property "home stays behind" does not hold: state home matches its never condition, and this step or an earlier one of the run matched its after condition.
   hint: Change the steps so that no run reaches state home with what the never condition forbids once the after condition held, or correct the property.
-  The view is still the view that broke it:
-  main
-    heading "Home" level=1
-    link "About" href="/about"
-  
+  It still fails in state home: The property "home stays behind" does not hold: state home matches its never condition, and this step or an earlier one of the run matched its after condition.
   [1]
   $ ./pages_link_script.exe
   img-alt: In state about, the image at main > img has no alt text.
@@ -263,23 +244,86 @@ types it into the field by role and name.
       ~hint:"Change the update or the view so that \"the step is positive\" \
              holds in state counting, or correct the property."
   
-  let broken_view = {|text "0"
-  spinbutton "Step size" value="0" [input]
-  button "Add" [press]
-  |}
-  
   let () =
     let page = Memory.mount Stepper.component in
-    Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0";
-    Check_expect.not_view broken page broken_view
+    Check_expect.holds broken Stepper.typing page (fun () ->
+        Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0"
+    )
   $ ./typing_script.exe
   the step is positive: The property "the step is positive" does not hold in state counting.
   hint: Change the update or the view so that "the step is positive" holds in state counting, or correct the property.
-  The view is still the view that broke it:
-  text "0"
-  spinbutton "Step size" value="0" [input]
-  button "Add" [press]
+  It still fails in state counting: The property "the step is positive" does not hold in state counting.
+  [1]
+
+The last line evaluates the property itself, in the check, along the run of
+the page. A fix that only changes the view does not pass it:
+
+  $ ./upload_restyled_script.exe
+  short-error: The property "short-error" does not hold in state failed.
+  hint: Keep the error under five letters.
+  It still fails in state failed: The property "short-error" does not hold in state failed.
+  [1]
+
+A fix that keeps the error short passes it:
+
+  $ ./upload_fixed_script.exe
+
+A loop: the New badge pauses while the removal is confirmed, so Remove and the
+timeout of the confirmation can repeat forever and the badge never gets old.
+The script goes once around the cycle and asks the check whether the run can
+repeat it:
+
+  $ cat badge_script.ml
+  open Silica
+  module Memory = Silica_memory
   
+  let broken =
+    Check_expect.rule "a new badge gets old" ~state:"badge"
+      ~message:"The property \"a new badge gets old\" does not hold: after its \
+                from condition held, the run can repeat badge -> badge -> badge \
+                forever; each timer and call that runs all along is delivered \
+                (nothing), so this run is fair, and its to_ condition never holds."
+      ~hint:"Make a step of the cycle leave it toward the to_ condition: count \
+             the repeats and stop after a limit, or handle the answer or timer \
+             that repeats (nothing) by going on instead of starting it again, \
+             or correct the property."
+  
+  let () =
+    let page = Memory.mount Badge.component in
+    Check_expect.holds broken ~cycle_from:0 Badge.check page (fun () ->
+        Memory.press (Memory.by_role page Accessibility.Button ~name:"Remove");
+        Memory.press (Memory.by_role page Accessibility.Button ~name:"Cancel")
+    )
+  $ ./badge_script.exe
+  a new badge gets old: The property "a new badge gets old" does not hold: after its from condition held, the run can repeat badge -> badge -> badge forever; each timer and call that runs all along is delivered (nothing), so this run is fair, and its to_ condition never holds.
+  hint: Make a step of the cycle leave it toward the to_ condition: count the repeats and stop after a limit, or handle the answer or timer that repeats (nothing) by going on instead of starting it again, or correct the property.
+  It still fails in state badge: The property "a new badge gets old" does not hold: after its from condition held, the run can repeat badge -> badge -> badge forever; each timer and call that runs all along is delivered (nothing), so this run is fair, and its to_ condition never holds.
+  [1]
+
+After the fix the badge timer runs during the confirmation too: the same view
+comes back, but the cycle no longer repeats, so the test passes:
+
+  $ ./badge_fixed_script.exe
+
+Props come from the check, by the position of the start that the trace
+records, so no props codec is needed: int props and record props.
+
+  $ grep -A 3 'let page' numbered_script.ml
+    let page =
+      Memory.mount_with_props
+        ~props:(Check.nth_props Rows.numbered_check 1)
+        Rows.numbered
+  $ ./numbered_script.exe
+  accessible-name: In state shown, the button at button has no accessible name, so a screen reader cannot say what it does.
+  hint: Give the button at button visible text, an aria-label, or an aria-labelledby that points to an element with text.
+  The view still breaks it:
+  In state shown, the button at button has no accessible name, so a screen reader cannot say what it does.
+  [1]
+  $ ./titled_script.exe
+  accessible-name: In state shown, the button at div > button has no accessible name, so a screen reader cannot say what it does.
+  hint: Give the button at div > button visible text, an aria-label, or an aria-labelledby that points to an element with text.
+  The view still breaks it:
+  In state shown, the button at div > button has no accessible name, so a screen reader cannot say what it does.
   [1]
 
 A timer that real time fires second has no script; the command says why.

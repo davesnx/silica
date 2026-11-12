@@ -6,7 +6,9 @@ let () =
         Check.export Joint_cases.bumped ~rule:violation.rule
           violation.counterexample
       in
-      match Check.script Joint_cases.bumped trace with
+      match
+        Check.script ~check:"Joint_cases.bumped" Joint_cases.bumped trace
+      with
       | Ok text ->
           print_string text
       | Error message ->

@@ -5,11 +5,11 @@ description: Prove a change to a Silica app right with no browser, with the mode
 
 # Verify a Silica change
 
-Work from the root of the app (the directory with `check/main.ml`). The loop
+Work from the root of the app (the directory with `check/checks.ml`). The loop
 is red, then green: a check fails on the bug, then passes on the fix.
 
 1. Write the requirement as a check before the change: a property in
-   `~properties` of the entry in `check/main.ml`, and the `~samples`,
+   `~properties` of the check in `check/checks.ml`, and the `~samples`,
    `~texts` (text typed into each field) and `~inputs` (other events) that
    reach the new states. A new component gets its own `Check_suite.entry`. A
    rule about steps is a `Check.always` with `Check.event` or

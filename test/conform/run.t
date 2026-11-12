@@ -117,7 +117,7 @@ A trace that does not read is a setup error:
     main.exe [check] [--json] [--only ID]... [--traces DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
-    main.exe script ID TRACE_FILE [--component EXPR]
+    main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]
     main.exe rules [--json]
     main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
   Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.

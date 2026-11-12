@@ -15,6 +15,19 @@ view
     component comment
   component comment-composer
 
+state ready, view 2
+path
+  loading -> ready on loaded ok, by the answer of the call comments/loading//api/comments 1 to /api/comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+  ready -> ready on updated, by an update of the subscription comments/ready/live:comments 1 to comments
+view
+  heading "Comments" level=2
+  list
+    component comment
+    component comment
+    component comment
+  component comment-composer
+
 state failed
 path
   loading -> failed on loaded error, by the answer of the call comments/loading//api/comments 1 to /api/comments

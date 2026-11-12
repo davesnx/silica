@@ -4,6 +4,12 @@ path
 view
   link "New issue" href="/?new=true"
 
+state closed, view 2
+path
+  (start)
+view
+  link "New issue" href="/?new=true&status=done"
+
 state editing
 path
   (start)
@@ -28,6 +34,398 @@ view
         option "Low"
       button "Cancel" [press]
       button "Create issue"
+
+state editing, view 2
+path
+  editing -> editing on title, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 3
+path
+  editing -> editing on description, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 4
+path
+  editing -> editing on status_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 5
+path
+  editing -> editing on priority_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 6
+path
+  editing -> editing on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Title is required"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 7
+path
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="x" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 8
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 9
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 10
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 11
+path
+  editing -> editing on title, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="x" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 12
+path
+  editing -> editing on description, by an input
+  editing -> editing on status_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 13
+path
+  editing -> editing on description, by an input
+  editing -> editing on priority_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 14
+path
+  editing -> editing on description, by an input
+  editing -> editing on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Title is required"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 15
+path
+  editing -> editing on status_picked, by an input
+  editing -> editing on priority_picked, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing, view 16
+path
+  editing -> editing on status_picked, by an input
+  editing -> editing on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Title is required"
+      button "Cancel" [press]
+      button "Create issue"
+
+state editing: 56 more views, past the bound of 16 views a state
 
 state submitting
 path
@@ -54,6 +452,424 @@ view
         option "Low"
       button "Cancel" disabled [press]
       button "Creating..." disabled
+
+state submitting, view 2
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="d" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 3
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 4
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 5
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 6
+path
+  editing -> editing on title, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="x" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 7
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> editing on status_picked, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="d" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 8
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="d" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 9
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="d" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 10
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 11
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 12
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="x" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 13
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 14
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="x" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 15
+path
+  editing -> editing on title, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="x" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting, view 16
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> editing on status_picked, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" disabled [input]
+      textbox "Description" value="d" disabled [input]
+      combobox "Status" disabled [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" disabled [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      button "Cancel" disabled [press]
+      button "Creating..." disabled
+
+state submitting: 8 more views, past the bound of 16 views a state
 
 state failed
 path
@@ -83,3 +899,453 @@ view
         text "Could not create the issue. Title is too long"
       button "Cancel" [press]
       button "Create issue"
+
+state failed, view 2
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The server answered 500"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 3
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The network failed"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 4
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"d","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. Title is too long"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 5
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"d","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The server answered 500"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 6
+path
+  editing -> editing on title, by an input
+  editing -> editing on description, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"d","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="d" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The network failed"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 7
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Done"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. Title is too long"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 8
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Done"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The server answered 500"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 9
+path
+  editing -> editing on title, by an input
+  editing -> editing on status_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Done"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog"
+        option "Todo"
+        option "In Progress"
+        option "Done" selected
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The network failed"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 10
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["Urgent"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. Title is too long"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 11
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["Urgent"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The server answered 500"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 12
+path
+  editing -> editing on title, by an input
+  editing -> editing on priority_picked, by an input
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["Urgent"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority"
+        option "Urgent" selected
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The network failed"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 13
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. Title is too long"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 14
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The server answered 500"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 15
+path
+  editing -> editing on title, by an input
+  editing -> submitting on submit, by an input
+  submitting -> submitting on props, by new props
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true&status=done"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. The network failed"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed, view 16
+path
+  editing -> editing on title, by an input
+  open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
+  editing -> submitting on submit, by an input
+  submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"x","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
+view
+  link "New issue" href="/?new=true"
+  dialog "New issue" modal
+    heading "New issue" level=2
+    form [submit, key_down]
+      textbox "Title" value="x" [input]
+      textbox "Description" value="x" [input]
+      combobox "Status" [input]
+        option "Backlog" selected
+        option "Todo"
+        option "In Progress"
+        option "Done"
+        option "Canceled"
+      combobox "Priority" [input]
+        option "No priority" selected
+        option "Urgent"
+        option "High"
+        option "Medium"
+        option "Low"
+      alert
+        text "Could not create the issue. Title is too long"
+      button "Cancel" [press]
+      button "Create issue"
+
+state failed: 56 more views, past the bound of 16 views a state

@@ -12,22 +12,21 @@ type action =
   | Key_up of target * string
   | Advance of int
   | Reply of { path : string; answer : Silica_json.Json.t }
-  | Set_props of Silica_json.Json.t
+  | Set_props of int
   | Back
   | Forward
 
-type mount = Plain | With_props of Silica_json.Json.t | Routed of string
+type mount = Plain | With_props of int | Routed of string
 
 type ending =
   | Handled of action
   | No_error
   | View_rule
-  | Not_this_view of string
-  | Waits of string
-  | Loop of string
+  | Holds of { cycle_from : int option; start : int option }
 
 type t = {
   component : string;
+  check : string;
   mount : mount;
   actions : action list;
   rule : string;
@@ -49,6 +48,8 @@ let module_of_id id =
        )
        id
     )
+
+let value_of_id id = String.uncapitalize_ascii (module_of_id id)
 
 let contains text part =
   let length = String.length part in
@@ -137,11 +138,8 @@ let action_lines = function
       [ Printf.sprintf "Memory.advance page %d" ms ]
   | Reply { path; answer } ->
       [ reply path answer ]
-  | Set_props json ->
-      [
-        Printf.sprintf "Memory.set_props page (props %s)"
-          (quoted (Silica_json.Json.to_string json));
-      ]
+  | Set_props index ->
+      [ Printf.sprintf "Memory.set_props page (props %d)" index ]
   | Back ->
       [ "Memory.back page" ]
   | Forward ->
@@ -242,14 +240,13 @@ let labelled label text =
       []
 
 let to_string script =
-  let props_call json =
-    Printf.sprintf "(Check_expect.props %s %s)" script.component
-      (quoted (Silica_json.Json.to_string json))
+  let props_call index =
+    Printf.sprintf "(Check.nth_props %s %d)" script.check index
   in
   let line_of action =
     match action with
-    | Set_props json ->
-        [ Printf.sprintf "Memory.set_props page %s" (props_call json) ]
+    | Set_props index ->
+        [ Printf.sprintf "Memory.set_props page %s" (props_call index) ]
     | _ ->
         action_lines action
   in
@@ -262,18 +259,12 @@ let to_string script =
     @ List.map (fun line -> "    " ^ line) (labelled "hint" script.hint)
     @ [ "" ]
   in
-  let view =
-    match script.ending with
-    | Not_this_view view | Waits view | Loop view ->
-        [ "let broken_view = " ^ quoted view; "" ]
-    | Handled _ | No_error | View_rule ->
-        []
-  in
+  let view = [] in
   let on_error =
     match script.ending with
     | No_error ->
         " ~on_error:(Check_expect.on_error broken)"
-    | Handled _ | View_rule | Not_this_view _ | Waits _ | Loop _ ->
+    | Handled _ | View_rule | Holds _ ->
         ""
   in
   let mount =
@@ -281,14 +272,14 @@ let to_string script =
     | Plain ->
         Printf.sprintf "let page = Memory.mount%s %s in" on_error
           script.component
-    | With_props json ->
+    | With_props index ->
         Printf.sprintf
           "let page =\n\
           \    Memory.mount_with_props%s\n\
           \      ~props:%s\n\
           \      %s\n\
           \  in"
-          on_error (props_call json) script.component
+          on_error (props_call index) script.component
     | Routed url ->
         Printf.sprintf "let page = Memory.mount_app%s ~url:%S %s in" on_error
           url script.component
@@ -328,12 +319,8 @@ let to_string script =
         [ "ignore page" ]
     | View_rule ->
         [ "Check_expect.view_passes broken page" ]
-    | Not_this_view _ ->
-        [ "Check_expect.not_view broken page broken_view" ]
-    | Waits _ ->
-        [ "Check_expect.does_not_wait broken page broken_view" ]
-    | Loop _ ->
-        [ "Check_expect.leaves_cycle broken page broken_view" ]
+    | Holds _ ->
+        []
   in
   let body =
     match (script.ending, List.rev (List.concat_map steps script.actions)) with
@@ -342,6 +329,36 @@ let to_string script =
     | No_error, last :: earlier ->
         (mount :: List.rev earlier)
         @ [ String.sub last 0 (String.length last - 1) ]
+    | Holds { cycle_from; start }, steps ->
+        let options =
+          String.concat ""
+            (List.filter_map Fun.id
+               [
+                 Option.map (Printf.sprintf " ~cycle_from:%d") cycle_from;
+                 Option.map (Printf.sprintf " ~start:%d") start;
+               ]
+            )
+        in
+        let steps =
+          match List.rev steps with
+          | [] ->
+              [ "()" ]
+          | steps -> (
+              match List.rev steps with
+              | last :: earlier ->
+                  List.rev
+                    (String.sub last 0 (String.length last - 1) :: earlier)
+              | [] ->
+                  []
+            )
+        in
+        [
+          mount;
+          Printf.sprintf "Check_expect.holds broken%s %s page (fun () ->"
+            options script.check;
+        ]
+        @ List.map (fun line -> "    " ^ line) steps
+        @ [ ")" ]
     | _, steps ->
         (mount :: List.rev steps) @ ending
   in

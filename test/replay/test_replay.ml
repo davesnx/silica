@@ -532,7 +532,9 @@ let never_a_false_pass () =
       header =
         {
           trace.header with
-          origin = Checker { rule = "the step is positive"; choices = [ 7 ] };
+          origin =
+            Checker
+              { rule = "the step is positive"; start = 0; choices = [ 7 ] };
         };
     }
   in

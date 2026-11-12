@@ -78,7 +78,7 @@ val main : ?argv:string array -> entry list -> unit
     main.exe [check] [--json] [--only ID]... [--traces DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
-    main.exe script ID TRACE_FILE [--component EXPR]
+    main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]
     main.exe rules [--json]
     main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
     v}
@@ -87,22 +87,23 @@ val main : ?argv:string array -> entry list -> unit
     is cut to 20 characters, and a second violation with the same name gets
     [_2], and so on), and the JSON gives its path in [trace_file] and the name
     of its [script] test in [test_file] ([test/<id>_<rule>_<state>_replay.ml]).
-    It removes the [.jsonl] files in [DIR] whose name starts with the id of a
-    check that ran and that this run does not write, so a stale trace cannot be
-    replayed by mistake. [golden DIR] runs every entry and compares the golden
-    files in [DIR] (see {!golden}). [replay ID TRACE_FILE] replays the trace in
-    the check of the machine [ID] ({!Check.replay_trace}) and prints each step
-    with the rules that fail there: exit [0] when no rule fails at the last
-    step, [1] when one does or a step is not enabled, [3] when the trace does
-    not read or cannot be replayed faithfully. [script ID TRACE_FILE] prints a
-    [Silica_memory] test that reproduces the counterexample ({!Check.script}),
-    formatted by [ocamlformat] with the configuration of the project when
-    [ocamlformat] is on the path, and says on standard error which file to save
-    it in ([test/<trace name>_replay.ml]); when the steps cannot run in
-    [Silica_memory], it prints why on standard error and exits with [1]. [rules]
-    lists {!Check.val-rules}. [conform TRACE_FILE...] compares each trace, such
-    as one that the app recorded in development or in production, with the
-    golden specs in [--spec DIR] (default [spec]) by names
+    It keeps the list of the files it wrote, by check id, in
+    [DIR/.silica-traces], and removes the files of a check that ran that this
+    run does not write again, so a stale trace cannot be replayed by mistake; it
+    leaves every other file alone. [golden DIR] runs every entry and compares
+    the golden files in [DIR] (see {!golden}). [replay ID TRACE_FILE] replays
+    the trace in the check of the machine [ID] ({!Check.replay_trace}) and
+    prints each step with the rules that fail there: exit [0] when no rule fails
+    at the last step, [1] when one does or a step is not enabled, [3] when the
+    trace does not read or cannot be replayed faithfully. [script ID TRACE_FILE]
+    prints a [Silica_memory] test that reproduces the counterexample
+    ({!Check.script}), formatted by [ocamlformat] with the configuration of the
+    project when [ocamlformat] is on the path, and says on standard error which
+    file to save it in ([test/<trace name>_replay.ml]); when the steps cannot
+    run in [Silica_memory], it prints why on standard error and exits with [1].
+    [rules] lists {!Check.val-rules}. [conform TRACE_FILE...] compares each
+    trace, such as one that the app recorded in development or in production,
+    with the golden specs in [--spec DIR] (default [spec]) by names
     ({!Silica.Spec.conforms}) and with the code of each entry by data
     ({!Check.conforms}); with [--only ID], only with the golden specs and the
     check of that entry, such as a joint check of a parent with its children

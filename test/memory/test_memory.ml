@@ -1292,6 +1292,16 @@ let unreachable_elements_refuse_input () =
   Memory.press (Memory.by_role memory Accessibility.Button ~name:"Aria");
   string "aria-disabled does not stop a press" "1" (text memory "count")
 
+let visible_text () =
+  let memory = Memory.mount Reach.component in
+  bool "text in a paragraph with no role" true (Memory.shows memory "0");
+  bool "a part of the text of a button" true (Memory.shows memory "In s");
+  bool "not the text of a hidden button" false (Memory.shows memory "Gone");
+  string "by_text finds a paragraph with no role" "count"
+    (Option.value ~default:""
+       (Memory.attribute (Memory.by_text memory "0") "id")
+    )
+
 let element_states () =
   let memory = Memory.mount Reach.component in
   let flags label element =
@@ -1418,6 +1428,7 @@ let () =
           case "a disabled, inert or hidden element refuses input"
             unreachable_elements_refuse_input;
           case "the states of an element" element_states;
+          case "the visible text of a page" visible_text;
         ]
       );
       ( "props",

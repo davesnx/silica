@@ -49,6 +49,11 @@ val state_named : string -> ('s, 'e) condition
 val view : ('e Silica.Node.t -> bool) -> ('s, 'e) condition
 (** Holds when the view of the snapshot passes the test. *)
 
+val shows : string -> ('s, 'e) condition
+(** A point condition: holds when the text is a part of the text that a person
+    sees in the view ({!Silica.View_text.visible}): the text of any element,
+    with or without a role, but not of hidden ones. *)
+
 val holds : ('s -> 'e Silica.Node.t -> bool) -> ('s, 'e) condition
 (** Holds when the snapshot and its view pass the test together. *)
 
@@ -178,7 +183,10 @@ val child :
     - [max_instances] (default 2) instances of the machine run at once. A
       further instance shows the view of its start state, takes no step, and is
       listed in [not_explored] as
-      ["component <id> (instances 3 to <n> not run)"].
+      ["component <id> (up to <n> instances were shown at once, and only the
+       first 2 ran, ...)"], with how to raise the bound. The [within] of the
+      parent does not bound it: a parent state inside [within] can still show
+      more rows than [max_instances].
     - [samples] answer the calls and subscriptions of the child, [inputs] give
       it events, [texts] are typed into its fields ({!component} explains the
       three; the [texts] of the check go only to the fields of the parent), and
@@ -447,6 +455,19 @@ val props : children -> ('p, 's, 'e) Silica.Component.t -> 'p list
 (** [props children c]: the props, without duplicates, of the component nodes of
     [c] that the check rendered. Give them to the check of [c] with [~props]. *)
 
+type 'ev state_views = {
+  state : string;
+  views : (string * 'ev step list) list;
+      (** The distinct {!Silica.View_text} views of the snapshots of the state,
+          in the order the search reached them, each with a shortest path to the
+          first snapshot that shows it. At most {!views_per_state}. *)
+  more : int;  (** How many more distinct views the bound left out. *)
+}
+(** The views of one state name. *)
+
+val views_per_state : int
+(** The most views of one state that a report keeps. *)
+
 type ('s, 'ev) report = {
   machine : string;  (** The id of the root machine. *)
   states : int;  (** The explored snapshots. *)
@@ -481,9 +502,15 @@ type ('s, 'ev) report = {
   paths : (string * 'ev step list) list;
       (** For each state name, in the order the search reached them, a shortest
           path from a start to its first snapshot. *)
-  views : (string * string) list;
-      (** For each state name, in the same order, {!Silica.View_text} of the
-          view of its first snapshot. *)
+  views : 'ev state_views list;
+      (** For each state name, in the same order as [paths], its distinct views.
+      *)
+  vacuous : (string * string) list;
+      (** Each property that passed without being tested, with why: an [always]
+          whose condition is an implication [not_ a ||| b] (or [b ||| not_ a])
+          where [a] holds at no explored point, a [leads_to] whose [from], or a
+          [never_after] whose [after], holds at no explored point. A warning,
+          not a finding: it does not change {!passed} or the exit code. *)
 }
 
 val run : ('s, 'ev) t -> ('s, 'ev) report
@@ -672,28 +699,38 @@ val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
     counterexample is not enabled in the check. *)
 
 val script :
-  ?component:string -> ('s, 'ev) t -> Silica.Trace.t -> (string, string) result
+  ?component:string ->
+  ?check:string ->
+  ('s, 'ev) t ->
+  Silica.Trace.t ->
+  (string, string) result
 (** [script check trace] is the OCaml text of a test that drives the component
     in [Silica_memory] through the steps of a counterexample that {!export}
     wrote, with the queries a person uses: an element by its role and name, an
     answer to the pending call of a path, the clock moved to the timer. It ends
-    with a check of the rule of the trace, and it fails while the bug is there:
+    with a check of the rule of the trace that fails exactly while the rule is
+    broken on that run:
     - [ignored-event]: the last input is given when the view still offers its
       element, and the update must handle it;
     - [raised]: no error reached [on_error];
     - a rule of the view: {!view_violations} of that rule is empty;
-    - any other rule or a property: the view is not the view that broke it.
+    - any other rule or a property: {!Check_expect.holds} runs the steps, then
+      evaluates the rule in the check itself along the run of the page
+      ({!replay_run}), with the same meaning as the checker (for a [Loop], the
+      run goes once around the cycle).
 
-    [component] is the OCaml expression of the component (default: the module
-    named after the machine id, as [Issue_list.component] for [issue-list], or
-    [.app] for an app). [Error] says why the steps cannot run in
-    [Silica_memory]: a timer that fires before another timer that real time
-    fires first (the checker lets running timers fire in any order), an event
-    from [inputs], a Live update, a held source, the result of an action, an
-    element with no role and no text; also when the replay in the check no
-    longer breaks the rule, and when the script would compare the view of the
-    last step and that view holds a component node that the check does not run
-    (the page in memory paints it). Replay such a trace in the check with
+    The test refers to the check by [check], an OCaml expression (default: the
+    value named after the machine id in the module [Checks], as
+    [Checks.issue_list] for [issue-list]), so the checks of the project live in
+    a library that tests can use. Props come from the check too ({!nth_props}),
+    so no props codec is needed. [component] is the OCaml expression of the
+    component (default: the module named after the machine id, as
+    [Issue_list.component], or [.app] for an app). [Error] says why the steps
+    cannot run in [Silica_memory]: a timer that fires before another timer that
+    real time fires first (the checker lets running timers fire in any order),
+    an event from [inputs], a Live update, a held source, the result of an
+    action, an element with no role and no text; also when the replay in the
+    check no longer breaks the rule. Replay such a trace in the check with
     {!replay_trace}. In a joint check, the steps of children are steps of the
     trace too: an element of a child is found in the whole page. *)
 
@@ -769,3 +806,29 @@ val difference_to_string : difference -> string
 (** One sentence, such as
     ["the trace has drafting -> sending (entered); the code gives drafting ->
      drafting (unhandled)"]. *)
+
+val replay_run :
+  ?cycle_from:int ->
+  ?start:int ->
+  ('s, 'ev) t ->
+  Silica.Trace.t ->
+  (('s, 'ev) replay, string) result
+(** [replay_run check run] replays a run recorded by the runtime, such as
+    {!Silica_memory.trace}, in the check, and evaluates every rule and property
+    of the check at each point, as {!val-replay} does. A step of the run is the
+    one move of the check that fits its cause: the same element and handler
+    (with the typed text or the key), the same timer, the answer of the call
+    with the same data, the link or history step that reaches the same URL. No
+    codec is needed. [Error] when a step fits several moves. A step that fits no
+    move is [Not_enabled].
+
+    [start] is the position of the start among the starts of the check (one for
+    each of its [props]), as a trace of {!export} records it. [cycle_from] is
+    the number of steps before a cycle that the run went once around: a
+    [leads_to] property then fails at the last point when the run is back at the
+    snapshot where the cycle started, as for a [Loop] counterexample. *)
+
+val nth_props : ('s, ('p, 'e) input) t -> int -> 'p
+(** [nth_props check index]: the props of the start at [index] of a component
+    check (see the [start] of {!Silica.Trace.type-origin}). Raises
+    [Invalid_argument] when there is none. *)

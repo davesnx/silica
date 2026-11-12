@@ -15,3 +15,15 @@ view
       textbox "Note" value="hello" [input]
       button "Save"
     button "Close" [press]
+
+state open, view 2
+path
+  (start)
+view
+  button "Edit" expanded
+  alertdialog "Edit note" modal
+    heading "Edit note" level=2
+    form [submit]
+      textbox "Note" value="hello" [input]
+      button "Save"
+    button "Close" [press]

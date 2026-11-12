@@ -231,7 +231,14 @@ let instances_over_the_bound_do_not_run () =
   in
   Alcotest.(check bool)
     "the second row is listed" true
-    (List.mem "component row (instances 2 to 2 not run)" report.not_explored)
+    (List.mem
+       "component row (up to 2 instances were shown at once, and only the \
+        first 1 ran, as ~max_instances:1 of its Check.child says; the others \
+        showed their start view and took no step. Raise ~max_instances to 2 to \
+        run them all; the ~within of the parent bounds its own state, not how \
+        many children run)"
+       report.not_explored
+    )
 
 let contains text needle =
   let length = String.length needle in

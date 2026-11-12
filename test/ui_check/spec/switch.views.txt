@@ -4,8 +4,21 @@ path
 view
   switch "Wi-Fi" checked=false [press]
 
+state unchecked, view 2
+path
+  (start)
+view
+  switch "Wi-Fi" checked=false disabled [press]
+
 state checked
 path
   (start)
 view
   switch "Wi-Fi" checked [press]
+
+state checked, view 2
+path
+  unchecked -> checked on toggle, by the view offers press on switch "Wi-Fi" at button
+  checked -> checked on props, by new props
+view
+  switch "Wi-Fi" checked disabled [press]

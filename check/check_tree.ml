@@ -1072,10 +1072,16 @@ let joint (type n s ev e)
               (fun (Runtime runtime) ->
                 if runtime.drawn > runtime.options.max_instances then
                   Some
-                    (Printf.sprintf "component %s (instances %d to %d not run)"
+                    (Printf.sprintf
+                       "component %s (up to %d instances were shown at once, \
+                        and only the first %d ran, as ~max_instances:%d of its \
+                        Check.child says; the others showed their start view \
+                        and took no step. Raise ~max_instances to %d to run \
+                        them all; the ~within of the parent bounds its own \
+                        state, not how many children run)"
                        (Machine.id runtime.machine)
-                       (runtime.options.max_instances + 1)
-                       runtime.drawn
+                       runtime.drawn runtime.options.max_instances
+                       runtime.options.max_instances runtime.drawn
                     )
                 else
                   None

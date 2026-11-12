@@ -114,6 +114,11 @@ val paints : _ t -> int
 val view_text : _ t -> string
 (** The last painted view as text, by {!Silica.View_text.to_string}. *)
 
+val shows : _ t -> string -> bool
+(** [shows t text]: [text] is a part of the text that a person sees on the page
+    ({!Silica.View_text.visible}), in any element, with or without a role, but
+    not in hidden ones. *)
+
 (** {1 Elements} *)
 
 type element

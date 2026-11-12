@@ -1,24 +1,36 @@
-type check = Check : ('s, 'ev) Check.t -> check
+type check = Check : ('s, 'ev) Check.t * string -> check
 
 let checks =
   [
-    ("save", Check Save.check);
-    ("nameless", Check Nameless.check);
-    ("crash", Check Crash.check);
-    ("upload", Check Upload.check);
-    ("clock", Check Clock.check);
-    ("labelled", Check Labelled.check);
-    ("lost", Check Lost.check);
-    ("sync", Check Sync.check);
-    ("pages", Check Pages.check);
-    ("search", Check Search.check);
-    ("typing", Check Stepper.typing);
+    ("save", Check (Save.check, "Save.check"));
+    ("nameless", Check (Nameless.check, "Nameless.check"));
+    ("crash", Check (Crash.check, "Crash.check"));
+    ("upload", Check (Upload.check, "Upload.check"));
+    ("clock", Check (Clock.check, "Clock.check"));
+    ("labelled", Check (Labelled.check, "Labelled.check"));
+    ("lost", Check (Lost.check, "Lost.check"));
+    ("sync", Check (Sync.check, "Sync.check"));
+    ("pages", Check (Pages.check, "Pages.check"));
+    ("search", Check (Search.check, "Search.check"));
+    ("typing", Check (Stepper.typing, "Stepper.typing"));
+    ("badge", Check (Badge.check, "Badge.check"));
+    ("numbered", Check (Rows.numbered_check, "Rows.numbered_check"));
+    ("titled", Check (Rows.titled_check, "Rows.titled_check"));
   ]
 
 let () =
   match Array.to_list Sys.argv with
-  | _ :: name :: rule :: component -> (
-      let (Check check) = List.assoc name checks in
+  | _ :: name :: rule :: rest -> (
+      let component = List.nth_opt rest 0 in
+      let expression_override =
+        Option.value (List.nth_opt rest 1) ~default:"" |> function
+        | "" ->
+            None
+        | expression ->
+            Some expression
+      in
+      let (Check (check, expression)) = List.assoc name checks in
+      let override = expression_override in
       let report = Check.run check in
       let violation =
         List.find
@@ -28,7 +40,11 @@ let () =
       let trace =
         Check.export check ~rule:violation.rule violation.counterexample
       in
-      match Check.script ?component:(List.nth_opt component 0) check trace with
+      match
+        Check.script ?component
+          ~check:(Option.value override ~default:expression)
+          check trace
+      with
       | Ok text ->
           print_string text
       | Error message ->
@@ -36,5 +52,6 @@ let () =
           exit 1
     )
   | _ ->
-      prerr_endline "usage: gen_script.exe CHECK RULE [COMPONENT]";
+      prerr_endline
+        "usage: gen_script.exe CHECK RULE [COMPONENT [CHECK_EXPRESSION]]";
       exit 2

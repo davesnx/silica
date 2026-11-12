@@ -12,6 +12,20 @@ view
     link "Credits" href="/about#credits"
   text "Loading item 1..."
 
+state loading, view 2
+path
+  (start)
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "Loading item 2..."
+
 state loaded
 path
   loading -> loaded on settled ok, by the answer of the call item/loading//api/item 1 to /api/item
@@ -25,6 +39,24 @@ view
     link "Edit" href="/edit"
     link "Credits" href="/about#credits"
   heading "Item 1" level=2
+  text "$19.99"
+  list
+    listitem
+      text "a"
+
+state loaded, view 2
+path
+  loading -> loaded on settled ok, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  heading "Item 2" level=2
   text "$19.99"
   list
     listitem
@@ -57,3 +89,17 @@ view
     link "Edit" href="/edit"
     link "Credits" href="/about#credits"
   text "The server answered 500"
+
+state failed, view 2
+path
+  loading -> failed on settled error, by the answer of the call item/loading//api/item 1 to /api/item
+view
+  heading "Item" level=1
+  navigation
+    link "Home" href="/"
+    link "Item 1" href="/item/1"
+    link "Item 2" href="/item/2"
+    link "About" href="/about"
+    link "Edit" href="/edit"
+    link "Credits" href="/about#credits"
+  text "The network failed"

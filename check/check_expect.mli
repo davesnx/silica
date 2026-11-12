@@ -42,21 +42,22 @@ val view_passes : broken -> _ Silica_memory.t -> unit
 (** A rule of the view: fails while {!Check.view_violations} of the rule finds
     the rule broken on the view of the page. *)
 
-val not_view : broken -> _ Silica_memory.t -> string -> unit
-(** Any other rule or an [always] or [never_after] property: fails while the
-    {!Silica.View_text} of the page is the view that broke the rule. *)
-
-val does_not_wait : broken -> _ Silica_memory.t -> string -> unit
-(** A [leads_to] property with a [Waits] counterexample: fails while the page
-    waits for the user (no pending request and no timer) in the view that broke
-    the rule, which the to_ condition did not accept. *)
-
-val leaves_cycle : broken -> _ Silica_memory.t -> string -> unit
-(** A [leads_to] property with a [Loop] counterexample, after the stem and one
-    round of the cycle: fails while the page is back at the view where the cycle
-    starts, so the run can repeat forever. *)
-
-val props : ('p, _, _) Silica.Component.t -> string -> 'p
-(** [props component json]: the props in the JSON text, by the props codec of
-    the machine (see {!Silica.Machine.register_codecs}). Exits with 1 when they
-    do not decode. *)
+val holds :
+  broken ->
+  ?cycle_from:int ->
+  ?start:int ->
+  ('s, 'ev) Check.t ->
+  _ Silica_memory.t ->
+  (unit -> unit) ->
+  unit
+(** [holds broken check page steps] runs [steps] on the page, then replays the
+    run of the page in [check] ({!Check.replay_run}) and fails while the rule of
+    [broken] fails at a point of that run: a property ([always], [leads_to],
+    [never_after]) or a built-in rule, evaluated as the checker evaluates it, on
+    the real states and views the steps reached. So the test passes exactly when
+    the rule holds on that run, and a fix that only changes the view does not
+    pass it. When a step cannot run any more (its element is disabled, hidden or
+    gone, see {!Silica_memory.Not_reachable}), the run stops there and the rule
+    is evaluated on the steps that ran. [cycle_from] and [start] are as in
+    {!Check.replay_run}. It also fails when the run cannot be replayed in the
+    check. *)

@@ -12,7 +12,9 @@
   sync
   pages
   search
-  stepper)
+  stepper
+  badge
+  rows)
  (libraries silica silica.check silica.jsonkit jsonkit)
  (preprocess
   (pps jsonkit.ppx silica.ppx)))
@@ -113,6 +115,46 @@
   typing_script.ml
   (run ./gen_script.exe typing "the step is positive")))
 
+(rule
+ (with-stdout-to
+  badge_script.ml
+  (run ./gen_script.exe badge "a new badge gets old")))
+
+(rule
+ (with-stdout-to
+  badge_fixed_script.ml
+  (run
+   ./gen_script.exe
+   badge
+   "a new badge gets old"
+   Badge.fixed
+   Badge.fixed_check)))
+
+(rule
+ (with-stdout-to
+  upload_restyled_script.ml
+  (run
+   ./gen_script.exe
+   upload
+   short-error
+   Upload.restyled
+   Upload.restyled_check)))
+
+(rule
+ (with-stdout-to
+  upload_fixed_script.ml
+  (run ./gen_script.exe upload short-error Upload.fixed Upload.fixed_check)))
+
+(rule
+ (with-stdout-to
+  numbered_script.ml
+  (run ./gen_script.exe numbered accessible-name Rows.numbered)))
+
+(rule
+ (with-stdout-to
+  titled_script.ml
+  (run ./gen_script.exe titled accessible-name Rows.titled)))
+
 (executables
  (names
   save_script
@@ -130,7 +172,13 @@
   pages_link_script
   pages_back_script
   search_script
-  typing_script)
+  typing_script
+  badge_script
+  badge_fixed_script
+  upload_restyled_script
+  upload_fixed_script
+  numbered_script
+  titled_script)
  (modules
   save_script
   save_fixed_script
@@ -147,7 +195,13 @@
   pages_link_script
   pages_back_script
   search_script
-  typing_script)
+  typing_script
+  badge_script
+  badge_fixed_script
+  upload_restyled_script
+  upload_fixed_script
+  numbered_script
+  titled_script)
  (libraries replay_fixtures silica silica.check silica.memory))
 
 (cram
@@ -177,4 +231,16 @@
   search_script.ml
   search_script.exe
   typing_script.ml
-  typing_script.exe))
+  typing_script.exe
+  badge_script.ml
+  badge_script.exe
+  badge_fixed_script.ml
+  badge_fixed_script.exe
+  upload_restyled_script.ml
+  upload_restyled_script.exe
+  upload_fixed_script.ml
+  upload_fixed_script.exe
+  numbered_script.ml
+  numbered_script.exe
+  titled_script.ml
+  titled_script.exe))

@@ -207,7 +207,7 @@ A rule that does not apply to a state is turned off with an allowance and a reas
 
 ## The report
 
-Besides the violations, the report gives the counts of `states` and `transitions`, the `unreached` states, the `spec` that the run found (see [Diagrams and Quint](checker.md#diagrams-and-quint)), and for each state name in the order the search reached it: `paths`, a shortest list of steps from the start, and `views`, the view of its first state as text.
+Besides the violations, the report gives the counts of `states` and `transitions`, the `unreached` states, the `spec` that the run found (see [Diagrams and Quint](checker.md#diagrams-and-quint)), and for each state name in the order the search reached it: `paths`, a shortest list of steps from the start, and `views`, each distinct view of the state as text (up to `Check.views_per_state`, 16, in the order the search reached them), each with a shortest path. A view that depends on data, such as the same state with an error message, is one more view of the state, so the golden `.views.txt` file shows it and its diff names each added, removed and changed view. It also gives `vacuous`: each property that passed without being tested, because the left side of its implication, its `from` or its `after` never held (a warning; the exit code does not change).
 
 ```ocaml
 # let report = Check.run (Check.component Doc_lamp.component) in
@@ -220,7 +220,12 @@ off: []
 on: [toggle]
 - : unit = ()
 # let report = Check.run (Check.component Doc_lamp.component) in
-  List.iter (fun (name, view) -> Printf.printf "%s:\n%s" name view) report.views;;
+  List.iter
+    (fun (views : _ Check.state_views) ->
+      List.iter
+        (fun (view, _) -> Printf.printf "%s:\n%s" views.state view)
+        views.views)
+    report.views;;
 off:
 text "The lamp is off."
 button "Turn on" [press]
@@ -427,21 +432,22 @@ const runArgs = (file: string) => [
 
 ## Check a project
 
-A project lists its checks in one executable, `check/main.ml`, with `Check_suite`: one `Check_suite.entry` for each component and for the router. `silica new` makes it:
+A project keeps its checks in a library, `check/checks.ml`, one value for each component and for the router, and lists them in one executable, `check/main.ml`, with `Check_suite`: one `Check_suite.entry` for each. Tests use the checks too: the test that `Check.script` writes evaluates its rule with the check. `silica new` makes both:
+
+From `bin/template/check/checks.ml`:
+
+```ocaml
+let counter =
+  Check.component
+    ~within:(fun state -> Counter.count state <= 3)
+    ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
+    Counter.component
+```
 
 From `bin/template/check/main.ml`:
 
 ```ocaml
-let () =
-  Check_suite.main
-    [
-      Check_suite.entry
-        (Check.component
-           ~within:(fun state -> Counter.count state <= 3)
-           ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
-           Counter.component
-        );
-    ]
+let () = Check_suite.main [ Check_suite.entry Checks.counter ]
 ```
 
 An entry can make more entries from its report, for a child component that needs the props its parent rendered: `Check_suite.entry router ~dependents:(fun report -> [ Check_suite.entry (Check.component ~props:(Check.props report.children Item.component) Item.component) ])`. A component of a library that another suite checks is listed with `Check_suite.elsewhere ~machine ~reason`. A joint check (see [Children](checker.md#children)) is an entry like any other: its id is the root and the listed children joined by `"+"`, such as `"router+issue-list"`, and a child that ran in it counts as checked.
@@ -623,9 +629,17 @@ From `test/new/run.t`:
 - `ignored-event`: `Check_expect.handles` gives the last input again while the view shows a reachable element of that role and name, and fails when the update ignores it. A fix that disables the element passes: the memory platform refuses a press on a disabled element, as a browser does (see `Silica_memory.Not_reachable`);
 - `raised`: the mount gets `~on_error:(Check_expect.on_error broken)`, which fails at the first error;
 - a rule of the view: `Check_expect.view_passes`, by `Check.view_violations`;
-- a `leads_to` property with a `Waits` counterexample: `Check_expect.does_not_wait` fails while the page waits for the user, with no request and no timer, in the view where the property broke;
-- a `leads_to` property with a `Loop` counterexample: the script runs the stem and the cycle once, and `Check_expect.leaves_cycle` fails while the page is back at the view where the cycle starts;
-- any other rule, or an `always` or `never_after` property: `Check_expect.not_view` fails while the view is the view that broke it.
+- any other rule or property: `Check_expect.holds` runs the steps, then replays the run of the page in the check itself (`Check.replay_run`) and fails while the rule fails at a point of that run, with the meaning the checker gives it: an `always` condition on the real states, views and steps; a `leads_to` that waits, or that can go around the cycle again (the script passes `~cycle_from` for a `Loop`); a `never_after`. So the test passes exactly when the rule holds on that run: a fix that only changes the view keeps it red, and a fix that keeps the same views but stops the cycle makes it green. The test names the check, by default `Checks.<id>` from `check/checks.ml`, and takes props from it (`Check.nth_props`), so no codec is needed:
+
+From `test/replay/run.t`:
+
+```ocaml
+    let page = Memory.mount Badge.component in
+    Check_expect.holds broken ~cycle_from:0 Badge.check page (fun () ->
+        Memory.press (Memory.by_role page Accessibility.Button ~name:"Remove");
+        Memory.press (Memory.by_role page Accessibility.Button ~name:"Cancel")
+    )
+```
 
 Some steps have no input in the memory platform, and then `script` prints why on standard error, writes no test and exits `1`:
 

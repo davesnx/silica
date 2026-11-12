@@ -28,8 +28,11 @@ Docs for agents, as Markdown, in the Silica repository
 - `client/client_main.ml`: the browser entry.
 - `test/`: `counter_steps.ml` steps the machine, `counter_page.ml` drives the
   page by role and name with `Silica_memory`.
+- `check/checks.ml`: the checks, in the library `checks`: one value for each
+  component, such as `Checks.counter`. Tests use them too: the test that
+  `silica script` writes evaluates its rule with the check.
 - `check/main.ml`: the suite of the model checker, one `Check_suite.entry`
-  for each component. `check/spec/` holds the golden files of each machine:
+  for each check of `Checks`. `check/spec/` holds the golden files of each machine:
   its states and edges (`.spec.txt`) and the text view of each state
   (`.views.txt`).
 
@@ -65,7 +68,7 @@ Run every command from this directory.
 ## The loop for each change
 
 1. Write the requirement as a check first: a property in `~properties` of the
-   entry in `check/main.ml` (`Check.always`, `Check.leads_to`,
+   check in `check/checks.ml` (`Check.always`, `Check.leads_to`,
    `Check.never_after`), and the `~samples`, `~texts` (text that the checker
    types into each field) and `~inputs` (other events that no element gives)
    that reach the new states. A new component gets its own

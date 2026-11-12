@@ -74,6 +74,7 @@
   %{project_root}/test/replay/run.t
   %{project_root}/test/new/run.t
   %{project_root}/bin/template/check/main.ml
+  %{project_root}/bin/template/check/checks.ml
   %{project_root}/test/quint/check.ts
   %{project_root}/linear/app/shared/linear_model.ml
   %{project_root}/linear/app/shared/linear_theme.ml

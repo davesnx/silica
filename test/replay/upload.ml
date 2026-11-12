@@ -11,7 +11,7 @@ let api =
   Remote.declare ~path:"/api/save" ~input:Codec.int ~output:Codec.unit
     ~rejected:Codec.string
 
-let machine =
+let make_machine ~shorten =
   let machine =
     Machine.make ~id:"upload" ~init:Idle ~shape:state_shape ~events:event_shape
       ~owns:(function
@@ -36,7 +36,14 @@ let machine =
         | Saving, Done ->
             Machine.Go Saved
         | Saving, Rejected_with reason ->
-            Machine.Go (Failed reason)
+            Machine.Go
+              (Failed
+                 ( if shorten then
+                     String.sub reason 0 (min 4 (String.length reason))
+                   else
+                     reason
+                 )
+              )
         | Saving, Failed_call ->
             Machine.Go (Failed "down")
         | _ ->
@@ -52,21 +59,43 @@ let machine =
 let button label event =
   Node.element "button" [ Attr.on_press event ] [ Node.text label ]
 
-let component =
-  Component.make machine (function
-    | Idle ->
-        button "Save" Save
-    | Saving ->
-        Node.element "p" [] [ Node.text "Saving" ]
-    | Saved ->
-        Node.element "div" []
-          [ Node.element "p" [] [ Node.text "Saved" ]; button "Save" Save ]
-    | Failed reason ->
-        Node.element "div" []
-          [ Node.element "p" [] [ Node.text reason ]; button "Retry" Retry ]
-    )
+let machine = make_machine ~shorten:false
+let shortening = make_machine ~shorten:true
 
-let check =
+let view ~loud = function
+  | Idle ->
+      button "Save" Save
+  | Saving ->
+      Node.element "p" [] [ Node.text "Saving" ]
+  | Saved ->
+      Node.element "div" []
+        [ Node.element "p" [] [ Node.text "Saved" ]; button "Save" Save ]
+  | Failed reason ->
+      Node.element "div" []
+        [
+          Node.element
+            ( if loud then
+                "strong"
+              else
+                "p"
+            )
+            []
+            [
+              Node.text
+                ( if loud then
+                    String.uppercase_ascii reason
+                  else
+                    reason
+                );
+            ];
+          button "Retry" Retry;
+        ]
+
+let component = Component.make machine (view ~loud:false)
+let restyled = Component.make machine (view ~loud:true)
+let fixed = Component.make shortening (view ~loud:false)
+
+let check_of component =
   Check.component
     ~samples:[ Check.answers api ~rejected:[ "too many" ] [ () ] ]
     ~properties:
@@ -81,3 +110,7 @@ let check =
             ));
       ]
     component
+
+let check = check_of component
+let restyled_check = check_of restyled
+let fixed_check = check_of fixed

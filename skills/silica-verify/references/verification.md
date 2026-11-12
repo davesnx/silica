@@ -8,9 +8,10 @@ The examples come from `test/agents/loop.t`, which runs this loop on a new app i
 
 Where to read these docs: in a checkout of Silica they are `docs/*.mld` (this page is `docs/verification.mld`), and the same pages as Markdown are in `skills/silica-verify/references/`. `dune build site/server/llms-full.txt` writes every page as one Markdown file in `_build/default/site/server/`. The Silica site serves them at `/llms.txt`, `/llms-full.txt` and `/docs/<page>.md`.
 
-Run every command from the root of the app: the directory with `dune-project` and `check/main.ml`. `silica new DIR` makes such an app (see [A new app](../../../docs/install.mld)). The parts that the loop uses:
+Run every command from the root of the app: the directory with `dune-project` and `check/checks.ml`. `silica new DIR` makes such an app (see [A new app](../../../docs/install.mld)). The parts that the loop uses:
 
-- `check/main.ml`: the suite. One `Check_suite.entry` for each component.
+- `check/checks.ml`: the checks, in a library: one value for each component, such as `Checks.counter`. Tests use them too: a test that `Check.script` writes evaluates its rule with the check.
+- `check/main.ml`: the suite. One `Check_suite.entry` for each check of `Checks`.
 - `check/spec/`: the golden files of each machine. `<id>.spec.txt` lists its states and edges, `<id>.views.txt` the view of each state as text.
 - `test/`: tests that drive the component with `Silica_memory`.
 
@@ -28,7 +29,7 @@ The commands:
 
 ## The loop
 
-1. **Write the requirement as a check.** Before you change the component, add what must hold to its entry in `check/main.ml`: a property (see [Write a requirement as a property](verification.md#write-a-requirement-as-a-property)), and the `samples`, `texts` (text that the checker types into each field of the view) and `inputs` (other events that no element gives) that reach the new states. A new component gets its own `Check_suite.entry`; the suite reports a rendered component with no entry as `unchecked-component`.
+1. **Write the requirement as a check.** Before you change the component, add what must hold to its check in `check/checks.ml`: a property (see [Write a requirement as a property](verification.md#write-a-requirement-as-a-property)), and the `samples`, `texts` (text that the checker types into each field of the view) and `inputs` (other events that no element gives) that reach the new states. A new component gets its own `Check_suite.entry`; the suite reports a rendered component with no entry as `unchecked-component`.
 
 2. **Change the machine and the view.** See [Write the machine](verification.md#write-the-machine).
 
@@ -77,18 +78,18 @@ The task: let the user save again after a save. First the requirements. Save is 
 From `test/agents/loop.t`:
 
 ```sh
-  >            ~properties:
-  >              [
-  >                Check.always ~name:"no-save-while-saving"
-  >                  ~hint:
-  >                    "Disable Save in {state}: a second save waits for the \
-  >                     answer of the first."
-  >                  Check.(not_ (state_named "saving" &&& view save_offered));
-  >                Check.leads_to ~name:"save-ends"
-  >                  ~from:(Check.state_named "saving")
-  >                  ~to_:Check.(state_named "saved" ||| state_named "save_failed")
-  >                  ();
-  >              ]
+  >     ~properties:
+  >       [
+  >         Check.always ~name:"no-save-while-saving"
+  >           ~hint:
+  >             "Disable Save in {state}: a second save waits for the answer of \
+  >              the first."
+  >           Check.(not_ (state_named "saving" &&& view save_offered));
+  >         Check.leads_to ~name:"save-ends"
+  >           ~from:(Check.state_named "saving")
+  >           ~to_:Check.(state_named "saved" ||| state_named "save_failed")
+  >           ();
+  >       ]
 ```
 
 A first try enables the Save button in every state but does not handle `Save` in the update. The suite exits 1 and writes one trace file for each violation:
@@ -183,9 +184,10 @@ From `test/agents/loop.t`:
 From `test/agents/loop.t`:
 
 ```sh
-  golden-drift: The golden file spec/counter.views.txt differs from what the check found.
-    +     button "Save" [press]
-    -     button "Save" disabled [press]
+  golden-drift: The golden file check/spec/counter.views.txt differs from what the check found.
+    changed the view of state saved
+        +     button "Save" [press]
+        -     button "Save" disabled [press]
 ```
 
 The change is the intended one, so write the golden files again. The command prints the findings it accepts, then what it did:
@@ -284,6 +286,7 @@ A condition is a test of one point of a run: the state, its view, and the step t
 | `Check.state`` test` | `('s -> bool) -> ('s, 'e) condition` | the state passes `test` |
 | `Check.state_named`` name` | `string -> ('s, 'e) condition` | the state has this name, such as `"saving"` |
 | `Check.view`` test` | `('e Silica.Node.t -> bool) -> ('s, 'e) condition` | the view of the state passes `test` |
+| `Check.shows`` text` | `string -> ('s, 'e) condition` | `text` is a part of the text that a person sees in the view, in any element, with or without a role |
 | `Check.holds`` test` | `('s -> 'e Silica.Node.t -> bool) -> ('s, 'e) condition` | the state and its view pass `test` together |
 | `Check.event`` test` | `('e -> bool) -> ('s, 'e) condition` | the event of the step that reached the state passes `test` |
 | `Check.action`` test` | `('e Silica.Action.host -> bool) -> ('s, 'e) condition` | the step that reached the state ran an action that passes `test` |
@@ -300,6 +303,7 @@ One example of each, on the lamp of [Components and JSX](../../../docs/component
         state (fun state -> state = Doc_lamp.On);
         state_named "on";
         view (fun view -> Silica.View_text.to_string view <> "");
+        shows "The lamp is on.";
         holds (fun state view ->
             state = Doc_lamp.Off
             || Silica.View_text.to_string view <> "");
@@ -315,7 +319,7 @@ One example of each, on the lamp of [Components and JSX](../../../docs/component
       ];;
 val examples : (Doc_lamp.state, Doc_lamp.event) Check.condition list =
   [<abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>;
-   <abstr>; <abstr>; <abstr>]
+   <abstr>; <abstr>; <abstr>; <abstr>]
 # Check.passed
     (Check.run
        (Check.component
@@ -472,10 +476,10 @@ The roles of `Silica.Accessibility.role`, and the elements that have each one wi
 From `test/replay/run.t`:
 
 ```ocaml
-  let () =
     let page = Memory.mount Stepper.component in
-    Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0";
-    Check_expect.not_view broken page broken_view
+    Check_expect.holds broken Stepper.typing page (fun () ->
+        Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0"
+    )
 ```
 
 Keep `~inputs` for events that no element gives. `silica script` still exits 1 on a step from `~inputs`, and says to give the text with `~texts` when the event is text typed into a field.
