@@ -1,7 +1,7 @@
 (library
  (name silica_site_server)
  (wrapped false)
- (modules site_docs_pages site_server)
+ (modules site_docs_pages site_llms site_server)
  (libraries silica_site_app_native silica.server silica.adapter unix))
 
 (executable
@@ -29,3 +29,33 @@
   (with-stdout-to
    %{target}
    (run %{exe:../gen/docs_gen.exe} pages %{project_root}/docs))))
+
+(rule
+ (targets llms.txt llms-full.txt site_llms.ml)
+ (deps
+  (glob_files %{project_root}/docs/*.mld)
+  %{project_root}/docs/glossary.mld
+  (source_tree %{project_root}/docs/examples))
+ (action
+  (progn
+   (with-stdout-to
+    llms.txt
+    (run
+     %{exe:../gen/llms.exe}
+     index
+     https://silica-site.fly.dev
+     %{project_root}/docs))
+   (with-stdout-to
+    llms-full.txt
+    (run
+     %{exe:../gen/llms.exe}
+     full
+     https://silica-site.fly.dev
+     %{project_root}/docs))
+   (with-stdout-to
+    site_llms.ml
+    (run
+     %{exe:../gen/llms.exe}
+     ml
+     https://silica-site.fly.dev
+     %{project_root}/docs)))))

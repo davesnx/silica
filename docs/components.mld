@@ -59,6 +59,49 @@ Other nodes:
 - {!Silica.Node.val-boundary}: a part of the view that catches an exception of
   the components inside it, shows a fallback, and can start them again.
 
+{2:attribute_types Attribute values}
+
+The ppx gives each attribute a type, from its tables of HTML and SVG
+attributes. Most take a [string]. A boolean attribute takes a [bool], a number
+such as [tabindex] takes an [int], and an attribute with a fixed set of
+values takes a polymorphic variant: [type_=`number], not [type_="number"],
+which does not compile. A value whose HTML form is an OCaml keyword or starts
+with a digit gets a [_] after it: [aria_checked=`true_]. The [aria_*]
+attributes that hold ["true"] or ["false"] take a [bool]. [step], [min],
+[max] and [value] take a [string], also on a number field. [role] takes a
+variant with each ARIA role name: [role=`switch]. An optional attribute,
+written [?name], takes an option of the same type.
+
+The common ones:
+
+{t
+| Attribute | Elements | Value |
+|---|---|---|
+| [type_] | [input] | [`button], [`checkbox], [`color], [`date], [`datetime_local], [`email], [`file], [`hidden], [`image], [`month], [`number], [`password], [`radio], [`range], [`reset], [`search], [`submit], [`tel], [`text], [`time], [`url], [`week] |
+| [type_] | [button] | [`submit], [`reset], [`button] |
+| [disabled] | [button input select textarea fieldset] | [bool] |
+| [checked] | [input] | [bool] |
+| [required] | [input] | [bool] |
+| [hidden] | [div] | [bool] |
+| [tabindex] | [div] | [int] |
+| [aria_level] | [div] | [int] |
+| [aria_expanded] | [button] | [bool] |
+| [aria_hidden] | [span] | [bool] |
+| [aria_selected] | [div] | [bool] |
+| [aria_checked] | [div] | [`false_], [`mixed], [`true_] |
+| [aria_pressed] | [button] | [`false_], [`mixed], [`true_] |
+| [aria_current] | [a] | [`false_], [`true_], [`page], [`step], [`location], [`date], [`time] |
+| [aria_live] | [div] | [`off], [`assertive], [`polite] |
+| [aria_haspopup] | [button] | [`false_], [`true_], [`menu], [`listbox], [`tree], [`grid], [`dialog] |
+| [method_] | [form] | [`get], [`post], [`dialog] |
+| [inputmode] | [input] | [`none], [`text], [`tel], [`url], [`email], [`numeric], [`decimal], [`search] |
+| [step] | [input] | [string] |
+}
+
+The complete list of attributes that do not take a string, generated from
+the ppx, is [skills/silica-verify/references/attributes.md] in the
+repository.
+
 {1:children Child components}
 
 Each part of a page that has its own behaviour is a component with its own

@@ -7,3 +7,8 @@
  (name landing_gen)
  (modules landing_gen)
  (libraries silica silica.check silica_docs_examples_native))
+
+(executable
+ (name llms)
+ (modules llms)
+ (libraries odoc-parser))

@@ -12,6 +12,20 @@ let escape text =
     text;
   Buffer.contents buffer
 
+let escape_code text =
+  let buffer = Buffer.create (String.length text) in
+  String.iter
+    (fun c ->
+      match c with
+      | '[' | ']' ->
+          Buffer.add_char buffer '\\';
+          Buffer.add_char buffer c
+      | c ->
+          Buffer.add_char buffer c
+    )
+    text;
+  Buffer.contents buffer
+
 let inline text =
   let buffer = Buffer.create (String.length text) in
   let length = String.length text in
@@ -28,7 +42,7 @@ let inline text =
   in
   let rec go i =
     if i < length then
-      let span marker before after =
+      let span ?(escape = escape) marker before after =
         let size = String.length marker in
         match closing marker (i + size) with
         | Some j ->
@@ -44,7 +58,7 @@ let inline text =
       if i + 1 < length && text.[i] = '*' && text.[i + 1] = '*' then
         span "**" "{b " "}"
       else if text.[i] = '`' then
-        span "`" "[" "]"
+        span ~escape:escape_code "`" "[" "]"
       else if text.[i] = '_' && (i = 0 || text.[i - 1] = ' ') then
         span "_" "{i " "}"
       else (

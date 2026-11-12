@@ -1,6 +1,7 @@
 let sections =
   [
     ("Start", [ "index"; "install"; "tutorial" ]);
+    ("For coding agents", [ "verification" ]);
     ( "Concepts",
       [
         "machines";

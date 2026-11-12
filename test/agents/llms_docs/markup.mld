@@ -1,0 +1,51 @@
+{0 Markup}
+
+A paragraph with [code], {b bold}, {i italic}, {e emphasis}, and a
+{{:https://example.com} link}. Plain text: snake_case, _lead, 2 * 3, a <tag>,
+[x`y] and [`z] in code.
+
+{1:labelled A labelled heading}
+
+{2 Same}
+
+{2 Same}
+
+References: {!Check}, {!Check.val-run}, {!Check.type-report},
+{!Silica.Machine.module-Shape}, {{!Check.val-rules} the rules}, {!page-index},
+{!page-markup.labelled}, {!section-same-2}, {{!section-labelled} here}.
+
+- one
+- two with {!Check.val-run}
+  - nested
+
++ first
++ second
+
+{ol
+{li a paragraph
+
+{@ocaml skip[
+let x = 1
+]}}
+{li done}}
+
+{t
+| Rule | Fix |
+|------|-----|
+| [ignored-event] | handle it |
+| [dead-end] | {b add} a way out |
+}
+
+{@ocaml[
+let quoted = "```"
+]}
+
+{@dune file=examples/sample.dune[
+]}
+
+{v
+verbatim {text}
+  kept
+v}
+
+1. A paragraph that starts with a number.

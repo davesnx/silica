@@ -1,0 +1,13 @@
+{0 Sample}
+
+Sample is a {b small} fixture for the converter.
+
+{1:pages Pages}
+
+Start:
+
+- {!page-markup}: every construct that the docs use.
+
+Elsewhere:
+
+- {{:https://example.com/skill} A skill}: a link that is not a page.

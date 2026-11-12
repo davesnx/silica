@@ -28,7 +28,8 @@
   testing.mld
   linear.mld
   recipes.mld
-  theming.mld)
+  theming.mld
+  verification.mld)
  (libraries
   silica
   silica.check
@@ -51,6 +52,8 @@
   theming.mld
   deploy.mld
   router.mld
+  verification.mld
+  %{project_root}/test/agents/loop.t
   %{project_root}/site/client/dune
   %{project_root}/site/app/native/site_lazy.ml
   %{project_root}/site/app/melange/site_lazy.ml
@@ -91,4 +94,5 @@
    recipes.mld
    theming.mld
    deploy.mld
-   router.mld)))
+   router.mld
+   verification.mld)))

@@ -1,0 +1,103 @@
+(cram
+ (applies_to llms)
+ (deps
+  %{exe:../../site/gen/llms.exe}
+  (source_tree llms_docs)))
+
+(cram
+ (applies_to loop)
+ (deps
+  %{bin:silica}
+  (package silica)))
+
+(test
+ (name test_text_files)
+ (modules test_text_files)
+ (deps
+  (glob_files %{project_root}/docs/*.mld)
+  %{project_root}/docs/glossary.mld)
+ (action
+  (chdir
+   %{project_root}
+   (run %{test})))
+ (libraries silica_site_server silica.server silica.adapter alcotest))
+
+(test
+ (name test_tables_documented)
+ (modules test_tables_documented)
+ (deps
+  %{project_root}/docs/verification.mld
+  %{project_root}/lib/accessibility.mli)
+ (action
+  (run
+   %{test}
+   %{project_root}/docs/verification.mld
+   %{project_root}/lib/accessibility.mli))
+ (libraries silica silica.check))
+
+(rule
+ (alias runtest)
+ (action
+  (diff
+   %{project_root}/templates/AGENTS.md
+   %{project_root}/bin/template/AGENTS.md)))
+
+(rule
+ (targets verification.md checker.md)
+ (deps
+  (glob_files %{project_root}/docs/*.mld)
+  %{project_root}/docs/glossary.mld
+  (source_tree %{project_root}/docs/examples))
+ (action
+  (progn
+   (with-stdout-to
+    verification.md
+    (run
+     %{exe:../../site/gen/llms.exe}
+     page
+     https://silica-site.fly.dev
+     %{project_root}/docs
+     verification))
+   (with-stdout-to
+    checker.md
+    (run
+     %{exe:../../site/gen/llms.exe}
+     page
+     https://silica-site.fly.dev
+     %{project_root}/docs
+     checker)))))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (diff
+    %{project_root}/skills/silica-verify/references/verification.md
+    verification.md)
+   (diff
+    %{project_root}/skills/silica-verify/references/checker.md
+    checker.md))))
+
+(rule
+ (copy %{project_root}/ppx/html.ml html.ml))
+
+(rule
+ (copy %{project_root}/ppx/html_attributes.ml html_attributes.ml))
+
+(executable
+ (name attributes_gen)
+ (modules attributes_gen html html_attributes))
+
+(rule
+ (with-stdout-to
+  attributes.md
+  (run ./attributes_gen.exe markdown)))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (run ./attributes_gen.exe check %{dep:../../docs/components.mld})
+   (diff
+    %{project_root}/skills/silica-verify/references/attributes.md
+    attributes.md))))

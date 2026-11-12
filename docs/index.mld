@@ -35,6 +35,17 @@ Start:
   project and a first component.
 - {!page-tutorial}: a counter, then a machine with a Remote call.
 
+For coding agents:
+
+- {!page-verification}: the loop that proves a change right with no
+  browser: check, read the JSON, replay, script, fix, golden files.
+- {{:https://github.com/davesnx/silica/tree/main/skills/silica-verify} The
+  silica-verify skill}: the same loop as a skill, with the rules and the
+  report in its references.
+- {{:https://github.com/davesnx/silica/blob/main/templates/AGENTS.md}
+  AGENTS.md}: the instructions for agents that [silica new] writes into each
+  app.
+
 Concepts:
 
 - {!page-machines}: states, the update, the next step, owned sources and

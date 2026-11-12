@@ -1,0 +1,674 @@
+# The checker and Quint
+
+The checker (`silica.check`, module `Check`) runs a component in every state that it can reach. In each state it renders the view, finds every event that can happen, and checks rules of the state, the view and the step. It searches breadth first, so each finding comes with a shortest list of steps that leads to it. It goes on after a finding and reports all of them.
+
+States and events must be plain data: the checker compares and hashes them. A function in a state or an event raises `Check.Invalid_check`.
+
+## Check a component
+
+`Check.component` takes a component and gives a check, a value with the samples, inputs, bounds, properties and allowances. `Check.run` runs it and gives a `Check.report`. The events of a state are:
+
+- the handlers of the view: press, double press, submit, focus, blur, pointer enter and leave, and the key handlers with each key of `keys`;
+- the events of the held sources of the state, such as the keys of a `Source.keys` table or the events of a dismiss layer;
+- the events of running timers, in any order, as time is not counted;
+- the answers of running calls and the states of running subscriptions (see [Samples](https://silica-site.fly.dev/docs/checker#samples));
+- `inputs state`: the events that need a value, such as the text of an `on_input`;
+- every value in `props`, given as new props (`Check.Props p`).
+
+A machine made with `Machine.make` has the props `()`. A machine with props needs `props`: the check starts once with each of them. The input of a step is a `Check.input`: `Check.Event e` or `Check.Props p`.
+
+A handler on an element with `disabled` is not an event. `within` limits a state space that has no end: the checker does not explore a state outside it. `max_states` (100 000) stops a search that is too big; the report is then not `complete`.
+
+```ocaml
+# let report =
+    Check.run
+      (Check.component
+         ~inputs:(fun _ -> [ Doc_debounce.Typed "a"; Doc_debounce.Typed "" ])
+         Doc_debounce.component)
+  in
+  (Check.passed report, report.states, report.transitions);;
+- : bool * int * int = (true, 3, 9)
+```
+
+`Check.passed` is true when the report has no violation, no unreached state, and is `complete`.
+
+## Rules
+
+The built-in rules hold for every component. `Check.rules` lists each with its id, its message and its hint:
+
+- `unique-refs`: refs are unique in a view.
+- `focus-target`: a `Focus`, `Blur`, `Scroll_into_view` or `Scroll_to` action names a ref of the next view.
+- `boundary-reset`: the fallback of each boundary can reset it.
+- `dead-end`: some event can happen, unless the state is final or the view holds a child component or an island.
+- `timer-owner`, `call-owner`: every running timer, call and subscription belongs to the current state. A finding is a bug of Silica.
+- `ignored-event`: the machine handles every event of a handler of the view, of a timer, of a call answer and of a subscription. It may ignore the events of held sources, of `inputs`, of action results and new props. So an update that ends with `| _ -> Ignore` cannot hide a button that does nothing.
+- `raised`: the update, the view, a handler or a property raised an exception. The search does not go on from that state.
+- `unreached-state`: a name of the `states` of the machine (see `Silica.Machine.shape`) that no step reached.
+- `state-limit`: the search stopped at `max_states`.
+- `live-uses-client-source`, `live-uses-client-action`: see [Live components](https://silica-site.fly.dev/docs/checker#live).
+- `route-round-trip`, `link-parses`: see [Routed apps](https://silica-site.fly.dev/docs/checker#app).
+
+### Accessibility rules
+
+These rules read the view of each state as data, with the roles and names of `Silica.Accessibility`. They see no browser and no CSS, and they skip hidden elements. A component is checked alone: they do not see the view of its parent, and they see a child component only as a node.
+
+- `accessible-name`: a button, link, checkbox, radio, switch, tab, menu item, option or tree item, and each element with a press handler, has a name. It cannot see a name that CSS paints, such as an icon font.
+- `field-label`: a field (`input`, `textarea`, `select`, or a textbox, searchbox, combobox, listbox, slider or spinbutton role) has a name: a `<label for>`, a `<label>` around it, `aria-label`, `aria-labelledby`, `title` or `placeholder`.
+- `img-alt`: an `img` has `alt` (`alt=""` for decoration), a name, or the role `none`. It does not check that the text is useful, and does not look at `svg`.
+- `unique-ids`: an id is on one element of the view. It cannot see the ids of the parent, nor of another instance of the same component.
+- `aria-reference`: `aria-labelledby`, `aria-describedby`, `aria-activedescendant` and the `for` of a `label` name ids of the view. The rule is off for a view that holds a child component or a chunk that is not loaded, and it does not check `aria-controls` and `aria-owns`, because their target is often in the parent, as the panel of a tab is.
+- `valid-role`: a `role` has an ARIA 1.2 role (`doc-` and `graphics-` roles count), and an explicit role has the attribute it needs: `aria-checked` for checkbox, radio, switch, menuitemcheckbox and menuitemradio (a native checkbox has it), `aria-level` for a heading that is not `h1` to `h6`, `aria-expanded` for combobox, `aria-valuenow` for slider.
+- `required-children`: a listbox holds only options, a tablist only tabs, a menu or menubar only menu items, through elements with no role and groups. Text in them is a finding; an empty one is not. It does not follow `aria-owns`.
+- `nested-interactive`: a button, link, tab, option, checkbox, radio, switch, menuitemcheckbox or menuitemradio does not hold a control or an element with a `tabindex` of 0 or more.
+- `keyboard-access`: an element with a press handler is a `button`, a link, a field or `summary`, or has a `tabindex`; a press handler on an element with no role, or with the role button, link, checkbox or switch, and no `tabindex` is a finding. An option or a menu item with no `tabindex` is not, because its widget can move focus with `aria-activedescendant`. The rule does not see a key handler on an element above.
+- `dialog-name`: a dialog or alert dialog has a name.
+- `dialog-focus`: when the view shows a dialog with `aria-modal="true"`, the state owns a `Silica.Source.focus_trap` on it or on an element around it. It cannot see a native `<dialog>` opened with `showModal`.
+- `heading-order`: a heading is at most one level below the heading before it; each portal starts again. The first heading of a view can have any level, because the rule cannot see the headings of the page around a component.
+- `name-spacing`: in the name that a button, link, tab, option, menu item, checkbox, radio, switch, tree item or heading takes from its content, two inline elements (such as `span`) or an element and a text do not join a letter or digit to a letter or digit with no space, as `<a><span>ENG-2</span><span>Second</span></a>` gives `"ENG-2Second"`. A block element (`div`, `p`, `li`) counts as a space. It cannot see CSS: a `span` that CSS makes a block or a flex item can show a space in a browser, but the view still has none, so add a `" "` text node or an `aria-label`.
+
+Each violation in the report is a record: the `rule`, a `message` with the state, the element and the event, a `hint` that says how to fix it, the `counterexample` (the steps), the `state` and its `state_name` at the failing point, the `view` of that state as text (`Silica.View_text`), and the `element` for a rule of the view. Each step has its `input`, the name of its `event`, its `cause` (the element and handler of the view, the timer, the call, the source), and the names of the states `from` and `target`.
+
+When the machine ignores the event of a button, disable the button (for example with `Silica.Machine.can`), or handle the event, for example with `Stay []`. This lamp ignores `Toggle` when it is on. The trace ends with the ignored event:
+
+```ocaml
+# let broken =
+    let machine =
+      Silica.Machine.make ~id:"broken-lamp" ~init:Doc_lamp.Off
+        ~shape:Doc_lamp.state_shape (fun state Doc_lamp.Toggle ->
+          match state with
+          | Doc_lamp.Off -> Silica.Machine.Go Doc_lamp.On
+          | Doc_lamp.On -> Silica.Machine.Ignore)
+    in
+    Silica.Component.make machine Doc_lamp.view;;
+val broken : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Node.component =
+  {Silica.Component.machine = <abstr>; view = <fun>}
+# Format.printf "%a@." Check.pp_report (Check.run (Check.component broken));;
+broken-lamp: 2 states, 2 transitions
+violation 1: ignored-event
+  In state on, the view offers press on button "Turn off" at div > button gives the event (unnamed), and the update returns Ignore.
+  hint: Handle (unnamed) in state on, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of on.
+  1. off -> on: (unnamed event), by the view offers press on button "Turn on" at div > button
+  2. on -> on: (unnamed event), by the view offers press on button "Turn off" at div > button
+  state: on
+  view:
+    text "The lamp is on."
+    button "Turn off" [press]
+- : unit = ()
+```
+
+This machine has no `events` shape, so its events have no name; give it one (see [Events and codecs](https://silica-site.fly.dev/docs/machines#events)) and the steps name them.
+
+## Properties
+
+A property of the app is a name and a condition that must hold in every state that the search reaches. `Check.always` makes one; a condition reads the state (`Check.state`, `Check.state_named`), the view (`Check.view`), both (`Check.holds`), or the event that reached the state (`Check.event`), and combines with `&&&`, `|||` and `not_`. A property can give its own `hint`; `{state}` in it is the name of the failing state. This one fails on the stepper of [Components and JSX](https://silica-site.fly.dev/docs/components):
+
+```ocaml
+# let at_most_two =
+    Check.always ~name:"at-most-two"
+      ~hint:"Stop the count at two in {state}."
+      (Check.state (fun (Doc_stepper.Count count) -> count <= 2));;
+val at_most_two : (Doc_stepper.state, '_weak1) Check.property = <abstr>
+# let report =
+    Check.run
+      (Check.component ~props:[ "Adults" ] ~properties:[ at_most_two ]
+         ~within:(fun (Doc_stepper.Count count) -> count <= 5)
+         Doc_stepper.component)
+  in
+  List.iter
+    (fun (violation : _ Check.violation) ->
+      Printf.printf "%s: %s\n%s\n" violation.rule violation.hint
+        (String.concat ", "
+           (List.map (fun (step : _ Check.step) -> step.event)
+              (Check.steps violation.counterexample))))
+    report.violations;;
+at-most-two: Stop the count at two in count.
+up, up, up
+- : unit = ()
+```
+
+The search keeps the first violation of each rule, state name, element and message, so the list stays short. `max_violations` (50) stops the search when the list is full; the report is then `truncated`.
+
+## Temporal properties
+
+`Check.always` looks at one state at a time. Two properties look at runs:
+
+- `Check.never_after`` ~name ~after ~never ()`: in every run, from the first point that matches `after` on, that point included, no point matches `never`. "After Delete, the issue never shows again."
+- `Check.leads_to`` ~name ~from ~to_ ()`: every run that reaches a point that matches `from` later reaches a point that matches `to_`; the same point counts. "After Save, eventually Saved or Failed."
+
+A point of a run is a start, or the state that a step reaches. A condition reads the point as `Check.always` does, and also the step that reached it: `Check.event` reads its event, `Check.action` its actions (a `Focus`, a `Start_call`), and `Check.entered` holds when the step came into a state from another one. In a temporal property these read every step, not only the step of a shortest path.
+
+### Which runs count
+
+The checker stores the graph that the search explored and checks each temporal property on it after the search. For `leads_to` it decides which runs count:
+
+- A run may stop in a state where no timer, no call and no action result runs. The app then waits for the user, and the user may do nothing; a server may never publish. So the view, the inputs, held sources and running subscriptions do not keep a run going.
+- A run may not stop while a timer, a call or an action result runs.
+- An endless run counts only when it is weakly fair: each timer and each call that runs at every step from some point on is also delivered again and again. Every timer fires and every call answers in the end, even if the user keeps typing. A timer that a step starts again with the same id runs all along.
+
+"Eventually" in `leads_to` means: on every run that counts. Fairness is about timers and calls because the browser and the server deliver them without the user. It is weak (about what runs all along, not about what starts again and again) because a timer that the user keeps restarting, as in a debounce, has not had its time.
+
+### Counterexamples
+
+A violation of `never_after` is a `Path`: a shortest run to the first point that matches `never`. A violation of `leads_to` is one of two kinds, each a real run of the explored graph:
+
+- `Waits steps`: a shortest run to a state where nothing runs, after `from` and with no `to_` since. The printed report ends with "then no timer and no call runs: the app waits for the user". The usual fix is a timer or a call in that state, such as a retry with a limit, or a `to_` that also accepts the failure.
+- `Loop { stem; cycle }`: `stem` goes to the first state of `cycle`, and `cycle` comes back to it and can repeat forever. The cycle delivers each timer and call that runs at all its steps, so the run is fair. The message names the states of the cycle and what it delivers, such as an answer that starts the same call again. The usual fix is to count the repeats, or to handle that answer by going on.
+
+A set of states where the app can also wait gives a `Waits` only, which is shorter. Each kind is reported once for each state name, like the other rules. With the debounce of [above](https://silica-site.fly.dev/docs/checker#component), typing leads to a settled word or to an empty field; asking for a settled word only fails, because the user may type an empty word and stop:
+
+```ocaml
+# let settles to_ =
+    Check.run
+      (Check.component
+         ~inputs:(fun _ -> [ Doc_debounce.Typed "a"; Doc_debounce.Typed "" ])
+         ~properties:
+           [
+             Check.leads_to ~name:"typing settles"
+               ~from:(Check.state_named "typing") ~to_ ();
+           ]
+         Doc_debounce.component)
+  in
+  let holds = settles Check.(state_named "settled" ||| state_named "empty") in
+  let fails = settles (Check.state_named "settled") in
+  ( Check.passed holds,
+    List.map
+      (fun (violation : _ Check.violation) ->
+        match violation.counterexample with
+        | Check.Waits steps ->
+            "waits in " ^ violation.state_name ^ " after "
+            ^ String.concat ", "
+                (List.map (fun (step : _ Check.step) -> step.event) steps)
+        | Check.Path _ | Check.Loop _ ->
+            "other")
+      fails.violations );;
+- : bool * string list = (true, ["waits in empty after typed, clear"])
+```
+
+### When the search was cut
+
+A counterexample uses only explored states and steps, so it is never false. A step that `within` or `max_states` cut is not known, and the checker never takes it to be missing: a state whose timer step was cut still has a running timer, so it does not wait. A state that the search did not expand because `max_violations` stopped it gives no `Waits`. So a report that is not `complete` may miss counterexamples, and has no false ones.
+
+### What is not checked
+
+- Real durations. Time is abstract, so a timer that another timer always restarts before it can fire is taken to fire.
+- Which answer a call gets. Fairness delivers an answer, not a good one: a retry on failure can fail forever, and that is a `Loop`.
+- Runs outside `within` or past `max_states`.
+
+### Cost
+
+The graph is stored only when a check has a temporal property: one target and one step for each explored transition. Each property then visits each state at most twice. On mini Linear, the three temporal properties add about 8% to the time of its checks and 0.75 GB to their memory, most of it for the 5 million transitions of the issue detail. A condition that reads actions runs the step again when it needs them, so the actions are not stored.
+
+## Allowances
+
+A rule that does not apply to a state is turned off with an allowance and a reason: `Check.allow`` ~rule ?state ?element ~reason ()`. The report lists each allowance and how many violations it turned off, so a reviewer sees what was turned off and why. A state that no run can reach on purpose is allowed with `~rule:"unreached-state" ~state`.
+
+## The report
+
+Besides the violations, the report gives the counts of `states` and `transitions`, the `unreached` states, the `spec` that the run found (see [Diagrams and Quint](https://silica-site.fly.dev/docs/checker#quint)), and for each state name in the order the search reached it: `paths`, a shortest list of steps from the start, and `views`, the view of its first state as text.
+
+```ocaml
+# let report = Check.run (Check.component Doc_lamp.component) in
+  List.iter
+    (fun (name, steps) ->
+      Printf.printf "%s: [%s]\n" name
+        (String.concat ", " (List.map (fun (step : _ Check.step) -> step.event) steps)))
+    report.paths;;
+off: []
+on: [toggle]
+- : unit = ()
+# let report = Check.run (Check.component Doc_lamp.component) in
+  List.iter (fun (name, view) -> Printf.printf "%s:\n%s" name view) report.views;;
+off:
+text "The lamp is off."
+button "Turn on" [press]
+on:
+text "The lamp is on."
+button "Turn off" [press]
+- : unit = ()
+```
+
+## Samples
+
+The checker has no server. A sample gives the values that the server could give:
+
+- `Check.answers` `endpoint values`: a call can end with each value, and also with `Failed (Http 500)` and `Failed (Network "down")`. `rejected` gives the application errors that it can end with, as `Rejected x`.
+- `Check.states` `topic values`: a subscription gets `Loading None`, then up to `arrivals` states, one loss of the connection with the old data, and one fatal failure.
+
+An endpoint with no sample can only fail. So the error paths are always checked.
+
+```ocaml
+# let report =
+    Check.run
+      (Check.component
+         ~samples:[ Check.answers Tutorial_api.greeting [ "Hello, Ada" ] ]
+         Doc_hello.component)
+  in
+  (report.states, List.length (List.hd report.specs).edges);;
+- : int * int = (3, 3)
+```
+
+## Children
+
+By default the checker does not run a child component inside the check of its parent. A report lists each child in `not_explored`, and keeps the props that the parent gave in `children`. Check the child alone with those props:
+
+```ocaml
+# let children =
+    let report = Check.run (Check.component Doc_party.component) in
+    print_endline (String.concat ", " report.not_explored);
+    report.children;;
+component stepper
+val children : Check.children = <abstr>
+# let props = Check.props children Doc_stepper.component;;
+val props : string list = ["Adults"; "Children"]
+# (Check.run
+     (Check.component ~props
+        ~within:(fun (Doc_stepper.Count count) -> count <= 3)
+        Doc_stepper.component)).states;;
+- : int = 8
+```
+
+A child alone cannot show a bug between the parent and the child: props that the parent gives at the wrong moment, an `output` event that the parent handles wrongly, a child that ends while it still waits for an answer. To see these, list the child with `Check.child` in `children`: its machine then runs inside the check of the parent, as `Silica.Instance` runs it in a page. Each instance starts with the props of its node, gets new props through `on_props`, sends its `output` and `on_final` events to the parent, and ends when its node goes away. Its view takes the place of its node, so the view rules and the properties see the whole page.
+
+```ocaml
+# let report =
+    Check.run
+      (Check.component
+         ~children:
+           [
+             Check.child
+               ~within:(fun (Doc_stepper.Count count) -> count <= 2)
+               Doc_stepper.component;
+           ]
+         ~properties:
+           [
+             Check.always ~name:"the guests are the sum of the steppers"
+               (Check.holds (fun (Doc_party.Party party) view ->
+                    let text = Silica.View_text.to_string view in
+                    let shows needle =
+                      let length = String.length needle in
+                      let rec scan index =
+                        index + length <= String.length text
+                        && (String.sub text index length = needle
+                           || scan (index + 1))
+                      in
+                      scan 0
+                    in
+                    shows (Printf.sprintf "Adults: %d" party.adults)
+                    && shows (Printf.sprintf "Children: %d" party.children)));
+           ]
+         Doc_party.component)
+  in
+  (Check.passed report, report.states, report.machines);;
+- : bool * int * (string * int) list =
+(true, 9, [("party", 9); ("stepper", 8)])
+```
+
+A step of a child has `instance` and `machine` set, such as `"party/#adults:stepper"`: the instance path that `Silica.Instance` and the transition log give, made of the place of the node in the view of its parent, its key, and its machine id. A violation inside a child names that instance in its message. `Check.replay`, `Check.export`, `Check.replay_trace` and `Silica_memory.replay` take the steps of children like the steps of the root: a press inside a child is a press on its element in the whole page.
+
+The state space of a joint check is the product of the parent and its running children, so it grows fast. These bounds keep it small, and each one is in your hands:
+
+- Only the listed children run. The others stay in `not_explored`.
+- `max_instances` (default 2) instances of each listed machine run at once. Two find the bugs between siblings; more seldom add any. A further instance shows the view of its start state, takes no step, and is listed in `not_explored`.
+- Each child has its own `samples`, `inputs` and `within`.
+- `max_states` of the check bounds the joint snapshots, and `machines` in the report counts the distinct snapshots of each machine, so you can see which one to bound.
+
+The properties of the check, `always` and the temporal ones, see the whole page with only the handlers and actions of the root machine. A child takes only `always` properties, which see the view of the child; in them `entered` and `action` never hold. A temporal property on a child raises `Check.Invalid_check`: put it on the parent, or on the check of the child alone.
+
+## Live components
+
+`Check.live` checks a Live component. Its machine runs on the server, so a state that owns a source of the page (a focus trap, a key table, a dismiss layer) is a violation of `live-uses-client-source`, and an action that needs an answer of the page (`Measure`, `Copy`, `Load_script`) is a violation of `live-uses-client-action`.
+
+## Routed apps
+
+`Check.app` explores the root of a router app with a simulated history: link presses, back, forward and the navigation actions. `routes` lists route values to check: for a route with a query, give one value with the default and one without. `inputs` gives the URLs that a user can type. Two more rules hold:
+
+- `route-round-trip`: each route reads back from its own URL.
+- `link-parses`: the `href` of each link in a view prints back to the same URL, and does not go to the not-found route.
+
+```ocaml
+# let report =
+    let open Doc_books in
+    Check.run
+      (Check.app
+         ~inputs:(fun _ ->
+           List.map
+             (fun path -> Silica.Router.Url_changed (Silica.Url.of_string path))
+             [ "/"; "/books/7"; "/search?q=ocaml"; "/nowhere" ])
+         ~routes:
+           [
+             Home;
+             Book 7;
+             Search { text = ""; page = 1 };
+             Search { text = "ocaml"; page = 2 };
+             Not_found "/x";
+           ]
+         ~parse:(Silica.Router.parse routes) ~print:(Silica.Router.print routes)
+         ~is_not_found:(Silica.Router.is_not_found routes)
+         ~url_event:(fun url -> Silica.Router.Url_changed url)
+         app)
+  in
+  (Check.passed report, report.states);;
+- : bool * int = (true, 1696)
+```
+
+The pages of this example are plain nodes, so they are part of the check. A page that is a component node is listed in `not_explored`: check it alone, as a child, or list it in `pages` (a list of `Check.child`) to run it inside the router check. Links in a page are then followed, and the navigation actions of the page change the history. Check a router with one or a few pages at a time, so that the product of the router and its pages stays small.
+
+## Diagrams and Quint
+
+`Silica.Spec` is the shape of a machine that a checker run found: the states it reached, the timers and sources of each, and the steps it took with the names of their events (see [The spec](https://silica-site.fly.dev/docs/machines#spec)). The report gives it in `specs`. The names come from the `events` of the machine (see [Events and codecs](https://silica-site.fly.dev/docs/machines#events)); a machine with no `events` gives empty names. The states come in a fixed order: the initial state first, then by name. It has these exports:
+
+- `Silica.Spec.to_text`: a text form to read and diff, which `Silica.Spec.of_text` reads back.
+- `Silica.Spec.to_dot`: a Graphviz diagram; `Silica.Spec.to_mermaid`: a Mermaid diagram.
+- `Silica.Spec.to_quint`: a module for [Quint](https://quint-lang.org), a language for the specification of systems. The module has the state, the running timers and sources, and the last event. It has one transition for each edge and event, written as a Quint `action`, and the invariants `resources_owned` (every running resource belongs to the current state), `can_move` and `inv` (both).
+
+```ocaml
+# let report = Check.run (Check.component Doc_lamp.component) in
+  print_string (Silica.Spec.to_quint (List.hd report.specs));;
+// Generated from the spec of the machine "lamp". Do not edit.
+module lamp {
+  type State = | Off | On
+  type Event = OnStart | OnAny | OnToggle
+
+  var state: State
+  var running: Set[str]
+  var last: Event
+
+  pure def owned(s: State): Set[str] = match s {
+    | Off => Set()
+    | On => Set()
+  }
+
+  pure val finals: Set[State] = Set()
+  pure val movable: Set[State] = Set(Off, On)
+
+  action enter(s: State, e: Event): bool = all {
+    state' = s,
+    running' = owned(s),
+    last' = e,
+  }
+
+  action init = all {
+    state' = Off,
+    running' = owned(Off),
+    last' = OnStart,
+  }
+
+  action off_to_on_on_toggle = all { state == Off, enter(On, OnToggle) }
+  action on_to_off_on_toggle = all { state == On, enter(Off, OnToggle) }
+
+  action step = any {
+    off_to_on_on_toggle,
+    on_to_off_on_toggle,
+  }
+
+  val resources_owned = running.subseteq(owned(state))
+  val can_move = finals.contains(state) or movable.contains(state)
+  val inv = resources_owned and can_move
+}
+- : unit = ()
+```
+
+The model holds the edges only, not the code of the update, so it allows more runs than the machine. It holds only the edges that the run took: give the checker the samples and inputs that reach every state.
+
+The suite of a project writes these exports as golden files and fails `dune test` when they change (see [Check a project](https://silica-site.fly.dev/docs/checker#suite)).
+
+`test/quint/check.ts` runs Quint on each module: it type checks it and runs random traces against the invariant `inv`. A module with a seeded bug must fail:
+
+From `test/quint/check.ts`:
+
+```ts
+const runArgs = (file: string) => [
+  "run", file, "--invariant=inv", "--max-steps=20", "--max-samples=500", "--seed=1", "--backend=typescript",
+];
+```
+
+## Check a project
+
+A project lists its checks in one executable, `check/main.ml`, with `Check_suite`: one `Check_suite.entry` for each component and for the router. `silica new` makes it:
+
+From `bin/template/check/main.ml`:
+
+```ocaml
+let () =
+  Check_suite.main
+    [
+      Check_suite.entry
+        (Check.component
+           ~within:(fun state -> Counter.count state <= 3)
+           ~samples:[ Check.answers Api.save ~rejected:[ "too many" ] [ () ] ]
+           Counter.component
+        );
+    ]
+```
+
+An entry can make more entries from its report, for a child component that needs the props its parent rendered: `Check_suite.entry router ~dependents:(fun report -> [ Check_suite.entry (Check.component ~props:(Check.props report.children Item.component) Item.component) ])`. A component of a library that another suite checks is listed with `Check_suite.elsewhere ~machine ~reason`. A joint check (see [Children](https://silica-site.fly.dev/docs/checker#children)) is an entry like any other: its id is the root and the listed children joined by `"+"`, such as `"router+issue-list"`, and a child that ran in it counts as checked.
+
+The executable has five commands:
+
+```
+dune exec ./check/main.exe -- [check] [--json] [--only ID]... [--traces DIR]
+dune exec ./check/main.exe -- golden DIR [--write] [--json]
+dune exec ./check/main.exe -- replay ID TRACE_FILE [--json]
+dune exec ./check/main.exe -- script ID TRACE_FILE [--component EXPR]
+dune exec ./check/main.exe -- rules [--json]
+```
+
+`silica check` builds and runs `check/main.exe`; `silica check --json` adds `--json`, and `silica check --traces DIR` adds `--traces DIR`. `silica replay` and `silica script` run the commands of the same names. `--only ID` runs the entries with these ids. `rules` lists `Check.rules`. `replay` and `script` are in [Replay a finding](https://silica-site.fly.dev/docs/checker#replay).
+
+### Exit codes
+
+The exit code alone says the outcome:
+
+- `0`: passed. Every check is complete, with no finding.
+- `1`: a finding: a violation, an unreached state, a component that a checked view renders and that no entry covers (`unchecked-component`), or golden drift (`golden-drift`).
+- `2`: incomplete: a check stopped at `max_states` (`state-limit`), with no finding.
+- `3`: a setup error: bad arguments, `Check.Invalid_check`, an exception outside an update or a view, or an `--only` id that no entry has.
+
+When several hold, `3` wins, then `1`, then `2`.
+
+### Golden files
+
+One dune rule compares the golden files in `spec/` with what the checks find:
+
+From `test/example_check/dune`:
+
+```dune
+(rule
+ (alias runtest)
+ (deps
+  (glob_files_rec spec/**))
+ (action
+  (run ./main.exe golden spec)))
+```
+
+`golden DIR` runs every entry, prints the findings, and compares, for each machine, `<id>.spec.txt` (`Silica.Spec.to_text`), `<id>.qnt`, `<id>.dot` and `<id>.views.txt`: the text view of the first snapshot of each state, with the path that reaches it. The files of a joint check start with its id: `router+issue-list.router.spec.txt`, `router+issue-list.issue-list.spec.txt` and `router+issue-list.views.txt`. A missing file, a changed file and a file that no entry makes are `golden-drift` findings. A changed spec is described in words by `Silica.Spec.diff`; a changed view by its changed lines. When one edge of the door changes its target:
+
+From `test/check_suite/run.t`:
+
+```sh
+  golden-drift: The golden file spec/door.spec.txt differs from what the check found.
+    removed edge locked -> closed on unlock
+    added edge locked -> opened on unlock
+```
+
+When the change is intended, `golden DIR --write` writes the files and removes the stale ones; the hint gives the command, such as `dune exec ./check/main.exe -- golden check/spec --write`. A `golden` run that passes prints nothing.
+
+### The JSON report
+
+`--json` prints one object. The fields are always there; a value that does not apply is `null` or `[]`. An agent reads `exit_code`, then each finding: its `rule`, `message` and `hint`, the `trace` that reaches it with the `cause` of each step, the `state`, and the `view` at the failing step.
+
+```
+{
+  "format": "silica-check",
+  "version": 1,
+  "command": "check" | "golden",
+  "exit_code": 0 | 1 | 2 | 3,
+  "outcome": "passed" | "findings" | "incomplete" | "setup error",
+  "passed": bool,
+  "entries": [ {
+      "id": string,                  the root machine id; for a joint check,
+                                     the root and the listed children joined
+                                     by "+", such as "router+issue-list"
+      "machine": string,             the root machine id
+      "machines": [ { "machine": string, "states": int } ],
+                                     the root first, then each listed child
+      "passed": bool, "complete": bool, "truncated": bool,
+      "states": int, "transitions": int,
+      "violations": [ {
+          "rule": string, "message": string, "hint": string,
+          "state": { "name": string, "data": json | null },
+          "element": string | null,  the path of the element, for view rules
+          "view": string,            the text view at the failing step
+          "kind": "path" | "waits" | "loop",
+          "trace": [ step ],         for "loop": the steps before the cycle
+          "loop": [ step ] | null,   the cycle, which repeats forever
+          "trace_file": string | null } ],
+      "unreached": [ { "state", "rule", "message", "hint" } ],
+      "state_limit": { "rule", "message", "hint" } | null,
+      "allowed": [ { "rule", "state", "element", "reason", "count" } ],
+      "not_explored": [ string ] } ],
+  "unchecked": [ { "machine", "rule", "message", "hint" } ],
+  "elsewhere": [ { "machine", "reason" } ],
+  "golden": { "dir": string, "written": bool,
+              "changes": [ { "file": string,
+                             "change": "missing" | "changed" | "stale",
+                             "rule", "message", "hint",
+                             "lines": [ string ] } ] } | null,
+  "errors": [ { "id": string | null, "message": string } ]
+}
+
+step = {
+  "index": int,                      from 1, through the trace and the loop
+  "instance": string,                "0" for the root machine, the instance
+                                     path of a child in a joint check, such
+                                     as "board/6.#1:row"
+  "machine": string,                 the machine that took the step
+  "from": string, "target": string,  state names
+  "event": string,                   the event name
+  "data": json | null,               the event by the event codec
+  "cause": { "type": "view", "handler", "element", "role", "name", "text" }
+         | { "type": "input" | "props" | "navigation", "text" }
+         | { "type": "timer", "id", "ms", "text" }
+         | { "type": "answer", "id", "path", "text" }
+         | { "type": "live", "id", "topic", "text" }
+         | { "type": "held", "id", "source", "text" }
+         | { "type": "action_result", "action", "text" }
+         | { "type": "child", "instance", "machine", "text" }
+}
+```
+
+`data` is the snapshot or the event as JSON when the machine has codecs (see `Silica.Machine.register_codecs`), else `null`. The `text` of a cause is the phrase that the text report prints. `version` changes only when a field changes its meaning or goes away; new fields can appear in the same version. `kind` is `path` for a violation of a rule or an `always` property; `waits` and `loop` come with temporal properties, in the same shape. In a joint check, the `data` of a step of a child is the event of the child by its codec, and `from` and `target` are the states of that child. `trace_file` is the trace file of the violation with `--traces DIR`, else `null`.
+
+A violation of the seeded bug in `test/check_suite/`: the saved state shows the Save button, and the update ignores it there.
+
+From `test/check_suite/run.t`:
+
+```json
+            "rule": "ignored-event",
+            "message": "In state saved, the view offers press on button \"Save\" at div > button gives the event save, and the update returns Ignore.",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "state": {
+              "name": "saved",
+              "data": [
+                "Saved"
+              ]
+            },
+            "element": "div > button",
+            "view": "text \"Saved\"\nbutton \"Save\" [press]\n",
+            "kind": "path",
+```
+
+### Replay a finding
+
+A violation can run again, without a search. `check --traces DIR` writes each violation as a trace file `DIR/<id>-<n>.jsonl`, by `Check.export`: the start, then each step with its cause, the answer of each call, the actions, and the event and snapshot data when the machine has codecs (see `Silica.Trace`).
+
+`replay ID TRACE_FILE` runs the steps through the check of `ID`, by `Check.replay_trace`, and prints each step with the rules that fail there:
+
+From `test/check_suite/run.t`:
+
+```
+replay save: traces/save-1.jsonl
+start: editing
+1. editing -> saved: save, by the view offers press on button "Save" at form > button[2]
+2. saved -> saved: save, by the view offers press on button "Save" at div > button
+  fails ignored-event: In state saved, the view offers press on button "Save" at div > button gives the event save, and the update returns Ignore.
+    hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+state: saved
+view:
+  text "Saved"
+  button "Save" [press]
+the last step breaks a rule (exit 1)
+```
+
+It exits `0` when the steps replay and no rule fails at the last one, `1` when a rule fails there or a step is no longer offered, and `3` when the trace does not read. In OCaml, `Check.replay` takes a list of inputs and `Check.replay_trace` a trace; both give the state, the view, the actions and the failing rules of each step.
+
+`script ID TRACE_FILE` prints a test of the same steps for `Silica_memory`, by `Check.script`: it finds each element by its role and name, answers each pending call, moves the clock to each timer, and ends with a check of the rule, which fails while the bug is there. The generated test of the seeded bug of `silica new`:
+
+From `test/new/run.t`:
+
+```ocaml
+  let () =
+    let page = Memory.mount Counter.component in
+    Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
+```
+
+`broken` is `Check_expect.rule` with the rule, the state, the message and the hint of the checker. The last line is one assertion of `Check_expect`, chosen by the rule:
+
+- `ignored-event`: `Check_expect.handles` gives the last input again while the view shows a reachable element of that role and name, and fails when the update ignores it. A fix that disables the element passes: the memory platform refuses a press on a disabled element, as a browser does (see `Silica_memory.Not_reachable`);
+- `raised`: the mount gets `~on_error:(Check_expect.on_error broken)`, which fails at the first error;
+- a rule of the view: `Check_expect.view_passes`, by `Check.view_violations`;
+- a `leads_to` property with a `Waits` counterexample: `Check_expect.does_not_wait` fails while the page waits for the user, with no request and no timer, in the view where the property broke;
+- a `leads_to` property with a `Loop` counterexample: the script runs the stem and the cycle once, and `Check_expect.leaves_cycle` fails while the page is back at the view where the cycle starts;
+- any other rule, or an `always` or `never_after` property: `Check_expect.not_view` fails while the view is the view that broke it.
+
+Some steps have no input in the memory platform, and then `script` prints why on standard error, writes no test and exits `1`:
+
+- a timer that fires before another running timer that is due earlier. The checker keeps abstract time: any running timer can fire next, so it finds races that slow devices and throttled tabs can make. The memory clock keeps real time, so it cannot make that order;
+- an event from `~inputs`, which no element of the view gives;
+- a Live update, a held source, or the result of an action, which the memory platform gives at once.
+
+Use `replay` for those. `Silica_memory.replay` runs a trace, of the checker or recorded in a runtime, in the memory platform and says at which step it differs, or why a step cannot run there.
+
+### Conform a trace
+
+The checker explores the samples and inputs of a check; the app meets real data. `conform TRACE_FILE...` compares a trace that the app recorded, in development or in production (see [The transition log](https://silica-site.fly.dev/docs/testing#trace)), with the checked model, and reports each difference. `silica conform TRACE_FILE...` runs it from the root of an app, with the golden specs in `check/spec`.
+
+It compares at two levels:
+
+- By names, `Silica.Spec.conforms`: each start, end and ignored event is in a state of a golden spec of its machine, and each step is an edge or a kept step of it, with the same event name. A machine can have several specs (the specs of each joint check of a parent with a child): one of them must allow the step. This level needs no user data, so it works on the default trace of a recorder, with names only.
+- By data, `Check.conforms`, when the trace holds event data and snapshots: for each record of the root machine of an entry and of its listed children, the code of this build runs the step again from the snapshot before, and it must give the same state name, change and snapshot; then every `always` property of the check holds on the snapshot of the record and its view. So the properties also run on states that the search never reached.
+
+`--spec DIR` (default `spec`) names the golden specs. `--only ID` compares with the golden specs and the check of one entry only, such as the joint check `comments+comment+comment-composer` of a parent with its children; machines outside it are listed as not checked. Machines named by `Check_suite.elsewhere` are listed as not checked too; a machine that no spec has is a deviation. Without `--only` the dependents of entries do not run.
+
+From `test/conform/run.t`, a trace from an older build that did not trim a comment: the names conform, the data does not:
+
+```
+conform traces/old-build.jsonl: root router, build 2026-10-01, 39 transitions
+  by names: transitions checked against the golden specs: 20
+  by data: steps run again in the code: 9; snapshots checked by the properties: 9
+deviation 1 (different-step): transition 38, machine comment-composer, instance router/1.0:issue-detail/1.6:comments/1.1:comment-composer
+  step: drafting -> sending on send
+  difference: the trace has drafting -> sending (entered), snapshot ["Sending","  Purple elephant memo  "]; the code gives drafting -> sending (entered), snapshot ["Sending","Purple elephant memo"]
+  hint: The trace is from another build (2026-10-01), or the update changed since it was recorded: check the trace with the code and specs of that build. If it is this build, the update depends on something outside the snapshot and the event: make it a function of them.
+a trace does not conform (exit 1)
+```
+
+Each deviation has a kind, the transition, the machine, the instance, the step and the difference, and a hint that says what to do:
+
+- `unknown-step` or `unknown-state`: no golden spec has it. When the trace holds data and the code of this build takes the same step, the spec is out of date (the golden check reports the step as added: review the diff and write it) or the check does not explore it (no golden change: add samples, inputs or props that reach it). With names only, the hint gives both, and says to use the specs of the build that recorded the trace, when it is another build;
+- `different-step`: the code gives another state, change or snapshot: the trace is from another build, or the update depends on something outside the snapshot and the event;
+- `not-decodable`: the event or snapshot types changed: another build;
+- `property-fails`: the app reached a snapshot that breaks an `always` property, with the view at that point;
+- `no-spec`: no check of the suite covers the machine.
+
+It exits `0` when every trace conforms, `1` on a deviation, and `3` when a trace or a spec does not read or an `--only` id has no entry. With `--json`, each trace has its counts, the machines not checked and the deviations, with `kind`, `seq`, `machine`, `instance`, `step`, `difference`, `hint` and `view`.
+
+What conformance does not prove:
+
+- That the app is right: it compares the steps of the traces it gets, not every run. A step that the spec allows can still do the wrong thing, and a bug in a run that nobody recorded is not seen.
+- Anything about data with names only: an event with the wrong payload, or a snapshot that breaks a property, has the same names as a good one.
+- Temporal properties (`leads_to`, `never_after`): a trace is one finite run, often cut by the recorder, so "eventually" cannot fail on it.
+- The actions, the timing and the order of timers: the actions of a step and the time between steps are not compared.
+- The view of a child inside its parent: the properties see the view of each machine alone, and a machine with props and no props codec has no view, so its properties do not run.
+- The steps before the first record of an instance that a full recorder dropped, and the start of the root of an app, whose state depends on a URL that the record does not hold.

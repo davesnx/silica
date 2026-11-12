@@ -70,7 +70,7 @@ let () =
     Silica_static_export.run
       ~handle:(Adapter.Server.handle server)
       ~pages ~not_found:"/404"
-      ~files:(Silica_server.Assets.outputs assets)
+      ~files:(Site_server.text_files @ Silica_server.Assets.outputs assets)
       ~prefix:"/silica-answers/" ~out:!out
   with
   | Ok count ->

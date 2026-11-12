@@ -1,0 +1,474 @@
+# Verify a change with no browser
+
+This page is for a coding agent, or a person, who changes a Silica app and must show that the change is right. You need no browser and no screenshots. The checker runs every event in every state that each component can reach, and gives each finding as data: a rule, a hint, the steps that lead to it, the state and the view as text. Each section below is one step of the loop, with the command to run and the output to look for.
+
+The examples come from `test/agents/loop.t`, which runs this loop on a new app in every `dune test`. The task in that test: let the user save again after a save.
+
+## Before you start
+
+Where to read these docs: in a checkout of Silica they are `docs/*.mld` (this page is `docs/verification.mld`), and the same pages as Markdown are in `skills/silica-verify/references/`. `dune build site/server/llms-full.txt` writes every page as one Markdown file in `_build/default/site/server/`. The Silica site serves them at `/llms.txt`, `/llms-full.txt` and `/docs/<page>.md`.
+
+Run every command from the root of the app: the directory with `dune-project` and `check/main.ml`. `silica new DIR` makes such an app (see [A new app](https://silica-site.fly.dev/docs/install#new)). The parts that the loop uses:
+
+- `check/main.ml`: the suite. One `Check_suite.entry` for each component.
+- `check/spec/`: the golden files of each machine. `<id>.spec.txt` lists its states and edges, `<id>.views.txt` the view of each state as text.
+- `test/`: tests that drive the component with `Silica_memory`.
+
+The commands:
+
+| Command | What it does | Exit codes |
+|---|---|---|
+| `silica check` | Builds `check/main.exe` and runs every entry. Add `--json` for a report that a program reads, `--traces DIR` for a trace file of each violation. | 0 passed, 1 findings, 2 incomplete, 3 setup error |
+| `silica replay ID FILE` | Runs a trace file again in the check of `ID` and prints each step with the rules that fail there. Add `--json` for JSON. | 0 no rule fails at the last step, 1 a rule fails or a step is no longer offered, 3 the trace does not read |
+| `silica script ID FILE` | Prints a test for `Silica_memory` that does the same steps and fails while the bug is there. | 0 printed, 1 a step cannot run in memory (the reason is on stderr) |
+| `dune exec ./check/main.exe -- --only ID` | Runs only the entry `ID`. `silica check` has no `--only`. | as `silica check` |
+| `dune exec ./check/main.exe -- golden check/spec` | Compares the golden files with what the checks find. `dune test` runs it. Add `--write` to accept a change. | 0 no change, 1 drift |
+| `dune exec ./check/main.exe -- rules` | Lists every built-in rule with its message and hint. Add `--json` for JSON. | 0 |
+| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart and reload (see [Development: silica dev](https://silica-site.fly.dev/docs/install#dev)). | runs until stopped |
+
+## The loop
+
+1. **Write the requirement as a check.** Before you change the component, add what must hold to its entry in `check/main.ml`: a property (see [Write a requirement as a property](https://silica-site.fly.dev/docs/verification#properties)), and the `samples` and `inputs` that reach the new states. A new component gets its own `Check_suite.entry`; the suite reports a rendered component with no entry as `unchecked-component`.
+
+2. **Change the machine and the view.** See [Write the machine](https://silica-site.fly.dev/docs/verification#machine).
+
+3. **Run the suite.** `silica check --json --traces traces > report.json`. Read the exit code first. 0: go to step 8. 1: read the findings. 2: the search stopped at its state limit; bound it (see `state-limit` in [the rules](https://silica-site.fly.dev/docs/verification#rules)). 3: a setup error; read stderr, which has the compiler errors when `check/main.exe` does not build.
+
+4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](https://silica-site.fly.dev/docs/verification#rules). Also read `unreached` and the top-level `unchecked` and `errors`.
+
+5. **Make a red test.** Make one test for each violation that you fix, named after its trace file. For `traces/ID-N.jsonl` (the `trace_file` of the violation), run `silica script ID traces/ID-N.jsonl > test/ID_N_replay.ml`, add `ID_N_replay` to the `names` in `test/dune`, run `dune fmt`, then `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, use `silica replay ID traces/ID-N.jsonl` instead.
+
+   - The printed test is not formatted. The first `dune fmt` prints a diff that starts with `File "test/ID_N_replay.ml"`, writes the file and exits 1. Run it again: it prints nothing and exits 0.
+   - The formatter may wrap the last line, the assertion. Keep what it asserts.
+   - A test that compares a whole view, such as the `Expect.string "view"` in `test/counter_page.ml`, fails in this `dune test` too when your change changed that view. Read its `expected` and `got`: when the difference is the change you want, update the expected text in step 8; when it is not, it is one more bug to fix.
+   - `silica script` cannot write a typing step yet, and `silica replay` needs codecs for a step with data: see [Limits today](https://silica-site.fly.dev/docs/verification#limits).
+
+6. **Fix the machine or the view.** Follow the hint. Do not remove the property, lower a bound or add an allowance to make a finding go away; an allowance is right only for the cases in the table.
+
+7. **Run the suite again.** `silica check` must exit 0, and the red test must pass. Keep the test.
+
+8. **Run the tests.** `dune test`. When it reports `golden-drift`, read the changed states and edges. If the change is the one you wanted, run `dune exec ./check/main.exe -- golden check/spec --write`: it prints the same `golden-drift` findings, then `golden: wrote the changes into check/spec` and `passed (exit 0)` (see the example below). If not, fix the code. Update each test that expects the old behaviour, such as a test that compares a whole view.
+
+9. **Finish.** `dune build`, `dune test` and `dune build @fmt` all pass with no output. Delete `report.json` and `traces/`. They are the output of one run, the trace files are only valid for the code they came from, and the red tests you kept hold the steps. Do not commit them.
+
+## Write the machine
+
+- Put behaviour in the machine. A view only reads the state and names events.
+- Disable each element whose event the state does not handle: `disabled=(not (Machine.can machine () state Event))`. The checker offers no event of a disabled element, and `Silica_memory` refuses to press it.
+- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
+
+From `docs/examples/shared/doc_debounce.mlx`:
+
+```ocaml
+let typed : string -> (state, event) Machine.next = function
+  | "" ->
+      Go Empty
+  | text ->
+      Reenter (Typing text)
+```
+
+See [Machines and states](https://silica-site.fly.dev/docs/machines) for the update and `owns`.
+
+## The loop on an example
+
+The task: let the user save again after a save. First the requirements. Save is never offered while a save runs, and every save ends:
+
+From `test/agents/loop.t`:
+
+```sh
+  >            ~properties:
+  >              [
+  >                Check.always ~name:"no-save-while-saving"
+  >                  ~hint:
+  >                    "Disable Save in {state}: a second save waits for the \
+  >                     answer of the first."
+  >                  Check.(not_ (state_named "saving" &&& view save_offered));
+  >                Check.leads_to ~name:"save-ends"
+  >                  ~from:(Check.state_named "saving")
+  >                  ~to_:Check.(state_named "saved" ||| state_named "save_failed")
+  >                  ();
+  >              ]
+```
+
+A first try enables the Save button in every state but does not handle `Save` in the update. The suite exits 1 and writes one trace file for each violation:
+
+From `test/agents/loop.t`:
+
+```sh
+  $ silica check --json --traces traces > report.json 2> build.log
+  [1]
+  $ grep -E '"(exit_code|outcome)"' report.json
+    "exit_code": 1,
+    "outcome": "findings",
+```
+
+Three violations: the property in saving, and `ignored-event` in saving and in saved. Each has a hint that says what to change:
+
+From `test/agents/loop.t`:
+
+```sh
+            "rule": "no-save-while-saving",
+            "hint": "Disable Save in saving: a second save waits for the answer of the first.",
+            "element": null,
+            "trace_file": "traces/counter-1.jsonl"
+            "rule": "ignored-event",
+            "hint": "Handle save in state saving, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saving.",
+            "element": "main > button[3]",
+            "trace_file": "traces/counter-2.jsonl"
+            "rule": "ignored-event",
+            "hint": "Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.",
+            "element": "main > button[3]",
+            "trace_file": "traces/counter-3.jsonl"
+```
+
+`silica replay` shows each step of a trace and the rules that fail at each step:
+
+From `test/agents/loop.t`:
+
+```sh
+  $ silica replay counter traces/counter-3.jsonl
+  replay counter: traces/counter-3.jsonl
+  start: counting
+  1. counting -> saving: save, by the view offers press on button "Save" at main > button[3]
+    fails no-save-while-saving: The property "no-save-while-saving" does not hold in state saving.
+      hint: Disable Save in saving: a second save waits for the answer of the first.
+  2. saving -> saved: answered ok, by the answer of the call counter/saving//api/save 0 to /api/save
+  3. saved -> saved: save, by the view offers press on button "Save" at main > button[3]
+    fails ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
+      hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+  state: saved
+  view:
+    main
+      heading "Counter" level=1
+      status
+        text "0"
+      button "Decrement" disabled [press]
+      button "Increment" [press]
+      button "Save" [press]
+      text "Saved"
+  the last step breaks a rule (exit 1)
+  [1]
+```
+
+`silica script` turns the same trace into a test. It finds each element by its role and name, answers the call, and ends with one assertion that fails while the update ignores Save in saved:
+
+From `test/agents/loop.t`:
+
+```sh
+  let () =
+    let page = Memory.mount Counter.component in
+    Memory.press (Memory.by_role page Accessibility.Button ~name:"Save");
+    Memory.reply (Memory.pending_request page "/api/save") "null";
+    Check_expect.handles broken ~name:"Save" page Accessibility.Button Memory.press
+```
+
+From `test/agents/loop.t`:
+
+```sh
+  ignored-event: In state saved, the view offers press on button "Save" at main > button[3] gives the event save, and the update returns Ignore.
+  hint: Handle save in state saved, or do not offer it there: disable the element with Machine.can, or leave its timer or call out of owns of saved.
+```
+
+The fix handles `Save` in `Saved` in the update, and keeps `disabled=(disabled Save)` in the view, so Save is off while the save runs. The suite passes. The behaviour changed on purpose, so the golden files differ, and `dune test` names the new edge and the changed line of the view:
+
+From `test/agents/loop.t`:
+
+```sh
+  golden-drift: The golden file spec/counter.spec.txt differs from what the check found.
+    added edge saved -> saving on save
+```
+
+From `test/agents/loop.t`:
+
+```sh
+  golden-drift: The golden file spec/counter.views.txt differs from what the check found.
+    +     button "Save" [press]
+    -     button "Save" disabled [press]
+```
+
+The change is the intended one, so write the golden files again. The command prints the findings it accepts, then what it did:
+
+From `test/agents/loop.t`:
+
+```sh
+  $ dune exec ./check/main.exe -- golden check/spec --write
+  counter: 16 states, 49 transitions
+  golden-drift: The golden file check/spec/counter.spec.txt differs from what the check found.
+    added edge saved -> saving on save
+```
+
+From `test/agents/loop.t`:
+
+```sh
+  golden: wrote the changes into check/spec
+  passed (exit 0)
+```
+
+Then update the page test that expected the old view, and run `dune test` again: it prints nothing.
+
+## Read the report
+
+The fields that the loop uses. The full shape is in [The JSON report](https://silica-site.fly.dev/docs/checker#json).
+
+- `exit_code`: 0, 1, 2 or 3, as the exit code of the command.
+- `entries`: one for each entry of the suite, with `id`, `passed` and `complete`.
+- `entries[].violations`: `rule`, `message`, `hint`, `state.name`, `element` (for a rule of the view), `view` (the view as text at the last step), `kind` (`path`, `waits` or `loop`), `trace` (the steps), `loop` (the cycle, for `kind = "loop"`), and `trace_file` (with `--traces`).
+- Each step of `trace`: `from`, `event`, `target`, and `cause` with its `type` and a `text` in words.
+- `entries[].unreached`: states that no step reached, each with its hint.
+- `entries[].allowed`: each allowance, its reason, and how many violations it turned off.
+- `unchecked`: components that a checked view renders and that no entry checks.
+- `errors`: setup errors, such as an `--only` id that no entry has.
+
+With `jq`, one line for each violation:
+
+```
+jq -r '.entries[].violations[] | [.rule, .state.name, .trace_file, .hint] | @tsv' report.json
+```
+
+The text view lists each element that has a role, with its name, its state (such as `disabled`) and its handlers in brackets. A step is offered only by an element that is not disabled. A `label` around a field shows twice: once as the text of the label, and once as the name of the field, such as `text "Step size"` and then `spinbutton "Step size"`.
+
+The counts of states and transitions, such as `counter: 16 states, 45 transitions`, change when the code changes, also with no finding. Read them as a size, not as a result.
+
+## The rules
+
+`dune exec ./check/main.exe -- rules` prints the message and hint of each rule. A property has the name you gave it as its rule. To allow a rule, add `Check.allow`` ~rule ?state ?element ~reason ()` to `allow` of the check; the report lists it with its reason. Use an allowance only in the cases of the last column.
+
+| Rule | What it means | Usual fix | When an allowance is right |
+|---|---|---|---|
+| `ignored-event` | The view offers an element, or a timer or call gives an event, and the update returns `Ignore` for it in this state. | Handle the event in that state, or disable the element with `Machine.can`, or move the timer or call out of `owns` of that state. | Never for an element of the view. |
+| `dead-end` | A state that is not final where nothing can happen. | Add a button, timer or input that leaves the state, or mark the state final with `~final`. | Never; mark a real end state final. |
+| `unreached-state` | No step reached a state of the machine. | Add `samples`, `inputs` or `props` that reach it, or widen `within`. | The state is reachable only from data the check cannot give, or is kept on purpose; give the reason. |
+| `raised` | The update, the view, a handler or a property raised an exception. | Fix the code; keep an expected failure in the state, not in an exception. | Never. |
+| `state-limit` | The search stopped at `max_states`; exit code 2. | Bound the state with `~within`, or raise `~max_states`. | Never; bound the search. |
+| `unchecked-component` | A checked view renders a component that no entry checks. | Add a `Check_suite.entry` for it, or run it as a child with `Check.child`. | Use `Check_suite.elsewhere ~machine ~reason` when another suite checks it. |
+| `golden-drift` | A golden file in `check/spec/` differs from what the checks found. | Read the changed states, edges and view lines. If intended, run `golden check/spec --write`; if not, fix the code. | Never; write the files again. |
+| `focus-target` | A focus or scroll action names a ref that the next view does not render. | Render the element with that ref in the target state, or remove the action. | Never. |
+| `unique-refs` | One ref is on two elements of a view. | Make one `Ref.make` for each element. | Never. |
+| `boundary-reset` | The fallback of a boundary has no element with the reset attribute. | Put `~reset` on a button of the fallback. | Never. |
+| `timer-owner` | A timer runs that the state does not own. | This is a Silica bug: report it with the trace. | Never. |
+| `call-owner` | A call or subscription runs that the state does not own. | This is a Silica bug: report it with the trace. | Never. |
+| `live-uses-client-source` | A Live component owns a source that only a browser has. | Move the source into a client component. | Never. |
+| `live-uses-client-action` | A Live component runs an action that needs an answer of the browser. | Run the action in a client component. | Never. |
+| `route-round-trip` | A route prints as a URL that does not parse back to the same route. | Make the parse and the print of the route agree. | Never. |
+| `link-parses` | A link goes to a URL that does not print back the same, or goes to the not-found route. | Make the link with `Router.link`. | A link that leaves the app on purpose. |
+| `accessible-name` | A button, link, other control, or element with a press handler has no name. | Give it visible text, an `aria-label` or an `aria-labelledby`. | The name comes from CSS that the checker cannot see, such as an icon font, with a reason. |
+| `field-label` | A field has no label. | A `<label for>`, a `<label>` around it, an `aria-label` or an `aria-labelledby`. | Never. |
+| `img-alt` | An `img` has no `alt`. | Give `alt` text, or `alt=""` for decoration. | Never. |
+| `unique-ids` | One id is on two elements. | Make the id unique, for example with the key or a prop. | Never. |
+| `aria-reference` | An `aria-labelledby`, `aria-describedby`, `aria-activedescendant` or `for` names an id that is not in the view. | Render the element with that id, or remove the reference. | The target is in the parent view, which a check of the child alone cannot see. |
+| `valid-role` | A `role` is not an ARIA role, or lacks the attribute it needs. | Use an ARIA role and its attribute, such as `aria-checked` for a checkbox. | Never. |
+| `required-children` | A listbox, tablist or menu holds items of the wrong role. | Give each item the right role; move other content out. | Never. |
+| `nested-interactive` | A control holds another control. | Move the inner control out. | Never. |
+| `keyboard-access` | An element with a press handler cannot get keyboard focus. | Use a `<button>` or an `<a href>`, or give a role and `tabindex="0"` and handle Enter and Space. | A key handler on an element above handles the keyboard. |
+| `dialog-name` | A dialog has no name. | An `aria-labelledby` to its title, or an `aria-label`. | Never. |
+| `dialog-focus` | A modal dialog shows, and the state owns no focus trap on it. | Own `Source.focus_trap` on the dialog, or use `Silica_ui.Dialog`. | A native `<dialog>` opened with `showModal`, which traps focus itself. |
+| `heading-order` | A heading skips a level after the heading before it. | Use the next level, or add the missing levels. | Never. |
+| `name-spacing` | Two inline parts of a name join with no space, such as `ENG-2Second`. | Put a `" "` text node between them, or an `aria-label`. | Never; CSS spacing does not count. |
+| a property name | A property of the check does not hold. | Fix the code, or the property when it is wrong. Read `kind`: `waits` means the app waits for the user and the goal never comes; `loop` means a cycle that never reaches it. | Never; change the property instead. |
+
+## Write a requirement as a property
+
+A requirement such as "X is not offered in state S", "after X, eventually Y" or "after X, never Y" is a property in `properties` of the check. Write it before the change, so that the first wrong try fails. See [Properties](https://silica-site.fly.dev/docs/checker#properties) and [Temporal properties](https://silica-site.fly.dev/docs/checker#temporal) for the full API.
+
+- `Check.always`` ~name ?hint condition`: holds in every state (but see [A rule about steps](https://silica-site.fly.dev/docs/verification#step_rules)).
+- `Check.leads_to`` ~name ~from ~to_ ()`: every run that meets `from` meets `to_` later.
+- `Check.never_after`` ~name ~after ~never ()`: after `after`, `never` never holds.
+
+A condition is a test of one point of a run: the state, its view, and the step that reached it. The conditions, for a machine with states `'s` and events `'e`:
+
+| Condition | Type | Holds when |
+|---|---|---|
+| `Check.state`` test` | `('s -> bool) -> ('s, 'e) condition` | the state passes `test` |
+| `Check.state_named`` name` | `string -> ('s, 'e) condition` | the state has this name, such as `"saving"` |
+| `Check.view`` test` | `('e Silica.Node.t -> bool) -> ('s, 'e) condition` | the view of the state passes `test` |
+| `Check.holds`` test` | `('s -> 'e Silica.Node.t -> bool) -> ('s, 'e) condition` | the state and its view pass `test` together |
+| `Check.event`` test` | `('e -> bool) -> ('s, 'e) condition` | the event of the step that reached the state passes `test` |
+| `Check.action`` test` | `('e Silica.Action.host -> bool) -> ('s, 'e) condition` | the step that reached the state ran an action that passes `test` |
+| `Check.entered`` name` | `string -> ('s, 'e) condition` | the step came from a state with another name into the state `name` |
+| `a &&& b`, `a ||| b`, `not_ a` | `('s, 'e) condition -> ...` | both hold, one holds, `a` does not hold |
+
+One example of each, on the lamp of [Components and JSX](https://silica-site.fly.dev/docs/components) (states `Off` and `On`, event `Toggle`):
+
+```ocaml
+# let examples : (Doc_lamp.state, Doc_lamp.event) Check.condition list =
+    Check.
+      [
+        state (fun state -> state = Doc_lamp.On);
+        state_named "on";
+        view (fun view -> Silica.View_text.to_string view <> "");
+        holds (fun state view ->
+            state = Doc_lamp.Off
+            || Silica.View_text.to_string view <> "");
+        event (fun event -> event = Doc_lamp.Toggle);
+        action (function
+          | Silica.Action.Run (Silica.Action.Focus _) -> true
+          | _ -> false);
+        entered "on";
+        state_named "on" &&& event (fun event -> event = Doc_lamp.Toggle);
+        state_named "on" ||| state_named "off";
+        not_ (state_named "off");
+      ];;
+val examples : (Doc_lamp.state, Doc_lamp.event) Check.condition list =
+  [<abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>; <abstr>;
+   <abstr>; <abstr>]
+# Check.passed
+    (Check.run
+       (Check.component
+          ~properties:
+            [
+              Check.always ~name:"a view in every state"
+                (Check.view (fun view -> Silica.View_text.to_string view <> ""));
+              Check.never_after ~name:"after on, the lamp is on or off"
+                ~after:(Check.state_named "on")
+                ~never:(Check.not_ Check.(state_named "on" ||| state_named "off"))
+                ();
+            ]
+          Doc_lamp.component));;
+- : bool = true
+```
+
+### A rule about steps
+
+**Warning: today, `Check.always` does not read every step.** In `Check.always`, the checker visits each state once, through a shortest path, so `Check.event`, `Check.action` and `Check.entered` read only that one step into the state. Another step into the same state is not read, so an `always` property about steps can pass on a broken machine. In `Check.never_after` and `Check.leads_to`, a condition reads every step. For a rule about steps, use `never_after` with an `~after` that holds from the start. "No Reset step leaves a count other than 0":
+
+```ocaml
+Check.never_after ~name:"reset-sets-zero"
+  ~after:(Check.state (fun _ -> true))
+  ~never:
+    Check.(
+      event (fun event -> event = Counter.Reset)
+      &&& state (fun state -> Counter.count state <> 0))
+  ()
+```
+
+A condition sees one point, not the state before the step, so a rule that compares before and after is not a property today (see [Limits today](https://silica-site.fly.dev/docs/verification#limits)).
+
+### A rule about an element
+
+To ask about an element, read the view with `Silica.Accessibility`: the example finds an enabled button by its role and name.
+
+From `test/agents/loop.t`:
+
+```sh
+  > let save_offered view =
+  >   List.exists
+  >     (fun element ->
+  >       Accessibility.role element = Some Accessibility.Button
+  >       && Accessibility.name element = "Save"
+  >       && not (Accessibility.disabled element)
+  >     )
+  >     (Accessibility.elements view)
+```
+
+Give each property a `hint` that says what to change; `{state}` in it is the name of the failing state.
+
+## Write a test with Silica_memory
+
+A test in `test/` mounts the component in `Silica_memory`, the same runtime with no browser, and acts as a user:
+
+- `Memory.mount component` starts the page.
+- `Memory.by_role page Accessibility.Button ~name:"Save"` finds an element as a screen reader names it. A failed query lists the elements of that role.
+- `Memory.press`, `Memory.input element text`, `Memory.submit`: act. A press on a disabled or hidden element raises `Silica_memory.Not_reachable` with a message, as a user cannot do it. To test that a button is off: `match Memory.press button with () -> failwith "pressed" | exception Memory.Not_reachable _ -> ()`.
+- `Memory.pending page` and `Memory.reply request body`: answer a call.
+- `Memory.advance page ms`: move the clock, so timers fire.
+- `Memory.view_text page`: the view as text, the same text as the report. A test that compares it whole fails on any change of the view.
+- The role of each element is in [Roles](https://silica-site.fly.dev/docs/verification#roles): a number field is `Accessibility.Spinbutton`, an `<output>` is `Accessibility.Status`.
+- `Memory.trace page`: the transitions so far.
+
+See [The memory platform](https://silica-site.fly.dev/docs/testing#memory).
+
+### Roles
+
+The roles of `Silica.Accessibility.role`, and the elements that have each one with no `role` attribute. An explicit `role` attribute wins; a `role` of `` `none `` or `` `presentation `` gives no role. The text view and the queries of `Silica_memory` print the role in lower case, such as `spinbutton`.
+
+| Role | Elements with this role |
+|---|---|
+| `Alert` | only ``role=`alert`` |
+| `Alertdialog` | only ``role=`alertdialog`` |
+| `Banner` | `<header>` with no `article`, `aside`, `main`, `nav` or `section` above it |
+| `Button` | `<button>`; `<input>` of type `` `button ``, `` `submit ``, `` `reset `` or `` `image `` |
+| `Cell` | `<td>` |
+| `Checkbox` | ``<input type_=`checkbox>`` |
+| `Columnheader` | `<th>` |
+| `Combobox` | `<select>` (one line); a text or search `<input>` with `list` |
+| `Complementary` | `<aside>` |
+| `Contentinfo` | `<footer>` with no `article`, `aside`, `main`, `nav` or `section` above it |
+| `Dialog` | `<dialog>` |
+| `Form` | `<form>` |
+| `Generic` | only ``role=`generic``; a `<div>` or `<span>` has no role |
+| `Grid` | only ``role=`grid`` |
+| `Gridcell` | only ``role=`gridcell`` |
+| `Group` | `<optgroup>`, `<fieldset>`, `<details>` |
+| `Heading` | `<h1>` to `<h6>` |
+| `Img` | `<img>`, but no role with `alt=""` |
+| `Link` | `<a>` and `<area>` with `href` |
+| `List` | `<ul>`, `<ol>`, `<menu>` |
+| `Listbox` | `<select>` with `multiple` or `size` above 1 |
+| `Listitem` | `<li>` |
+| `Main` | `<main>` |
+| `Menu` | only ``role=`menu`` |
+| `Menubar` | only ``role=`menubar`` |
+| `Menuitem` | only ``role=`menuitem`` |
+| `Menuitemcheckbox` | only ``role=`menuitemcheckbox`` |
+| `Menuitemradio` | only ``role=`menuitemradio`` |
+| `Navigation` | `<nav>` |
+| `Option` | `<option>` |
+| `Progressbar` | `<progress>` |
+| `Radio` | ``<input type_=`radio>`` |
+| `Radiogroup` | only ``role=`radiogroup`` |
+| `Region` | `<section>` with a name |
+| `Row` | `<tr>` |
+| `Rowheader` | ``<th scope=`row>`` |
+| `Search` | `<search>` |
+| `Searchbox` | ``<input type_=`search>`` |
+| `Separator` | `<hr>` |
+| `Slider` | ``<input type_=`range>`` |
+| `Spinbutton` | ``<input type_=`number>`` |
+| `Status` | `<output>` |
+| `Switch` | only ``role=`switch`` |
+| `Tab` | only ``role=`tab`` |
+| `Table` | `<table>` |
+| `Tablist` | only ``role=`tablist`` |
+| `Tabpanel` | only ``role=`tabpanel`` |
+| `Textbox` | `<textarea>`; `<input>` with no type or of type `` `text ``, `` `email ``, `` `tel `` or `` `url `` |
+| `Toolbar` | only ``role=`toolbar`` |
+| `Tooltip` | only ``role=`tooltip`` |
+| `Tree` | only ``role=`tree`` |
+| `Treeitem` | only ``role=`treeitem`` |
+
+## Limits today
+
+Each part of this section describes a limit that is being removed. It will change when the fix lands. The warning in [A rule about steps](https://silica-site.fly.dev/docs/verification#step_rules) is one more.
+
+### silica script cannot type in a field
+
+`silica script` exits 1 on a step from `~inputs`, such as the text of a field: "step 1 is the event step_typed from ~inputs of the check; no element of the view gives it, so Silica_memory cannot replay it". Write the red test by hand. Type the value with `Memory.input`, then assert what the property asserts. For "Increment is not offered while the step is invalid":
+
+```ocaml
+let () =
+  let page = Memory.mount Counter.component in
+  let step = Memory.by_role page Accessibility.Spinbutton ~name:"Step size" in
+  Memory.input step "0";
+  match Memory.press (Memory.by_role page Accessibility.Button ~name:"Increment") with
+  | () ->
+      failwith "Increment is offered with the step 0"
+  | exception Memory.Not_reachable _ ->
+      ()
+```
+
+### silica replay needs codecs for data
+
+A trace keeps the data of an event, such as the text that was typed, only when the machine has codecs (see [Events and codecs](https://silica-site.fly.dev/docs/machines#events)). The app that `silica new` writes has none. Without codecs, `silica replay` runs a step with data with no value, so it can print "no rule fails (exit 0)" while the bug is still there. Do not take exit 0 of `silica replay` as proof for a trace with data; use a hand-written test as above.
+
+### A property cannot compare before and after
+
+A condition sees the point that a step reaches, not the state before it. So "Increment adds the step" is not a property. Test it in a test that steps the machine with `Silica.Machine.step`, as `test/counter_steps.ml` does.
+
+## Commands that are coming
+
+These are not on main yet. This section will describe them when they land:
+
+- `silica conform`: check a trace recorded in a running app against the spec.
+- `silica check --graphs DIR`: a graph of each checked machine. Today it exits 3 with "--graphs is not available yet".
+- Hot reload in `silica dev`.
+- `silica inspect`.
