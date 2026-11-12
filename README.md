@@ -3,9 +3,9 @@
 > [!WARNING]
 > silica is experimental.
 
-silica is a view framework for OCaml where all behaviour lives in statecharts. A component is a machine and a view.
+**Statechart-driven UI in OCaml, checked before it runs.**
 
-silica is also a model checker: it explores every state that a component can reach and verifies its properties, with no browser and before a user finds the bug.
+silica is a view framework for OCaml where all behaviour lives in statecharts, with a model checker built in. A component is a machine and a view, so silica can explore every state that the component can reach and verify its properties, with no browser and before a user finds the bug.
 
 - State machines handle all the possible states, so they can be verified without running, replayed, debugged and run everywhere.
 - The silica code runs on the server as native OCaml and in the browser as JavaScript, thanks to [Melange](https://melange.re).
@@ -74,20 +74,10 @@ let component = Component.make machine view
 
 silica draws the statechart of this component from the code:
 
-```mermaid
-stateDiagram-v2
-  direction LR
-  state "idle" as s0
-  state "failed" as s1
-  state "saved (after 2000ms)" as s2
-  state "saving (invoke /api/save)" as s3
-  [*] --> s0
-  s1 --> s3 : press button #quot;Not saved. Try again#quot;
-  s0 --> s3 : press button #quot;Save the draft#quot;
-  s2 --> s0 : after 2000ms
-  s3 --> s1 : failed /api/save, rejected /api/save
-  s3 --> s2 : ok /api/save
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/save-dark.svg">
+  <img alt="Statechart of the save button: idle, saving, saved, failed" src="docs/readme/save-light.svg">
+</picture>
 
 ## What this makes possible
 

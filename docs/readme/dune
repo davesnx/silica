@@ -1,0 +1,27 @@
+(rule
+ (target save.spec.json)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../../site/gen/landing_gen.exe}))))
+
+(rule
+ (target save-light.svg.generated)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../gen/readme_chart.exe} light %{dep:save.spec.json}))))
+
+(rule
+ (target save-dark.svg.generated)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../gen/readme_chart.exe} dark %{dep:save.spec.json}))))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (diff save-light.svg save-light.svg.generated)
+   (diff save-dark.svg save-dark.svg.generated))))

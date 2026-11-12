@@ -1,2 +1,8 @@
 (executables
- (names glossary_gen excerpt_check))
+ (names glossary_gen excerpt_check)
+ (modules glossary_gen excerpt_check))
+
+(executable
+ (name readme_chart)
+ (modules readme_chart)
+ (libraries silica silica.json silica-ui))
