@@ -81,6 +81,8 @@ let cause (cause : Check.cause) =
           [ ("instance", string instance); ("machine", string machine) ]
     | Navigation ->
         typed "navigation" []
+    | Address url ->
+        typed "address" [ ("url", string url) ]
   in
   match Json.classify fields with
   | `Assoc fields ->
@@ -193,8 +195,19 @@ let report ?(trace_files = []) check (report : (_, _) Check.report) =
           null
         else
           let message, hint =
-            finding ~rule:"state-limit"
-              ~values:[ ("states", string_of_int report.states) ]
+            Check_rules.render
+              {
+                (Check_rules.finding "state-limit"
+                   ~values:[ ("states", string_of_int report.states) ]
+                )
+                with
+                custom =
+                  Some
+                    ( "The search stopped at {states} states, so the check is \
+                       incomplete.",
+                      report.bounds
+                    );
+              }
               ~state:""
           in
           record

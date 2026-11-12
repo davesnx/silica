@@ -672,6 +672,8 @@ let show_app_event show : _ Check.app_event -> string = function
       show event
   | Link url ->
       "link " ^ Url.to_string url
+  | Open url ->
+      "open " ^ Url.to_string url
   | Browser_back ->
       "back"
   | Browser_forward ->

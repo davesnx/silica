@@ -132,19 +132,16 @@ let saves =
 let router_check () =
   let open Linear_routes in
   Check.app ~max_states:500_000
-    ~inputs:(fun _ ->
-      List.map
-        (fun path -> Silica.Router.Url_changed (Url.of_string path))
-        [
-          "/";
-          "/?new=true";
-          "/?status=done";
-          "/issue/1";
-          "/issue/2";
-          "/issue/9";
-          "/nowhere";
-        ]
-    )
+    ~urls:
+      [
+        "/";
+        "/?new=true";
+        "/?status=done";
+        "/issue/1";
+        "/issue/2";
+        "/issue/9";
+        "/nowhere";
+      ]
     ~routes:
       [
         Issues list;
@@ -675,12 +672,7 @@ let comment ?props () = Check.run (comment_check ?props ())
 let joint_router ?(max_states = 1_000_000) ?(max_history = 2) ?properties ~pages
     ~paths ~routes:checked () =
   let open Linear_routes in
-  Check.app ~max_states ~max_history ?properties ~pages
-    ~inputs:(fun _ ->
-      List.map
-        (fun path -> Silica.Router.Url_changed (Url.of_string path))
-        paths
-    )
+  Check.app ~max_states ~max_history ?properties ~pages ~urls:paths
     ~routes:checked ~parse:(Router.parse routes) ~print:(Router.print routes)
     ~is_not_found:(Router.is_not_found routes)
     ~url_event:(fun url -> Silica.Router.Url_changed url)

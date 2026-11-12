@@ -1,3 +1,36 @@
+Every kind of step that a counterexample can hold, and what silica script
+does with it:
+
+step kind                      script                       tested below by
+press                          Memory.press                 save, upload
+double press                   Memory.double_press          gestures
+input (typed text of ~texts)   Memory.input                 typing
+submit                         Memory.submit                linear_check run.t
+key down (each key of ~keys)   Memory.focus, Memory.key     search
+key up                         Memory.focus, Memory.key_up  gestures
+focus                          Memory.focus                 gestures
+blur                           Memory.focus, Memory.blur    gestures
+pointer enter                  Memory.hover                 gestures
+pointer leave                  Memory.leave                 gestures
+timer, in real-time order      Memory.advance               clock, badge
+timer, out of real-time order  refused: real time forbids   clock
+answer Ok                      Memory.reply                 answers
+answer Rejected                Memory.reply ~status:422     answers
+answer Failed (Http n)         Memory.reply ~status:n       answers
+answer Failed (Network s)      Memory.network_error s       answers
+answer Failed (Decode s)       Memory.reply "not json"      answers
+answer timeout                 not sampled by the checker
+link                           Memory.press on the link     pages
+back                           Memory.back                  pages
+forward                        Memory.forward               pages
+URL that the user opens        Memory.open_url              pages
+props change                   Check_expect.set_props       changing
+step of a child                its element in the page      joint run.t
+Live update                    refused: no Live socket input in memory
+held source                    refused: no input for it in memory
+action result                  refused: memory gives it at once
+event from ~inputs             refused: no element gives it (use ~texts)
+
 A script reproduces a counterexample of the checker in Silica_memory. The
 Save button stays in the saved state, and the update ignores it there:
 
@@ -325,6 +358,91 @@ records, so no props codec is needed: int props and record props.
   The view still breaks it:
   In state shown, the button at div > button has no accessible name, so a screen reader cannot say what it does.
   [1]
+
+Each kind of answer that the checker samples becomes the matching reply in
+Silica_memory: Ok as a 200 reply, each Rejected as a 422 reply, Failed (Http n)
+with the status, Failed (Network s) as a network error with the text s, and
+Failed (Decode s) as a reply whose body does not decode. Each test is red on
+the bug (a result offers no retry) and green on the fix:
+
+  $ grep -h -E 'reply|network_error' answers_*_script.ml | sort -u
+        Memory.network_error (Memory.pending_request page "/api/load") "down"
+        Memory.reply (Memory.pending_request page "/api/load") "1"
+        Memory.reply (Memory.pending_request page "/api/load") "not json"
+        Memory.reply ~status:422 (Memory.pending_request page "/api/load") {|"busy"|}
+        Memory.reply ~status:422 (Memory.pending_request page "/api/load") {|"full"|}
+        Memory.reply ~status:500 (Memory.pending_request page "/api/load") ""
+  $ ./answers_ok_script.exe > /dev/null 2>&1
+  [1]
+  $ ./answers_ok_fixed_script.exe
+  $ ./answers_rejected_busy_script.exe > /dev/null 2>&1
+  [1]
+  $ ./answers_rejected_busy_fixed_script.exe
+  $ ./answers_rejected_full_script.exe > /dev/null 2>&1
+  [1]
+  $ ./answers_rejected_full_fixed_script.exe
+  $ ./answers_http_script.exe > /dev/null 2>&1
+  [1]
+  $ ./answers_http_fixed_script.exe
+  $ ./answers_network_script.exe > /dev/null 2>&1
+  [1]
+  $ ./answers_network_fixed_script.exe
+  $ ./answers_decode_script.exe > /dev/null 2>&1
+  [1]
+  $ ./answers_decode_fixed_script.exe
+
+Each gesture of an element becomes its input in Silica_memory: a double press,
+focus, blur (after focus), a key up (after focus), the pointer entering and
+leaving. Red on the bug, green on the fix:
+
+  $ grep -h -E 'Memory.(double_press|focus|blur|key_up|hover|leave)' gestures_*_script.ml | sort -u
+        Memory.blur page
+        Memory.double_press (Memory.by_role page Accessibility.Button ~name:"Twice")
+        Memory.focus (Memory.by_role page Accessibility.Textbox ~name:"Field")
+        Memory.focus (Memory.by_role page Accessibility.Textbox ~name:"Field");
+        Memory.hover (Memory.by_role page Accessibility.Button ~name:"Area")
+        Memory.key_up page (Key.make "Enter")
+        Memory.leave (Memory.by_role page Accessibility.Button ~name:"Area")
+  $ ./gestures_double_press_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_double_press_fixed_script.exe
+  $ ./gestures_focus_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_focus_fixed_script.exe
+  $ ./gestures_blur_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_blur_fixed_script.exe
+  $ ./gestures_key_up_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_key_up_fixed_script.exe
+  $ ./gestures_pointer_enter_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_pointer_enter_fixed_script.exe
+  $ ./gestures_pointer_leave_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_pointer_leave_fixed_script.exe
+
+A URL that the user opens (~urls of Check.app), then the back and the forward
+buttons of the browser:
+
+  $ grep -E 'Memory.(open_url|back|forward)' pages_forward_script.ml
+        Memory.open_url page "/secret";
+        Memory.back page;
+        Memory.forward page
+  $ ./pages_forward_script.exe 2>&1 | tail -1
+  It still fails in state secret: The property "forward stays back" does not hold: state secret matches its never condition, and this step or an earlier one of the run matched its after condition.
+
+A props change is a step: the trace records which props of the check were
+given, so the script gives the same props by their position, with no codec:
+
+  $ grep -E 'mount_with_props|set_props|nth_props' changing_script.ml
+      Memory.mount_with_props
+        ~props:(Check.nth_props Rows.changing_check 0)
+        Check_expect.set_props Rows.changing_check page 1;
+        Check_expect.set_props Rows.changing_check page 0
+  $ ./changing_script.exe > /dev/null 2>&1
+  [1]
+  $ ./changing_fixed_script.exe
 
 A timer that real time fires second has no script; the command says why.
 

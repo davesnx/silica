@@ -14,6 +14,9 @@ let checks =
     ("search", Check (Search.check, "Search.check"));
     ("typing", Check (Stepper.typing, "Stepper.typing"));
     ("badge", Check (Badge.check, "Badge.check"));
+    ("answers", Check (Answer_kinds.check, "Answer_kinds.check"));
+    ("gestures", Check (Gestures.check, "Gestures.check"));
+    ("changing", Check (Rows.changing_check, "Rows.changing_check"));
     ("numbered", Check (Rows.numbered_check, "Rows.numbered_check"));
     ("titled", Check (Rows.titled_check, "Rows.titled_check"));
   ]
@@ -32,9 +35,26 @@ let () =
       let (Check (check, expression)) = List.assoc name checks in
       let override = expression_override in
       let report = Check.run check in
+      let rule, state =
+        match String.index_opt rule '@' with
+        | Some at ->
+            ( String.sub rule 0 at,
+              Some (String.sub rule (at + 1) (String.length rule - at - 1))
+            )
+        | None ->
+            (rule, None)
+      in
       let violation =
         List.find
-          (fun (violation : (_, _) Check.violation) -> violation.rule = rule)
+          (fun (violation : (_, _) Check.violation) ->
+            violation.rule = rule
+            &&
+            match state with
+            | Some state ->
+                violation.state_name = state
+            | None ->
+                true
+          )
           report.violations
       in
       let trace =

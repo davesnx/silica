@@ -181,7 +181,9 @@ link:
 
 - [current]: the route now. The link gets [aria-current="page"] when its path
   equals the current path, and [data-active] when its path is a prefix of the
-  current path, as for the link of a parent page. The query does not count.
+  current path, as for the link of a parent page. A link to the root ([/], or
+  the base path) is [data-active] only on the root, since every path starts
+  with it. The query does not count.
 - [hash]: the URL has this hash, and the browser scrolls to the element with
   that id after the paint. The router ignores the hash.
 - [preload]: when the host fetches the calls of the route of the link.

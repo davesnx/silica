@@ -11,4 +11,4 @@
 (executable
  (name llms)
  (modules llms)
- (libraries odoc-parser))
+ (libraries odoc-parser compiler-libs.common))

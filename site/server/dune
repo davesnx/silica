@@ -24,7 +24,8 @@
   %{project_root}/example/app/melange/dune
   (glob_files %{project_root}/linear/app/shared/*)
   (glob_files %{project_root}/linear/client/*.{ml,css})
-  (glob_files %{project_root}/linear/server/*.ml))
+  (glob_files %{project_root}/linear/server/*.ml)
+  (glob_files %{project_root}/skills/silica-verify/references/api/*.md))
  (action
   (with-stdout-to
    %{target}
@@ -57,11 +58,19 @@
      %{exe:../gen/llms.exe}
      full
      https://silica-site.fly.dev
-     %{project_root}/docs))
+     %{project_root}/docs
+     %{project_root}/skills/silica-verify/references/api/silica.md
+     %{project_root}/skills/silica-verify/references/api/check.md
+     %{project_root}/skills/silica-verify/references/api/memory.md
+     %{project_root}/skills/silica-verify/references/api/server.md))
    (with-stdout-to
     site_llms.ml
     (run
      %{exe:../gen/llms.exe}
      ml
      https://silica-site.fly.dev
-     %{project_root}/docs)))))
+     %{project_root}/docs
+     %{project_root}/skills/silica-verify/references/api/silica.md
+     %{project_root}/skills/silica-verify/references/api/check.md
+     %{project_root}/skills/silica-verify/references/api/memory.md
+     %{project_root}/skills/silica-verify/references/api/server.md)))))

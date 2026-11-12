@@ -264,9 +264,14 @@ val key_up : _ t -> Key.t -> unit
 (** A key goes up on the focused element: only element handlers see it. *)
 
 val hover : element -> unit
-(** The pointer enters the element. Inside a link with
-    [data-silica-preload="intent"], the root gets {!Silica.Router.event.Preload}
-    with the URL of the link. {!focus} on such a link does the same. *)
+(** The pointer enters the element: the nearest pointer enter handler gets
+    {!Silica.Pointer.origin}. Inside a link with [data-silica-preload="intent"],
+    the root gets {!Silica.Router.event.Preload} with the URL of the link.
+    {!focus} on such a link does the same. *)
+
+val leave : element -> unit
+(** The pointer leaves the element: the nearest pointer leave handler gets
+    {!Silica.Pointer.origin}. *)
 
 val back : _ t -> unit
 (** The back button of the browser: move to the previous history entry, if there
@@ -275,6 +280,12 @@ val back : _ t -> unit
 val forward : _ t -> unit
 (** The forward button of the browser: move to the next history entry, if there
     is one, and report its URL. *)
+
+val open_url : _ t -> string -> unit
+(** The user opens the URL, as in the address bar: a new history entry, which
+    the root gets as {!Silica.Router.event.Url_changed}, unless a
+    {!Silica.Action.Block} source holds it. The page does not load again: this
+    is the push of a single-page app. *)
 
 (** {1 Clock} *)
 

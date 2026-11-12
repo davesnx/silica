@@ -114,10 +114,10 @@ A trace that does not read is a setup error:
   $ ../linear_check/main.exe conform --spec ../linear_check/spec
   conform: give at least one trace file
   Usage:
-    main.exe [check] [--json] [--only ID]... [--traces DIR]
+    main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
-    main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]
+    main.exe script ID TRACE_FILE [--output FILE] [--component EXPR] [--check EXPR]
     main.exe rules [--json]
     main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
   Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.

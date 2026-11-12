@@ -54,6 +54,11 @@ val shows : string -> ('s, 'e) condition
     sees in the view ({!Silica.View_text.visible}): the text of any element,
     with or without a role, but not of hidden ones. *)
 
+val view_shows : 'e Silica.Node.t -> string -> bool
+(** [view_shows view text]: the test of {!shows} as a function, for {!holds} and
+    {!val-view} when the text depends on the state:
+    [holds (fun state view -> view_shows view (title state))]. *)
+
 val holds : ('s -> 'e Silica.Node.t -> bool) -> ('s, 'e) condition
 (** Holds when the snapshot and its view pass the test together. *)
 
@@ -304,14 +309,31 @@ val live :
     {!Silica.Protocol.host_of_host_action}). *)
 
 type 's app_state = 's Check_model.app_state = {
-  router : 's;  (** The snapshot of the root machine. *)
-  history : Silica.Url.t list;  (** Oldest first. *)
+  router : 's;  (** The snapshot of the root machine: the current route. *)
+  history : Silica.Url.t list;
+      (** Oldest first, at most [max_history] entries. *)
   index : int;  (** Position of the current URL in [history]. *)
 }
+(** What a property and the [within] of {!app} read. A page that runs as a
+    {!val-child} is not in it: bound a page with the [within] of its child. For
+    example, with routes [Home], [Issue of int] and [Settings]:
+    {[
+      Check.app
+        ~within:(fun (app : _ Check.app_state) ->
+          List.length app.history <= 3
+          && match app.router with Issue number -> number < 3 | _ -> true
+        )
+        ~max_history:3 ...
+    ]} *)
+
+val current_url : 's app_state -> Silica.Url.t
+(** The URL of the current history entry. *)
 
 type 'e app_event = 'e Check_model.app_event =
   | Event of 'e  (** An event of the root machine. *)
   | Link of Silica.Url.t  (** Press on a [data-silica-link] anchor. *)
+  | Open of Silica.Url.t
+      (** The user opens the URL, as in the address bar: a push, from [urls]. *)
   | Browser_back
   | Browser_forward
   | In_child of child_event  (** An event of a page or of its children. *)
@@ -326,6 +348,7 @@ val app :
   ?arrivals:int ->
   ?keys:Silica.Key.t list ->
   ?texts:string list ->
+  ?urls:string list ->
   ?pages:child list ->
   ?properties:('s app_state, 'e) property list ->
   ?allow:allowance list ->
@@ -343,8 +366,11 @@ val app :
     run. Actions [Navigate], [Replace], [Back], [Forward] and [Reload] change
     the simulated history and become the event [url_event url] of the root
     machine. [Resume], [Revert_navigation], [Preload] and [Set_status] do
-    nothing here. [max_history] (default 4) bounds the history; the oldest
-    entries are dropped, which keeps the state space finite.
+    nothing here. [urls] are URLs that the user opens, as in the address bar, in
+    any state: each is a push, with the cause "the user opens <url>", and a
+    script opens it with {!Silica_memory.open_url}. Keep [inputs] for events
+    that no element and no URL gives. [max_history] (default 4) bounds the
+    history; the oldest entries are dropped, which keeps the state space finite.
 
     [pages] run the listed page components (and their children, when listed)
     inside the check, as {!component} [?children] does: links in pages are
@@ -403,6 +429,7 @@ type cause = Check_model.cause =
   | Props  (** The parent gave other props. *)
   | Child of { instance : string; machine : string }
   | Navigation  (** The back or forward button of the browser. *)
+  | Address of string  (** The user opens this URL, from [urls]. *)
 
 val describe_cause : cause -> string
 (** One phrase, such as
@@ -511,6 +538,9 @@ type ('s, 'ev) report = {
           where [a] holds at no explored point, a [leads_to] whose [from], or a
           [never_after] whose [after], holds at no explored point. A warning,
           not a finding: it does not change {!passed} or the exit code. *)
+  bounds : string;
+      (** How to bound the search of this check, which the hint of [state-limit]
+          gives: for {!app}, [max_history] and what it bounds. *)
 }
 
 val run : ('s, 'ev) t -> ('s, 'ev) report
@@ -810,6 +840,7 @@ val difference_to_string : difference -> string
 val replay_run :
   ?cycle_from:int ->
   ?start:int ->
+  ?props:int list ->
   ('s, 'ev) t ->
   Silica.Trace.t ->
   (('s, 'ev) replay, string) result
@@ -823,10 +854,13 @@ val replay_run :
     move is [Not_enabled].
 
     [start] is the position of the start among the starts of the check (one for
-    each of its [props]), as a trace of {!export} records it. [cycle_from] is
-    the number of steps before a cycle that the run went once around: a
-    [leads_to] property then fails at the last point when the run is back at the
-    snapshot where the cycle started, as for a [Loop] counterexample. *)
+    each of its [props]), as a trace of {!export} records it. [props] gives, in
+    order, the position in the [props] of the check of the props of each props
+    step of the run, which a run without a props codec does not hold.
+    [cycle_from] is the number of steps before a cycle that the run went once
+    around: a [leads_to] property then fails at the last point when the run is
+    back at the snapshot where the cycle started, as for a [Loop]
+    counterexample. *)
 
 val nth_props : ('s, ('p, 'e) input) t -> int -> 'p
 (** [nth_props check index]: the props of the start at [index] of a component

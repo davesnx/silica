@@ -52,7 +52,14 @@ let view_passes broken page =
   | messages ->
       fail broken ("The view still breaks it:\n" ^ String.concat "\n" messages)
 
+let given = ref []
+
+let set_props check page index =
+  given := !given @ [ index ];
+  Memory.set_props page (Check.nth_props check index)
+
 let holds broken ?cycle_from ?start check page steps =
+  given := [];
   let stopped =
     match steps () with
     | () ->
@@ -62,7 +69,9 @@ let holds broken ?cycle_from ?start check page steps =
     | exception Failure message ->
         Some message
   in
-  match Check.replay_run ?cycle_from ?start check (Memory.trace page) with
+  match
+    Check.replay_run ?cycle_from ?start ~props:!given check (Memory.trace page)
+  with
   | Error reason ->
       fail broken
         ("The run in memory cannot be replayed in the check: " ^ reason)

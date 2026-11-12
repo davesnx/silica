@@ -113,8 +113,8 @@ Replay the third violation in the checker: each step, and the rule that fails.
 Make it a test that fails for the same reason: one test for each violation
 that you fix, named after its trace file.
 
-  $ silica script counter traces/counter_ignored_event_saved.jsonl > test/counter_ignored_event_saved_replay.ml
-  script: the test of the violation ignored-event of counter, from traces/counter_ignored_event_saved.jsonl. Save it as test/counter_ignored_event_saved_replay.ml, and add counter_ignored_event_saved_replay to the names of the tests in test/dune.
+  $ silica script counter traces/counter_ignored_event_saved.jsonl --output test/counter_ignored_event_saved_replay.ml
+  script: wrote test/counter_ignored_event_saved_replay.ml, the test of the violation ignored-event of counter, from traces/counter_ignored_event_saved.jsonl. Add counter_ignored_event_saved_replay to the names of the tests in test/dune.
   $ cat test/counter_ignored_event_saved_replay.ml
   open Silica
   module Memory = Silica_memory
@@ -153,14 +153,25 @@ The fix: the update handles Save in saved, and the view disables Save where
 the update does not handle it.
 
   $ sed 's/| (Counting count | Save_failed count), Save ->/| (Counting count | Saved count | Save_failed count), Save ->/' counter.mlx.orig > app/shared/counter.mlx
-  $ silica check 2>&1
+  $ silica check --no-golden 2>&1
   counter: 16 states, 49 transitions
   passed (exit 0)
-  $ silica check --json 2> /dev/null | grep '"exit_code"'
-    "exit_code": 0,
 
-The behaviour changed, so the golden files differ: the suite names the new
-edge and the changed view. The page test still expects the old view.
+The behaviour changed, so the golden files differ, and silica check says so:
+it names the new edge and the changed views, with the command that writes
+them.
+
+  $ silica check 2>&1 | grep -E '^(golden-drift|  hint|findings)'
+  golden-drift: The golden file check/spec/counter.spec.txt differs from what the check found.
+  golden-drift: The golden file check/spec/counter.qnt differs from what the check found.
+  golden-drift: The golden file check/spec/counter.dot differs from what the check found.
+  golden-drift: The golden file check/spec/counter.views.txt differs from what the check found.
+    hint: Read the changes. When they are intended, write the files again with dune exec ./check/main.exe -- golden check/spec --write, and commit them.
+  findings (exit 1)
+  $ silica check --json 2> /dev/null | grep '"exit_code"'
+    "exit_code": 1,
+
+dune test says the same, and the page test still expects the old view.
 
   $ dune test 2>&1 | grep -E '^ *(golden-drift|added|removed|[+-] )|^view:'
   golden-drift: The golden file spec/counter.spec.txt differs from what the check found.

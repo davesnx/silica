@@ -577,6 +577,42 @@ let dialog_name placed =
   else
     [ finding "dialog-name" placed ]
 
+let landmark_main placed =
+  let mains =
+    List.filter
+      (fun item -> (not item.hidden) && role item = Some Accessibility.Main)
+      placed
+  in
+  let nested item =
+    List.exists
+      (fun ancestor -> Accessibility.role ancestor = Some Accessibility.Main)
+      item.ancestors
+  in
+  List.concat
+    (List.mapi
+       (fun index item ->
+         if nested item then
+           [
+             finding "landmark-main" item
+               ~values:[ ("problem", "is inside another main landmark") ];
+           ]
+         else if index > 0 then
+           [
+             finding "landmark-main" item
+               ~values:
+                 [
+                   ( "problem",
+                     Printf.sprintf "is main landmark %d of %d in the view"
+                       (index + 1) (List.length mains)
+                   );
+                 ];
+           ]
+         else
+           []
+       )
+       mains
+    )
+
 let heading_order placed =
   let check (previous, findings) item =
     match (role item, Accessibility.level item.element) with
@@ -813,7 +849,10 @@ let view_rules ?memo view =
         )
         (document_order placed)
     in
-    each @ unique_ids (document_order placed) @ heading_order placed
+    each
+    @ unique_ids (document_order placed)
+    @ heading_order placed
+    @ landmark_main (document_order placed)
   in
   match memo with
   | None ->

@@ -6,7 +6,7 @@ view
 
 state /item/:int
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
 view
   heading "Item" level=1
   navigation
@@ -20,7 +20,7 @@ view
 
 state /item/:int, view 2
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
   /item/:int -> /item/:int on link /item/2, by the view offers press on link "Item 2" at div > nav > a[3]
 view
   heading "Item" level=1
@@ -35,7 +35,7 @@ view
 
 state /item/:int, view 3
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
   loading -> loaded on settled ok, by the answer of the call item/loading//api/item 1 to /api/item
 view
   heading "Item" level=1
@@ -54,7 +54,7 @@ view
 
 state /item/:int, view 4
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
   loading -> missing on settled rejected, by the answer of the call item/loading//api/item 1 to /api/item
 view
   heading "Item" level=1
@@ -69,7 +69,7 @@ view
 
 state /item/:int, view 5
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
   loading -> failed on settled error, by the answer of the call item/loading//api/item 1 to /api/item
 view
   heading "Item" level=1
@@ -84,7 +84,7 @@ view
 
 state /item/:int, view 6
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
   loading -> failed on settled error, by the answer of the call item/loading//api/item 1 to /api/item
 view
   heading "Item" level=1
@@ -99,18 +99,18 @@ view
 
 state /about
 path
-  / -> /about on url changed, by an input
+  / -> /about on open /about, by the user opens /about
 view
   component about
 
 state /edit
 path
-  / -> /edit on url changed, by an input
+  / -> /edit on open /edit, by the user opens /edit
 view
   component edit
 
 state /*
 path
-  / -> /* on url changed, by an input
+  / -> /* on open /nowhere, by the user opens /nowhere
 view
   component not_found

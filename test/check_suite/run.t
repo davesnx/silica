@@ -110,7 +110,7 @@ state, and the update ignores it there.
   $ FIXTURE=limit ./fixtures.exe
   counter: 5 states, 5 transitions
   state-limit: The search stopped at 5 states, so the check is incomplete.
-    hint: Bound the search with ~within, or raise ~max_states.
+    hint: Bound the search with ~within (a test of the snapshot), or raise ~max_states.
   incomplete (exit 2)
   [2]
 
@@ -189,10 +189,10 @@ Bad arguments print the usage and exit 3.
   $ FIXTURE=pass ./fixtures.exe --verbose
   check: unknown argument --verbose
   Usage:
-    main.exe [check] [--json] [--only ID]... [--traces DIR]
+    main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
-    main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]
+    main.exe script ID TRACE_FILE [--output FILE] [--component EXPR] [--check EXPR]
     main.exe rules [--json]
     main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
   Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.
@@ -203,7 +203,7 @@ The rules of the suite are in the rule table.
   $ FIXTURE=pass ./fixtures.exe rules | grep -A 2 -E '^(unchecked-component|golden-drift|state-limit)'
   state-limit (search)
     The search stopped at {states} states, so the check is incomplete.
-    hint: Bound the search with ~within, or raise ~max_states.
+    hint: Bound the search with ~within, or raise ~max_states; for Check.app, also lower ~max_history.
   unchecked-component (suite)
     A checked view renders the component {machine}, and no entry of the suite checks it.
     hint: Add Check_suite.entry for {machine}, or Check_suite.elsewhere with the reason when another suite checks it.
@@ -365,8 +365,22 @@ A step that the check no longer offers is a mismatch: exit 1.
 script prints a Silica_memory test of the counterexample.
 
   $ FIXTURE=bug ./fixtures.exe script save traces/save_ignored_event_saved.jsonl --component Fixtures.save | grep -c Memory.press
-  script: the test of the violation ignored-event of save, from traces/save_ignored_event_saved.jsonl. Save it as test/save_ignored_event_saved_replay.ml, and add save_ignored_event_saved_replay to the names of the tests in test/dune.
+  script: the test of the violation ignored-event of save, from traces/save_ignored_event_saved.jsonl. Save it as test/save_ignored_event_saved_replay.ml (or give --output test/save_ignored_event_saved_replay.ml), and add save_ignored_event_saved_replay to the names of the tests in test/dune.
   2
+
+With --output, the test goes into the file, which is written only when the
+test can be written, and the command says which file it wrote. On a fixed
+check the trace no longer breaks the rule: exit 1, and no file.
+
+  $ FIXTURE=bug ./fixtures.exe script save traces/save_ignored_event_saved.jsonl --component Fixtures.save --output written.ml
+  script: wrote written.ml, the test of the violation ignored-event of save, from traces/save_ignored_event_saved.jsonl. Add written to the names of the tests in test/dune.
+  $ grep -c Memory.press written.ml
+  2
+  $ FIXTURE=fixed ./fixtures.exe script save traces/save_ignored_event_saved.jsonl --output fixed.ml
+  script: the replay of the trace in the check no longer breaks ignored-event; run the replay command to see each step. No Silica_memory test is written; the command 'replay save traces/save_ignored_event_saved.jsonl' replays the trace in the checker, and exits 1 while the rule fails and 0 after the fix.
+  [1]
+  $ test -e fixed.ml
+  [1]
 
 Two violations of one check get two trace files, named by the machine, the
 rule and the state, and the text names the test file of each:
@@ -380,7 +394,7 @@ rule and the state, and the text names the test file of each:
             "trace_file": "traces/twice_ignored_event_second.jsonl",
             "test_file": "test/twice_ignored_event_second_replay.ml"
   $ FIXTURE=twice ./fixtures.exe script twice traces/twice_ignored_event_second.jsonl > /dev/null
-  script: the test of the violation ignored-event of twice, from traces/twice_ignored_event_second.jsonl. Save it as test/twice_ignored_event_second_replay.ml, and add twice_ignored_event_second_replay to the names of the tests in test/dune.
+  script: the test of the violation ignored-event of twice, from traces/twice_ignored_event_second.jsonl. Save it as test/twice_ignored_event_second_replay.ml (or give --output test/twice_ignored_event_second_replay.ml), and add twice_ignored_event_second_replay to the names of the tests in test/dune.
 
 conform takes a trace that the checker wrote, and says that it is a
 counterexample, not a recorded run: replay says whether it still breaks the

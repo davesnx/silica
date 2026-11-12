@@ -508,8 +508,18 @@ let write_command ~program dir =
       in
       Printf.sprintf "dune exec ./%s -- golden %s --write" (path executable)
         (path dir)
-  | None ->
-      Printf.sprintf "%s golden %s --write" program dir
+  | None -> (
+      let built = Filename.concat "_build" "default" ^ Filename.dir_sep in
+      match String.starts_with ~prefix:built program with
+      | true ->
+          Printf.sprintf "dune exec ./%s -- golden %s --write"
+            (String.sub program (String.length built)
+               (String.length program - String.length built)
+            )
+            dir
+      | false ->
+          Printf.sprintf "%s golden %s --write" program dir
+    )
 
 let golden_with ~program ~write dir result =
   let existing =
@@ -831,16 +841,22 @@ let pp formatter result =
 
 let usage =
   "Usage:\n\
-  \  main.exe [check] [--json] [--only ID]... [--traces DIR]\n\
+  \  main.exe [check] [--json] [--only ID]... [--traces DIR] [--golden DIR]\n\
   \  main.exe golden DIR [--write] [--json]\n\
   \  main.exe replay ID TRACE_FILE [--json]\n\
-  \  main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]\n\
+  \  main.exe script ID TRACE_FILE [--output FILE] [--component EXPR] [--check \
+   EXPR]\n\
   \  main.exe rules [--json]\n\
   \  main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...\n\
    Exit codes: 0 passed, 1 findings, 2 incomplete, 3 setup error.\n"
 
 type command =
-  | Check of { json : bool; only : string list; traces : string option }
+  | Check of {
+      json : bool;
+      only : string list;
+      traces : string option;
+      golden : string option;
+    }
   | Golden of { dir : string; write : bool; json : bool }
   | Replay of { id : string; file : string; json : bool }
   | Script of {
@@ -848,6 +864,7 @@ type command =
       file : string;
       component : string option;
       check : string option;
+      output : string option;
     }
   | Rules of { json : bool }
   | Conform of {
@@ -859,15 +876,17 @@ type command =
   | Help
 
 let parse arguments =
-  let rec check ~json ~only ~traces = function
+  let rec check ~json ~only ~traces ~golden = function
     | [] ->
-        Ok (Check { json; only = List.rev only; traces })
+        Ok (Check { json; only = List.rev only; traces; golden })
     | "--json" :: rest ->
-        check ~json:true ~only ~traces rest
+        check ~json:true ~only ~traces ~golden rest
     | "--only" :: id :: rest ->
-        check ~json ~only:(id :: only) ~traces rest
+        check ~json ~only:(id :: only) ~traces ~golden rest
     | "--traces" :: dir :: rest ->
-        check ~json ~only ~traces:(Some dir) rest
+        check ~json ~only ~traces:(Some dir) ~golden rest
+    | "--golden" :: dir :: rest ->
+        check ~json ~only ~traces ~golden:(Some dir) rest
     | argument :: _ ->
         Error ("check: unknown argument " ^ argument)
   in
@@ -881,17 +900,21 @@ let parse arguments =
     | _ ->
         Error "replay: give the machine id and the trace file"
   in
-  let rec script ~component ~check ~positional = function
+  let rec script ~component ~check ~output ~positional = function
     | "--component" :: value :: rest ->
-        script ~component:(Some value) ~check ~positional rest
+        script ~component:(Some value) ~check ~output ~positional rest
     | "--check" :: value :: rest ->
-        script ~component ~check:(Some value) ~positional rest
+        script ~component ~check:(Some value) ~output ~positional rest
+    | "--output" :: value :: rest ->
+        script ~component ~check ~output:(Some value) ~positional rest
     | argument :: rest when not (String.starts_with ~prefix:"-" argument) ->
-        script ~component ~check ~positional:(positional @ [ argument ]) rest
+        script ~component ~check ~output
+          ~positional:(positional @ [ argument ])
+          rest
     | [] -> (
         match positional with
         | [ id; file ] ->
-            Ok (Script { id; file; component; check })
+            Ok (Script { id; file; component; check; output })
         | _ ->
             Error "script: give the machine id and the trace file"
       )
@@ -944,13 +967,13 @@ let parse arguments =
   | "conform" :: rest ->
       conform ~spec:"spec" ~only:[] ~json:false ~files:[] rest
   | "check" :: rest ->
-      check ~json:false ~only:[] ~traces:None rest
+      check ~json:false ~only:[] ~traces:None ~golden:None rest
   | "golden" :: rest ->
       golden ~dir:None ~write:false ~json:false rest
   | "replay" :: rest ->
       replay ~json:false rest
   | "script" :: rest ->
-      script ~component:None ~check:None ~positional:[] rest
+      script ~component:None ~check:None ~output:None ~positional:[] rest
   | [ "rules" ] ->
       Ok (Rules { json = false })
   | [ "rules"; "--json" ] ->
@@ -958,7 +981,7 @@ let parse arguments =
   | argument :: _ when not (String.starts_with ~prefix:"-" argument) ->
       Error ("unknown command " ^ argument)
   | rest ->
-      check ~json:false ~only:[] ~traces:None rest
+      check ~json:false ~only:[] ~traces:None ~golden:None rest
 
 let identifier text =
   let mapped =
@@ -1275,28 +1298,42 @@ let formatted ~name text =
     [ source; output ];
   result
 
-let script_command entries ~id ~file ~component ~check:expression =
+let script_command entries ~id ~file ~component ~check:expression ~output =
   match load entries ~id ~file with
   | Error message ->
       setup_error ~json:false ~command:"script" message
   | Ok (Found check, trace) -> (
       match Check.script ?component ?check:expression check trace with
       | Ok text ->
-          let target = test_file file in
-          print_string (formatted ~name:target text);
-          prerr_endline
-            (Printf.sprintf
-               "script: the test of the violation %s of %s, from %s. Save it \
-                as %s, and add %s to the names of the tests in test/dune."
-               ( match trace.header.origin with
-               | Checker { rule; _ } ->
-                   rule
-               | Runtime _ ->
-                   "?"
-               )
-               id file target
-               (Filename.remove_extension (Filename.basename target))
-            );
+          let target = Option.value output ~default:(test_file file) in
+          let rule =
+            match trace.header.origin with
+            | Checker { rule; _ } ->
+                rule
+            | Runtime _ ->
+                "?"
+          in
+          let name = Filename.remove_extension (Filename.basename target) in
+          let text = formatted ~name:target text in
+          ( match output with
+          | Some path ->
+              write_file path text;
+              prerr_endline
+                (Printf.sprintf
+                   "script: wrote %s, the test of the violation %s of %s, from \
+                    %s. Add %s to the names of the tests in test/dune."
+                   path rule id file name
+                )
+          | None ->
+              print_string text;
+              prerr_endline
+                (Printf.sprintf
+                   "script: the test of the violation %s of %s, from %s. Save \
+                    it as %s (or give --output %s), and add %s to the names of \
+                    the tests in test/dune."
+                   rule id file target target name
+                )
+          );
           0
       | Error message ->
           prerr_endline
@@ -1389,9 +1426,19 @@ let main ?(argv = Sys.argv) entries =
             )
             Check.rules;
         0
-    | Ok (Check { json; only; traces }) ->
+    | Ok (Check { json; only; traces; golden }) ->
         let only = match only with [] -> None | ids -> Some ids in
         let result = run ?only entries in
+        let result =
+          match golden with
+          | Some dir ->
+              {
+                (golden_with ~program:argv.(0) ~write:false dir result) with
+                command = "check";
+              }
+          | None ->
+              result
+        in
         let result =
           match traces with
           | Some dir ->
@@ -1403,8 +1450,8 @@ let main ?(argv = Sys.argv) entries =
         exit_code result
     | Ok (Replay { id; file; json }) ->
         replay_command entries ~id ~file ~json
-    | Ok (Script { id; file; component; check }) ->
-        script_command entries ~id ~file ~component ~check
+    | Ok (Script { id; file; component; check; output }) ->
+        script_command entries ~id ~file ~component ~check ~output
     | Ok (Conform { spec; only; json; files }) ->
         conform_command entries ~spec ~only ~json ~files
     | Ok (Golden { dir; write; json }) ->

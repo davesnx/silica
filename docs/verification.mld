@@ -38,13 +38,13 @@ The commands:
 {t
 | Command | What it does | Exit codes |
 |---|---|---|
-| [silica check] | Builds [check/main.exe] and runs every entry. Add [--json] for a report that a program reads, [--traces DIR] for a trace file of each violation. | 0 passed, 1 findings, 2 incomplete, 3 setup error |
+| [silica check] | Builds [check/main.exe], runs every entry and compares the golden files in [check/spec]: a missing or changed golden file is a finding. Add [--json] for a report that a program reads, [--traces DIR] for a trace file of each violation, [--no-golden] to leave the golden files out. | 0 passed, 1 findings, 2 incomplete, 3 setup error |
 | [silica replay ID FILE] | Runs a trace file again in the check of [ID] and prints each step with the rules that fail there. Add [--json] for JSON. | 0 no rule fails at the last step, 1 a rule fails or a step is no longer offered, 3 the trace does not read |
-| [silica script ID FILE] | Prints a test for {!Silica_memory} that does the same steps and fails while the bug is there. | 0 printed, 1 a step cannot run in memory (the reason is on stderr) |
+| [silica script ID FILE --output TEST_FILE] | Writes a test for {!Silica_memory} that does the same steps and fails while the bug is there; without [--output] it prints the test. | 0 written, 1 a step cannot run in memory (the reason is on stderr, and no file is written) |
 | [dune exec ./check/main.exe -- --only ID] | Runs only the entry [ID]. [silica check] has no [--only]. | as [silica check] |
-| [dune exec ./check/main.exe -- golden check/spec] | Compares the golden files with what the checks find. [dune test] runs it. Add [--write] to accept a change. | 0 no change, 1 drift |
+| [dune exec ./check/main.exe -- golden check/spec] | Compares the golden files with what the checks find, as [silica check] and [dune test] do. Add [--write] to accept a change. | 0 no change, 1 drift |
 | [dune exec ./check/main.exe -- rules] | Lists every built-in rule with its message and hint. Add [--json] for JSON. | 0 |
-| [silica dev --json] | Builds on each save and prints one JSON line for each build, error, restart, reload and hot reload, with the instances kept and restarted (see {!page-install.dev}). | runs until stopped |
+| [silica dev --json] | Builds on each save and prints one JSON line for each build, error, restart, reload and hot reload, with the instances kept and restarted (see {!page-install.dev}); lines that do not start with [{] are the output of the server. | runs until stopped |
 }
 
 {1:loop The loop}
@@ -60,7 +60,7 @@ The commands:
 + {b Change the machine and the view.} See
   {{!section-machine}Write the machine}.
 + {b Run the suite.} [silica check --json --traces traces > report.json].
-  Read the exit code first. 0: go to step 8, but on the first run of a new
+  Read the exit code first. 0: go to step 7, but on the first run of a new
   property, prove that it can fail first: break the machine once in a way
   the requirement forbids, see the suite exit 1, make the red tests of step 5
   from those traces, then undo the break. 1: read the findings. 2: the
@@ -77,12 +77,11 @@ The commands:
   [traces/counter_ignored_event_saving.jsonl] (the machine, the rule and the
   state), and a [test_file], such as
   [test/counter_ignored_event_saving_replay.ml]. Run
-  [silica script ID TRACE_FILE > TEST_FILE] (standard error repeats which
-  file to save it in), add its name to the [names] in [test/dune], then run
+  [silica script ID TRACE_FILE --output TEST_FILE] (it writes the file only
+  when the test can be written, and says which file it wrote), add its name to the [names] in [test/dune], then run
   [dune test]. The test must fail with the same rule and hint. When
   [silica script] exits 1, it prints why on standard error and writes no
-  test, so delete the empty [TEST_FILE] and use [silica replay ID
-  TRACE_FILE] instead.
+  file; use [silica replay ID TRACE_FILE] instead.
   {ul
   {li The printed test is formatted with the [.ocamlformat] of the app when
       [ocamlformat] is installed, so [dune build @fmt] passes on it. Do not
@@ -91,7 +90,7 @@ The commands:
       in [test/counter_page.ml], fails in this [dune test] too when your change
       changed that view; it prints the lines that differ, [-] expected and [+]
       got. When the difference is the change you want, update the expected
-      text in step 8; when it is not, it is one more bug to fix.}
+      text in step 7; when it is not, it is one more bug to fix.}
   {li A step that types into a field is a step of the script: see
       {{!section-typing}Type into a field}.}
   {li The last line evaluates the rule itself: for a property or most
@@ -102,18 +101,18 @@ The commands:
 + {b Fix the machine or the view.} Follow the hint. Do not remove the
   property, lower a bound or add an allowance to make a finding go away;
   an allowance is right only for the cases in the table.
-+ {b Run the suite again.} [silica check] must exit 0, and the red test must
-  pass. Keep the test.
-+ {b Run the tests.} [dune test]. [silica check] does not compare the golden
-  files, so a new machine with no golden files yet, or a change of behaviour,
-  shows only here. When it reports [golden-drift], read the
-  changed states and edges. If the change is the one you wanted, run
++ {b Run the suite again.} [silica check]: the violations are gone. It
+  compares the golden files too, so a new machine with no golden files yet,
+  or a change of behaviour, is a [golden-drift] finding. When it reports
+  [golden-drift], read the changed states and edges. If the change is the one you wanted, run
   [dune exec ./check/main.exe -- golden check/spec --write]: it prints the
   same [golden-drift] findings, then the files it wrote, a line that says the
   golden files now match, and [passed (exit 0)]. It lists only the files that
   changed. If not, fix the code. [<id>.views.txt] holds each distinct view of
   a state, up to 16 for each state name, so a view with an error message is
-  in it, and the drift names each added, removed and changed view. Update each test that expects the old behaviour, such as a test that
+  in it, and the drift names each added, removed and changed view. Then
+  [silica check] exits 0. Run [dune test]: the red test passes; keep it.
+  Update each test that expects the old behaviour, such as a test that
   compares a whole view.
 + {b Finish.} [dune build], [dune test] and [dune build @fmt] all pass with
   no output. [report.json] and [traces/] are the output of one run, and the
@@ -254,8 +253,9 @@ From [test/agents/loop.t]:
 
 The fix handles [Save] in [Saved] in the update, and keeps
 [disabled=(disabled Save)] in the view, so Save is off while the save runs.
-The suite passes. The behaviour changed on purpose, so the golden files
-differ, and [dune test] names the new edge and the changed line of the view:
+The checks pass ([silica check --no-golden] exits 0). The behaviour changed
+on purpose, so the golden files differ, and [silica check] and [dune test]
+name the new edge and the changed lines of the view:
 
 From [test/agents/loop.t]:
 {@sh skip[
@@ -372,6 +372,7 @@ last column.
 | [keyboard-access] | An element with a press handler cannot get keyboard focus. | Use a [<button>] or an [<a href>], or give a role and [tabindex="0"] and handle Enter and Space. | A key handler on an element above handles the keyboard. |
 | [dialog-name] | A dialog has no name. | An [aria-labelledby] to its title, or an [aria-label]. | Never. |
 | [dialog-focus] | A modal dialog shows, and the state owns no focus trap on it. | Own [Source.focus_trap] on the dialog, or use [Silica_ui.Dialog]. | A native [<dialog>] opened with [showModal], which traps focus itself. |
+| [landmark-main] | A view has more than one visible main landmark, or a main inside another. | Keep one [main] (or [role="main"]) for the page; make the others a section, a region or a div. A component check sees its own view; a joint check sees the whole page. | Never. |
 | [heading-order] | A heading skips a level after the heading before it. | Use the next level, or add the missing levels. | Never. |
 | [name-spacing] | Two inline parts of a name join with no space, such as [ENG-2Second]. | Put a [" "] text node between them, or an [aria-label]. | Never; CSS spacing does not count. |
 | a property name | A property of the check does not hold. | Fix the code, or the property when it is wrong. Read [kind]: [waits] means the app waits for the user and the goal never comes; [loop] means a cycle that never reaches it. | Never; change the property instead. |
@@ -508,8 +509,8 @@ From [test/agents/loop.t]:
 
 For text with no role, such as a message in a [<p>], use
 {!Check.shows}[ "text"]. Inside {!Check.holds}, where the text depends on the
-state, use {!Silica.View_text.shows}[ view text]:
-[Check.holds (fun state view -> Silica.View_text.shows view state.reason)].
+state, use {!Check.view_shows}[ view text]:
+[Check.holds (fun state view -> Check.view_shows view state.reason)].
 
 Give each property a [hint] that says what to change; [{state}] in it is the
 name of the failing state.
@@ -527,6 +528,10 @@ its node in the view of the parent, so [Check.child] takes no props. See
   [counter+saved-row.counter.spec.txt] and
   [counter+saved-row.saved-row.spec.txt]. [golden --write] writes the new
   names and removes the old files.
+- The traces of the checker record which props of the check each start
+  and each props step used, so replay and the script need no props codec:
+  the script mounts with [Check.nth_props] and gives new props with
+  [Check_expect.set_props].
 - At most [max_instances] instances of a child run at once (default 2). A
   further instance shows its start view and takes no step, and the report
   lists it in [not_explored] with how many were shown and how to raise

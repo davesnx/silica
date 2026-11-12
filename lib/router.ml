@@ -89,6 +89,8 @@ let current_attrs routes (link : Url.t) = function
       match strip link.path now with
       | Some [] ->
           [ Attr.string "aria-current" "page"; Attr.bool "data-active" true ]
+      | Some (_ :: _) when link.path = routes.base ->
+          []
       | Some (_ :: _) ->
           [ Attr.bool "data-active" true ]
       | None ->

@@ -6,13 +6,13 @@ view
 
 state /item/:int
 path
-  / -> /item/:int on url changed, by an input
+  / -> /item/:int on open /item/1, by the user opens /item/1
 view
   component item
 
 state /about
 path
-  / -> /about on url changed, by an input
+  / -> /about on open /about, by the user opens /about
 view
   heading "About" level=1
   navigation
@@ -31,12 +31,12 @@ view
 
 state /edit
 path
-  / -> /edit on url changed, by an input
+  / -> /edit on open /edit, by the user opens /edit
 view
   component edit
 
 state /*
 path
-  / -> /* on url changed, by an input
+  / -> /* on open /nowhere, by the user opens /nowhere
 view
   component not_found

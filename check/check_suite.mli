@@ -78,7 +78,7 @@ val main : ?argv:string array -> entry list -> unit
     main.exe [check] [--json] [--only ID]... [--traces DIR]
     main.exe golden DIR [--write] [--json]
     main.exe replay ID TRACE_FILE [--json]
-    main.exe script ID TRACE_FILE [--component EXPR] [--check EXPR]
+    main.exe script ID TRACE_FILE [--output FILE] [--component EXPR] [--check EXPR]
     main.exe rules [--json]
     main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
     v}
@@ -98,20 +98,21 @@ val main : ?argv:string array -> entry list -> unit
     trace does not read or cannot be replayed faithfully. [script ID TRACE_FILE]
     prints a [Silica_memory] test that reproduces the counterexample
     ({!Check.script}), formatted by [ocamlformat] with the configuration of the
-    project when [ocamlformat] is on the path, and says on standard error which
-    file to save it in ([test/<trace name>_replay.ml]); when the steps cannot
-    run in [Silica_memory], it prints why on standard error and exits with [1].
-    [rules] lists {!Check.val-rules}. [conform TRACE_FILE...] compares each
-    trace, such as one that the app recorded in development or in production,
-    with the golden specs in [--spec DIR] (default [spec]) by names
-    ({!Silica.Spec.conforms}) and with the code of each entry by data
-    ({!Check.conforms}); with [--only ID], only with the golden specs and the
-    check of that entry, such as a joint check of a parent with its children
-    ([router+issue-list]). Without [--only], dependents are not run, and
-    machines named by {!elsewhere} or with no spec in the selected files are
-    listed as not checked. Each deviation names the transition, the machine, the
-    instance, the step and the difference, with a hint: the spec is out of date,
-    the check does not explore the behaviour, or the trace is from another
-    build. Exit [0] when every trace conforms, [1] on a deviation, [3] when a
-    trace or a spec does not read. Bad arguments print the usage on standard
-    error and exit with [3]. *)
+    project when [ocamlformat] is on the path. With [--output FILE], it writes
+    the test to [FILE] and says so on standard error; without it, it prints the
+    test and says which file to save it in ([test/<trace name>_replay.ml]). When
+    the steps cannot run in [Silica_memory], it prints why on standard error,
+    writes nothing and exits with [1]. [rules] lists {!Check.val-rules}.
+    [conform TRACE_FILE...] compares each trace, such as one that the app
+    recorded in development or in production, with the golden specs in
+    [--spec DIR] (default [spec]) by names ({!Silica.Spec.conforms}) and with
+    the code of each entry by data ({!Check.conforms}); with [--only ID], only
+    with the golden specs and the check of that entry, such as a joint check of
+    a parent with its children ([router+issue-list]). Without [--only],
+    dependents are not run, and machines named by {!elsewhere} or with no spec
+    in the selected files are listed as not checked. Each deviation names the
+    transition, the machine, the instance, the step and the difference, with a
+    hint: the spec is out of date, the check does not explore the behaviour, or
+    the trace is from another build. Exit [0] when every trace conforms, [1] on
+    a deviation, [3] when a trace or a spec does not read. Bad arguments print
+    the usage on standard error and exit with [3]. *)

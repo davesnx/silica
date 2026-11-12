@@ -386,6 +386,13 @@ let test_current () =
     "other path" "<a href=\"/issues/8\" data-silica-link>x</a>"
     (html (Router.link ~current routes (Issue 8) [] [ Node.text "x" ]));
   Alcotest.(check string)
+    "the root is active only on itself" "<a href=\"/\" data-silica-link>x</a>"
+    (html (Router.link ~current routes Home [] [ Node.text "x" ]));
+  Alcotest.(check string)
+    "the root on itself"
+    "<a href=\"/\" data-silica-link aria-current=\"page\" data-active>x</a>"
+    (html (Router.link ~current:Home routes Home [] [ Node.text "x" ]));
+  Alcotest.(check string)
     "parent path, query ignored"
     "<a href=\"/issues?status=closed\" data-silica-link data-active>x</a>"
     (html

@@ -83,6 +83,7 @@ type cause =
   | Props
   | Child of { instance : string; machine : string }
   | Navigation
+  | Address of string
 
 type child_event =
   | Child_event : {
@@ -820,6 +821,8 @@ let describe_cause = function
       Printf.sprintf "the child %s (instance %s)" machine instance
   | Navigation ->
       "the browser history"
+  | Address url ->
+      "the user opens " ^ url
 
 let view_cause ~keys ~texts view event =
   match Check_rules.locate ~keys ~texts view (fun other -> other = event) with
@@ -981,6 +984,7 @@ type 's app_state = { router : 's; history : Url.t list; index : int }
 type 'e app_event =
   | Event of 'e
   | Link of Url.t
+  | Open of Url.t
   | Browser_back
   | Browser_forward
   | In_child of child_event
@@ -1028,7 +1032,7 @@ let round_trips ~parse ~print route =
   | exception Failure _ ->
       false
 
-let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
+let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
     ~parse ~print ?is_not_found ~url_event root =
   let first =
     match routes with
@@ -1114,11 +1118,12 @@ let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
           else
             []
         )
-      @
-      if world.idx < List.length world.hist - 1 then
-        [ user Browser_forward ]
-      else
-        []
+      @ ( if world.idx < List.length world.hist - 1 then
+            [ user Browser_forward ]
+          else
+            []
+        )
+      @ List.map (fun url -> user (Open (Url.of_string url))) urls
       )
   in
   let step world move =
@@ -1134,7 +1139,7 @@ let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
         in
         let world, actions = apply 0 ({ world with s }, actions) actions in
         (world, actions, how)
-    | Link url ->
+    | Link url | Open url ->
         navigate [ Action.Run (Action.Navigate url) ]
     | Browser_back ->
         navigate [ Action.Run Action.Back ]
@@ -1159,6 +1164,8 @@ let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
         | None ->
             Navigation
       )
+    | Open url ->
+        Address (Url.to_string url)
     | Browser_back | Browser_forward ->
         Navigation
     | In_child _ ->
@@ -1207,6 +1214,8 @@ let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
           Machine.event_name machine event
       | Link url ->
           "link " ^ Url.to_string url
+      | Open url ->
+          "open " ^ Url.to_string url
       | Browser_back ->
           "back"
       | Browser_forward ->
@@ -1247,7 +1256,7 @@ let app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals ~routes
         match move.event with
         | Event event ->
             answer_json host world move.via event
-        | Link _ | Browser_back | Browser_forward | In_child _ ->
+        | Link _ | Open _ | Browser_back | Browser_forward | In_child _ ->
             None
       );
     props_json = (fun _ -> None);

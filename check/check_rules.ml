@@ -121,6 +121,17 @@ let rules =
       applies_to = "state";
     };
     {
+      id = "landmark-main";
+      message =
+        "In state {state}, the main landmark at {element} {problem}; a page \
+         has one visible main landmark.";
+      hint =
+        "Keep one main element (or role=\"main\") for the page, and make the \
+         one at {element} a section, a region or a div. A component check sees \
+         the view of its component only; a joint check sees the whole page.";
+      applies_to = "view";
+    };
+    {
       id = "heading-order";
       message =
         "In state {state}, the heading {name} at {element} has level {level}, \
@@ -268,7 +279,9 @@ let rules =
       id = "state-limit";
       message =
         "The search stopped at {states} states, so the check is incomplete.";
-      hint = "Bound the search with ~within, or raise ~max_states.";
+      hint =
+        "Bound the search with ~within, or raise ~max_states; for Check.app, \
+         also lower ~max_history.";
       applies_to = "search";
     };
     {

@@ -92,6 +92,18 @@ The app builds its server and its client bundle, and its tests pass.
     "exit_code": 0,
     "outcome": "passed",
 
+silica check also compares the golden files: a missing one is a finding, with
+the command that writes it. --no-golden leaves them out.
+
+  $ mv check/spec/counter.dot counter.dot.saved
+  $ silica check 2>&1 | grep -E '^(golden-drift|  hint|findings)'
+  golden-drift: The golden file check/spec/counter.dot differs from what the check found.
+    hint: Read the changes. When they are intended, write the files again with dune exec ./check/main.exe -- golden check/spec --write, and commit them.
+  findings (exit 1)
+  $ silica check --no-golden 2>&1 | tail -1
+  passed (exit 0)
+  $ mv counter.dot.saved check/spec/counter.dot
+
 A change of behaviour fails the tests: the golden spec names the changed edge.
 
   $ sed 's/edge counting -> saving on save/edge counting -> saved on save/' check/spec/counter.spec.txt > changed.txt
@@ -118,8 +130,8 @@ script of that trace is a test that fails for the same reason.
   counter_ignored_event_saving.jsonl
   $ silica replay counter traces/counter_ignored_event_saving.jsonl 2>&1 | tail -1
   the last step breaks a rule (exit 1)
-  $ silica script counter traces/counter_ignored_event_saving.jsonl > test/counter_ignored_event_saving_replay.ml
-  script: the test of the violation ignored-event of counter, from traces/counter_ignored_event_saving.jsonl. Save it as test/counter_ignored_event_saving_replay.ml, and add counter_ignored_event_saving_replay to the names of the tests in test/dune.
+  $ silica script counter traces/counter_ignored_event_saving.jsonl --output test/counter_ignored_event_saving_replay.ml
+  script: wrote test/counter_ignored_event_saving_replay.ml, the test of the violation ignored-event of counter, from traces/counter_ignored_event_saving.jsonl. Add counter_ignored_event_saving_replay to the names of the tests in test/dune.
   $ sed 's/(names counter_steps counter_page)/(names counter_steps counter_page counter_ignored_event_saving_replay)/' test/dune > test/dune.new
   $ mv test/dune.new test/dune
   $ cat test/counter_ignored_event_saving_replay.ml

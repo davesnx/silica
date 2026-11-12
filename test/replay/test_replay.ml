@@ -71,6 +71,7 @@ let cases =
           [
             ("img-alt", "about", Same_view);
             ("home stays behind", "home", Same_view);
+            ("forward stays back", "secret", Same_view);
           ];
       };
     Case
@@ -574,6 +575,49 @@ let typing_cause () =
            {|Memory.input (Memory.by_role page Accessibility.Spinbutton ~name:"Step size") "0"|}
         )
 
+let props_steps_without_codecs () =
+  let violation = List.hd (Check.run Rows.changing_check).violations in
+  let trace =
+    round_trip
+      (Check.export Rows.changing_check ~rule:violation.rule
+         violation.counterexample
+      )
+  in
+  Alcotest.(check (list string))
+    "two props steps" [ "props"; "props" ]
+    (List.filter_map
+       (fun (record : Transition.t) ->
+         match record.cause with Props -> Some "props" | _ -> None
+       )
+       trace.transitions
+    );
+  match Check.replay_trace Rows.changing_check trace with
+  | Error message ->
+      Alcotest.fail message
+  | Ok replay ->
+      Alcotest.(check (list string))
+        "the rule fails at the last step" [ violation.rule ]
+        (List.map
+           (fun (failure : Check.failure) -> failure.rule)
+           (last_point replay).failing
+        )
+
+let app_limit_hint () =
+  let report =
+    Check.run
+      (Check.app ~max_states:2
+         ~routes:[ Pages.Home; About; Secret ]
+         ~parse:Pages.parse ~print:Pages.print
+         ~url_event:(fun url -> Silica.Router.Url_changed url)
+         Pages.app
+      )
+  in
+  Alcotest.(check bool) "incomplete" false report.complete;
+  Alcotest.(check bool)
+    ("names max_history: " ^ report.bounds)
+    true
+    (contains report.bounds "~max_history (default 4)")
+
 let () =
   Alcotest.run "replay"
     [
@@ -607,6 +651,10 @@ let () =
             `Quick exact_without_codecs;
           Alcotest.test_case "a trace that cannot replay faithfully is an error"
             `Quick never_a_false_pass;
+          Alcotest.test_case "the limit hint of an app names max_history" `Quick
+            app_limit_hint;
+          Alcotest.test_case "props steps replay with no codec" `Quick
+            props_steps_without_codecs;
           Alcotest.test_case "export of a step that is not enabled" `Quick
             export_not_enabled;
         ]

@@ -25,7 +25,8 @@ let state test = of_point (fun context -> test context.snapshot)
 let state_named name = of_point (fun context -> context.name = name)
 let view test = of_point (fun context -> test (Lazy.force context.view))
 
-let shows text = view (fun view -> View_text.shows view text)
+let view_shows = View_text.shows
+let shows text = view (fun view -> view_shows view text)
 
 let holds test =
   of_point (fun context -> test context.snapshot (Lazy.force context.view))
@@ -148,9 +149,12 @@ type 's app_state = 's Check_model.app_state = {
   index : int;
 }
 
+let current_url (app : _ app_state) = List.nth app.history app.index
+
 type 'e app_event = 'e Check_model.app_event =
   | Event of 'e
   | Link of Url.t
+  | Open of Url.t
   | Browser_back
   | Browser_forward
   | In_child of child_event
@@ -363,14 +367,6 @@ let component_json machine =
         None
   )
 
-let missing ~what (record : Transition.t) machine =
-  Printf.sprintf
-    "transition %d (%s): the trace has no %s; register the codecs of the \
-     machine %s with Silica.Machine.register_codecs"
-    record.seq
-    (match record.event with "" -> "no event" | name -> name)
-    what machine
-
 let decode_at (record : Transition.t) codec json =
   Result.map_error
     (fun error -> Printf.sprintf "transition %d: %s" record.seq error)
@@ -383,7 +379,7 @@ let component_input_of machine (record : Transition.t) =
         (fun props -> Some (Props props : (_, _) input))
         (decode_at record (Machine.props_codec machine) json)
   | Props, None, _ ->
-      Error (missing ~what:"props" record (Machine.id machine))
+      Ok None
   | _, _, Some json ->
       Result.map
         (fun event -> Some (Event event : (_, _) input))
@@ -618,7 +614,7 @@ let app_input_json ~routes ~print root = function
       Option.bind (root_machine ~routes ~print root) (fun machine ->
           encode (Machine.event_codec machine) event
       )
-  | Link _ | Browser_back | Browser_forward | In_child _ ->
+  | Link _ | Open _ | Browser_back | Browser_forward | In_child _ ->
       None
 
 let app_input_of ~routes ~print root (record : Transition.t) =
@@ -638,6 +634,13 @@ let app_input_of ~routes ~print root (record : Transition.t) =
           Ok (Some (Browser_back : _ app_event))
       | "forward" ->
           Ok (Some Browser_forward)
+      | event when String.starts_with ~prefix:"open " event ->
+          Ok
+            (Some
+               (Open
+                  (Url.of_string (String.sub event 5 (String.length event - 5)))
+               )
+            )
       | event when String.starts_with ~prefix:"link " event ->
           Ok
             (Some
@@ -669,7 +672,7 @@ let app_root ~routes ~print ~properties root =
 
 let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ?(max_history = 4) ?(inputs = fun _ -> []) ?(samples = []) ?(arrivals = 2)
-    ?(keys = Check_rules.default_keys) ?(texts = []) ?(pages = [])
+    ?(keys = Check_rules.default_keys) ?(texts = []) ?(urls = []) ?(pages = [])
     ?(properties = []) ?(allow = []) ~routes ~parse ~print ?is_not_found
     ~url_event root =
   let id =
@@ -682,13 +685,13 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
       )
   in
   let flat () =
-    Check_model.app_model ~keys ~texts ~max_history ~inputs ~samples ~arrivals
-      ~routes ~parse ~print ?is_not_found ~url_event root
+    Check_model.app_model ~keys ~texts ~urls ~max_history ~inputs ~samples
+      ~arrivals ~routes ~parse ~print ?is_not_found ~url_event root
   in
   let own_of : _ app_event -> _ = function
     | Event event ->
         Some event
-    | Link _ | Browser_back | Browser_forward | In_child _ ->
+    | Link _ | Open _ | Browser_back | Browser_forward | In_child _ ->
         None
   in
   let state_json = app_state_json ~routes ~print root
@@ -740,7 +743,8 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
                 ~out_of:(function
                   | In_child child_event ->
                       Some child_event
-                  | Event _ | Link _ | Browser_back | Browser_forward ->
+                  | Event _ | Link _ | Open _ | Browser_back | Browser_forward
+                    ->
                       None
                   )
                 ~link:(fun href -> Link (Url.of_string href))
@@ -786,6 +790,7 @@ type cause = Check_model.cause =
   | Props
   | Child of { instance : string; machine : string }
   | Navigation
+  | Address of string
 
 let describe_cause = Check_model.describe_cause
 
@@ -821,6 +826,17 @@ let props = Check_model.props
 
 let views_per_state = 16
 
+let component_bounds =
+  "Bound the search with ~within (a test of the snapshot), or raise \
+   ~max_states."
+
+let app_bounds =
+  "Lower ~max_history (default 4), which bounds how many history entries a \
+   state keeps: each push of another URL makes new states. Bound the search \
+   with ~within, which reads the Check.app_state: the route (router), the \
+   history and its index; bound a page with the ~within of its Check.child. Or \
+   raise ~max_states."
+
 type 'ev state_views = {
   state : string;
   views : (string * 'ev step list) list;
@@ -843,6 +859,7 @@ type ('s, 'ev) report = {
   paths : (string * 'ev step list) list;
   views : 'ev state_views list;
   vacuous : (string * string) list;
+  bounds : string;
 }
 
 type rule = Check_rules.rule = {
@@ -1510,6 +1527,13 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
           )
         check.properties
       @ temporal_vacuous;
+    bounds =
+      ( match check.subject with
+      | Routed ->
+          app_bounds
+      | Plain | With_props ->
+          component_bounds
+      );
   }
 
 let passed report =
@@ -1555,9 +1579,18 @@ let pp_report formatter report =
   ( if not report.complete then
       let message, hint =
         Check_rules.render
-          (Check_rules.finding "state-limit"
-             ~values:[ ("states", string_of_int report.states) ]
-          )
+          {
+            (Check_rules.finding "state-limit"
+               ~values:[ ("states", string_of_int report.states) ]
+            )
+            with
+            custom =
+              Some
+                ( "The search stopped at {states} states, so the check is \
+                   incomplete.",
+                  report.bounds
+                );
+          }
           ~state:""
       in
       Format.fprintf formatter "@,state-limit: %s@,  hint: %s" message hint
@@ -1670,6 +1703,18 @@ type ('n, 's, 'ev, 'e) walked =
       enabled : 'ev step list;
     }
   | Unfaithful of string
+
+let decode_failure answer =
+  match Codec.constructor_of answer with
+  | Ok ("Failed", [ error ]) -> (
+      match Codec.constructor_of error with
+      | Ok ("Decode", [ _ ]) ->
+          Codec.constructor "Failed" [ Codec.constructor "Decode" [] ]
+      | _ ->
+          answer
+    )
+  | _ ->
+      answer
 
 let without_number id =
   match String.index_opt id '/' with
@@ -1868,7 +1913,9 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
       match model.event_name move.event with
       | "back" | "forward" ->
           reached url move
-      | name when String.starts_with ~prefix:"link " name ->
+      | name
+        when String.starts_with ~prefix:"link " name
+             || String.starts_with ~prefix:"open " name ->
           reached url move
       | _ ->
           false
@@ -1878,16 +1925,36 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
       &&
       match wanted.answer with
       | Some answer ->
-          model.answer node move = Some answer
+          Option.map decode_failure (model.answer node move)
+          = Some (decode_failure answer)
       | None ->
           true
     in
     match wanted.choice with
     | None when wanted.by_cause -> (
+        let same_next moves =
+          match
+            List.map
+              (fun move ->
+                match guard (fun () -> model.step node move) with
+                | Ok (next, _, _) ->
+                    Some next
+                | Error _ ->
+                    None
+              )
+              moves
+          with
+          | Some first :: rest ->
+              List.for_all (fun next -> next = Some first) rest
+          | _ ->
+              false
+        in
         match List.filter fits_run moves with
         | [] ->
             None
         | [ move ] ->
+            Some move
+        | move :: _ as several when same_next several ->
             Some move
         | several ->
             raise
@@ -2609,8 +2676,22 @@ let nth_props (type s p e) (Check check : (s, (p, e) input) t) index : p =
            (Lazy.force check.id) index
         )
 
-let replay_run ?cycle_from ?start:start_index check (trace : Trace.t) =
-  let (Check { root; listed; _ }) = check in
+let replay_run ?cycle_from ?start:start_index ?(props = []) check
+    (trace : Trace.t) =
+  let (Check { root; listed; starts; _ }) = check in
+  let with_props wanted =
+    let given = ref props in
+    List.map
+      (fun (wanted : _ wanted) ->
+        match (wanted.cause, !given) with
+        | Some Props, index :: rest ->
+            given := rest;
+            { wanted with input = List.nth_opt (starts ()) index }
+        | _ ->
+            wanted
+      )
+      wanted
+  in
   if trace.header.root <> Lazy.force root then
     Error
       (Printf.sprintf "the run is of %s, and the check is of %s"
@@ -2624,7 +2705,7 @@ let replay_run ?cycle_from ?start:start_index check (trace : Trace.t) =
             match
               walk check ?loop_from:cycle_from ?start:start_index
                 ~prefer:(fun props -> props = start.props)
-                wanted
+                (with_props wanted)
                 { consume = (fun _ ~start:_ walked -> public_replay walked) }
             with
             | Ok replay ->
@@ -2676,6 +2757,8 @@ let transition_cause ~answer ~url : cause -> Transition.cause = function
       Child { instance }
   | Navigation ->
       Url (Option.value url ~default:"")
+  | Address url ->
+      Url url
 
 let export (type s ev) (Check check as subject : (s, ev) t) ~rule
     (counterexample : ev counterexample) =
@@ -2897,9 +2980,11 @@ let script_action (type n s ev e) (model : (n, s, ev, e) Check_model.model)
             | [ "focus" ] ->
                 Ok (Focus target)
             | [ "blur" ] ->
-                Ok Blur
+                Ok (Blur target)
             | [ "pointer_enter" ] ->
                 Ok (Hover target)
+            | [ "pointer_leave" ] ->
+                Ok (Leave target)
             | [ "key_down"; key ] ->
                 Ok (Key_down (target, key))
             | [ "key_up"; key ] ->
@@ -2989,6 +3074,8 @@ let script_action (type n s ev e) (model : (n, s, ev, e) Check_model.model)
             )
       | Child { machine; _ } ->
           not_replayable index ("comes from the child " ^ machine)
+      | Address url ->
+          Ok (Check_script.Open_url url)
     )
   | _ ->
       not_replayable index "is the start"

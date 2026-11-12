@@ -42,6 +42,13 @@ val view_passes : broken -> _ Silica_memory.t -> unit
 (** A rule of the view: fails while {!Check.view_violations} of the rule finds
     the rule broken on the view of the page. *)
 
+val set_props :
+  ('s, ('p, 'e) Check.input) Check.t -> 'p Silica_memory.t -> int -> unit
+(** [set_props check page index] gives the page the props at [index] in the
+    [props] of [check] ({!Check.nth_props}), and tells {!holds} which props it
+    gave, so the run replays in the check with no props codec. Call it inside
+    the steps of {!holds}. *)
+
 val holds :
   broken ->
   ?cycle_from:int ->

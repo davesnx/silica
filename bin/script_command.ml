@@ -38,12 +38,22 @@ let check =
            $(b,Checks.issue_list) for $(b,issue-list)."
   )
 
-let script id trace_file component check =
+let output =
+  Arg.(
+    value
+    & opt (some string) None
+    & info [ "output"; "o" ] ~docv:"FILE"
+        ~doc:
+          "Write the test to $(docv), only when it is written, and say so. \
+           Without it, the test is printed on standard output."
+  )
+
+let script id trace_file component check output =
   let option name = function Some value -> [ name; value ] | None -> [] in
   Check_executable.run ~command:"script"
     ([ "script"; id; trace_file ]
     @ option "--component" component
-    @ option "--check" check
+    @ option "--check" check @ option "--output" output
     )
 
 let command =
@@ -81,4 +91,4 @@ let command =
          ]
        ~exits:[]
     )
-    Term.(const script $ id $ trace_file $ component $ check)
+    Term.(const script $ id $ trace_file $ component $ check $ output)

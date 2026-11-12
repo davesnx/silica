@@ -13,6 +13,7 @@ type site = {
   docs : string;
   pages : page list;
   local : string list option;
+  api : bool;
 }
 
 let fail file fmt = Printf.ksprintf (fun m -> failwith (file ^ ": " ^ m)) fmt
@@ -275,7 +276,18 @@ let rec inline site (page : page)
         in
         "[" ^ label ^ "](" ^ url ^ ")"
       in
-      if String.starts_with ~prefix:"page-" target then
+      if
+        site.api
+        && (String.starts_with ~prefix:"page-" target
+           || String.starts_with ~prefix:"section-" target
+           )
+      then
+        match content with
+        | [] ->
+            code_span (reference_name target)
+        | content ->
+            inlines site page content
+      else if String.starts_with ~prefix:"page-" target then
         let slug, anchor = split_page_target (after "page-" target) in
         link slug anchor
       else if String.starts_with ~prefix:"section-" target then
@@ -559,7 +571,7 @@ let load ~base ~docs =
     |> List.sort compare
   in
   let pages = List.map (fun file -> parse (Filename.concat docs file)) files in
-  let site = { base; docs; pages; local = None } in
+  let site = { base; docs; pages; local = None; api = false } in
   let index = find_page site "index.mld" "index" in
   let groups = groups site index in
   let listed =
@@ -607,16 +619,165 @@ let llms_txt (site, index, groups, _) =
 let ordered (site, index, _, listed) =
   index :: List.map (fun slug -> find_page site index.file slug) listed
 
-let llms_full ((site, _, _, _) as loaded) =
-  String.concat "\n" (List.map (markdown site) (ordered loaded))
+let api_site = { base = ""; docs = ""; pages = []; local = Some []; api = true }
 
-let ocaml_module ((site, _, _, _) as loaded) =
+let doc_markdown ~file ~line text =
+  let parsed =
+    Odoc_parser.parse_comment
+      ~location:
+        { Lexing.pos_fname = file; pos_lnum = line; pos_bol = 0; pos_cnum = 0 }
+      ~text
+  in
+  let page = { slug = ""; file; title = ""; anchors = []; blocks = [] } in
+  String.concat "\n\n"
+    (List.filter_map
+       (fun (element : Ast.block_element Ast.with_location) ->
+         match element.value with
+         | `Tag _ ->
+             None
+         | `Heading (_, _, content) ->
+             Some ("**" ^ inlines api_site page content ^ "**")
+         | _ ->
+             Some (block api_site page element)
+       )
+       (Odoc_parser.ast parsed)
+    )
+
+let module_name path =
+  String.capitalize_ascii (Filename.chop_suffix (Filename.basename path) ".mli")
+
+let doc_of attributes =
+  List.find_map
+    (fun (attribute : Parsetree.attribute) ->
+      match (attribute.attr_name.txt, attribute.attr_payload) with
+      | ( ("ocaml.doc" | "ocaml.text"),
+          PStr
+            [
+              {
+                pstr_desc =
+                  Pstr_eval
+                    ( {
+                        pexp_desc =
+                          Pexp_constant
+                            { pconst_desc = Pconst_string (text, _, _); _ };
+                        _;
+                      },
+                      _
+                    );
+                _;
+              };
+            ] ) ->
+          Some (text, attribute.attr_loc.loc_start.pos_lnum)
+      | _ ->
+          None
+    )
+    attributes
+
+let item_attributes (item : Parsetree.signature_item) =
+  match item.psig_desc with
+  | Psig_value value ->
+      value.pval_attributes
+  | Psig_type (_, declarations) ->
+      List.concat_map
+        (fun (declaration : Parsetree.type_declaration) ->
+          declaration.ptype_attributes
+        )
+        declarations
+  | Psig_typext extension ->
+      extension.ptyext_attributes
+  | Psig_exception exception_ ->
+      exception_.ptyexn_attributes
+  | Psig_module declaration ->
+      declaration.pmd_attributes
+  | Psig_modtype declaration ->
+      declaration.pmtd_attributes
+  | Psig_class_type _
+  | Psig_class _
+  | Psig_include _
+  | Psig_open _
+  | Psig_recmodule _
+  | Psig_attribute _
+  | Psig_extension _
+  | Psig_modsubst _
+  | Psig_typesubst _
+  | Psig_modtypesubst _ ->
+      []
+
+let api_module ~prefix path =
+  let text = read path in
+  let file = Filename.basename path in
+  let lexbuf = Lexing.from_string text in
+  Location.init lexbuf file;
+  let signature = Parse.interface lexbuf in
+  let slice (location : Location.t) =
+    String.sub text location.loc_start.pos_cnum
+      (location.loc_end.pos_cnum - location.loc_start.pos_cnum)
+  in
+  let parts =
+    List.filter_map
+      (fun (item : Parsetree.signature_item) ->
+        match item.psig_desc with
+        | Psig_attribute attribute -> (
+            match doc_of [ attribute ] with
+            | Some (doc, line) ->
+                Some (doc_markdown ~file ~line doc)
+            | None ->
+                None
+          )
+        | Psig_open _ ->
+            None
+        | _ ->
+            let code = "```ocaml\n" ^ slice item.psig_loc ^ "\n```" in
+            Some
+              ( match doc_of (item_attributes item) with
+              | Some (doc, line) ->
+                  code ^ "\n\n" ^ doc_markdown ~file ~line doc
+              | None ->
+                  code
+              )
+      )
+      signature
+  in
+  let name = module_name path in
+  let note =
+    match name with
+    | "Fingerprint" | "Handoff" ->
+        [
+          "*For development tools only: hot reload under `silica dev` uses it. \
+           App code and tests do not call it.*";
+        ]
+    | "Instance"
+    | "Runtime"
+    | "Platform"
+    | "Renderer"
+    | "Protocol"
+    | "Live_client"
+    | "Backoff" ->
+        [
+          "*For hosts: the browser runtime, `Silica_memory` and the server use \
+           it. App code does not call it.*";
+        ]
+    | _ ->
+        []
+  in
+  String.concat "\n\n" ((("## " ^ prefix ^ name) :: note) @ parts)
+
+let api ~title ~prefix files =
+  String.concat "\n\n" (("# " ^ title) :: List.map (api_module ~prefix) files)
+  ^ "\n"
+
+let llms_full ?(api_files = []) ((site, _, _, _) as loaded) =
+  String.concat "\n"
+    (List.map (markdown site) (ordered loaded) @ List.map read api_files)
+
+let ocaml_module ?api_files ((site, _, _, _) as loaded) =
   Printf.sprintf
     "[@@@ocamlformat \"disable\"]\n\n\
      let index = %S\n\n\
      let full = %S\n\n\
      let pages = [%s]\n"
-    (llms_txt loaded) (llms_full loaded)
+    (llms_txt loaded)
+    (llms_full ?api_files loaded)
     (String.concat "; "
        (List.map
           (fun page -> Printf.sprintf "(%S, %S)" page.slug (markdown site page))
@@ -628,8 +789,19 @@ let main () =
   match Array.to_list Sys.argv with
   | [ _; "index"; base; docs ] ->
       print_string (llms_txt (load ~base ~docs))
-  | [ _; "full"; base; docs ] ->
-      print_string (llms_full (load ~base ~docs))
+  | _ :: "full" :: base :: docs :: api_files ->
+      print_string (llms_full ~api_files (load ~base ~docs))
+  | _ :: "api" :: title :: prefix :: files ->
+      print_string
+        (api ~title
+           ~prefix:
+             ( if prefix = "-" then
+                 ""
+               else
+                 prefix
+             )
+           files
+        )
   | [ _; "page"; base; docs; slug ] ->
       let site, _, _, _ = load ~base ~docs in
       print_string (markdown site (find_page site "page" slug))
@@ -637,8 +809,8 @@ let main () =
       let site, _, _, _ = load ~base:"" ~docs in
       let site = { site with local = Some (String.split_on_char ',' local) } in
       print_string (markdown site (find_page site "reference" slug))
-  | [ _; "ml"; base; docs ] ->
-      print_string (ocaml_module (load ~base ~docs))
+  | _ :: "ml" :: base :: docs :: api_files ->
+      print_string (ocaml_module ~api_files (load ~base ~docs))
   | _ ->
       prerr_endline
         "usage: llms (index|full|ml) BASE_URL DOCS_DIR\n\

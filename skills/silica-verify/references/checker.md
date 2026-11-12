@@ -291,18 +291,10 @@ A child alone cannot show a bug between the parent and the child: props that the
            [
              Check.always ~name:"the guests are the sum of the steppers"
                (Check.holds (fun (Doc_party.Party party) view ->
-                    let text = Silica.View_text.to_string view in
-                    let shows needle =
-                      let length = String.length needle in
-                      let rec scan index =
-                        index + length <= String.length text
-                        && (String.sub text index length = needle
-                           || scan (index + 1))
-                      in
-                      scan 0
-                    in
-                    shows (Printf.sprintf "Adults: %d" party.adults)
-                    && shows (Printf.sprintf "Children: %d" party.children)));
+                    Check.view_shows view
+                      (Printf.sprintf "Adults: %d" party.adults)
+                    && Check.view_shows view
+                         (Printf.sprintf "Children: %d" party.children)));
            ]
          Doc_party.component)
   in
@@ -328,7 +320,7 @@ The properties of the check, `always` and the temporal ones, see the whole page 
 
 ## Routed apps
 
-`Check.app` explores the root of a router app with a simulated history: link presses, back, forward and the navigation actions. `routes` lists route values to check: for a route with a query, give one value with the default and one without. `inputs` gives the URLs that a user can type. `max_history` (default 4) bounds the simulated history; the oldest entries are dropped. `within` and `properties` read a `Check.app_state`: the snapshot of the root machine in `router`, the `history` (oldest first) and the `index` of the current URL. To bound a search that stops at `max_states`, lower `max_history`, bound the pages listed in `pages` with their own `within`, or list fewer pages. Two more rules hold:
+`Check.app` explores the root of a router app with a simulated history: link presses, back, forward and the navigation actions. `routes` lists route values to check: for a route with a query, give one value with the default and one without. `urls` gives the URLs that a user opens, as in the address bar: each is a push, with the cause "the user opens /books/7", and a script opens it with `Silica_memory.open_url`. Keep `inputs` for events that no element and no URL gives. `max_history` (default 4) bounds the simulated history; the oldest entries are dropped. `within` and `properties` read a `Check.app_state`: the snapshot of the root machine in `router`, the `history` (oldest first) and the `index` of the current URL. To bound a search that stops at `max_states`, lower `max_history`, bound the pages listed in `pages` with their own `within`, or list fewer pages. Two more rules hold:
 
 - `route-round-trip`: each route reads back from its own URL.
 - `link-parses`: the `href` of each link in a view prints back to the same URL, and does not go to the not-found route.
@@ -338,10 +330,7 @@ The properties of the check, `always` and the temporal ones, see the whole page 
     let open Doc_books in
     Check.run
       (Check.app
-         ~inputs:(fun _ ->
-           List.map
-             (fun path -> Silica.Router.Url_changed (Silica.Url.of_string path))
-             [ "/"; "/books/7"; "/search?q=ocaml"; "/nowhere" ])
+         ~urls:[ "/"; "/books/7"; "/search?q=ocaml"; "/nowhere" ]
          ~routes:
            [
              Home;
@@ -356,7 +345,7 @@ The properties of the check, `always` and the temporal ones, see the whole page 
          app)
   in
   (Check.passed report, report.states);;
-- : bool * int = (true, 1696)
+- : bool * int = (true, 1249)
 ```
 
 The pages of this example are plain nodes, so they are part of the check. A page that is a component node is listed in `not_explored`: check it alone, as a child, or list it in `pages` (a list of `Check.child`) to run it inside the router check. Links in a page are then followed, and the navigation actions of the page change the history. Check a router with one or a few pages at a time, so that the product of the router and its pages stays small.

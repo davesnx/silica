@@ -210,7 +210,10 @@ let test_limit () =
   let text = print report in
   Alcotest.(check bool)
     "the text gives the state-limit hint" true
-    (contains text "Bound the search with ~within, or raise ~max_states.")
+    (contains text
+       "Bound the search with ~within (a test of the snapshot), or raise \
+        ~max_states."
+    )
 
 type fstate = { f : int -> int; n : int }
 
@@ -422,6 +425,8 @@ let show_app formatter : _ Check.app_event -> unit = function
       show_router_event formatter event
   | Check.Link url ->
       Format.fprintf formatter "link %s" (Url.to_string url)
+  | Check.Open url ->
+      Format.fprintf formatter "open %s" (Url.to_string url)
   | Check.Browser_back ->
       Format.pp_print_string formatter "back"
   | Check.Browser_forward ->
@@ -2210,6 +2215,18 @@ let test_every_rule () =
                [
                  Node.element "h1" [] [ Node.text "Issues" ];
                  Node.element "h3" [] [ Node.text "Open" ];
+               ]
+            )
+      );
+      ( "landmark-main",
+        fun () ->
+          view_breach "landmark-main"
+            (Node.list
+               [
+                 Node.element "main" [] [ Node.text "Issues" ];
+                 Node.element "div"
+                   [ Attr.string "role" "main" ]
+                   [ Node.text "Detail" ];
                ]
             )
       );

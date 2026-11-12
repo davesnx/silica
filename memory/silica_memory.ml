@@ -733,7 +733,25 @@ let reachable action (element : element) =
   | None ->
       ()
 
-let hover e = preload_link e.owner (chain e)
+let hover e =
+  let chain = chain e in
+  preload_link e.owner chain;
+  deliver e.owner "pointerenter"
+    (first chain (function
+      | Node.On_pointer_enter handler ->
+          handler.run Pointer.origin
+      | _ ->
+          None
+      ))
+
+let leave e =
+  deliver e.owner "pointerleave"
+    (first (chain e) (function
+      | Node.On_pointer_leave handler ->
+          handler.run Pointer.origin
+      | _ ->
+          None
+      ))
 
 let press e =
   reachable "a press" e;
@@ -1298,6 +1316,7 @@ let focused handle = focused handle.memory
 let key handle key_value = key handle.memory key_value
 let key_up handle key_value = key_up handle.memory key_value
 let back handle = back handle.memory
+let open_url handle url = navigate handle.memory (Url.of_string url)
 let forward handle = forward handle.memory
 let now handle = now handle.memory
 
@@ -1516,7 +1535,10 @@ let drive handle (record : Transition.t) =
           | "focus", _ ->
               Ok (focus found)
           | "blur", _ ->
+              if not (has_focus handle found) then focus found;
               Ok (blur handle)
+          | "pointer_leave", _ ->
+              Ok (leave found)
           | "pointer_enter", _ ->
               Ok (hover found)
           | "input", Some text ->
@@ -1646,7 +1668,7 @@ let drive handle (record : Transition.t) =
         | link :: _ ->
             Ok (press link)
         | [] ->
-            not_realisable ("no link in the view goes to " ^ url)
+            Ok (open_url handle url)
     )
   | Live { topic; _ } ->
       not_realisable

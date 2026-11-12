@@ -14,7 +14,9 @@
   search
   stepper
   badge
-  rows)
+  rows
+  answer_kinds
+  gestures)
  (libraries silica silica.check silica.jsonkit jsonkit)
  (preprocess
   (pps jsonkit.ppx silica.ppx)))
@@ -155,6 +157,234 @@
   titled_script.ml
   (run ./gen_script.exe titled accessible-name Rows.titled)))
 
+(rule
+ (with-stdout-to
+  answers_ok_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@ok"
+   Answer_kinds.component)))
+
+(rule
+ (with-stdout-to
+  answers_ok_fixed_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@ok"
+   Answer_kinds.fixed
+   Answer_kinds.fixed_check)))
+
+(rule
+ (with-stdout-to
+  answers_rejected_busy_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@rejected_busy"
+   Answer_kinds.component)))
+
+(rule
+ (with-stdout-to
+  answers_rejected_busy_fixed_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@rejected_busy"
+   Answer_kinds.fixed
+   Answer_kinds.fixed_check)))
+
+(rule
+ (with-stdout-to
+  answers_rejected_full_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@rejected_full"
+   Answer_kinds.component)))
+
+(rule
+ (with-stdout-to
+  answers_rejected_full_fixed_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@rejected_full"
+   Answer_kinds.fixed
+   Answer_kinds.fixed_check)))
+
+(rule
+ (with-stdout-to
+  answers_http_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@http"
+   Answer_kinds.component)))
+
+(rule
+ (with-stdout-to
+  answers_http_fixed_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@http"
+   Answer_kinds.fixed
+   Answer_kinds.fixed_check)))
+
+(rule
+ (with-stdout-to
+  answers_network_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@network"
+   Answer_kinds.component)))
+
+(rule
+ (with-stdout-to
+  answers_network_fixed_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@network"
+   Answer_kinds.fixed
+   Answer_kinds.fixed_check)))
+
+(rule
+ (with-stdout-to
+  answers_decode_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@decode"
+   Answer_kinds.component)))
+
+(rule
+ (with-stdout-to
+  answers_decode_fixed_script.ml
+  (run
+   ./gen_script.exe
+   answers
+   "a result offers a retry@decode"
+   Answer_kinds.fixed
+   Answer_kinds.fixed_check)))
+
+(rule
+ (with-stdout-to
+  gestures_double_press_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@double_press")))
+
+(rule
+ (with-stdout-to
+  gestures_double_press_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@double_press"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
+  gestures_focus_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@focus")))
+
+(rule
+ (with-stdout-to
+  gestures_focus_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@focus"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
+  gestures_blur_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@blur")))
+
+(rule
+ (with-stdout-to
+  gestures_blur_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@blur"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
+  gestures_key_up_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@key_up")))
+
+(rule
+ (with-stdout-to
+  gestures_key_up_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@key_up"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
+  gestures_pointer_enter_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@pointer_enter")))
+
+(rule
+ (with-stdout-to
+  gestures_pointer_enter_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@pointer_enter"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
+  gestures_pointer_leave_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@pointer_leave")))
+
+(rule
+ (with-stdout-to
+  gestures_pointer_leave_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@pointer_leave"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
+  pages_forward_script.ml
+  (run ./gen_script.exe pages "forward stays back")))
+
+(rule
+ (with-stdout-to
+  changing_script.ml
+  (run
+   ./gen_script.exe
+   changing
+   "props change at most once"
+   Rows.changing_bug)))
+
+(rule
+ (with-stdout-to
+  changing_fixed_script.ml
+  (run
+   ./gen_script.exe
+   changing
+   "props change at most once"
+   Rows.changing_fixed
+   Rows.changing_fixed_check)))
+
 (executables
  (names
   save_script
@@ -178,7 +408,34 @@
   upload_restyled_script
   upload_fixed_script
   numbered_script
-  titled_script)
+  titled_script
+  answers_ok_script
+  answers_ok_fixed_script
+  answers_rejected_busy_script
+  answers_rejected_busy_fixed_script
+  answers_rejected_full_script
+  answers_rejected_full_fixed_script
+  answers_http_script
+  answers_http_fixed_script
+  answers_network_script
+  answers_network_fixed_script
+  answers_decode_script
+  answers_decode_fixed_script
+  gestures_double_press_script
+  gestures_double_press_fixed_script
+  gestures_focus_script
+  gestures_focus_fixed_script
+  gestures_blur_script
+  gestures_blur_fixed_script
+  gestures_key_up_script
+  gestures_key_up_fixed_script
+  gestures_pointer_enter_script
+  gestures_pointer_enter_fixed_script
+  gestures_pointer_leave_script
+  gestures_pointer_leave_fixed_script
+  pages_forward_script
+  changing_script
+  changing_fixed_script)
  (modules
   save_script
   save_fixed_script
@@ -201,7 +458,34 @@
   upload_restyled_script
   upload_fixed_script
   numbered_script
-  titled_script)
+  titled_script
+  answers_ok_script
+  answers_ok_fixed_script
+  answers_rejected_busy_script
+  answers_rejected_busy_fixed_script
+  answers_rejected_full_script
+  answers_rejected_full_fixed_script
+  answers_http_script
+  answers_http_fixed_script
+  answers_network_script
+  answers_network_fixed_script
+  answers_decode_script
+  answers_decode_fixed_script
+  gestures_double_press_script
+  gestures_double_press_fixed_script
+  gestures_focus_script
+  gestures_focus_fixed_script
+  gestures_blur_script
+  gestures_blur_fixed_script
+  gestures_key_up_script
+  gestures_key_up_fixed_script
+  gestures_pointer_enter_script
+  gestures_pointer_enter_fixed_script
+  gestures_pointer_leave_script
+  gestures_pointer_leave_fixed_script
+  pages_forward_script
+  changing_script
+  changing_fixed_script)
  (libraries replay_fixtures silica silica.check silica.memory))
 
 (cram
@@ -243,4 +527,58 @@
   numbered_script.ml
   numbered_script.exe
   titled_script.ml
-  titled_script.exe))
+  titled_script.exe
+  answers_ok_script.ml
+  answers_ok_script.exe
+  answers_ok_fixed_script.ml
+  answers_ok_fixed_script.exe
+  answers_rejected_busy_script.ml
+  answers_rejected_busy_script.exe
+  answers_rejected_busy_fixed_script.ml
+  answers_rejected_busy_fixed_script.exe
+  answers_rejected_full_script.ml
+  answers_rejected_full_script.exe
+  answers_rejected_full_fixed_script.ml
+  answers_rejected_full_fixed_script.exe
+  answers_http_script.ml
+  answers_http_script.exe
+  answers_http_fixed_script.ml
+  answers_http_fixed_script.exe
+  answers_network_script.ml
+  answers_network_script.exe
+  answers_network_fixed_script.ml
+  answers_network_fixed_script.exe
+  answers_decode_script.ml
+  answers_decode_script.exe
+  answers_decode_fixed_script.ml
+  answers_decode_fixed_script.exe
+  gestures_double_press_script.ml
+  gestures_double_press_script.exe
+  gestures_double_press_fixed_script.ml
+  gestures_double_press_fixed_script.exe
+  gestures_focus_script.ml
+  gestures_focus_script.exe
+  gestures_focus_fixed_script.ml
+  gestures_focus_fixed_script.exe
+  gestures_blur_script.ml
+  gestures_blur_script.exe
+  gestures_blur_fixed_script.ml
+  gestures_blur_fixed_script.exe
+  gestures_key_up_script.ml
+  gestures_key_up_script.exe
+  gestures_key_up_fixed_script.ml
+  gestures_key_up_fixed_script.exe
+  gestures_pointer_enter_script.ml
+  gestures_pointer_enter_script.exe
+  gestures_pointer_enter_fixed_script.ml
+  gestures_pointer_enter_fixed_script.exe
+  gestures_pointer_leave_script.ml
+  gestures_pointer_leave_script.exe
+  gestures_pointer_leave_fixed_script.ml
+  gestures_pointer_leave_fixed_script.exe
+  pages_forward_script.ml
+  pages_forward_script.exe
+  changing_script.ml
+  changing_script.exe
+  changing_fixed_script.ml
+  changing_fixed_script.exe))

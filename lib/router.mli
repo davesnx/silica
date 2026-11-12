@@ -130,7 +130,9 @@ val link :
     [current] is the route now. The link has [aria-current="page"] when its path
     equals the path of [current], and [data-active] when its path is a prefix of
     the path of [current] (by whole segments), as for the link of a parent page.
-    The query is ignored for both. *)
+    A link to the root (the path of the routes, ["/"] with no base) is
+    [data-active] only on the root itself, as every path starts with it. The
+    query is ignored for both. *)
 
 val link_replace :
   ?hash:string ->

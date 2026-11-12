@@ -25,7 +25,7 @@ let new_command =
     )
     Term.(const New_project.run $ directory)
 
-let check json graphs traces =
+let check json graphs traces no_golden =
   match graphs with
   | Some _ ->
       prerr_endline
@@ -58,7 +58,12 @@ let check json graphs traces =
                 else
                   []
               )
-             @ match traces with Some dir -> [ "--traces"; dir ] | None -> []
+             @ (match traces with Some dir -> [ "--traces"; dir ] | None -> [])
+             @
+             if no_golden then
+               []
+             else
+               [ "--golden"; Filename.concat "check" "spec" ]
              )
           )
 
@@ -79,6 +84,15 @@ let check_command =
       & opt (some string) None
       & info [ "graphs" ] ~docv:"DIR"
           ~doc:"Write a graph of each checked machine into $(docv)."
+    )
+  in
+  let no_golden =
+    Arg.(
+      value & flag
+      & info [ "no-golden" ]
+          ~doc:
+            "Do not compare the golden files in $(b,check/spec). By default a \
+             missing or changed golden file is a finding."
     )
   in
   let traces =
@@ -102,19 +116,23 @@ let check_command =
            `S Manpage.s_description;
            `P
              "Builds $(b,check/main.exe) of the app with dune and runs it: the \
-              model checker runs each check that $(b,check/main.ml) lists. \
-              With $(b,--json), the report is JSON (see the section Check a \
-              project of the checker documentation).";
+              model checker runs each check that $(b,check/main.ml) lists, and \
+              compares the golden files in $(b,check/spec) (unless \
+              $(b,--no-golden)): a missing or changed golden file is a \
+              finding, with the command that writes them. With $(b,--json), \
+              the report is JSON (see the section Check a project of the \
+              checker documentation).";
            `S Manpage.s_exit_status;
            `P
              "0: every check passed. 1: a finding (a violation, an unreached \
-              state, a component that no check covers). 2: a check stopped at \
-              its state limit, with no finding. 3: a setup error, bad \
-              arguments, or check/main.exe does not build.";
+              state, a component that no check covers, a missing or changed \
+              golden file). 2: a check stopped at its state limit, with no \
+              finding. 3: a setup error, bad arguments, or check/main.exe does \
+              not build.";
          ]
        ~exits:[]
     )
-    Term.(const check $ json $ graphs $ traces)
+    Term.(const check $ json $ graphs $ traces $ no_golden)
 
 let () =
   exit

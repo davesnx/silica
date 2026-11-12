@@ -12,7 +12,7 @@ view
 
 state /issue/:int
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
 view
   banner
     link "Mini Linear" href="/"
@@ -24,7 +24,7 @@ view
 
 state /*
 path
-  /?new&status&assignee&priority&label&group&order -> /* on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /* on open /nowhere, by the user opens /nowhere
 view
   banner
     link "Mini Linear" href="/"

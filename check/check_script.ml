@@ -5,8 +5,9 @@ type action =
   | Double_press of target
   | Submit of target
   | Focus of target
-  | Blur
+  | Blur of target
   | Hover of target
+  | Leave of target
   | Input of target * string
   | Key_down of target * string
   | Key_up of target * string
@@ -15,6 +16,7 @@ type action =
   | Set_props of int
   | Back
   | Forward
+  | Open_url of string
 
 type mount = Plain | With_props of int | Routed of string
 
@@ -102,7 +104,13 @@ let reply path answer =
             (Silica_json.Json.to_string status)
             call
       | Ok ("Network", [ reason ]) ->
-          Printf.sprintf "Memory.network_error %s %s" call (text reason)
+          Printf.sprintf "Memory.network_error %s %s" call
+            ( match Silica_json.Json.classify reason with
+            | `String reason ->
+                quoted reason
+            | _ ->
+                text reason
+            )
       | _ ->
           Printf.sprintf "Memory.reply %s \"not json\"" call
     )
@@ -118,10 +126,14 @@ let action_lines = function
       [ Printf.sprintf "Memory.submit (%s)" (element target) ]
   | Focus target ->
       [ Printf.sprintf "Memory.focus (%s)" (element target) ]
-  | Blur ->
-      [ "Memory.blur page" ]
+  | Blur target ->
+      [
+        Printf.sprintf "Memory.focus (%s)" (element target); "Memory.blur page";
+      ]
   | Hover target ->
       [ Printf.sprintf "Memory.hover (%s)" (element target) ]
+  | Leave target ->
+      [ Printf.sprintf "Memory.leave (%s)" (element target) ]
   | Input (target, text) ->
       [ Printf.sprintf "Memory.input (%s) %s" (element target) (quoted text) ]
   | Key_down (target, key) ->
@@ -144,18 +156,22 @@ let action_lines = function
       [ "Memory.back page" ]
   | Forward ->
       [ "Memory.forward page" ]
+  | Open_url url ->
+      [ Printf.sprintf "Memory.open_url page %S" url ]
 
 let target_of = function
   | Press target
   | Double_press target
   | Submit target
   | Focus target
+  | Blur target
   | Hover target
+  | Leave target
   | Input (target, _)
   | Key_down (target, _)
   | Key_up (target, _) ->
       Some target
-  | Blur | Advance _ | Reply _ | Set_props _ | Back | Forward ->
+  | Advance _ | Reply _ | Set_props _ | Back | Forward | Open_url _ ->
       None
 
 let input_of = function
@@ -169,6 +185,14 @@ let input_of = function
       Some "Memory.focus"
   | Hover _ ->
       Some "Memory.hover"
+  | Leave _ ->
+      Some "Memory.leave"
+  | Blur _ ->
+      Some
+        "(fun element ->\n\
+        \      Memory.focus element;\n\
+        \      Memory.blur page\n\
+        \    )"
   | Input (_, text) ->
       Some
         (Printf.sprintf "(fun element -> Memory.input element %s)" (quoted text))
@@ -190,7 +214,7 @@ let input_of = function
            \    )"
            key
         )
-  | Blur | Advance _ | Reply _ | Set_props _ | Back | Forward ->
+  | Advance _ | Reply _ | Set_props _ | Back | Forward | Open_url _ ->
       None
 
 let literal text =
@@ -246,7 +270,9 @@ let to_string script =
   let line_of action =
     match action with
     | Set_props index ->
-        [ Printf.sprintf "Memory.set_props page %s" (props_call index) ]
+        [
+          Printf.sprintf "Check_expect.set_props %s page %d" script.check index;
+        ]
     | _ ->
         action_lines action
   in

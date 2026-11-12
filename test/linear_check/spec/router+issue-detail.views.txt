@@ -12,7 +12,7 @@ view
 
 state /issue/:int
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
 view
   banner
     link "Mini Linear" href="/"
@@ -25,7 +25,7 @@ view
 
 state /issue/:int, view 2
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
 view
   banner
@@ -55,7 +55,7 @@ view
 
 state /issue/:int, view 3
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
 view
   banner
@@ -71,7 +71,7 @@ view
 
 state /issue/:int, view 4
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> failed on loaded error, by the answer of the call issue-detail/loading//api/issues null to /api/issues
 view
   banner
@@ -87,7 +87,7 @@ view
 
 state /issue/:int, view 5
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/9, by the user opens /issue/9
   loading -> not_found on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
 view
   banner
@@ -101,7 +101,7 @@ view
 
 state /issue/:int, view 6
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
   ready -> ready on edit, by the view offers press on button "Edit title" at div > main > section > article > div[1] > button
 view
@@ -133,7 +133,7 @@ view
 
 state /issue/:int, view 7
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
   ready -> ready on edit, by the view offers press on button "Edit description" at div > main > section > article > div[2] > button
 view
@@ -165,7 +165,7 @@ view
 
 state /issue/:int, view 8
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
   ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
   ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
@@ -199,7 +199,7 @@ view
 
 state /issue/:int, view 9
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
   ready -> ready on edit, by the view offers press on button "Edit title" at div > main > section > article > div[1] > button
   ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues
@@ -235,7 +235,7 @@ view
 
 state /issue/:int, view 10
 path
-  /?new&status&assignee&priority&label&group&order -> /issue/:int on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /issue/:int on open /issue/1, by the user opens /issue/1
   loading -> ready on loaded ok, by the answer of the call issue-detail/loading//api/issues null to /api/issues
   ready -> ready on edit, by the view offers press on button "Edit description" at div > main > section > article > div[2] > button
   ready -> ready on updated, by an update of the subscription issue-detail/ready/live:issues all to issues

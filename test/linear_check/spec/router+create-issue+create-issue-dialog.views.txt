@@ -12,7 +12,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 2
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
 view
   banner
     link "Mini Linear" current=page href="/"
@@ -43,7 +43,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 3
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
 view
   banner
@@ -77,7 +77,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 4
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
 view
   banner
@@ -109,7 +109,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 5
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
 view
   banner
@@ -141,7 +141,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 6
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
 view
@@ -174,7 +174,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 7
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
 view
@@ -207,7 +207,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 8
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
 view
@@ -242,7 +242,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 9
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
   submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
@@ -278,7 +278,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 10
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
   submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
@@ -314,7 +314,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 11
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
   submitting -> failed on created error, by the answer of the call create-issue/submitting//api/issues/create {"title":"x","description":"","status":["Backlog"],"priority":["No_priority"]} to /api/issues/create
@@ -350,7 +350,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 12
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
@@ -384,7 +384,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 13
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
@@ -421,7 +421,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 14
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
   open -> open on submit, by the view offers submit on form at portal > div[2] > form
@@ -458,7 +458,7 @@ view
 
 state /?new&status&assignee&priority&label&group&order, view 15
 path
-  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on url changed, by an input
+  /?new&status&assignee&priority&label&group&order -> /?new&status&assignee&priority&label&group&order on open /?new=true, by the user opens /?new=true
   open -> open on title, by the view offers input "x" on textbox "Title" at portal > div[2] > form > input
   open -> open on description, by the view offers input "x" on textbox "Description" at portal > div[2] > form > textarea
   open -> open on submit, by the view offers submit on form at portal > div[2] > form

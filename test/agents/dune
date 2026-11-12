@@ -107,3 +107,76 @@
    (diff
     %{project_root}/skills/silica-verify/references/attributes.md
     attributes.md))))
+
+(rule
+ (target silica.md)
+ (deps
+  (glob_files %{project_root}/lib/*.mli))
+ (action
+  (with-stdout-to
+   %{target}
+   (run
+    %{exe:../../site/gen/llms.exe}
+    api
+    "API: the library silica"
+    Silica.
+    %{deps}))))
+
+(rule
+ (target check.md)
+ (deps
+  %{project_root}/check/check.mli
+  %{project_root}/check/check_suite.mli
+  %{project_root}/check/check_expect.mli)
+ (action
+  (with-stdout-to
+   %{target}
+   (run
+    %{exe:../../site/gen/llms.exe}
+    api
+    "API: the library silica.check"
+    -
+    %{deps}))))
+
+(rule
+ (target memory.md)
+ (deps %{project_root}/memory/silica_memory.mli)
+ (action
+  (with-stdout-to
+   %{target}
+   (run
+    %{exe:../../site/gen/llms.exe}
+    api
+    "API: the library silica.memory"
+    -
+    %{deps}))))
+
+(rule
+ (target server.md)
+ (deps %{project_root}/server/silica_server.mli)
+ (action
+  (with-stdout-to
+   %{target}
+   (run
+    %{exe:../../site/gen/llms.exe}
+    api
+    "API: the library silica.server"
+    -
+    %{deps}))))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (diff
+    %{project_root}/skills/silica-verify/references/api/silica.md
+    silica.md)
+   (diff
+    %{project_root}/skills/silica-verify/references/api/check.md
+    check.md)
+   (diff
+    %{project_root}/skills/silica-verify/references/api/memory.md
+    memory.md)
+   (diff
+    %{project_root}/skills/silica-verify/references/api/server.md
+    server.md))))
