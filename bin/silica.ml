@@ -146,6 +146,7 @@ let () =
             Script_command.command;
             Conform_command.command;
             Silica_dev.Dev_command.command;
+            Silica_dev.Inspect_command.command;
           ]
        )
     )

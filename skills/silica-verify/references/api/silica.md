@@ -1083,6 +1083,203 @@ The `Instance.resume` of the handoff, and what it did so far. An instance whose 
 
 When a snapshot can not be given because the machine has no fingerprint, or its fingerprint gives a reason, the instance starts from its initial snapshot (with `Machine.start` on its props, as for a new instance); when that snapshot is structurally equal to the old one, the instance counts as kept and resumes there, with no entry. The old value is only compared, never used: a router, whose state comes from the URL, keeps its route.
 
+## Silica.Inspect
+
+The inspector protocol: what a running app tells a tool about its machines.
+
+Under `silica dev`, each page of the app (a browser target) and the server (a server target, for its Live islands) send the messages of their instance trees to the hub of `silica dev`. Clients, such as `silica inspect` or a panel, ask the hub for the targets, the instance trees and the traces, and subscribe to the messages of the targets, with filters.
+
+Each message is one JSON object with a field `"t"`. The transports carry one message per WebSocket text frame (path `/_silica/inspect` of the page) or one message per line (the Unix socket `_build/silica-dev/inspect.sock`). The hub answers a request of a client with messages that carry the `"id"` of the request.
+
+```
+{"t":"hello","role":"target","version":1,"target":"tab-3f2a","kind":"browser","url":"/"}
+{"t":"step","target":"tab-3f2a","seq":2,"instance":"counter","machine":"counter",...,"owns":[]}
+```
+
+A `step` holds a `Transition.t` as `Transition.codec` writes it, with the fields `"t"`, `"target"` and `"owns"` added.
+
+```ocaml
+val version : int
+```
+
+The version of the protocol: `1`. A `hello` with another version gets an `error` and the connection is closed.
+
+**Messages**
+
+```ocaml
+type kind = Browser | Server
+```
+
+```ocaml
+type resource = {
+  resource : Machine.resource;
+  since : float option;
+      (** The clock of the target, in milliseconds, when the resource started.
+      *)
+}
+```
+
+A timer or source that an instance owns (see `Machine.active`).
+
+```ocaml
+type instance = {
+  path : string;  (** The instance path, as in {!Transition.t.instance}. *)
+  machine : string;
+  state : string;
+  data : Silica_json.Json.t option;
+      (** The snapshot, by the state codec of the machine (see
+          {!Machine.register_codecs}). *)
+  props : Silica_json.Json.t option;  (** By the props codec of the machine. *)
+  owns : resource list;
+}
+```
+
+A running instance.
+
+```ocaml
+type restarted = { path : string; machine : string; reason : string }
+```
+
+An instance that a hot reload started again, and why.
+
+```ocaml
+type direction = In | Out
+```
+
+```ocaml
+type event =
+  | Tree of instance list
+      (** Every running instance, parents before children. *)
+  | Mount of instance  (** An instance started. *)
+  | Unmount of string  (** The instance at this path ended. *)
+  | Step of { transition : Transition.t; owns : resource list option }
+      (** One record of the transition log, with what the instance owns after
+          it. [owns] is [None] for an [unhandled] step, or when the target does
+          not know it. *)
+  | Live of { direction : direction; channel : string; message : string }
+      (** A message of a Live socket. *)
+  | Resumed of { kept : string list; restarted : restarted list }
+      (** A hot reload ran: the instance paths that kept their state and the
+          ones that started again. *)
+  | Paused of int
+```
+
+What a target says, and what the hub forwards to clients.
+
+```ocaml
+type filter = {
+  machines : string list;  (** Machine ids; [[]] is every machine. *)
+  path : string option;
+      (** An instance path: the instance and the instances under it. *)
+  events : string list;  (** Event names; [[]] is every event. *)
+  changes : Transition.change list;  (** [[]] is every change. *)
+}
+```
+
+```ocaml
+val every : filter
+```
+
+Lets every message pass.
+
+```ocaml
+type target = { target : string; kind : kind; url : string option }
+```
+
+```ocaml
+type request =
+  | Targets  (** The targets that are connected. *)
+  | Get_tree of string option
+      (** The tree of the target, or of each target with [None]. *)
+  | Export of string option
+      (** The trace of the steps that the hub kept for the target. [None] works
+          when only one target is connected. *)
+  | Travel of { target : string; seq : int }
+      (** Pause the target at a step (not implemented yet). *)
+  | Return_live of string
+```
+
+```ocaml
+type message =
+  | Hello_target of target
+      (** The first message of a target; the hub forwards it to the clients when
+          the target connects. *)
+  | Hello_client of string  (** The first message of a client, with its name. *)
+  | Event of { id : int option; target : string; event : event }
+      (** A message of a target. [id] is the one of the request that a [Tree]
+          answers. *)
+  | Subscribe of { id : int option; target : string option; filter : filter }
+      (** Forward the messages of the target (of every target with [None]) that
+          pass the filter, from now on. *)
+  | Request of { id : int option; request : request }
+  | Subscribed of { id : int option }  (** The answer to [Subscribe]. *)
+  | Target_list of { id : int option; targets : target list }
+      (** The answer to [Targets], and the first message to a client. *)
+  | Trace_file of { id : int option; target : string; trace : string }
+      (** The answer to [Export]: a trace file (see {!Trace.to_jsonl}). *)
+  | Gone of string  (** The target disconnected. *)
+  | Failure of { id : int option; message : string }
+```
+
+```ocaml
+val encode : message -> Silica_json.Json.t
+```
+
+```ocaml
+val decode : Silica_json.Json.t -> (message, string) result
+```
+
+```ocaml
+val to_string : message -> string
+```
+
+One line of JSON.
+
+```ocaml
+val of_string : string -> (message, string) result
+```
+
+```ocaml
+val passes : filter -> event -> bool
+```
+
+A step passes when its machine, its instance path, its event and its change pass; a mount or unmount when its machine and path pass (for an unmount, the path only); the other events always pass.
+
+```ocaml
+val to_text : message -> string option
+```
+
+One line for a person or an agent to read, for the messages that a `tail` shows: `[tab-3f2a] 12 +840ms counter idle -> idle (kept) on increment <- press button "+"` (see `Trace.line`); `None` for the others.
+
+**Targets**
+
+```ocaml
+module Target : sig
+  type t
+
+  val create :
+    target:string -> clock:(unit -> float) -> send:(event -> unit) -> unit -> t
+  (** [send] gets [Mount], then [Step] for a start; [Step] for a step; [Step],
+      then [Unmount] for an end. *)
+
+  val observer : ?path:(string -> string) -> t -> Instance.observer
+  (** The observer of one tree or one Live island. [path] changes the instance
+      paths of its records, such as to tell two islands of one machine apart. *)
+
+  val combine :
+    Instance.observer -> Instance.observer option -> Instance.observer
+  (** [combine inspector app] gives each observed step to [app], then to
+      [inspector]; the handlers are the ones of [app] when it is given. *)
+
+  val tree : t -> instance list
+  (** The running instances, in the order they started. *)
+
+  val name : t -> string
+end
+```
+
+The target side: an `Instance.observer` that keeps a table of the running instances and turns each start, step and end into messages.
+
 ## Silica.Instance
 
 *For hosts: the browser runtime, `Silica_memory` and the server use it. App code does not call it.*
@@ -1175,7 +1372,9 @@ type observed =
       * cause
       -> observed
       (** A start ({!Start}), step, props change or end ({!End}) in a tree, with
-          the snapshot before. Read it with {!inspect} while the observer runs:
+          the snapshot before. The [how] of a start is [Machine.Entered] when
+          the instance resumed a snapshot (see {!type-resume}), which {!inspect}
+          gives as [Resumed]. Read it with {!inspect} while the observer runs:
           the tree changes after. *)
   | Detached : {
       instance : string;
@@ -3766,6 +3965,12 @@ val to_text : t -> string
 One line for the header, then one line for each transition, for a person or an agent to read: `12 +840ms issue-list loading -> ready (entered) on loaded <- answer /api/issues`. Unhandled steps are marked `(unhandled)`; actions follow on the same line after `=>`.
 
 ```ocaml
+val line : ?start:float -> Transition.t -> string
+```
+
+The line of one transition in `to_text`, without the newline. `start` is the time that `+840ms` counts from; with no `start` the line has no time.
+
+```ocaml
 val names_only : t -> t
 ```
 
@@ -3836,6 +4041,18 @@ type change = Instance.change =
   | Entered  (** The step entered a state, with the same name or another. *)
   | Ended
 ```
+
+```ocaml
+val change_to_string : change -> string
+```
+
+`"started"`, `"resumed"`, `"unhandled"`, `"kept"`, `"entered"` or `"ended"`, as `codec` writes it.
+
+```ocaml
+val change_of_string : string -> (change, string) result
+```
+
+Reads `change_to_string`.
 
 ```ocaml
 type cause =

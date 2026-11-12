@@ -13,7 +13,8 @@
   test_accessibility
   test_codecs
   test_handoff
-  test_live_client)
+  test_live_client
+  test_inspect)
  (libraries silica silica_test_support alcotest)
  (preprocess
   (pps silica.ppx)))

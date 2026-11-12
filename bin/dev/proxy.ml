@@ -2,6 +2,7 @@ type t = { listener : Unix.file_descr; port : int; closed : bool Atomic.t }
 
 let socket_path = "/_silica/dev"
 let client_path = socket_path ^ "/client.js"
+let inspect_path = "/_silica/inspect"
 let app_wait = 10.
 
 let waiting_page =
@@ -64,7 +65,7 @@ let serve ~app_port ~on_dev_socket ~client_script client =
         ~content_type:"text/plain" "bad request"
   | Head (head, raw, rest) -> (
       match Http_head.path head with
-      | path when path = socket_path ->
+      | path when path = socket_path || path = inspect_path ->
           on_dev_socket client head
       | path when path = client_path ->
           Http_head.respond client ~status:"200 OK"

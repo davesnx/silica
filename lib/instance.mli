@@ -101,7 +101,9 @@ type observed =
       * cause
       -> observed
       (** A start ({!Start}), step, props change or end ({!End}) in a tree, with
-          the snapshot before. Read it with {!inspect} while the observer runs:
+          the snapshot before. The [how] of a start is [Machine.Entered] when
+          the instance resumed a snapshot (see {!type-resume}), which {!inspect}
+          gives as [Resumed]. Read it with {!inspect} while the observer runs:
           the tree changes after. *)
   | Detached : {
       instance : string;

@@ -8,3 +8,18 @@
  (modules test_dev)
  (deps fake_app.exe)
  (libraries silica_dev silica.server-kit alcotest unix threads.posix))
+
+(test
+ (name test_inspector)
+ (modules test_inspector)
+ (deps %{project_root}/bin/silica.exe)
+ (libraries
+  silica
+  silica_dev
+  silica.memory
+  silica.server-kit
+  alcotest
+  unix
+  threads.posix)
+ (preprocess
+  (pps silica.ppx)))

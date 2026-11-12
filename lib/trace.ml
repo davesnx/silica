@@ -235,6 +235,36 @@ let origin_text = function
   | Runtime { platform } ->
       platform
 
+let line ?start (record : Transition.t) =
+  let time =
+    match (start, record.time_ms) with
+    | Some start, Some time ->
+        " +" ^ string_of_int (int_of_float (time -. start)) ^ "ms"
+    | _ ->
+        ""
+  in
+  let states =
+    match record.change with
+    | Started | Resumed ->
+        record.target
+    | Unhandled | Kept | Entered | Ended ->
+        record.from ^ " -> " ^ record.target
+  in
+  string_of_int record.seq ^ time ^ " " ^ record.instance ^ " " ^ states ^ " ("
+  ^ change_text record.change ^ ")"
+  ^ ( if record.event = "" then
+        ""
+      else
+        " on " ^ record.event
+    )
+  ^ " <- " ^ cause_text record.cause
+  ^
+  match record.actions with
+  | [] ->
+      ""
+  | actions ->
+      " => " ^ String.concat "; " actions
+
 let to_text trace =
   let header = trace.header in
   let start =
@@ -244,36 +274,7 @@ let to_text trace =
     | _ ->
         None
   in
-  let line (record : Transition.t) =
-    let time =
-      match (start, record.time_ms) with
-      | Some start, Some time ->
-          " +" ^ string_of_int (int_of_float (time -. start)) ^ "ms"
-      | _ ->
-          ""
-    in
-    let states =
-      match record.change with
-      | Started | Resumed ->
-          record.target
-      | Unhandled | Kept | Entered | Ended ->
-          record.from ^ " -> " ^ record.target
-    in
-    string_of_int record.seq ^ time ^ " " ^ record.instance ^ " " ^ states
-    ^ " (" ^ change_text record.change ^ ")"
-    ^ ( if record.event = "" then
-          ""
-        else
-          " on " ^ record.event
-      )
-    ^ " <- " ^ cause_text record.cause
-    ^
-    match record.actions with
-    | [] ->
-        ""
-    | actions ->
-        " => " ^ String.concat "; " actions
-  in
+  let line = line ?start in
   String.concat ""
     (List.map
        (fun text -> text ^ "\n")

@@ -44,6 +44,14 @@ let socket_url : unit -> string =
   [%mel.raw
     {|function () { return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/_silica/dev" }|}]
 
+let announce_inspector : unit -> unit =
+  [%mel.raw
+    {|function () {
+  globalThis.__silica_inspect_ready = true;
+  if (typeof globalThis.dispatchEvent === "function" && typeof CustomEvent === "function")
+    globalThis.dispatchEvent(new CustomEvent("silica-inspect"));
+}|}]
+
 let reload_page : unit -> unit =
   [%mel.raw {|function () { location.reload() }|}]
 
@@ -463,6 +471,7 @@ let () =
       socket = None;
     }
   in
+  announce_inspector ();
   on_close_press (Lazy.force content) (fun () ->
       state.restarted <- [];
       paint state

@@ -79,6 +79,20 @@ Run every command from this directory.
   After an edit, wait for `build` `ok` and `server` `restarted` (and
   `hot-reload` when a page is open), or for `failed`, and fix each error.
   Stop it with SIGINT or SIGTERM.
+- Read the machines while `silica dev` runs, from another shell, with no
+  browser: `silica inspect tail --json` prints one JSON line for each step of
+  each machine of the open pages and of the Live islands of the server, with
+  `target`, `machine`, `instance`, `from`, `to`, `change`, `event`, `cause`,
+  `actions`, `owns` (timers and sources after the step), and `data` and
+  `snapshot` when the machine registered its codecs. `--machine ID`,
+  `--path PATH`, `--event NAME` and `--change kept` keep the output small;
+  `--count N` stops after N lines. `silica inspect tree --json` gives each
+  running instance with its state, data and resources.
+  `silica inspect export -o run.jsonl` writes the steps of a page as a trace
+  file for `silica inspect replay`, `silica replay` and `silica conform`.
+  `silica inspect graph ID --specs check/spec` prints the spec of a machine
+  with its current state, the edges the app took, and `drift` lines for the
+  edges the spec does not have.
 
 ## The loop for each change
 

@@ -5,7 +5,8 @@
   test_adapter
   test_adapter_stop
   test_settle
-  test_restart)
+  test_restart
+  test_inspect_server)
  (libraries
   silica
   silica_test_support

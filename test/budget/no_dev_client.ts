@@ -17,12 +17,16 @@ const kinds: Record<string, { markers: string[]; what: string }> = {
     ],
     what: "hot reload code (suspend, dispose, resume and Handoff), which only a development build injects",
   },
+  inspector: {
+    markers: ["/_silica/inspect", "__silica_inspect_tab"],
+    what: "the inspector target, which only a development build injects",
+  },
 };
 
 const [kind, ...apps] = process.argv.slice(2);
 const chosen = kind === undefined ? undefined : kinds[kind];
 if (!chosen || apps.length === 0 || apps.length % 2 !== 0)
-  throw new Error("usage: no_dev_client.ts (client|handoff) (name dist)...");
+  throw new Error("usage: no_dev_client.ts (client|handoff|inspector) (name dist)...");
 
 const found: string[] = [];
 for (let i = 0; i < apps.length; i += 2) {

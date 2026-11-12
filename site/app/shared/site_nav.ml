@@ -17,7 +17,9 @@ let sections =
       ]
     );
     ("Components", [ "ui"; "theming"; "stories" ]);
-    ("Guides", [ "testing"; "recipes"; "deploy"; "performance"; "linear" ]);
+    ( "Guides",
+      [ "testing"; "devtools"; "recipes"; "deploy"; "performance"; "linear" ]
+    );
     ("Reference", [ "glossary" ]);
   ]
 

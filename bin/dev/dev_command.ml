@@ -1,6 +1,7 @@
 open Cmdliner
 
 let state_directory = Filename.concat "_build" "silica-dev"
+let inspect_socket = Filename.concat state_directory "inspect.sock"
 
 let rec make_directory path =
   if not (Sys.file_exists path) then (
@@ -57,6 +58,7 @@ let app_environment ~static ~metafile ~secret ~proxy_port ~port =
       ("SILICA_STATIC", static);
       ("SILICA_METAFILE", metafile);
       ("SILICA_DEV_STATE", Filename.concat state_directory "state.json");
+      ("SILICA_INSPECT", inspect_socket);
     ]
   in
   let inherited =
@@ -134,88 +136,102 @@ let run ~server ~client ~port ~json =
                   None
             in
             match
-              Proxy.start ~port ~app_port ~on_dev_socket:(Hub.attach hub)
-                ~client_script:Dev_client_script.source
+              Inspector_hub.listen (Hub.inspector hub) ~path:inspect_socket
             with
             | Error message ->
-                fail
-                  (Printf.sprintf
-                     "cannot listen on port %d: %s. Choose another with --port."
-                     port message
-                  )
-            | Ok proxy -> (
-                let proxy_port = Proxy.port proxy in
-                let supervisor =
-                  Supervisor.create ~server:server_path ~metafile
-                    ~environment:
-                      (app_environment ~static ~metafile ~secret ~proxy_port)
-                    ~emit ~echo:(fun line ->
-                      Mutex.protect print_lock (fun () -> prerr_endline line)
-                  )
-                in
-                supervisor_cell := Some supervisor;
-                List.iter
-                  (fun signal -> Sys.set_signal signal on_signal)
-                  [ Sys.sigint; Sys.sigterm; Sys.sighup ];
-                emit
-                  (Dev_event.Listening
-                     { url = Printf.sprintf "http://127.0.0.1:%d" proxy_port }
-                  );
-                let phase = ref `Idle and errors = ref [] in
-                let on_progress = function
-                  | Build_watch.Running { complete; remaining } ->
-                      if !phase <> `Building then (
-                        phase := `Building;
-                        emit Dev_event.Build_started
-                      );
-                      Hub.publish hub
-                        (Dev_event.Build_progress { complete; remaining })
-                  | Failed ->
-                      phase := `Failed;
-                      emit (Dev_event.Build_failed !errors)
-                  | Success ->
-                      phase := `Ok;
-                      emit Dev_event.Build_ok;
-                      Supervisor.build_succeeded supervisor
-                  | Waiting | Interrupted ->
-                      ()
-                in
-                let on_errors latest =
-                  let changed = latest <> !errors in
-                  errors := latest;
-                  if changed && !phase = `Failed then
-                    emit (Dev_event.Build_failed latest)
-                in
-                let watch =
-                  Build_watch.start ~root
-                    ~targets:[ server; Filename.concat client "meta.json" ]
-                    ~log:(Filename.concat state_directory "dune.log")
-                    ~on_progress ~on_errors
-                    ~on_end:(fun () -> Atomic.set ended true)
-                in
-                let finish () =
-                  Supervisor.stop supervisor;
-                  Proxy.stop proxy
-                in
-                match watch with
+                fail ("cannot listen for the inspector: " ^ message)
+            | Ok inspect_listener -> (
+                match
+                  Proxy.start ~port ~app_port ~on_dev_socket:(Hub.attach hub)
+                    ~client_script:Dev_client_script.source
+                with
                 | Error message ->
-                    finish ();
-                    fail message
-                | Ok watch ->
-                    while not (Atomic.get stop_requested || Atomic.get ended) do
-                      Thread.delay 0.05
-                    done;
-                    let lost = not (Atomic.get stop_requested) in
-                    Build_watch.stop watch;
-                    finish ();
-                    if lost then
-                      fail
-                        ("dune stopped:\n"
-                        ^ Build_watch.log_tail
-                            (Filename.concat state_directory "dune.log")
-                        )
-                    else
-                      0
+                    Inspector_hub.stop inspect_listener;
+                    fail
+                      (Printf.sprintf
+                         "cannot listen on port %d: %s. Choose another with \
+                          --port."
+                         port message
+                      )
+                | Ok proxy -> (
+                    let proxy_port = Proxy.port proxy in
+                    let supervisor =
+                      Supervisor.create ~server:server_path ~metafile
+                        ~environment:
+                          (app_environment ~static ~metafile ~secret ~proxy_port)
+                        ~emit ~echo:(fun line ->
+                          Mutex.protect print_lock (fun () -> prerr_endline line)
+                      )
+                    in
+                    supervisor_cell := Some supervisor;
+                    List.iter
+                      (fun signal -> Sys.set_signal signal on_signal)
+                      [ Sys.sigint; Sys.sigterm; Sys.sighup ];
+                    emit
+                      (Dev_event.Listening
+                         {
+                           url = Printf.sprintf "http://127.0.0.1:%d" proxy_port;
+                         }
+                      );
+                    let phase = ref `Idle and errors = ref [] in
+                    let on_progress = function
+                      | Build_watch.Running { complete; remaining } ->
+                          if !phase <> `Building then (
+                            phase := `Building;
+                            emit Dev_event.Build_started
+                          );
+                          Hub.publish hub
+                            (Dev_event.Build_progress { complete; remaining })
+                      | Failed ->
+                          phase := `Failed;
+                          emit (Dev_event.Build_failed !errors)
+                      | Success ->
+                          phase := `Ok;
+                          emit Dev_event.Build_ok;
+                          Supervisor.build_succeeded supervisor
+                      | Waiting | Interrupted ->
+                          ()
+                    in
+                    let on_errors latest =
+                      let changed = latest <> !errors in
+                      errors := latest;
+                      if changed && !phase = `Failed then
+                        emit (Dev_event.Build_failed latest)
+                    in
+                    let watch =
+                      Build_watch.start ~root
+                        ~targets:[ server; Filename.concat client "meta.json" ]
+                        ~log:(Filename.concat state_directory "dune.log")
+                        ~on_progress ~on_errors
+                        ~on_end:(fun () -> Atomic.set ended true)
+                    in
+                    let finish () =
+                      Supervisor.stop supervisor;
+                      Proxy.stop proxy;
+                      Inspector_hub.stop inspect_listener
+                    in
+                    match watch with
+                    | Error message ->
+                        finish ();
+                        fail message
+                    | Ok watch ->
+                        while
+                          not (Atomic.get stop_requested || Atomic.get ended)
+                        do
+                          Thread.delay 0.05
+                        done;
+                        let lost = not (Atomic.get stop_requested) in
+                        Build_watch.stop watch;
+                        finish ();
+                        if lost then
+                          fail
+                            ("dune stopped:\n"
+                            ^ Build_watch.log_tail
+                                (Filename.concat state_directory "dune.log")
+                            )
+                        else
+                          0
+                  )
               )
           )
       )

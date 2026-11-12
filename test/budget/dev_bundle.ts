@@ -11,6 +11,7 @@ const text = readdirSync(dist)
 const missing = [
   ...codecMarkers.filter((marker) => !text.includes(marker)).map((marker) => `the recorder codec marker ${marker}`),
   ...["__silica_handoff", "silica-resumed"].filter((marker) => !text.includes(marker)).map((marker) => `the hot reload marker ${marker}`),
+  ...["/_silica/inspect", "__silica_inspect_tab"].filter((marker) => !text.includes(marker)).map((marker) => `the inspector marker ${marker}`),
 ];
 if (missing.length > 0) {
   console.error(`dev_bundle: the ${name} development bundle (${dist}) misses:\n  ` + missing.join("\n  "));

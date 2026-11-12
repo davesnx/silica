@@ -1,6 +1,6 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import {
   copyFileSync,
@@ -260,7 +260,7 @@ const countLeaks = () => {
   window.WebSocket = class extends Socket {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
-      if (!String(url).includes("/_silica/dev")) sockets.push(this);
+      if (!/\/_silica\/(dev|inspect)/.test(String(url))) sockets.push(this);
     }
   };
   (window as unknown as { leaks: () => Counts }).leaks = () => ({
@@ -535,6 +535,58 @@ describe("silica dev", () => {
     await dev.waitFor((event) => event.t === "server" && event.status === "restarted", from);
     const page = await open("/about");
     await page.close();
+  });
+
+  test("silica inspect shows a press in the page and a step of a Live island in one stream", async () => {
+    type Line = { t: string; target?: string; [field: string]: unknown };
+    const tail = spawn(silica, ["inspect", "tail", "--json"], { cwd: project, env: environment() });
+    const lines: Line[] = [];
+    let pending = "";
+    tail.stdout.on("data", (data: Buffer) => {
+      pending += data.toString();
+      const parts = pending.split("\n");
+      pending = parts.pop() ?? "";
+      for (const part of parts) if (part.trim() !== "") lines.push(JSON.parse(part) as Line);
+    });
+    const waitLine = async (predicate: (line: Line) => boolean): Promise<Line> => {
+      const deadline = Date.now() + 30000;
+      for (;;) {
+        const found = lines.find(predicate);
+        if (found) return found;
+        if (Date.now() > deadline) throw new Error(`no matching line in ${JSON.stringify(lines)}`);
+        await new Promise((ok) => setTimeout(ok, 50));
+      }
+    };
+    try {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      const page = await open("/");
+      const hello = await waitLine((line) => line.t === "hello" && line["kind"] === "browser");
+      const tab = String(hello.target);
+      await page.locator("#vote").click();
+      const press = await waitLine((line) => line.t === "step" && line["machine"] === "vote" && line["event"] === "load");
+      assert.equal(press.target, tab);
+      assert.equal(press["change"], "entered");
+      assert.deepEqual(press["cause"], { type: "element", handler: "press", role: "button", name: "Vote", element: "div > div > button" });
+      assert.match(String((press["actions"] as string[])[0]), /^start call .*\/api\/vote$/);
+      assert.equal((press["owns"] as { kind: string }[])[0]?.kind, "call");
+      await page.getByRole("button", { name: "Increment" }).click();
+      const island = await waitLine((line) => line.t === "step" && line["machine"] === "counter" && line["event"] === "incr");
+      assert.equal(island.target, "server");
+      assert.match(String(island["instance"]), /^counter#[0-9a-f]+$/);
+      assert.deepEqual(island["data"], ["Incr"], "the server registered the codecs");
+      const trees = execFileSync(silica, ["inspect", "tree", "--json"], { cwd: project, env: environment() })
+        .toString()
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { target: string; instances: { machine: string; state: string }[] });
+      assert.equal(trees.find((tree) => tree.target === tab)?.instances.find((instance) => instance.machine === "vote")?.state, "ready");
+      assert.equal(trees.find((tree) => tree.target === "server")?.instances.find((instance) => instance.machine === "counter")?.state, "counter");
+      const trace = execFileSync(silica, ["inspect", "export", "--target", tab], { cwd: project, env: environment() }).toString();
+      assert.equal((JSON.parse(trace.split("\n")[0] ?? "{}") as { root: string }).root, "router");
+      await page.close();
+    } finally {
+      tail.kill("SIGTERM");
+    }
   });
 
   test("a second silica dev in the same project stops with a clear error", async () => {

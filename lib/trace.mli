@@ -69,6 +69,10 @@ val to_text : t -> string
      /api/issues]. Unhandled steps are marked [(unhandled)]; actions follow on
     the same line after [=>]. *)
 
+val line : ?start:float -> Transition.t -> string
+(** The line of one transition in {!to_text}, without the newline. [start] is
+    the time that [+840ms] counts from; with no [start] the line has no time. *)
+
 val names_only : t -> t
 (** The trace with names only: {!Transition.names_only} of its transitions, and
     the URL of the header without query and fragment. A recorder without [data]

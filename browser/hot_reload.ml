@@ -293,6 +293,7 @@ let wrap platform create =
   let platform, halt = guarded platform in
   let tree = ref None in
   publish (fun () ->
+      Inspect_target.stop ();
       halt ();
       run_cleanups ();
       remove_portals ();
@@ -309,7 +310,11 @@ let wrap platform create =
   );
   Option.iter
     (fun (_, outcome) ->
-      after_mount (fun () -> report (outcome_json (outcome ())))
+      after_mount (fun () ->
+          let outcome = outcome () in
+          report (outcome_json outcome);
+          Inspect_target.resumed outcome
+      )
     )
     resumed;
   ( platform,
@@ -321,4 +326,4 @@ let wrap platform create =
 
 let () =
   Dom_renderer.cleanups := Some (fun cleanup -> cleanups := cleanup :: !cleanups);
-  Hot_hook.current := Some { wrap }
+  Hot_hook.current := Some { wrap; observe = Inspect_target.observe }

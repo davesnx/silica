@@ -39,7 +39,10 @@ let make ~dev ~traces =
         config with
         dev =
           Some
-            { state_file = Filename.concat (scratch "state") "never-written" };
+            {
+              state_file = Filename.concat (scratch "state") "never-written";
+              inspect = None;
+            };
       }
     else
       config

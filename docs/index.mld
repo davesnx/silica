@@ -73,6 +73,8 @@ Guides:
 
 - {!page-testing}: machines, the checker, the memory platform, the server and
   the browser.
+- {!page-devtools}: read the machines of an app that [silica dev] runs, with
+  [silica inspect] and the inspector protocol.
 - {!page-recipes}: Tailwind, SVG, JSON with two stanzas, and hosting.
 - {!page-deploy}: Docker, Fly.io, a static export for Cloudflare Pages and
   Vercel, the session secret, and one instance.

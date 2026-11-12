@@ -94,6 +94,12 @@ type dev = {
   state_file : string;
       (** Where {!Make.shutdown} saves the sessions, the Live islands and the
           kept values, and where {!Make.create} reads them. *)
+  inspect : string option;
+      (** The Unix socket of the inspector of [silica dev]. With [Some], the
+          server is an inspector target named ["server"]: it sends each start,
+          step and end of its Live islands there (see {!Silica.Inspect}). The
+          instance path of an island is its machine id, ["#"] and the instance
+          id of the island in the page. *)
 }
 ```
 
@@ -142,7 +148,7 @@ val default_config : origins:origins -> secret:string -> config
 val dev_of_env : unit -> dev option
 ```
 
-`Some` with the file named by the environment variable `SILICA_DEV_STATE` when it is set and not empty, else `None`. `silica dev` sets it.
+`Some` with the file named by the environment variable `SILICA_DEV_STATE` when it is set and not empty, else `None`; `inspect` is the environment variable `SILICA_INSPECT` when it is set and not empty. `silica dev` sets both.
 
 ```ocaml
 val secret_of_env : origins:origins -> dev:dev option -> (string, string) result

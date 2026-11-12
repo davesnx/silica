@@ -10,6 +10,7 @@
   csexp
   ordering
   pp
+  silica
   silica.json
   silica.server-kit))
 

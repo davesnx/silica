@@ -27,6 +27,13 @@ type change = Instance.change =
   | Entered  (** The step entered a state, with the same name or another. *)
   | Ended  (** The instance ended: [target] is the state it ended in. *)
 
+val change_to_string : change -> string
+(** ["started"], ["resumed"], ["unhandled"], ["kept"], ["entered"] or ["ended"],
+    as {!codec} writes it. *)
+
+val change_of_string : string -> (change, string) result
+(** Reads {!change_to_string}. *)
+
 type cause =
   | Start  (** The start of an instance. *)
   | Element of {

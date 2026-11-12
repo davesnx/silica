@@ -156,8 +156,8 @@ let mount ?live_config ?on_session_gone ?dev ?on_error ?hydrate ?(lives = [])
     ?observe ~root (component : (_, _, _) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error ->
-      Instance.mount ~dev ?on_error ?observe ?resume:(Hot_hook.take ())
-        component
+      Instance.mount ~dev ?on_error ?observe:(Hot_hook.observe observe)
+        ?resume:(Hot_hook.take ()) component
     )
     ~on_route:None ()
 
@@ -166,7 +166,8 @@ let mount_app ?live_config ?on_session_gone ?dev ?on_error ?hydrate
     (app : Url.t -> (_, _, Router.event) Component.t) =
   run ?live_config ?on_session_gone ?dev ?on_error ?hydrate ~lives ~root
     ~create:(fun ~dev ~on_error ->
-      Instance.mount ~dev ?on_error ?observe ?resume:(Hot_hook.take ())
+      Instance.mount ~dev ?on_error ?observe:(Hot_hook.observe observe)
+        ?resume:(Hot_hook.take ())
         (app (Dom_renderer.current_url ()))
     )
     ~on_route:(Some Fun.id) ()

@@ -1,0 +1,190 @@
+{0 Inspector}
+
+Under [silica dev], a program can read what the machines of the app do while
+it runs: the instance tree, the state and data of each machine, each step as
+it happens, and the timers and sources that run. Each open page of the app is
+one target, and the server is one more target for its Live islands. The
+messages of all targets come in one stream, and each message names its
+target.
+
+The inspector exists only under [silica dev]. It uses what [silica dev]
+already serves: the Unix socket [_build/silica-dev/inspect.sock] (mode 600,
+for this user only) and a WebSocket at [/_silica/inspect] on the dev port of
+[127.0.0.1], which refuses another [Origin]. A server with no [dev] config
+does not connect to it, and a release bundle holds no inspector code; tests
+check both.
+
+{1:command silica inspect}
+
+Run these from the root of the app while [silica dev] runs. Text is the
+default; [--json] prints the protocol messages, one per line.
+
+- [silica inspect targets]: the pages and the server.
+- [silica inspect tree [--target T] [--machine ID] [--path PATH]]: each
+  running instance with its machine, state, the timers and sources it owns,
+  and its snapshot when the machine registered its codecs (see
+  {!Silica.Machine.register_codecs}).
+- [silica inspect tail [--target T] [--machine ID]... [--path PATH]
+  [--event NAME]... [--change CHANGE]... [--count N]]: each step from now on.
+  [--path] keeps the instance and the instances under it.
+- [silica inspect export [--target T] [-o FILE]]: the last 5000 steps of a
+  page as a trace file (see {!Silica.Trace}), for [silica inspect replay],
+  [silica replay] and [silica conform]. With no [--target], the one page.
+- [silica inspect replay FILE [--machine ID]]: runs [silica replay] on the
+  root machine of the trace, or on [ID].
+- [silica inspect graph ID [--specs DIR]]: the text form of the spec of the
+  machine (from [DIR/ID.spec.json] or [DIR/ID.spec.txt]), then a [current]
+  line for each running instance, a [seen] line for each edge of the spec
+  that the app took, and a [drift] line for each edge the app took that the
+  spec does not have. With no spec, the graph that the app took, under the
+  line [not checked].
+
+Exit code 0: done; 1: the hub answered with an error; 3: no [silica dev] runs
+here, or bad arguments.
+
+A press on the button "Vote" of the example, then on "Increment" of its Live
+counter, as [silica inspect tail] prints them:
+
+{v
+[tab-002d] 8 router/:home/4:vote idle -> loading (entered) on load <- press button "Vote" (div > div > button) => start call 5.1/vote/loading//api/vote null /api/vote
+[tab-002d] 10 router/:home/4:vote loading -> ready (entered) on settled ok <- answer /api/vote ["Ok",1] => stop 5.1/vote/loading//api/vote null
+[server] 2 counter#ef03bf4a1a927e8c counter -> counter (kept) on incr <- message
+v}
+
+The instance path of a Live island is its machine id, [#], and the instance
+id of the island in the page.
+
+{1:protocol The protocol}
+
+Each message is one JSON object with a field ["t"]. On the Unix socket each
+message is one line; on the WebSocket, one text frame. The first message of a
+connection is a [hello] with ["version":1] and a role: [target] or [client].
+A [hello] with another version gets an [error] and the connection closes. A
+client request can carry an ["id"]; the answers carry it. The OCaml types and
+codecs are in {!Silica.Inspect}.
+
+The examples below are real lines of the example app under [silica dev].
+
+{2:targets What a target sends}
+
+A target sends these, and the hub forwards them to the clients that
+subscribed. The hub keeps the tree of each target and its last 5000 steps.
+
+[hello] starts a target. The hub forwards it to the clients when the target
+connects:
+
+{v
+{"t":"hello","role":"target","version":1,"target":"tab-002d","kind":"browser","url":"/"}
+{"t":"hello","role":"target","version":1,"target":"server","kind":"server"}
+v}
+
+[tree] gives every running instance, parents first. A target sends it when it
+connects again; the hub answers a [tree] request with it:
+
+{v
+{"t":"tree","id":3,"target":"server","instances":[{"path":"counter#ef03bf4a1a927e8c","machine":"counter","state":"counter","data":1,"owns":[]}]}
+v}
+
+[mount] is an instance that started, with its state, data, props and
+[owns], the timers, calls, subscriptions and held sources it owns, with the
+time each started:
+
+{v
+{"t":"mount","target":"tab-002d","path":"router/:home/3:votes","machine":"votes","state":"watching","owns":[{"kind":"subscription","id":"4.0/votes/watching/live:votes main","topic":"votes","since":1794454000361.0}]}
+v}
+
+[step] is one record of the transition log as {!Silica.Transition.codec}
+writes it, with [target] and [owns] (what the instance owns after the step;
+left out for an [unhandled] step). [data] and [snapshot] are there when the
+machine registered its codecs:
+
+{v
+{"t":"step","target":"tab-002d","seq":8,"time_ms":1794454000940.0,"instance":"router/:home/4:vote","number":5,"entry":1,"machine":"vote","from":"idle","to":"loading","change":"entered","event":"load","actions":["start call 5.1/vote/loading//api/vote null /api/vote"],"cause":{"type":"element","handler":"press","role":"button","name":"Vote","element":"div > div > button"},"owns":[{"kind":"call","id":"5.1/vote/loading//api/vote null","path":"/api/vote","since":1794454000940.0}]}
+{"t":"step","target":"server","seq":2,"time_ms":1794454001454.202,"instance":"counter#ef03bf4a1a927e8c","number":1,"entry":0,"machine":"counter","from":"counter","to":"counter","change":"kept","event":"incr","data":["Incr"],"snapshot":1,"cause":{"type":"message"},"owns":[]}
+v}
+
+[unmount] is an instance that ended, after its [ended] step:
+
+{v
+{"t":"unmount","target":"tab-002d","path":"router/:home/3:votes"}
+v}
+
+[resumed] is a hot reload: the instances that kept their state, and the ones
+that started again with the reason:
+
+{v
+{"t":"resumed","target":"tab-002d","kept":["router","router/:about"],"restarted":[]}
+v}
+
+Two messages have their format now and are not sent yet. [live] will carry
+the messages of a Live socket, and [paused] will say that a target is paused
+at a step (time travel):
+
+{v
+{"t":"live","target":"server","dir":"in","channel":"counter","message":"{\"t\":\"event\",\"event\":[\"Increment\"]}"}
+{"t":"paused","target":"tab-3f2a","at":42}
+v}
+
+{2:clients What a client sends}
+
+[hello] starts a client. The hub answers with [targets]:
+
+{v
+{"t":"hello","role":"client","version":1,"name":"silica-inspect"}
+{"t":"targets","targets":[{"target":"server","kind":"server"}]}
+v}
+
+[subscribe] forwards the messages of one [target], or of every target, from
+now on. The [filter] keeps the steps of the listed machines ([machine]), of an
+instance and the instances under it ([path]), of the listed events ([event])
+and changes ([change]); mounts and unmounts pass by machine and path. The hub
+answers [subscribed]:
+
+{v
+{"t":"subscribe","id":1,"filter":{}}
+{"t":"subscribed","id":1}
+v}
+
+A filter with each field, as [silica inspect tail --target tab-002d --machine
+vote --path router --event load --change entered] sends it:
+
+{v
+{"t":"subscribe","id":1,"target":"tab-002d","filter":{"machine":["vote"],"path":"router","event":["load"],"change":["entered"]}}
+v}
+
+[targets] lists the targets:
+
+{v
+{"t":"targets","id":2}
+{"t":"targets","id":2,"targets":[{"target":"server","kind":"server"},{"target":"tab-002d","kind":"browser","url":"/"}]}
+v}
+
+[tree] with no [instances] asks for the tree of one target, or of each target
+with no [target]: one [tree] answer for each.
+
+{v
+{"t":"tree","id":3}
+v}
+
+[export] asks for the steps that the hub kept for a target, as a trace file in
+the field [trace] of the answer:
+
+{v
+{"t":"export","id":5,"target":"server"}
+{"t":"trace","id":5,"target":"server","trace":"{\"root\":\"counter\",\"build\":\"dev\",\"origin\":{\"type\":\"runtime\",\"platform\":\"server\"},\"dropped\":0}\n{\"seq\":1,\"time_ms\":1794453604567.145,\"instance\":\"counter#dbe0cc4ee340b863\",\"number\":1,\"entry\":0,\"machine\":\"counter\",\"from\":\"\",\"to\":\"counter\",\"change\":\"started\",\"event\":\"\",\"snapshot\":0,\"cause\":{\"type\":\"start\"}}\n{\"seq\":2,\"time_ms\":1794453605969.875,\"instance\":\"counter#dbe0cc4ee340b863\",\"number\":1,\"entry\":0,\"machine\":\"counter\",\"from\":\"counter\",\"to\":\"counter\",\"change\":\"kept\",\"event\":\"incr\",\"data\":[\"Incr\"],\"snapshot\":1,\"cause\":{\"type\":\"message\"}}\n"}
+v}
+
+[travel] and [live] with no [dir] will pause a target at a step and leave
+time travel. They get an [error] now:
+
+{v
+{"t":"travel","id":4,"target":"server","seq":1}
+{"t":"error","id":4,"message":"time travel is not available yet"}
+v}
+
+[gone] says that a target disconnected, such as a page that closed or a
+server that restarts:
+
+{v
+{"t":"gone","target":"server"}
+v}

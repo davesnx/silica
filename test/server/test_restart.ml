@@ -147,7 +147,7 @@ let make ?(dev = true) ?keep state_file =
       with
       dev =
         ( if dev then
-            Some { Silica_server.state_file }
+            Some { Silica_server.state_file; inspect = None }
           else
             None
         );
@@ -767,7 +767,9 @@ let environment_tests =
     test_case "the secret comes from the environment" `Quick (fun () ->
         let localhost = Silica_server.Localhost
         and public = Silica_server.Origins [ origin ]
-        and dev = Some { Silica_server.state_file = "state.json" } in
+        and dev =
+          Some { Silica_server.state_file = "state.json"; inspect = None }
+        in
         if Sys.getenv_opt "SILICA_SECRET" = None then (
           check bool "public origins need it" true
             (Result.is_error
@@ -815,7 +817,7 @@ let html_server ~dev =
       with
       dev =
         ( if dev then
-            Some { Silica_server.state_file = directory () }
+            Some { Silica_server.state_file = directory (); inspect = None }
           else
             None
         );

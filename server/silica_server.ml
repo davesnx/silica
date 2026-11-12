@@ -50,7 +50,7 @@ let stderr_observer =
     on_socket = ignore;
   }
 
-type dev = { state_file : string }
+type dev = { state_file : string; inspect : string option }
 
 type config = {
   dev : dev option;
@@ -88,7 +88,17 @@ let default_config ~origins ~secret =
 let dev_of_env () =
   match Sys.getenv_opt "SILICA_DEV_STATE" with
   | Some state_file when state_file <> "" ->
-      Some { state_file }
+      Some
+        {
+          state_file;
+          inspect =
+            ( match Sys.getenv_opt "SILICA_INSPECT" with
+            | Some "" | None ->
+                None
+            | Some path ->
+                Some path
+            );
+        }
   | Some _ | None ->
       None
 
@@ -1011,6 +1021,7 @@ module Make (Io : IO) = struct
     topics : topic_def list;
     page : page -> response Io.t;
     observe_live : (context -> channel:string -> Instance.observer) option;
+    inspector : Inspect_target.t option;
     lock : Mutex.t;
     mutable next_connection : int;
     open_sockets : (int, open_socket) Hashtbl.t;
@@ -1035,6 +1046,10 @@ module Make (Io : IO) = struct
       topics;
       page;
       observe_live;
+      inspector =
+        Option.bind config.dev (fun dev ->
+            Option.map (fun path -> Inspect_target.start ~path) dev.inspect
+        );
       lock = Mutex.create ();
       next_connection = 0;
       open_sockets = Hashtbl.create 16;
@@ -1870,6 +1885,14 @@ module Make (Io : IO) = struct
                             Option.map
                               (fun observe -> observe context ~channel)
                               t.observe_live
+                          in
+                          let observe =
+                            match t.inspector with
+                            | Some inspector ->
+                                Inspect_target.island inspector
+                                  ~instance:instance_id observe
+                            | None ->
+                                observe
                           in
                           let send = warning_send t socket.send in
                           let* runner =

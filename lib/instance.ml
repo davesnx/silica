@@ -452,7 +452,9 @@ let create : type p s e.
   in
   let before = context.actions in
   emit cell actions;
-  observe cell Machine.Kept snapshot None before Start;
+  observe cell
+    (match taken with Some _ -> Machine.Entered | None -> Machine.Kept)
+    snapshot None before Start;
   cell
 
 let rec unmount_cell : type p s e. (p, s, e) cell -> unit =
@@ -898,7 +900,13 @@ let inspect = function
   | Observed (cell, how, from, event, before, cause) -> (
       match[@warning "-4"] cause with
       | Start ->
-          inspect_cell cell Started None event before cause
+          inspect_cell cell
+            ( if how = Machine.Entered then
+                Resumed
+              else
+                Started
+            )
+            None event before cause
       | End ->
           inspect_cell cell Ended (Some from) event before cause
       | _ ->
