@@ -34,7 +34,7 @@ and does not compare views:
   
   let () =
     let page = Memory.mount_app ~url:"/" Linear_app.app in
-    Check_expect.holds broken Checks.router_create_issue_create_issue_dialog page (fun () ->
+    Check_expect.holds broken Checks.router page (fun () ->
         Memory.press (Memory.by_role page Accessibility.Link ~name:"New issue");
         Memory.submit (Memory.by_role page Accessibility.Form)
     )

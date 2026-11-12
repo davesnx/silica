@@ -15,7 +15,8 @@ Docs for agents, as Markdown, in the Silica repository
   attribute value in mlx that is not a string, such as ``type_=`number``.
 - `skills/silica-verify/references/api/`: every public signature with its
   documentation, one file for each library (`silica.md`, `check.md`,
-  `memory.md`, `server.md`). Look a name up there instead of guessing it.
+  `memory.md`, `server.md`, and `json.md` for `Silica_json.Json.t`, the JSON
+  of a codec). Look a name up there instead of guessing it.
 - `docs/*.mld`: every page. In a checkout,
   `dune build site/server/llms-full.txt` writes them all as one Markdown
   file, `_build/default/site/server/llms-full.txt`, with an index in
@@ -130,7 +131,10 @@ Run every command from this directory.
    `trace_file` such as `traces/counter_ignored_event_saving.jsonl` and a
    `test_file` such as `test/counter_ignored_event_saving_replay.ml`; run
    `silica script ID TRACE_FILE --output TEST_FILE` (it writes the file only
-   when the test can be written, and says which file it wrote) and add its
+   when the test can be written, and says which file it wrote; the test
+   names the check `Checks.<root>`, after the id of the root machine, also
+   for a joint check such as `wizard+step`; give `--check Checks.NAME` when
+   `check/checks.ml` names it otherwise) and add its
    name, such as `counter_ignored_event_saving_replay`, to the names in
    `test/dune` (then `dune fmt`, which wraps the long line). The test is already formatted when `ocamlformat`
    is installed; do not edit its last line, the assertion. Run `dune test`

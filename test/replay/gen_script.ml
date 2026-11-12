@@ -13,6 +13,7 @@ let checks =
     ("pages", Check (Pages.check, "Pages.check"));
     ("search", Check (Search.check, "Search.check"));
     ("typing", Check (Stepper.typing, "Stepper.typing"));
+    ("secret", Check (Stepper.secret_typing, "Stepper.secret_typing"));
     ("badge", Check (Badge.check, "Badge.check"));
     ("answers", Check (Answer_kinds.check, "Answer_kinds.check"));
     ("gestures", Check (Gestures.check, "Gestures.check"));

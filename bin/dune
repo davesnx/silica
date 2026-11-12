@@ -12,7 +12,7 @@
   replay_command
   script_command
   conform_command)
- (libraries cmdliner unix silica_dev silica_graphs))
+ (libraries cmdliner unix silica.json silica_dev silica_graphs))
 
 (rule
  (target template_files.ml)

@@ -753,12 +753,52 @@ let leave e =
           None
       ))
 
+let submits (control : found) =
+  match
+    ( control.tag,
+      Option.map String.lowercase_ascii (attr_value control.attrs "type")
+    )
+  with
+  | "button", (None | Some "submit") | "input", Some ("submit" | "image") ->
+      true
+  | _ ->
+      false
+
+let rec from_form = function
+  | [] ->
+      []
+  | (found : found) :: rest ->
+      if found.tag = "form" then
+        found :: rest
+      else
+        from_form rest
+
 let press e =
   reachable "a press" e;
   let t = e.owner in
   let chain = chain e in
   pointer_down t chain;
-  click t chain
+  click t chain;
+  match chain_opt e with
+  | None ->
+      ()
+  | Some chain -> (
+      match
+        List.find_opt
+          (fun (found : found) -> found.tag = "button" || found.tag = "input")
+          chain
+      with
+      | Some control when submits control ->
+          deliver t "submit"
+            (first (from_form chain) (function
+              | Node.On_submit e ->
+                  Some e
+              | _ ->
+                  None
+              ))
+      | _ ->
+          ()
+    )
 
 let double_press e =
   reachable "a double press" e;
@@ -1238,6 +1278,59 @@ let all_by_role ?within ?name memory role =
     )
     (in_role ?within memory role)
 
+let all_by_name ?within memory name =
+  ignore (Option.map chain within);
+  List.filter_map
+    (fun ((found : found), element) ->
+      if
+        (match within with Some outer -> below outer found.el | None -> true)
+        && (not (Accessibility.hidden element))
+        && Accessibility.role element = None
+        && Accessibility.name element = name
+      then
+        Some found.el
+      else
+        None
+    )
+    (accessible memory)
+
+let by_name ?within memory name =
+  match all_by_name ?within memory name with
+  | [ element ] ->
+      element
+  | [] ->
+      let with_role =
+        List.filter_map
+          (fun (_, element) ->
+            match Accessibility.role element with
+            | Some role
+              when (not (Accessibility.hidden element))
+                   && Accessibility.name element = name ->
+                Some (Accessibility.role_to_string role)
+            | _ ->
+                None
+          )
+          (accessible memory)
+      in
+      failwith
+        ( match with_role with
+        | [] ->
+            Printf.sprintf
+              "Silica_memory: no element with no role has the name %S." name
+        | role :: _ ->
+            Printf.sprintf
+              "Silica_memory: no element with no role has the name %S; a %s \
+               has it: use by_role."
+              name role
+        )
+  | several ->
+      failwith
+        (Printf.sprintf
+           "Silica_memory: %d elements with no role have the name %S; use \
+            all_by_name and pick one."
+           (List.length several) name
+        )
+
 let view_text memory = View_text.to_string memory.view
 
 type 'p t = {
@@ -1310,6 +1403,8 @@ let by_role ?within ?name ?level ?checked ?selected ?expanded handle role =
 let all_by_role ?within ?name handle role =
   all_by_role ?within ?name handle.memory role
 
+let by_name ?within handle name = by_name ?within handle.memory name
+let all_by_name ?within handle name = all_by_name ?within handle.memory name
 let view_text handle = view_text handle.memory
 let blur handle = blur handle.memory
 let focused handle = focused handle.memory

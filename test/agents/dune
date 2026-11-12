@@ -152,6 +152,19 @@
     %{deps}))))
 
 (rule
+ (target json.md)
+ (deps %{project_root}/lib/json/json.mli)
+ (action
+  (with-stdout-to
+   %{target}
+   (run
+    %{exe:../../site/gen/llms.exe}
+    api
+    "API: the library silica.json"
+    Silica_json.
+    %{deps}))))
+
+(rule
  (target server.md)
  (deps %{project_root}/server/silica_server.mli)
  (action
@@ -179,4 +192,5 @@
     memory.md)
    (diff
     %{project_root}/skills/silica-verify/references/api/server.md
-    server.md))))
+    server.md)
+   (diff %{project_root}/skills/silica-verify/references/api/json.md json.md))))

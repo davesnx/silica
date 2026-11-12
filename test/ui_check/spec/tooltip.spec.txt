@@ -3,6 +3,7 @@ initial closed
 state closed
 state closing
   after 300ms
+  after 0ms
   hold dismiss
   hold anchor
 state open
@@ -10,6 +11,7 @@ state open
   hold anchor
 state opening
   after 600ms
+  after 0ms
 edge closed -> open on focus hover
 edge closed -> opening on hover
 edge closing -> closed on "close escape-key" "close trigger-focus" "close trigger-press" "elapsed 0" "elapsed 300"

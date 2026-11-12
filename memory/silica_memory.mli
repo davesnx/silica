@@ -175,6 +175,16 @@ val all_by_role :
 (** Every element of the role, with the name when it is given, in document
     order. *)
 
+val by_name : ?within:element -> _ t -> string -> element
+(** The one element with no role that has the accessible name, such as
+    [<input type_=`password>] in a [<label>], which has no role. Raises
+    [Failure] when none or several match; when an element with a role has the
+    name, the message names its role, for {!by_role}. *)
+
+val all_by_name : ?within:element -> _ t -> string -> element list
+(** Every element with no role that has the accessible name, in document order.
+*)
+
 val role : element -> Accessibility.role option
 (** The role of the element. *)
 
@@ -233,7 +243,10 @@ exception Not_reachable of { reason : unreachable; message : string }
 
 val press : element -> unit
 (** A press: the outside-press sources and dismiss layers see the press start,
-    then a link is followed or the nearest press handler runs. *)
+    then a link is followed or the nearest press handler runs. Then, as in a
+    browser, a press on a submit button (a [button] with no [type] or
+    [type="submit"], or an [input] of type [submit] or [image]) that is still in
+    the view submits its form: the nearest submit handler from the form runs. *)
 
 val double_press : element -> unit
 (** A double press reaches the nearest double press handler. *)

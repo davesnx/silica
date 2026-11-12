@@ -21,6 +21,12 @@ step is a press inside the view of a row, a child of the board:
         Memory.press (Memory.by_role page Accessibility.Button ~name:"bump 1")
     )
 
+With no check expression, the test names the check after the root machine,
+as the value of the parent in check/checks.ml, not after the joint id:
+
+  $ ./gen_script.exe default | grep -o 'holds broken [A-Za-z_.]*'
+  holds broken Checks.board
+
 The script fails while the bug is there:
 
   $ ./bumped_script.exe

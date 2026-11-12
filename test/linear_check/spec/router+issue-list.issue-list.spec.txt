@@ -4,6 +4,7 @@ state loading
   invoke /api/issues
 state failed
 state ready
+  after 0ms
   invoke live:issues
   hold keys
 edge failed -> loading on retry

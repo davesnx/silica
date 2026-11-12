@@ -288,6 +288,17 @@ types it into the field by role and name.
   It still fails in state counting: The property "the step is positive" does not hold in state counting.
   [1]
 
+A password field has no role. The script finds it by its accessible name,
+the text of its label:
+
+  $ grep Memory.input secret_typing_script.ml
+        Memory.input (Memory.by_name page "Step size") "0"
+  $ ./secret_typing_script.exe
+  the step is positive: The property "the step is positive" does not hold in state counting.
+  hint: Change the update or the view so that "the step is positive" holds in state counting, or correct the property.
+  It still fails in state counting: The property "the step is positive" does not hold in state counting.
+  [1]
+
 The last line evaluates the property itself, in the check, along the run of
 the page. A fix that only changes the view does not pass it:
 

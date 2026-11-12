@@ -5,7 +5,7 @@ rankdir=LR;
 "issue-detail.loading" [label="loading\ninvoke /api/issues" shape=box];
 "issue-detail.failed" [label="failed" shape=box];
 "issue-detail.not_found" [label="not_found" shape=box];
-"issue-detail.ready" [label="ready\ninvoke live:issues\nhold keys" shape=box];
+"issue-detail.ready" [label="ready\nafter 0ms\ninvoke live:issues\ninvoke /api/issues/update\nhold keys" shape=box];
 "issue-detail.failed" -> "issue-detail.loading" [label="props, retry"];
 "issue-detail.loading" -> "issue-detail.failed" [label="loaded error"];
 "issue-detail.loading" -> "issue-detail.loading" [label="props"];

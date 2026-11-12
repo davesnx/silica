@@ -101,6 +101,13 @@ let step check index (step : _ Check.step) =
       ("data", option Fun.id (Check.input_json check step.input));
       ("cause", cause step.cause);
       ("target", string step.target);
+      ( "root_moved",
+        option
+          (fun (from, target) ->
+            record [ ("from", string from); ("target", string target) ]
+          )
+          step.root_moved
+      );
     ]
 
 let steps check ~first items =

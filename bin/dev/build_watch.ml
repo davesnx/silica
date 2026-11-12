@@ -199,13 +199,17 @@ let subscribe ~root ~on_progress ~on_errors client =
 let socket_path = Filename.concat "_build" (Filename.concat ".rpc" "dune")
 
 let connect () =
-  let socket = Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_STREAM 0 in
-  match Unix.connect socket (Unix.ADDR_UNIX socket_path) with
-  | () ->
-      Some socket
+  match Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_STREAM 0 with
   | exception Unix.Unix_error _ ->
-      Unix.close socket;
       None
+  | socket -> (
+      match Unix.connect socket (Unix.ADDR_UNIX socket_path) with
+      | () ->
+          Some socket
+      | exception Unix.Unix_error _ ->
+          Unix.close socket;
+          None
+    )
 
 let session ~root ~on_progress ~on_errors socket =
   let bridge =

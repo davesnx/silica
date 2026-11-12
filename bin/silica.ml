@@ -25,43 +25,77 @@ let new_command =
     )
     Term.(const New_project.run $ directory)
 
-let check json graphs traces no_golden =
-  if not (Sys.file_exists (Filename.concat "check" "main.ml")) then (
-    prerr_endline
-      "silica check: no check/main.ml here. Run the command from the root of \
-       the app, which lists its checks in check/main.ml.";
-    3
-  ) else if
-      Sys.command
-        (Filename.quote_command "dune"
-           [ "build"; "--root"; "."; "./check/main.exe" ]
-        )
-      <> 0
-    then (
-    prerr_endline "silica check: check/main.exe does not build.";
-    3
-  ) else
-    Silica_graphs.finish graphs
-      (Sys.command
-         (Filename.quote_command
-            (Filename.concat "_build"
-               (Filename.concat "default" (Filename.concat "check" "main.exe"))
-            )
-            (( if json then
-                 [ "--json" ]
-               else
-                 []
+let setup_error_json message =
+  let open Silica_json.Json in
+  let string text = declassify (`String text) in
+  let empty = declassify (`List []) in
+  declassify
+    (`Assoc
+       [
+         ("format", string "silica-check");
+         ("version", declassify (`Int 1));
+         ("command", string "check");
+         ("exit_code", declassify (`Int 3));
+         ("outcome", string "setup error");
+         ("passed", declassify (`Bool false));
+         ("entries", empty);
+         ("unchecked", empty);
+         ("elsewhere", empty);
+         ("golden", declassify `Null);
+         ( "errors",
+           declassify
+             (`List
+                [
+                  declassify
+                    (`Assoc
+                       [ ("id", declassify `Null); ("message", string message) ]
+                    );
+                ]
              )
-            @ (match traces with Some dir -> [ "--traces"; dir ] | None -> [])
-            @ ( if no_golden then
-                  []
-                else
-                  [ "--golden"; Filename.concat "check" "spec" ]
+         );
+       ]
+    )
+
+let check json graphs traces no_golden =
+  match Check_executable.build ~command:"check" with
+  | Error (message, details) ->
+      prerr_endline message;
+      if json then
+        print_endline
+          (Silica_json.Json.to_string
+             (setup_error_json
+                ( if String.trim details = "" then
+                    message
+                  else
+                    message ^ "\n" ^ String.trim details
+                )
+             )
+          );
+      3
+  | Ok () ->
+      Silica_graphs.finish graphs
+        (Sys.command
+           (Filename.quote_command Check_executable.path
+              (( if json then
+                   [ "--json" ]
+                 else
+                   []
+               )
+              @ ( match traces with
+                | Some dir ->
+                    [ "--traces"; dir ]
+                | None ->
+                    []
+                )
+              @ ( if no_golden then
+                    []
+                  else
+                    [ "--golden"; Filename.concat "check" "spec" ]
+                )
+              @ Silica_graphs.arguments graphs
               )
-            @ Silica_graphs.arguments graphs
-            )
-         )
-      )
+           )
+        )
 
 let check_command =
   let json =

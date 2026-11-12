@@ -291,6 +291,10 @@ let joint (type n s ev e)
             Some (Action.Run Action.Forward)
         | Action.Run Action.Reload ->
             Some (Action.Run Action.Reload)
+        | Action.Run (Action.Resume navigation) ->
+            Some (Action.Run (Action.Resume navigation))
+        | Action.Run Action.Revert_navigation ->
+            Some (Action.Run Action.Revert_navigation)
         | _ ->
             None
         )
@@ -690,6 +694,29 @@ let joint (type n s ev e)
         emit_root effects actions;
         { node with root }
   in
+  let child_block (node : n joint) bindings =
+    List.fold_left
+      (fun found (entry : running) ->
+        match List.assoc_opt entry.instance bindings with
+        | Some (Binding { runtime; _ }) -> (
+            let world = world_of runtime entry in
+            match
+              Check_model.newest_block
+                (Machine.held runtime.machine world.props world.s)
+            with
+            | Some on_attempt ->
+                Some
+                  (fun navigation ->
+                    lift_child runtime entry.instance (on_attempt navigation)
+                  )
+            | None ->
+                found
+          )
+        | None ->
+            found
+      )
+      None node.running
+  in
   let settle effects (node : n joint) bindings =
     let rec round count node bindings =
       let rec drain node =
@@ -718,9 +745,23 @@ let joint (type n s ev e)
       | navigation ->
           if count > 50 then failwith "navigation loop: actions keep navigating";
           effects.navigation <- [];
-          let root, actions =
-            model.tree.navigate node.root (List.rev navigation)
+          let passed =
+            match child_block node resolution.bindings with
+            | None ->
+                List.rev navigation
+            | Some attempt ->
+                List.filter
+                  (fun action ->
+                    match model.tree.attempt_action node.root action with
+                    | Some navigation ->
+                        queue effects [ attempt navigation ];
+                        false
+                    | None ->
+                        true
+                  )
+                  (List.rev navigation)
           in
+          let root, actions = model.tree.navigate node.root passed in
           emit_root effects actions;
           navigate (count + 1) (round 0 { node with root } resolution.bindings)
     in
@@ -918,10 +959,27 @@ let joint (type n s ev e)
                 (cause node (resolved node).view move)
             )
             effects node bindings child_event move.via
-      | None ->
-          let root, actions, how = model.step node.root move in
-          emit_root effects actions;
-          ({ node with root }, how)
+      | None -> (
+          match
+            (model.tree.attempt node.root move.event, child_block node bindings)
+          with
+          | Some navigation, Some attempt -> (
+              match out_of (attempt navigation) with
+              | Some child_event ->
+                  step_child
+                    ~label:(fun () ->
+                      Check_model.cause_label ~answer:None
+                        (cause node (resolved node).view move)
+                    )
+                    effects node bindings child_event Check_model.By_input
+              | None ->
+                  (node, Machine.Unhandled)
+            )
+          | _ ->
+              let root, actions, how = model.step node.root move in
+              emit_root effects actions;
+              ({ node with root }, how)
+        )
     in
     let node, resolution = settle effects node bindings in
     remember node resolution;
@@ -1121,5 +1179,7 @@ let joint (type n s ev e)
                  (Array.to_list runtimes)
           );
         navigate = (fun node _ -> (node, []));
+        attempt = (fun _ _ -> None);
+        attempt_action = (fun _ _ -> None);
       };
   }

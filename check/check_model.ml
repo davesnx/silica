@@ -564,37 +564,53 @@ let started recorder machine state =
 
 let see recorder machine props state =
   let name = Machine.name machine state in
-  if not (Hashtbl.mem recorder.seen name) then
-    let active = Machine.active machine props state in
-    let pick f = List.filter_map f active in
-    Hashtbl.replace recorder.seen name
-      {
-        Spec.name;
-        final = Machine.is_final machine state;
-        timers =
-          pick (function
-            | Machine.Timer { ms; _ } ->
-                Some ms
-            | Machine.Call _ | Machine.Subscription _ | Machine.Held _ ->
-                None
-            );
-        sources =
-          pick (function
-            | Machine.Call { path; _ } ->
-                Some path
-            | Machine.Subscription { topic; _ } ->
-                Some ("live:" ^ topic)
-            | Machine.Timer _ | Machine.Held _ ->
-                None
-            );
-        held =
-          pick (function
-            | Machine.Held { name; _ } ->
-                Some name
-            | Machine.Timer _ | Machine.Call _ | Machine.Subscription _ ->
-                None
-            );
-      }
+  let active = Machine.active machine props state in
+  let pick f = List.filter_map f active in
+  let found =
+    {
+      Spec.name;
+      final = Machine.is_final machine state;
+      timers =
+        pick (function
+          | Machine.Timer { ms; _ } ->
+              Some ms
+          | Machine.Call _ | Machine.Subscription _ | Machine.Held _ ->
+              None
+          );
+      sources =
+        pick (function
+          | Machine.Call { path; _ } ->
+              Some path
+          | Machine.Subscription { topic; _ } ->
+              Some ("live:" ^ topic)
+          | Machine.Timer _ | Machine.Held _ ->
+              None
+          );
+      held =
+        pick (function
+          | Machine.Held { name; _ } ->
+              Some name
+          | Machine.Timer _ | Machine.Call _ | Machine.Subscription _ ->
+              None
+          );
+    }
+  in
+  match Hashtbl.find_opt recorder.seen name with
+  | None ->
+      Hashtbl.replace recorder.seen name found
+  | Some known ->
+      let union known found =
+        known @ List.filter (fun item -> not (List.mem item known)) found
+      in
+      let merged =
+        {
+          known with
+          timers = union known.timers found.timers;
+          sources = union known.sources found.sources;
+          held = union known.held found.held;
+        }
+      in
+      if merged <> known then Hashtbl.replace recorder.seen name merged
 
 let record recorder machine ~from ~props state label (how : Machine.how) =
   see recorder machine props state;
@@ -661,13 +677,16 @@ let unlisted_of machine =
   | None ->
       [ Machine.id machine ]
 
-let unreached_of recorder machine =
+let unreached_in recorder names =
   List.filter
     (fun name ->
       (not (Hashtbl.mem recorder.seen name))
       && not (Hashtbl.mem recorder.passed name)
     )
-    (Option.value ~default:[] (Machine.states machine))
+    names
+
+let unreached_of recorder machine =
+  unreached_in recorder (Option.value ~default:[] (Machine.states machine))
 
 type ('n, 'ev, 'e) tree = {
   actor : 'ev -> (string * string) option;
@@ -677,6 +696,8 @@ type ('n, 'ev, 'e) tree = {
   not_run : unit -> string list;
   counts : unit -> (string * int) list;
   navigate : 'n -> 'e Action.host list -> 'n * 'e Action.host list;
+  attempt : 'n -> 'ev -> Nav.t option;
+  attempt_action : 'n -> 'e Action.host -> Nav.t option;
 }
 
 let flat () =
@@ -688,7 +709,16 @@ let flat () =
     not_run = (fun () -> []);
     counts = (fun () -> []);
     navigate = (fun node _ -> (node, []));
+    attempt = (fun _ _ -> None);
+    attempt_action = (fun _ _ -> None);
   }
+
+let newest_block sources =
+  List.fold_left
+    (fun found -> function
+      | Action.Block { on_attempt } -> Some on_attempt | _ -> found
+      )
+    None sources
 
 type ('n, 's, 'ev, 'e) model = {
   machine : string;
@@ -1120,42 +1150,97 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
   let machine = component.machine in
   let host = host ~samples ~arrivals in
   let recorder = recorder () in
-  let rec apply depth (world, acc) actions =
+  let traverse_target world delta =
+    let target = world.idx + delta in
+    if target >= 0 && target < List.length world.hist then
+      Some (Nav.Traverse { delta; url = nth world.hist target })
+    else
+      None
+  in
+  let attempt_action world = function
+    | Action.Run (Action.Navigate url) ->
+        Some (Nav.Push url)
+    | Action.Run (Action.Replace url) ->
+        Some (Nav.Replace url)
+    | Action.Run Action.Back ->
+        traverse_target world (-1)
+    | Action.Run Action.Forward ->
+        traverse_target world 1
+    | _ ->
+        None
+  in
+  let rec apply ?previous depth (world, acc) actions =
     List.fold_left
       (fun (world, acc) action ->
         let nav hist idx url =
           if depth > 50 then failwith "navigation loop: actions keep navigating";
+          let previous = (world.hist, world.idx) in
           let world = { world with hist; idx } in
           let s, more, _ =
             send
               ~label:(fun () -> "url " ^ Url.to_string url)
               recorder machine world (url_event url)
           in
-          apply (depth + 1) ({ world with s }, acc @ more) more
+          apply ~previous (depth + 1) ({ world with s }, acc @ more) more
+        in
+        let go = function
+          | Nav.Push url ->
+              let history = take (world.idx + 1) world.hist @ [ url ] in
+              if List.length history > max_history then
+                nav (List.tl history) world.idx url
+              else
+                nav history (world.idx + 1) url
+          | Nav.Replace url ->
+              nav
+                (take world.idx world.hist
+                @ url
+                  :: List.filteri (fun index _ -> index > world.idx) world.hist
+                )
+                world.idx url
+          | Nav.Traverse { delta; url } ->
+              nav world.hist (world.idx + delta) url
         in
         match action with
-        | Action.Run (Action.Navigate url) ->
-            let history = take (world.idx + 1) world.hist @ [ url ] in
-            if List.length history > max_history then
-              nav (List.tl history) world.idx url
-            else
-              nav history (world.idx + 1) url
-        | Action.Run (Action.Replace url) ->
-            nav
-              (take world.idx world.hist
-              @ url
-                :: List.filteri (fun index _ -> index > world.idx) world.hist
+        | Action.Run (Action.Resume navigation) -> (
+            match navigation with
+            | Nav.Traverse { delta; _ } -> (
+                match traverse_target world delta with
+                | Some navigation ->
+                    go navigation
+                | None ->
+                    (world, acc)
               )
-              world.idx url
-        | Action.Run Action.Back when world.idx > 0 ->
-            nav world.hist (world.idx - 1) (nth world.hist (world.idx - 1))
-        | Action.Run Action.Forward when world.idx < List.length world.hist - 1
-          ->
-            nav world.hist (world.idx + 1) (nth world.hist (world.idx + 1))
+            | Nav.Push _ | Nav.Replace _ ->
+                go navigation
+          )
+        | Action.Run Action.Revert_navigation -> (
+            match previous with
+            | Some (hist, idx) ->
+                ({ world with hist; idx }, acc)
+            | None ->
+                (world, acc)
+          )
         | Action.Run Action.Reload ->
             nav world.hist world.idx (nth world.hist world.idx)
-        | action ->
-            (host_action host world action, acc)
+        | action -> (
+            match attempt_action world action with
+            | None ->
+                (host_action host world action, acc)
+            | Some navigation -> (
+                match
+                  newest_block (Machine.held machine world.props world.s)
+                with
+                | Some on_attempt ->
+                    let s, more, _ =
+                      send
+                        ~label:(fun () -> "the block of the navigation")
+                        recorder machine world (on_attempt navigation)
+                    in
+                    apply (depth + 1) ({ world with s }, acc @ more) more
+                | None ->
+                    go navigation
+              )
+          )
       )
       (world, acc) actions
   in
@@ -1263,6 +1348,16 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
     | In_child _ ->
         not_in_child ()
   in
+  let attempt world = function
+    | Link url | Open url ->
+        Some (Nav.Push url)
+    | Browser_back ->
+        traverse_target world (-1)
+    | Browser_forward ->
+        traverse_target world 1
+    | Event _ | In_child _ ->
+        None
+  in
   let route_findings world =
     if round_trips ~parse ~print world.s then
       []
@@ -1342,8 +1437,18 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
           routes
       );
     specs = (fun () -> [ spec_of recorder machine ]);
-    unreached = (fun () -> unreached_of recorder machine);
-    unlisted = (fun () -> unlisted_of machine);
+    unreached =
+      (fun () ->
+        unreached_in recorder
+          ( match Machine.states machine with
+          | Some states ->
+              states
+          | None ->
+              List.sort_uniq String.compare
+                (List.map (Machine.name machine) routes)
+          )
+      );
+    unlisted = (fun () -> []);
     answer =
       (fun world move ->
         match move.event with
@@ -1361,5 +1466,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
             let world, actions = apply 0 (world, []) actions in
             (world, actions)
           );
+        attempt;
+        attempt_action;
       };
   }

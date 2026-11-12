@@ -13,7 +13,8 @@
       "name": "closing",
       "final": false,
       "timers": [
-        300
+        300,
+        0
       ],
       "sources": [],
       "held": [
@@ -35,7 +36,8 @@
       "name": "opening",
       "final": false,
       "timers": [
-        600
+        600,
+        0
       ],
       "sources": [],
       "held": []

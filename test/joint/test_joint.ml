@@ -284,6 +284,75 @@ let violation_names_the_instance () =
   | [] ->
       Alcotest.fail "no violation of the row property"
 
+module Finisher = struct
+  type event = Finish
+
+  let component =
+    Component.make
+      (Machine.make ~id:"finisher" ~init:()
+         ~name:(fun () -> "ready")
+         ~states:[ "ready" ]
+         ~event_name:(fun Finish -> "finish")
+         (fun () Finish -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "button" [ Attr.on_press Finish ] [ Node.text "Finish" ]
+      )
+end
+
+module Waiter = struct
+  type event = Finished
+
+  let component =
+    Component.make
+      (Machine.make ~id:"waiter" ~init:false
+         ~name:(fun complete ->
+           if complete then
+             "complete"
+           else
+             "waiting"
+         )
+         ~states:[ "waiting"; "complete" ]
+         ~event_name:(fun Finished -> "finished")
+         (fun _ Finished -> Machine.Go true)
+      )
+      (fun _ ->
+        Component.node
+          ~output:(fun Finisher.Finish _ -> [ Finished ])
+          Finisher.component
+      )
+end
+
+let a_child_step_names_the_move_of_the_root () =
+  let report =
+    Check.run
+      (Check.component
+         ~children:[ Check.child Finisher.component ]
+         ~properties:
+           [ Check.always ~name:"never complete" (Check.state_named "waiting") ]
+         Waiter.component
+      )
+  in
+  match report.violations with
+  | violation :: _ ->
+      let steps = Check.steps violation.counterexample in
+      Alcotest.(check (list (option (pair string string))))
+        "the press in the child moves the root"
+        [ Some ("waiting", "complete") ]
+        (List.map (fun (step : _ Check.step) -> step.root_moved) steps);
+      Alcotest.(check bool)
+        "the line names the move of the root" true
+        (List.for_all
+           (fun step ->
+             contains
+               (Check.describe_step ~root:"waiter" step)
+               "; then waiter: waiting -> complete"
+           )
+           steps
+        )
+  | [] ->
+      Alcotest.fail "no violation"
+
 let text_of view = View_text.to_string view
 
 let temporal_properties_hold_on_the_parent () =
@@ -514,6 +583,8 @@ let () =
           Alcotest.test_case "memory renders what the checker sees" `Quick
             memory_equals_checker;
           Alcotest.test_case "a joint check passes" `Quick joint_check_passes;
+          Alcotest.test_case "a step of a child names the move of the root"
+            `Quick a_child_step_names_the_move_of_the_root;
           Alcotest.test_case "an unlisted child is not explored" `Quick
             unlisted_child_is_not_explored;
           Alcotest.test_case "instances over the bound do not run" `Quick

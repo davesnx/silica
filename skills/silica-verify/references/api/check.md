@@ -71,7 +71,7 @@ Holds when the snapshot and its view pass the test together.
 val event : ('e -> bool) -> ('s, 'e) condition
 ```
 
-A step condition: holds on the point reached by a step whose event of the machine passes the test. It does not hold at a start, nor after a step with no event of the machine (new props, a link, back, forward).
+A step condition: holds on the point reached by a step whose event of the machine passes the test. It does not hold at a start, nor after a step with no event of the machine (new props, a link, an opened URL, back, forward). So in `app`, `event` never sees the `Router.Url_changed` that a navigation gives the router: test the route with `state` or `entered`.
 
 ```ocaml
 val transition : ('s -> 'e -> 's -> bool) -> ('s, 'e) condition
@@ -315,7 +315,7 @@ val app :
   ('s app_state, 'e app_event) t
 ```
 
-Explores the root component of a routed app, for example the result of `Router.make`, started at `print` of the first route, with a simulated history. The root view is the only view rendered: the page is a component node in it, so the page is listed in `not_explored` and its machine is not run. Actions `Navigate`, `Replace`, `Back`, `Forward` and `Reload` change the simulated history and become the event `url_event url` of the root machine. `Resume`, `Revert_navigation`, `Preload` and `Set_status` do nothing here. `urls` are URLs that the user opens, as in the address bar, in any state: each is a push, with the cause "the user opens \<url>", and a script opens it with `Silica_memory.open_url`. Keep `inputs` for events that no element and no URL gives. `max_history` (default 4) bounds the history; the oldest entries are dropped, which keeps the state space finite.
+Explores the root component of a routed app, for example the result of `Router.make`, started at `print` of the first route, with a simulated history. The root view is the only view rendered: the page is a component node in it, so the page is listed in `not_explored` and its machine is not run. Actions `Navigate`, `Replace`, `Back`, `Forward` and `Reload` change the simulated history and become the event `url_event url` of the root machine. As in a browser, while a machine holds a `Silica.Source.block`, a link, an opened URL, back, forward and those actions stop before the URL changes, and the newest block gets the navigation instead; `Resume` then does it, past the block. `Revert_navigation` undoes the navigation that the root machine is handling, as a router `guard` that cancels does. `Preload` and `Set_status` do nothing here. `urls` are URLs that the user opens, as in the address bar, in any state: each is a push, with the cause "the user opens \<url>", and a script opens it with `Silica_memory.open_url`. Keep `inputs` for events that no element and no URL gives. `max_history` (default 4) bounds the history; the oldest entries are dropped, which keeps the state space finite.
 
 `pages` run the listed page components (and their children, when listed) inside the check, as `component` `?children` does: links in pages are followed, and the navigation actions of a page change the history after the events that its step raised are handled. Check a router with one or a few pages per check, so the product of the router and its pages stays small.
 
@@ -329,6 +329,12 @@ val id : ('s, 'ev) t -> string
 ```
 
 The id of the root machine; for a check with `children` or `pages`, the root and the listed children joined by `"+"`, such as `"router+issue-list"`.
+
+```ocaml
+val root : ('s, 'ev) t -> string
+```
+
+The id of the root machine.
 
 ```ocaml
 val state_json : ('s, 'ev) t -> 's -> Silica_json.Json.t option
@@ -394,8 +400,19 @@ type 'ev step = {
   target : string;
       (** The name of the state after the step; [from] for a step that the
           update ignored or that raised. *)
+  root_moved : (string * string) option;
+      (** For a step of a child in a joint check: the state names of the root
+          machine before and after the step, when the step changed it, such as a
+          parent that handles an output of the child. [None] for a step of the
+          root, or when the root kept its state name. *)
 }
 ```
+
+```ocaml
+val describe_step : root:string -> 'ev step -> string
+```
+
+One line for a step, as the text report prints it: the machine and instance of a child, the states, the event and the cause, then the change of the root machine `root` when the step moved it, such as `"[step at wizard/2:step] editing -> saved: save, by ...; then wizard: dirty -> clean"`.
 
 ```ocaml
 type 'ev counterexample =
@@ -689,7 +706,7 @@ val script :
 - a rule of the view: `view_violations` of that rule is empty;
 - any other rule or a property: `Check_expect.holds` runs the steps, then evaluates the rule in the check itself along the run of the page (`replay_run`), with the same meaning as the checker (for a `Loop`, the run goes once around the cycle).
 
-The test refers to the check by `check`, an OCaml expression (default: the value named after the machine id in the module `Checks`, as `Checks.issue_list` for `issue-list`), so the checks of the project live in a library that tests can use. Props come from the check too (`nth_props`), so no props codec is needed. `component` is the OCaml expression of the component (default: the module named after the machine id, as `Issue_list.component`, or `.app` for an app). `Error` says why the steps cannot run in `Silica_memory`: a timer that fires before another timer that real time fires first (the checker lets running timers fire in any order), an event from `inputs`, a Live update, a held source, the result of an action, an element with no role and no text; also when the replay in the check no longer breaks the rule. Replay such a trace in the check with `replay_trace`. In a joint check, the steps of children are steps of the trace too: an element of a child is found in the whole page.
+The test refers to the check by `check`, an OCaml expression (default: the value named after the root machine id in the module `Checks`, as `Checks.issue_list` for `issue-list`, also for a joint check such as `issue-list+row`), so the checks of the project live in a library that tests can use. Props come from the check too (`nth_props`), so no props codec is needed. `component` is the OCaml expression of the component (default: the module named after the machine id, as `Issue_list.component`, or `.app` for an app). `Error` says why the steps cannot run in `Silica_memory`: a timer that fires before another timer that real time fires first (the checker lets running timers fire in any order), an event from `inputs`, a Live update, a held source, the result of an action, an element with no role and no text; also when the replay in the check no longer breaks the rule. Replay such a trace in the check with `replay_trace`. In a joint check, the steps of children are steps of the trace too: an element of a child is found in the whole page.
 
 ```ocaml
 val view_violations :

@@ -119,6 +119,11 @@
 
 (rule
  (with-stdout-to
+  secret_typing_script.ml
+  (run ./gen_script.exe secret "the step is positive" Stepper.secret)))
+
+(rule
+ (with-stdout-to
   badge_script.ml
   (run ./gen_script.exe badge "a new badge gets old")))
 
@@ -403,6 +408,7 @@
   pages_back_script
   search_script
   typing_script
+  secret_typing_script
   badge_script
   badge_fixed_script
   upload_restyled_script
@@ -453,6 +459,7 @@
   pages_back_script
   search_script
   typing_script
+  secret_typing_script
   badge_script
   badge_fixed_script
   upload_restyled_script
@@ -516,6 +523,8 @@
   search_script.exe
   typing_script.ml
   typing_script.exe
+  secret_typing_script.ml
+  secret_typing_script.exe
   badge_script.ml
   badge_script.exe
   badge_fixed_script.ml

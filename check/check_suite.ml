@@ -1192,8 +1192,8 @@ let replay_text (Found check) ~id ~file replay =
       | None ->
           add "start: %s\n" point.state_name
       | Some step ->
-          add "%d. %s -> %s: %s, by %s\n" index step.from step.target step.event
-            (Check.describe_cause step.cause)
+          add "%d. %s\n" index
+            (Check.describe_step ~root:(Check.root check) step)
       );
       List.iter
         (fun (failure : Check.failure) ->
@@ -1203,7 +1203,6 @@ let replay_text (Found check) ~id ~file replay =
         point.failing
     )
     points;
-  ignore check;
   ( match stuck with
   | Some (at, enabled) ->
       add "step %d of the trace is not enabled here. The state offers:\n" at;
@@ -1348,9 +1347,9 @@ let script_command entries ~id ~file ~component ~check:expression ~output =
       | Error message ->
           prerr_endline
             ("script: " ^ message
-           ^ ". No Silica_memory test is written; the command 'replay " ^ id
-           ^ " " ^ file
-           ^ "' replays the trace in the checker, and exits 1 while the rule \
+           ^ ". No Silica_memory test is written; silica replay " ^ id ^ " "
+           ^ file
+           ^ " replays the trace in the checker, and exits 1 while the rule \
               fails and 0 after the fix."
             );
           1

@@ -1,6 +1,8 @@
 (** The shape of a machine as a checker run found it: the states it reached, the
     steps it took with the names of their events, and the timers and sources of
-    each state. [Check.run] gives one in the [specs] of its report. *)
+    each state. [Check.run] gives one in the [specs] of its report. The timers
+    and sources of a state are those of every snapshot of it that the run
+    reached: a timer that runs only for some data of the state is listed. *)
 
 type state = {
   name : string;

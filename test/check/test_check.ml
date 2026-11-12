@@ -466,7 +466,8 @@ let app ?(extra = []) ?properties ?(parse = Router.parse routes)
     ?(print = Router.print routes) ?(routes_to_check = all_routes) ?is_not_found
     () =
   Check.run
-    (Check.app ?properties ~routes:routes_to_check ~parse ~print ?is_not_found
+    (Check.app ?properties ~urls:[ "/missing" ] ~routes:routes_to_check ~parse
+       ~print ?is_not_found
        ~url_event:(fun url -> Router.Url_changed url)
        (app_root ~extra ())
     )
@@ -497,6 +498,8 @@ let test_app_ok () =
   passes report;
   Alcotest.(check bool) "explores history" true (report.states > 5);
   Alcotest.(check (list string))
+    "the router lists the names of its routes" [] report.unlisted;
+  Alcotest.(check (list string))
     "page is not explored" [ "component child" ] report.not_explored
 
 let test_back_returns () =
@@ -508,6 +511,166 @@ let test_back_returns () =
       )
   in
   passes (app ~properties:[ index_in_history ] ())
+
+let test_app_unreached_routes () =
+  let report =
+    Check.run
+      (Check.app ~routes:all_routes ~parse:(Router.parse routes)
+         ~print:(Router.print routes)
+         ~url_event:(fun url -> Router.Url_changed url)
+         (app_root ())
+      )
+  in
+  Alcotest.(check (list string)) "the router is listed" [] report.unlisted;
+  Alcotest.(check (list string))
+    "a route of ~routes that no link and no URL reaches" [ "/*" ]
+    report.unreached
+
+module Guarded = struct
+  type route = Home | Away
+
+  let routes =
+    Router.routes
+      [
+        Router.route Route.root
+          (fun () -> Home)
+          (function Home -> Some () | Away -> None);
+        Router.route
+          Route.(s "away")
+          (fun () -> Away)
+          (function Away -> Some () | Home -> None);
+      ]
+
+  type state = Clean | Dirty | Asking of Nav.t
+  type event = Edit | Attempt of Nav.t | Leave | Stay
+
+  let target = function
+    | Nav.Push url | Nav.Replace url | Nav.Traverse { url; _ } ->
+        Url.to_string url
+
+  let page =
+    Component.make
+      (Machine.make ~id:"guarded" ~init:Clean
+         ~name:(function
+           | Clean -> "clean" | Dirty -> "dirty" | Asking _ -> "asking"
+           )
+         ~states:[ "clean"; "dirty"; "asking" ]
+         ~event_name:(function
+           | Edit ->
+               "edit"
+           | Attempt navigation ->
+               "attempt " ^ target navigation
+           | Leave ->
+               "leave"
+           | Stay ->
+               "stay"
+           )
+         ~during:(function
+           | Dirty ->
+               [ Source.block (fun navigation -> Attempt navigation) ]
+           | Clean | Asking _ ->
+               []
+           )
+         (fun state event ->
+           match (state, event) with
+           | Clean, Edit ->
+               Machine.Go Dirty
+           | Dirty, Attempt navigation ->
+               Machine.Go (Asking navigation)
+           | Asking navigation, Leave ->
+               Machine.Go_with (Clean, [ Action.Resume navigation ])
+           | Asking _, Stay ->
+               Machine.Go Dirty
+           | _ ->
+               Machine.Ignore
+         )
+      )
+      (fun state ->
+        let button label event =
+          Node.element "button" [ Attr.on_press event ] [ Node.text label ]
+        in
+        match state with
+        | Clean ->
+            button "Edit" Edit
+        | Dirty ->
+            Node.text "Unsaved"
+        | Asking _ ->
+            Node.list [ button "Leave" Leave; button "Stay" Stay ]
+      )
+
+  let app url =
+    Router.make routes
+      ~render:(function Home -> Node.component page | Away -> Node.text "Away")
+      url
+
+  let check () =
+    Check.run
+      (Check.app ~urls:[ "/away" ] ~max_history:2
+         ~pages:[ Check.child page ]
+         ~routes:[ Home; Away ] ~parse:(Router.parse routes)
+         ~print:(Router.print routes)
+         ~url_event:(fun url -> Router.Url_changed url)
+         app
+      )
+end
+
+let test_app_block_holds_navigation () =
+  let report = Guarded.check () in
+  let edges id =
+    match List.find_opt (fun (spec : Spec.t) -> spec.id = id) report.specs with
+    | Some spec ->
+        List.map
+          (fun (label : Spec.label) ->
+            Printf.sprintf "%s -> %s on %s" label.from label.target label.event
+          )
+          spec.edges
+    | None ->
+        Alcotest.failf "no spec of %s" id
+  in
+  Alcotest.(check bool)
+    "an opened URL stops at the block and reaches the page" true
+    (List.mem "dirty -> asking on attempt /away" (edges "guarded"));
+  Alcotest.(check bool)
+    "Resume goes to the URL" true
+    (List.mem "/ -> /away on url changed" (edges "router"))
+
+let test_app_cancel_reverts_the_history () =
+  let cancel ~from ~target =
+    match (from, target) with
+    | Some _, Guarded.Away ->
+        Router.Cancel
+    | _ ->
+        Router.Allow
+  in
+  let report =
+    Check.run
+      (Check.app ~urls:[ "/away" ]
+         ~properties:
+           [
+             Check.always ~name:"the history shows the route"
+               (Check.state (fun (state : _ Check.app_state) ->
+                    Url.to_string (List.nth state.history state.index)
+                    = Url.to_string (Router.print Guarded.routes state.router)
+                )
+               );
+           ]
+         ~allow:
+           [
+             Check.allow ~rule:"unreached-state" ~state:"/away"
+               ~reason:"the guard cancels every navigation to /away" ();
+           ]
+         ~routes:[ Guarded.Home; Guarded.Away ]
+         ~parse:(Router.parse Guarded.routes)
+         ~print:(Router.print Guarded.routes)
+         ~url_event:(fun url -> Router.Url_changed url)
+         (fun url ->
+           Router.make Guarded.routes ~guard:cancel
+             ~render:(fun _ -> Node.text "page")
+             url
+         )
+      )
+  in
+  passes report
 
 let test_page_check_misses_child_bug () =
   let report = app () in
@@ -663,7 +826,9 @@ let test_timer_stops_on_exit () =
   let text = print report in
   Alcotest.(check bool)
     "the text gives the unreached-state hint" true
-    (contains text "Add samples, inputs or props that reach late");
+    (contains text
+       "Add samples, texts, inputs, props or (in an app) urls that reach late"
+    );
   let report =
     Check.run
       (Check.component ~properties:[ never_late ]
@@ -1391,6 +1556,49 @@ module Search = struct
          component
       )
 end
+
+module Pending = struct
+  type state = Waiting of bool
+  type event = Arm | Tick
+
+  let machine =
+    Machine.make ~id:"pending" ~init:(Waiting false)
+      ~name:(fun (Waiting _) -> "waiting")
+      ~states:[ "waiting" ]
+      ~event_name:(function Arm -> "arm" | Tick -> "tick")
+      ~during:(fun (Waiting armed) ->
+        if armed then
+          [ Source.after 100 Tick ]
+        else
+          []
+      )
+      (fun (Waiting armed) event ->
+        match (armed, event) with
+        | false, Arm ->
+            Machine.Go (Waiting true)
+        | true, Tick ->
+            Machine.Go (Waiting false)
+        | _ ->
+            Machine.Ignore
+      )
+
+  let component =
+    Component.make machine (fun (Waiting armed) ->
+        Node.element "button"
+          [ Attr.on_press Arm; Attr.bool "disabled" armed ]
+          [ Node.text "Arm" ]
+    )
+end
+
+let test_spec_timers_of_every_snapshot () =
+  let report = Check.run (Check.component Pending.component) in
+  match report.specs with
+  | [ spec ] ->
+      Alcotest.(check (list int))
+        "the timer of the armed snapshot of waiting" [ 100 ]
+        (List.hd spec.states).timers
+  | _ ->
+      Alcotest.fail "expected one spec"
 
 let ok_of report =
   passes report;
@@ -2663,6 +2871,8 @@ let () =
           Alcotest.test_case "inputs" `Quick test_inputs;
           Alcotest.test_case "pp_report" `Quick test_pp;
           Alcotest.test_case "Ok.spec" `Quick test_spec;
+          Alcotest.test_case "a spec lists the timers of every snapshot" `Quick
+            test_spec_timers_of_every_snapshot;
           Alcotest.test_case "Ok.paths" `Quick test_paths;
           Alcotest.test_case "kept steps are labels, not edges" `Quick
             test_kept_steps_are_labels_not_edges;
@@ -2675,6 +2885,12 @@ let () =
             test_component_node_not_explored;
           Alcotest.test_case "no child, nothing listed" `Quick
             test_no_children_nothing_listed;
+          Alcotest.test_case "an app reports the routes it does not reach"
+            `Quick test_app_unreached_routes;
+          Alcotest.test_case "a block in a page holds a navigation of the app"
+            `Quick test_app_block_holds_navigation;
+          Alcotest.test_case "a guard that cancels reverts the history" `Quick
+            test_app_cancel_reverts_the_history;
           Alcotest.test_case "child bug: page check misses it" `Quick
             test_page_check_misses_child_bug;
           Alcotest.test_case "child bug: alone check finds it" `Quick

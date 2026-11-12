@@ -155,7 +155,11 @@ val name : 'e element -> string
 (** The accessible name. *)
 
 val hidden : 'e element -> bool
-(** The element is not in the accessibility tree. *)
+(** The element is not in the accessibility tree: it or an element above it has
+    [hidden], [inert] or [aria-hidden="true"], or it is an [<input>] of type
+    [hidden]. As in a browser, an [inert] element is drawn but a screen reader
+    does not reach it, so its text is not in the text view, in
+    {!View_text.visible} or in [Check.view_shows]. *)
 
 val path : 'e element -> string
 (** Where the element is: the tags from the top down, joined by [" > "], each

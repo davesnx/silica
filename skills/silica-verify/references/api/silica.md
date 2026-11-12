@@ -161,7 +161,7 @@ The accessible name.
 val hidden : 'e element -> bool
 ```
 
-The element is not in the accessibility tree.
+The element is not in the accessibility tree: it or an element above it has `hidden`, `inert` or `aria-hidden="true"`, or it is an `<input>` of type `hidden`. As in a browser, an `inert` element is drawn but a screen reader does not reach it, so its text is not in the text view, in `View_text.visible` or in `Check.view_shows`.
 
 ```ocaml
 val path : 'e element -> string
@@ -3421,20 +3421,9 @@ val start : string -> 'e t -> 'e Action.host
 
 `start id source` is the action that starts `source` under `id`.
 
-/\*
-
-```ocaml
-val remote_call :
-  ?timeout_ms:int ->
-  ('i, 'o, 'x) Endpoint.t ->
-  'i ->
-  (('o, 'x) Endpoint.answer -> 'e) ->
-  'e t
-```
-
 ## Silica.Spec
 
-The shape of a machine as a checker run found it: the states it reached, the steps it took with the names of their events, and the timers and sources of each state. `Check.run` gives one in the `specs` of its report.
+The shape of a machine as a checker run found it: the states it reached, the steps it took with the names of their events, and the timers and sources of each state. `Check.run` gives one in the `specs` of its report. The timers and sources of a state are those of every snapshot of it that the run reached: a timer that runs only for some data of the state is listed.
 
 ```ocaml
 type state = {
@@ -4169,7 +4158,7 @@ val to_string : 'e Node.t -> string
 val visible : 'e Node.t -> string
 ```
 
-The text of the view that a person can see: every text node, side by side with no separator, as the `textContent` of the page, without the text of hidden elements (see `Accessibility.hidden`), of component nodes and of loading chunks.
+The text of the view that the accessibility tree has: every text node, side by side with no separator, as the `textContent` of the page, without the text of hidden elements (see `Accessibility.hidden`: also `inert` and `aria-hidden` ones, which a browser draws), of component nodes and of loading chunks.
 
 ```ocaml
 val shows : 'e Node.t -> string -> bool

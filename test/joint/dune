@@ -25,4 +25,4 @@
  (libraries joint_fixtures silica silica.check silica.memory))
 
 (cram
- (deps bumped_script.ml bumped_script.exe))
+ (deps gen_script.exe bumped_script.ml bumped_script.exe))

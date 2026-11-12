@@ -1200,6 +1200,48 @@ let try_again_uses_the_last_props () =
   string "the root starts again with the last props" "-2 -2 1"
     (text memory "props")
 
+module Form_submit = struct
+  let component =
+    Component.make
+      (Test_apps.simple ~id:"form-submit" ~init:0 (fun count step ->
+           Some (count + step, [])
+       )
+      )
+      (fun count ->
+        Node.element "main" []
+          [
+            Node.element "p"
+              [ Attr.string "id" "count" ]
+              [ Node.text (string_of_int count) ];
+            Node.element "form"
+              [ Attr.on_submit 1 ]
+              [
+                Node.element "button" [] [ Node.text "Send" ];
+                Node.element "button"
+                  [ Attr.string "type" "submit"; Attr.on_press 100 ]
+                  [ Node.element "span" [] [ Node.text "Both" ] ];
+                Node.element "button"
+                  [ Attr.string "type" "button"; Attr.on_press 10 ]
+                  [ Node.text "Plain" ];
+              ];
+            Node.element "button" [] [ Node.text "Outside" ];
+          ]
+      )
+end
+
+let press_on_a_submit_button_submits_the_form () =
+  let memory = Memory.mount Form_submit.component in
+  Memory.press (Memory.by_role ~name:"Send" memory Accessibility.Button);
+  string "a button with no type submits its form" "1" (text memory "count");
+  Memory.press (Memory.by_role ~name:"Plain" memory Accessibility.Button);
+  string "a button of type button only runs its press handler" "11"
+    (text memory "count");
+  Memory.press (Memory.by_text memory "Both");
+  string "a press inside a submit button runs its press handler, then submits"
+    "112" (text memory "count");
+  Memory.press (Memory.by_role ~name:"Outside" memory Accessibility.Button);
+  string "a button outside a form submits nothing" "112" (text memory "count")
+
 module Reach = struct
   let component =
     Component.make
@@ -1334,6 +1376,8 @@ let () =
       ( "browser",
         [
           case "press re-renders" press_re_renders;
+          case "a press on a submit button submits its form"
+            press_on_a_submit_button_submits_the_form;
           case "input delivers the value" input_delivers_the_value;
           case "After fires later" after_fires_later;
           case "Call delivers success and sends the wire request" call_success;

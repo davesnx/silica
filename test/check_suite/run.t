@@ -64,7 +64,8 @@ state, and the update ignores it there.
                   "name": "Save",
                   "text": "the view offers press on button \"Save\" at form > button[2]"
                 },
-                "target": "saved"
+                "target": "saved",
+                "root_moved": null
               },
               {
                 "index": 2,
@@ -83,7 +84,8 @@ state, and the update ignores it there.
                   "name": "Save",
                   "text": "the view offers press on button \"Save\" at div > button"
                 },
-                "target": "saved"
+                "target": "saved",
+                "root_moved": null
               }
             ],
             "loop": null,
@@ -390,7 +392,7 @@ check the trace no longer breaks the rule: exit 1, and no file.
   $ grep -c Memory.press written.ml
   2
   $ FIXTURE=fixed ./fixtures.exe script save traces/save_ignored_event_saved.jsonl --output fixed.ml
-  script: the replay of the trace in the check no longer breaks ignored-event; run the replay command to see each step. No Silica_memory test is written; the command 'replay save traces/save_ignored_event_saved.jsonl' replays the trace in the checker, and exits 1 while the rule fails and 0 after the fix.
+  script: the replay of the trace in the check no longer breaks ignored-event; run the replay command to see each step. No Silica_memory test is written; silica replay save traces/save_ignored_event_saved.jsonl replays the trace in the checker, and exits 1 while the rule fails and 0 after the fix.
   [1]
   $ test -e fixed.ml
   [1]

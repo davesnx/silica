@@ -7,7 +7,14 @@ let () =
           violation.counterexample
       in
       match
-        Check.script ~check:"Joint_cases.bumped" Joint_cases.bumped trace
+        Check.script
+          ?check:
+            ( if Array.mem "default" Sys.argv then
+                None
+              else
+                Some "Joint_cases.bumped"
+            )
+          Joint_cases.bumped trace
       with
       | Ok text ->
           print_string text

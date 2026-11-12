@@ -411,7 +411,7 @@ See [The memory platform](../../../docs/testing.mld).
 
 ### Roles
 
-The roles of `Silica.Accessibility.role`, and the elements that have each one with no `role` attribute. An explicit `role` attribute wins; a `role` of `` `none `` or `` `presentation `` gives no role. The text view and the queries of `Silica_memory` print the role in lower case, such as `spinbutton`.
+The roles of `Silica.Accessibility.role`, and the elements that have each one with no `role` attribute. An explicit `role` attribute wins; a `role` of `` `none `` or `` `presentation `` gives no role. The text view and the queries of `Silica_memory` print the role in lower case, such as `spinbutton`. An element that has no role, such as ``<input type_=`password>`` or a `<div>`, is found by its accessible name with `Memory.by_name`, such as `Memory.by_name page "Password"` for a password field in a label; the text view prints its tag in place of a role.
 
 | Role | Elements with this role |
 |---|---|
@@ -496,10 +496,8 @@ From `test/check_suite/run.t`:
   [3]
 ```
 
-## Commands that are coming
+## More commands
 
-These are not on main yet. This section will describe them when they land:
-
-- `silica conform`: check a trace recorded in a running app against the spec.
-- `silica check --graphs DIR`: a graph of each checked machine. Today it exits 3 with "--graphs is not available yet".
-- `silica inspect`.
+- `silica check --graphs DIR` writes the graph of each checked machine; see [Check a project](checker.md#check-a-project).
+- `silica conform TRACE_FILE...` compares a trace recorded in a running app with the specs and the code; see [Conform a trace](checker.md#conform-a-trace).
+- `silica inspect` reads the machines of a running app; see [Inspector](../../../docs/devtools.mld).

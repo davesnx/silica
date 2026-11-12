@@ -53,3 +53,28 @@ let typing =
   Check.component
     ~within:(fun state -> state.count <= 2)
     ~texts:[ "1"; "0" ] ~properties:[ positive ] component
+
+let secret =
+  Component.make machine (fun state ->
+      Node.element "div" []
+        [
+          Node.element "p" [] [ Node.text (string_of_int state.count) ];
+          Node.element "label" []
+            [
+              Node.text "Step size";
+              Node.element "input"
+                [
+                  Attr.string "type" "password";
+                  Attr.string "value" (string_of_int state.step);
+                  Attr.on_input (fun text -> Typed text);
+                ]
+                [];
+            ];
+          Node.element "button" [ Attr.on_press Increment ] [ Node.text "Add" ];
+        ]
+  )
+
+let secret_typing =
+  Check.component
+    ~within:(fun state -> state.count <= 2)
+    ~texts:[ "1"; "0" ] ~properties:[ positive ] secret

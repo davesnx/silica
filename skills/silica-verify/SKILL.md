@@ -70,8 +70,10 @@ References, read when a step needs them:
   documentation, one file for each library, generated from the interfaces:
   [silica](references/api/silica.md), [silica.check](references/api/check.md)
   (`Check`, `Check_suite`, `Check_expect`),
-  [silica.memory](references/api/memory.md) and
-  [silica.server](references/api/server.md). Look a name up here, such as
+  [silica.memory](references/api/memory.md),
+  [silica.server](references/api/server.md) and
+  [silica.json](references/api/json.md) (the JSON values that
+  `Codec.make` reads and writes). Look a name up here, such as
   `Silica_memory.forward` or `Check.app`, instead of guessing it.
 - [references/checker.md](references/checker.md): the checker in full:
   each rule, properties and temporal properties, samples, children, routed

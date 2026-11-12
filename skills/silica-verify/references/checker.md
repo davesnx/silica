@@ -544,9 +544,12 @@ When the change is intended, `golden DIR --write` writes the files and removes t
           "trace_file": string | null,
           "test_file": string | null } ],
       "unreached": [ { "state", "rule", "message", "hint" } ],
+      "unlisted": [ { "machine", "message" } ],
+                                     each machine with no ~states
       "state_limit": { "rule", "message", "hint" } | null,
       "allowed": [ { "rule", "state", "element", "reason", "count" } ],
-      "not_explored": [ string ] } ],
+      "not_explored": [ string ],
+      "vacuous": [ { "property", "reason" } ] } ],
   "unchecked": [ { "machine", "rule", "message", "hint" } ],
   "elsewhere": [ { "machine", "reason" } ],
   "golden": { "dir": string, "written": bool,
@@ -573,7 +576,12 @@ step = {
          | { "type": "live", "id", "topic", "text" }
          | { "type": "held", "id", "source", "text" }
          | { "type": "action_result", "action", "text" }
-         | { "type": "child", "instance", "machine", "text" }
+         | { "type": "child", "instance", "machine", "text" },
+  "root_moved": { "from": string, "target": string } | null
+                                     for a step of a child: the change of
+                                     state of the root machine that the step
+                                     caused, such as a parent that handles an
+                                     output of the child
 }
 ```
 
@@ -639,7 +647,7 @@ From `test/new/run.t`:
 - `ignored-event`: `Check_expect.handles` gives the last input again while the view shows a reachable element of that role and name, and fails when the update ignores it. A fix that disables the element passes: the memory platform refuses a press on a disabled element, as a browser does (see `Silica_memory.Not_reachable`);
 - `raised`: the mount gets `~on_error:(Check_expect.on_error broken)`, which fails at the first error;
 - a rule of the view: `Check_expect.view_passes`, by `Check.view_violations`;
-- any other rule or property: `Check_expect.holds` runs the steps, then replays the run of the page in the check itself (`Check.replay_run`) and fails while the rule fails at a point of that run, with the meaning the checker gives it: an `always` condition on the real states, views and steps; a `leads_to` that waits, or that can go around the cycle again (the script passes `~cycle_from` for a `Loop`); a `never_after`. So the test passes exactly when the rule holds on that run: a fix that only changes the view keeps it red, and a fix that keeps the same views but stops the cycle makes it green. The test names the check, by default `Checks.<id>` from `check/checks.ml`, and takes props from it (`Check.nth_props`), so no codec is needed:
+- any other rule or property: `Check_expect.holds` runs the steps, then replays the run of the page in the check itself (`Check.replay_run`) and fails while the rule fails at a point of that run, with the meaning the checker gives it: an `always` condition on the real states, views and steps; a `leads_to` that waits, or that can go around the cycle again (the script passes `~cycle_from` for a `Loop`); a `never_after`. So the test passes exactly when the rule holds on that run: a fix that only changes the view keeps it red, and a fix that keeps the same views but stops the cycle makes it green. The test names the check, by default `Checks.<root>` from `check/checks.ml`, where `<root>` is the id of the root machine, also in a joint check (give `--check EXPR` when the value has another name), and takes props from it (`Check.nth_props`), so no codec is needed:
 
 From `test/replay/run.t`:
 

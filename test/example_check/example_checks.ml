@@ -69,8 +69,15 @@ let pp_answer f : (_, string) Remote.answer -> unit = function
 let all_routes =
   [ Home; Item 1; Item 2; About; Edit; Locked; Not_found "/nowhere" ]
 
+let locked_opens_first =
+  Check.allow ~rule:"unreached-state" ~state:"/locked"
+    ~reason:
+      "The guard cancels every navigation to /locked; the page opens only as \
+       the first URL of a visit, and the check starts at /."
+    ()
+
 let router () =
-  Check.app ~max_states:500_000
+  Check.app ~max_states:500_000 ~allow:[ locked_opens_first ]
     ~urls:
       [ "/"; "/item/1"; "/item/2"; "/about"; "/edit"; "/locked"; "/nowhere" ]
     ~routes:all_routes ~parse:(Router.parse routes) ~print:(Router.print routes)
@@ -155,6 +162,7 @@ let counter_bounded () =
 
 let joint_router ?(max_history = 2) page =
   Check.app ~max_states:1_000_000 ~max_history ~pages:[ page ]
+    ~allow:[ locked_opens_first ]
     ~urls:[ "/"; "/item/1"; "/about"; "/edit"; "/nowhere" ]
     ~routes:all_routes ~parse:(Router.parse routes) ~print:(Router.print routes)
     ~is_not_found:(Router.is_not_found routes)

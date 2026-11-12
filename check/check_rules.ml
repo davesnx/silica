@@ -233,8 +233,9 @@ let rules =
       id = "unreached-state";
       message = "No explored path reaches state {state}.";
       hint =
-        "Add samples, inputs or props that reach {state}, or allow it with \
-         Check.allow ~rule:\"unreached-state\" ~state:\"{state}\" ~reason.";
+        "Add samples, texts, inputs, props or (in an app) urls that reach \
+         {state}, or allow it with Check.allow ~rule:\"unreached-state\" \
+         ~state:\"{state}\" ~reason.";
       applies_to = "machine";
     };
     {

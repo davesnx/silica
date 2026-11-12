@@ -11,7 +11,7 @@ module issue_detail {
     | Loading => Set("loading/invoke /api/issues")
     | Failed => Set()
     | NotFound => Set()
-    | Ready => Set("ready/invoke live:issues", "ready/hold keys")
+    | Ready => Set("ready/after 0ms", "ready/invoke live:issues", "ready/invoke /api/issues/update", "ready/hold keys")
   }
 
   pure val finals: Set[State] = Set()

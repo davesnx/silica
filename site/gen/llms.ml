@@ -713,6 +713,26 @@ let api_module ~prefix path =
     String.sub text location.loc_start.pos_cnum
       (location.loc_end.pos_cnum - location.loc_start.pos_cnum)
   in
+  let stop (item : Parsetree.signature_item) =
+    match item.psig_desc with
+    | Psig_attribute attribute -> (
+        match doc_of [ attribute ] with Some ("/*", _) -> true | _ -> false
+      )
+    | _ ->
+        false
+  in
+  let shown, _ =
+    List.fold_left
+      (fun (shown, hidden) item ->
+        if stop item then
+          (shown, not hidden)
+        else if hidden then
+          (shown, hidden)
+        else
+          (item :: shown, hidden)
+      )
+      ([], false) signature
+  in
   let parts =
     List.filter_map
       (fun (item : Parsetree.signature_item) ->
@@ -736,7 +756,7 @@ let api_module ~prefix path =
                   code
               )
       )
-      signature
+      (List.rev shown)
   in
   let name = module_name path in
   let note =

@@ -9,9 +9,9 @@ module tooltip {
 
   pure def owned(s: State): Set[str] = match s {
     | Closed => Set()
-    | Closing => Set("closing/after 300ms", "closing/hold dismiss", "closing/hold anchor")
+    | Closing => Set("closing/after 300ms", "closing/after 0ms", "closing/hold dismiss", "closing/hold anchor")
     | Open => Set("open/hold dismiss", "open/hold anchor")
-    | Opening => Set("opening/after 600ms")
+    | Opening => Set("opening/after 600ms", "opening/after 0ms")
   }
 
   pure val finals: Set[State] = Set()

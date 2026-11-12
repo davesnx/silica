@@ -101,3 +101,24 @@ Markup with no Markdown form stops the build.
   $ ../../site/gen/llms.exe full https://example.org broken
   llms: markup.mld: unsupported inline markup at line 3
   [1]
+
+The API page of an interface leaves out what odoc leaves out: the items
+between two stop comments.
+
+  $ printf '(** A sample. *)\n\nval shown : int\n(** Shown. *)\n\n(**/**)\n\nval hidden : int\n(** Hidden. *)\n\n(**/**)\n\nval again : int\n' > sample.mli
+  $ ../../site/gen/llms.exe api "API: sample" - sample.mli
+  # API: sample
+  
+  ## Sample
+  
+  A sample.
+  
+  ```ocaml
+  val shown : int
+  ```
+  
+  Shown.
+  
+  ```ocaml
+  val again : int
+  ```

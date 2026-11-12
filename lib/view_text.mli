@@ -29,9 +29,10 @@
 val to_string : 'e Node.t -> string
 
 val visible : 'e Node.t -> string
-(** The text of the view that a person can see: every text node, side by side
-    with no separator, as the [textContent] of the page, without the text of
-    hidden elements (see {!Accessibility.hidden}), of component nodes and of
+(** The text of the view that the accessibility tree has: every text node, side
+    by side with no separator, as the [textContent] of the page, without the
+    text of hidden elements (see {!Accessibility.hidden}: also [inert] and
+    [aria-hidden] ones, which a browser draws), of component nodes and of
     loading chunks. *)
 
 val shows : 'e Node.t -> string -> bool

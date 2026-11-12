@@ -86,8 +86,11 @@ let element target =
   | Some role, Some position ->
       Printf.sprintf "List.nth (Memory.all_by_role page %s ~name:%s) %d"
         (role_constructor role) (quoted target.name) position
-  | None, _ ->
-      Printf.sprintf "Memory.by_text page %s" (quoted target.name)
+  | None, None ->
+      Printf.sprintf "Memory.by_name page %s" (quoted target.name)
+  | None, Some position ->
+      Printf.sprintf "List.nth (Memory.all_by_name page %s) %d"
+        (quoted target.name) position
 
 let reply path answer =
   let call = Printf.sprintf "(Memory.pending_request page %S)" path in

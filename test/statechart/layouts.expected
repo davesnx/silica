@@ -366,25 +366,25 @@ edge failed -> submitting back 995,97 947,82 853,82 805,99 label 900,89 submit
 edge submitting -> closed back 616,113 568,122 428,122 380,122 302,122 254,124 160,124 112,108 label 207,131 created ok
 edge submitting -> failed 805,113 853,120 947,120 995,104 label 900,127 created error
 linear_check/issue-detail
-machine issue-detail 525 232
+machine issue-detail 571 253
 node loading 40,77 143 53 initial
-node failed 401,28 72 36
-node not_found 390,100 94 36
-node ready 366,152 143 64
-edge failed -> loading back 401,42 366,42 318,27 231,27 183,88 label 274,34 props, retry
-edge loading -> failed 183,96 231,65 318,65 366,51 401,51 label 274,72 loaded error
+node failed 425,29 72 36
+node not_found 413,93 94 36
+node ready 366,145 189 92
+edge failed -> loading back 425,42 366,42 318,27 231,27 183,88 label 274,34 props, retry
+edge loading -> failed 183,96 231,65 318,65 366,51 425,51 label 274,72 loaded error
 edge loading -> loading 97,77 81,47 141,47 125,77 label 111,45 props
-edge loading -> not_found 183,103 231,103 318,103 366,113 390,113 label 274,110 loaded ok
-edge loading -> ready 183,118 231,179 318,179 366,184 label 274,186 loaded ok
-edge not_found -> loading back 390,122 366,122 318,141 231,141 183,111 label 274,148 props
+edge loading -> not_found 183,103 231,103 318,103 366,107 413,107 label 274,110 loaded ok
+edge loading -> ready 183,118 231,179 318,179 366,191 label 274,186 loaded ok
+edge not_found -> loading back 413,116 366,116 318,141 231,141 183,111 label 274,148 props
 linear_check/issue-list
-machine issue-list 525 156
+machine issue-list 571 178
 node loading 40,40 143 50 initial
-node failed 401,24 72 36
-node ready 366,76 143 64
-edge failed -> loading back 401,37 366,37 318,27 231,27 183,55 label 274,34 retry
-edge loading -> failed 183,65 231,65 318,65 366,47 401,47 label 274,72 loaded error
-edge loading -> ready 183,76 231,103 318,103 366,108 label 274,110 loaded ok
+node failed 425,18 72 36
+node ready 366,70 189 92
+edge failed -> loading back 425,31 366,31 318,27 231,27 183,55 label 274,34 retry
+edge loading -> failed 183,65 231,65 318,65 366,40 425,40 label 274,72 loaded error
+edge loading -> ready 183,76 231,103 318,103 366,116 label 274,110 loaded ok
 linear_check/me
 machine me 428 120
 node loading 40,35 116 50 initial
@@ -416,17 +416,17 @@ linear_check/router+create-issue+create-issue-dialog.router
 machine router 454 68
 node /?new&status&assignee&priority&label&group&order 40,16 398 36 initial
 linear_check/router+issue-detail.issue-detail
-machine issue-detail 525 232
+machine issue-detail 571 253
 node loading 40,77 143 53 initial
-node failed 401,28 72 36
-node not_found 390,100 94 36
-node ready 366,152 143 64
-edge failed -> loading back 401,42 366,42 318,27 231,27 183,88 label 274,34 props, retry
-edge loading -> failed 183,96 231,65 318,65 366,51 401,51 label 274,72 loaded error
+node failed 425,29 72 36
+node not_found 413,93 94 36
+node ready 366,145 189 92
+edge failed -> loading back 425,42 366,42 318,27 231,27 183,88 label 274,34 props, retry
+edge loading -> failed 183,96 231,65 318,65 366,51 425,51 label 274,72 loaded error
 edge loading -> loading 97,77 81,47 141,47 125,77 label 111,45 props
-edge loading -> not_found 183,103 231,103 318,103 366,113 390,113 label 274,110 loaded ok
-edge loading -> ready 183,118 231,179 318,179 366,184 label 274,186 loaded ok
-edge not_found -> loading back 390,122 366,122 318,141 231,141 183,111 label 274,148 props
+edge loading -> not_found 183,103 231,103 318,103 366,107 413,107 label 274,110 loaded ok
+edge loading -> ready 183,118 231,179 318,179 366,191 label 274,186 loaded ok
+edge not_found -> loading back 413,116 366,116 318,141 231,141 183,111 label 274,148 props
 linear_check/router+issue-detail.router
 machine router 741 92
 node /?new&status&assignee&priority&label&group&order 40,28 398 36 initial
@@ -434,13 +434,13 @@ node /issue/:int 615,28 110 36
 edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,41 486,27 567,27 615,41 label 527,34 url changed
 edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 615,51 567,65 486,65 438,51 label 527,72 url changed
 linear_check/router+issue-list.issue-list
-machine issue-list 525 156
+machine issue-list 525 167
 node loading 40,40 143 50 initial
-node failed 401,24 72 36
-node ready 366,76 143 64
-edge failed -> loading back 401,37 366,37 318,27 231,27 183,55 label 274,34 retry
-edge loading -> failed 183,65 231,65 318,65 366,47 401,47 label 274,72 loaded error
-edge loading -> ready 183,76 231,103 318,103 366,108 label 274,110 loaded ok
+node failed 401,21 72 36
+node ready 366,73 143 78
+edge failed -> loading back 401,34 366,34 318,27 231,27 183,55 label 274,34 retry
+edge loading -> failed 183,65 231,65 318,65 366,44 401,44 label 274,72 loaded error
+edge loading -> ready 183,76 231,103 318,103 366,112 label 274,110 loaded ok
 linear_check/router+issue-list.router
 machine router 741 92
 node /?new&status&assignee&priority&label&group&order 40,28 398 36 initial
@@ -550,17 +550,17 @@ edge running -> expired 680,138 728,139 769,139 817,122 label 749,146 tick
 edge running -> paused back 583,135 535,155 369,155 321,117 label 452,162 focus true, hover true
 edge running -> running 618,106 602,76 662,76 646,106 label 632,74 props, tick
 ui_check/tooltip
-machine tooltip 1060 238
+machine tooltip 1060 239
 node closed 40,67 72 53 initial
-node closing 941,74 103 78
+node closing 941,67 103 92
 node open 694,113 103 64
-node opening 348,107 97 50
-edge closed -> open 112,86 160,64 300,64 348,86 445,86 493,107 646,107 694,131 label 569,114 focus, hover
-edge closed -> opening 112,93 160,93 300,93 348,125 label 230,100 hover
-edge closing -> closed back 941,95 893,84 845,84 797,66 694,66 646,48 493,48 445,46 348,46 300,44 160,44 112,78 label 569,76 close escape-key, | close trigger-focus, | close trigger-press, | elapsed 0, elapsed 300
+node opening 348,101 97 64
+edge closed -> open 112,86 160,65 300,65 348,83 445,83 493,107 646,107 694,131 label 569,114 focus, hover
+edge closed -> opening 112,94 160,94 300,94 348,124 label 230,101 hover
+edge closing -> closed back 941,92 893,84 845,84 797,66 694,66 646,48 493,48 445,46 348,46 300,45 160,45 112,79 label 569,76 close escape-key, | close trigger-focus, | close trigger-press, | elapsed 0, elapsed 300
 edge closing -> open back 941,113 893,113 845,113 797,136 label 869,120 resume
-edge open -> closed back 694,159 646,174 493,174 445,182 348,182 300,190 160,190 112,108 label 230,218 close escape-key, | close trigger-focus, | close trigger-press, | leave
-edge open -> closing 797,154 845,151 893,151 941,130 label 869,158 leave
-edge opening -> closed back 348,139 300,131 160,131 112,101 label 230,138 cancel
-edge opening -> open 445,132 493,145 646,145 694,145 label 569,152 elapsed 0, elapsed 600
+edge open -> closed back 694,159 646,174 493,174 445,183 348,183 300,191 160,191 112,109 label 230,219 close escape-key, | close trigger-focus, | close trigger-press, | leave
+edge open -> closing 797,154 845,151 893,151 941,134 label 869,158 leave
+edge opening -> closed back 348,143 300,132 160,132 112,101 label 230,139 cancel
+edge opening -> open 445,133 493,145 646,145 694,145 label 569,152 elapsed 0, elapsed 600
 

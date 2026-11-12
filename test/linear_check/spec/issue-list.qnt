@@ -10,7 +10,7 @@ module issue_list {
   pure def owned(s: State): Set[str] = match s {
     | Loading => Set("loading/invoke /api/issues")
     | Failed => Set()
-    | Ready => Set("ready/invoke live:issues", "ready/hold keys")
+    | Ready => Set("ready/after 0ms", "ready/invoke live:issues", "ready/invoke /api/issues/update", "ready/hold keys")
   }
 
   pure val finals: Set[State] = Set()

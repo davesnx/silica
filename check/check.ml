@@ -348,6 +348,7 @@ type ('s, 'ev) t =
 and subject = Plain | With_props | Routed
 
 let id (Check check) = Lazy.force check.id
+let root (Check check) = Lazy.force check.root
 let state_json (Check check) state = check.state_json state
 let input_json (Check check) input = check.input_json input
 
@@ -802,6 +803,7 @@ type 'ev step = {
   machine : string;
   from : string;
   target : string;
+  root_moved : (string * string) option;
 }
 
 type 'ev counterexample =
@@ -1313,6 +1315,13 @@ let rules_of (type n e ev) (model : (n, _, ev, e) Check_model.model) properties
         )
       properties
 
+let root_moved model node next =
+  match next with
+  | Some next when model.Check_model.name next <> model.name node ->
+      Some (model.name node, model.name next)
+  | Some _ | None ->
+      None
+
 let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
   validate ~properties:check.properties ~children:check.names check.allow;
   let model = check.build () in
@@ -1348,6 +1357,7 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
           machine = model.machine;
           from = model.name node;
           target;
+          root_moved = None;
         }
     | Some (instance, machine) ->
         let state node =
@@ -1374,6 +1384,7 @@ let run (type s ev) (Check check : (s, ev) t) : (s, ev) report =
           from = state node;
           target =
             (match next with Some next -> state next | None -> state node);
+          root_moved = root_moved model node next;
         }
   in
   let path index =
@@ -1554,8 +1565,8 @@ let pp_lines formatter text =
     (fun line -> if line <> "" then Format.fprintf formatter "@,    %s" line)
     (String.split_on_char '\n' text)
 
-let pp_step formatter index step =
-  Format.fprintf formatter "@,  %d. %s%s -> %s: %s, by %s" (index + 1)
+let describe_step ~root step =
+  Printf.sprintf "%s%s -> %s: %s, by %s%s"
     ( if step.instance = "0" then
         ""
       else
@@ -1563,6 +1574,15 @@ let pp_step formatter index step =
     )
     step.from step.target step.event
     (describe_cause step.cause)
+    ( match step.root_moved with
+    | Some (from, target) ->
+        Printf.sprintf "; then %s: %s -> %s" root from target
+    | None ->
+        ""
+    )
+
+let pp_step ~root formatter index step =
+  Format.fprintf formatter "@,  %d. %s" (index + 1) (describe_step ~root step)
 
 let pp_report formatter report =
   Format.fprintf formatter "@[<v>%s: %d states, %d transitions" report.machine
@@ -1610,15 +1630,15 @@ let pp_report formatter report =
         (index + 1) violation.rule violation.message violation.hint;
       ( match violation.counterexample with
       | Path steps ->
-          List.iteri (pp_step formatter) steps
+          List.iteri (pp_step ~root:report.machine formatter) steps
       | Waits steps ->
-          List.iteri (pp_step formatter) steps;
+          List.iteri (pp_step ~root:report.machine formatter) steps;
           Format.fprintf formatter
             "@,  then no timer and no call runs: the app waits for the user"
       | Loop { stem; cycle } ->
-          List.iteri (pp_step formatter) stem;
+          List.iteri (pp_step ~root:report.machine formatter) stem;
           Format.fprintf formatter "@,  then forever:";
-          List.iteri (pp_step formatter) cycle
+          List.iteri (pp_step ~root:report.machine formatter) cycle
       );
       Format.fprintf formatter "@,  state: %s" violation.state_name;
       if violation.view <> "" then (
@@ -1885,6 +1905,7 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
         machine = model.machine;
         from = model.name node;
         target;
+        root_moved = None;
       }
     in
     match model.tree.actor move.event with
@@ -1900,6 +1921,7 @@ let walk (type s ev r) ?ends_with ?loop_from ?start (Check check : (s, ev) t)
           machine;
           from = state node;
           target = state (Option.value next ~default:node);
+          root_moved = root_moved model node next;
         }
   in
   let choose ~at node view moves (wanted : ev wanted) =
@@ -3110,7 +3132,7 @@ let script (type s ev) ?component ?check:expression
     | Some expression ->
         expression
     | None ->
-        "Checks." ^ Check_script.value_of_id (Lazy.force check.id)
+        "Checks." ^ Check_script.value_of_id (Lazy.force check.root)
   in
   let start_index = Option.value (start_of trace) ~default:0 in
   let props_index input =

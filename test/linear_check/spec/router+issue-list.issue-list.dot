@@ -4,7 +4,7 @@ rankdir=LR;
 "issue-list.__init" -> "issue-list.loading";
 "issue-list.loading" [label="loading\ninvoke /api/issues" shape=box];
 "issue-list.failed" [label="failed" shape=box];
-"issue-list.ready" [label="ready\ninvoke live:issues\nhold keys" shape=box];
+"issue-list.ready" [label="ready\nafter 0ms\ninvoke live:issues\nhold keys" shape=box];
 "issue-list.failed" -> "issue-list.loading" [label="retry"];
 "issue-list.loading" -> "issue-list.failed" [label="loaded error"];
 "issue-list.loading" -> "issue-list.ready" [label="loaded ok"];

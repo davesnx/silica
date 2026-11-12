@@ -51,7 +51,7 @@ state /edit, view 3
 path
   / -> /edit on open /edit, by the user opens /edit
   clean -> dirty on draft, by an input
-  dirty -> asking on attempt, by the source block (edit/dirty/block)
+  /edit -> /edit on back, by the browser history
 view
   heading "Edit" level=1
   navigation

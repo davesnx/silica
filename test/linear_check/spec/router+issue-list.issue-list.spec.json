@@ -21,7 +21,9 @@
     {
       "name": "ready",
       "final": false,
-      "timers": [],
+      "timers": [
+        0
+      ],
       "sources": [
         "live:issues"
       ],

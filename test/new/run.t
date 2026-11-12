@@ -94,6 +94,17 @@ The app builds its server and its client bundle, and its tests pass.
     "exit_code": 0,
     "outcome": "passed",
 
+A check that does not build is a setup error. With --json the report still
+comes on standard output, with the compile error in errors.
+
+  $ cp check/checks.ml checks.ml.saved
+  $ echo 'let broken =' >> check/checks.ml
+  $ silica check --json 2> /dev/null | grep -o -E '"(exit_code|outcome)":[^,]*|Syntax error'
+  "exit_code":3
+  "outcome":"setup error"
+  Syntax error
+  $ mv checks.ml.saved check/checks.ml
+
 silica check also compares the golden files: a missing one is a finding, with
 the command that writes it. --no-golden leaves them out.
 
