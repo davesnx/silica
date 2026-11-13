@@ -792,14 +792,17 @@ val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
     step breaks [rule]. Raises [Invalid_argument] when a step of the
     counterexample is not enabled in the check.
 
-    In a joint check (see {!val-child}), a step of a listed child is a
-    transition with the instance of the child and no props or snapshot data. The
-    start of a listed child, its new props and its end are not transitions of
-    their own, as they are in a trace that the runtime records: their actions
-    are in the transition of the step that caused them, such as the start of the
-    root. {!replay_trace} and {!script} read the steps only, so they take both
-    kinds of trace; {!conforms} has no snapshot of the children here, so it
-    leaves out the properties that read their view. *)
+    In a joint check (see {!val-child}), the trace has one transition for each
+    move of each instance, in the order of a trace that the runtime records: the
+    step of the instance that got the event, the step of a parent on the output
+    of a child (the cause [Child]), then the new props, the start and the end of
+    each listed child, where a child ends after its own children. The start of
+    the root comes before the start of each child. Each transition holds the
+    actions of its instance only, and the props and snapshot data of its
+    machine. [number], [entry] and the instance prefix of the ids in the actions
+    are not the ones of a run, and a navigation that a child starts in a step
+    has no [Url] transition. {!replay_trace} and {!script} read the steps only,
+    so they take both kinds of trace; {!conforms} reads all the transitions. *)
 
 val script :
   ?component:string ->
@@ -905,10 +908,12 @@ val conforms : ('s, 'ev) t -> Silica.Trace.t -> conformance
       of each listed child (see {!val-child}) in place of its component node,
       from the snapshot of the child in the trace, as the checker composes it; a
       child that the check does not list stays a component node. The properties
-      of a record run after the records of its children that its step caused
-      (new props, a start, an end), so the children have their props. A property
-      that reads a view with a listed child that has no snapshot in the trace,
-      or whose snapshot does not decode, is not evaluated: it is in [unchecked],
+      of a record run after the records that its step caused (the step of its
+      parent on its output, and the new props, the start and the end of its
+      children), so the children have their props. An end has no properties to
+      check: its snapshot is the one of the record before it. A property that
+      reads a view with a listed child that has no snapshot in the trace, or
+      whose snapshot does not decode, is not evaluated: it is in [unchecked],
       never a deviation. {!action} never holds; temporal properties are not
       checked here. Allowances apply.
 

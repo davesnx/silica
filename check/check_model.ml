@@ -2,6 +2,22 @@ open Silica
 
 exception Invalid_check of string
 
+type kind = Own | Reaction of { sender : string } | New_props | Start | End
+
+type ('s, 'ev) part = {
+  instance : string;
+  machine : string;
+  from : string;
+  target : string;
+  how : Machine.how;
+  kind : kind;
+  event : 'ev option;
+  root : 's option;
+  props : Silica_json.Json.t option;
+  snapshot : Silica_json.Json.t option;
+  actions : string list;
+}
+
 type sample =
   | Answers : {
       endpoint : ('i, 'o, 'x) Remote.endpoint;
@@ -773,6 +789,8 @@ type ('n, 's, 'ev, 'e) model = {
   event_name : 'ev -> string option;
   event_of : 'ev -> 'e option;
   delivered : 'n -> 'ev move -> 'ev list;
+  parts : 'n -> 'ev move -> ('s, 'ev) part list;
+  start_parts : unit -> ('s, 'ev) part list list;
   cause : 'n -> 'e Node.t -> 'ev move -> cause;
   state_rules : 'n -> 'e Node.t -> Check_rules.finding list;
   action_rules :
@@ -1078,6 +1096,8 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
     event_of =
       (function Event event -> Some event | Props _ | In_child _ -> None);
     delivered = (fun _ _ -> []);
+    parts = (fun _ _ -> []);
+    start_parts = (fun () -> []);
     cause;
     state_rules =
       (fun world view ->
@@ -1454,6 +1474,8 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       );
     event_of = (function Event event -> Some event | _ -> None);
     delivered = (fun _ _ -> []);
+    parts = (fun _ _ -> []);
+    start_parts = (fun () -> []);
     cause;
     state_rules =
       (fun world view ->

@@ -937,18 +937,17 @@ violation as a trace file [DIR/<id>_<rule>_<state>.jsonl], by {!Check.export}: t
 then each step with its cause, the answer of each call, the actions, and the
 event and snapshot data when the machine has codecs (see {!Silica.Trace}).
 
-A trace of the checker has one record for each step of the check: the start
-of the root, then one record for each move. It differs from a trace that the
-runtime records in a joint check: the start of a listed child, its new props
-and its end are not records of their own, and their actions are in the
-record of the step that caused them. So the first record, the start of the
-root, holds the timers that the children start, and a step of the parent
-that gives a child new props holds the actions of that child too. A step of
-a child (its own event) is a record, with the instance of the child and no
-snapshot. [replay] and [script] read only the steps, so they take both kinds
-of trace; [conform] has no snapshot of the children in a trace of the
-checker, so it does not evaluate a property of the parent that reads their
-view (see {!section-conform}).
+A trace of the checker has the records that the runtime writes: one record for
+each move of each instance. In a joint check, a step has the record of the
+instance that got the event, then the record of each parent that got an output
+of a child (cause [child]), then the new props, the start and the end of each
+listed child, in the order of the runtime: a child ends after its own children.
+Each record holds the actions of its instance only, and the props and snapshot
+data when the machine has codecs. Some fields are not the ones of a run:
+[number] is always 1, [entry] is always 0, the ids in the actions have no
+instance prefix, and a navigation that a child starts in a step has no [url]
+record. [replay] and [script] read only the steps, so they take both kinds of
+trace; [conform] reads all the records (see {!section-conform}).
 It lists the files it wrote in [DIR/.silica-traces] and removes those that a
 new run does not write again. A [DIR] that holds files and no
 [.silica-traces] list was not made by silica, so the run refuses it as a setup
@@ -1079,8 +1078,10 @@ In a joint check, the view that a property reads is the one the checker reads:
 the view of the parent with the view of each listed child in place of its
 component node, from the snapshot of the child in the trace. A child that the
 check does not list stays a component node, as in the checker. The
-properties of a record run after the records of its children that its step
-caused (new props, a start, an end), so the children have their new props.
+properties of a record run after the records that its step caused (the step
+of its parent on its output, and the new props, the start and the end of its
+children), so the children have their new props. An end has no properties to
+check: its snapshot is the one of the record before it.
 When a listed child has no snapshot in the trace (names only, or a recorder
 that dropped it) or its snapshot does not decode, conform does not evaluate a
 property that reads that view, and says so in a line

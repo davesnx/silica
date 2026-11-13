@@ -3087,11 +3087,106 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
             snapshot = scrub record.snapshot;
           }
         in
-        let transitions =
-          List.mapi
-            (fun index point -> scrubbed (record (index + 1) point))
-            points
+        let start_parts =
+          lazy
+            (Option.value ~default:[]
+               (List.nth_opt (model.start_parts ()) start)
+            )
         in
+        let part_record seq point (part : (s, ev) Check_model.part) =
+          let base = record seq point in
+          ( {
+              base with
+              instance = part.instance;
+              machine = part.machine;
+              from = part.from;
+              target = part.target;
+              change =
+                ( match (part.kind, part.how) with
+                | Check_model.Start, _ ->
+                    Started
+                | Check_model.End, _ ->
+                    Ended
+                | (Check_model.Own | Reaction _ | New_props), Machine.Unhandled
+                  ->
+                    Unhandled
+                | (Check_model.Own | Reaction _ | New_props), Machine.Kept ->
+                    Kept
+                | (Check_model.Own | Reaction _ | New_props), Machine.Entered ->
+                    Entered
+                );
+              event =
+                Option.value ~default:""
+                  (Option.bind part.event model.event_name);
+              data =
+                ( match part.kind with
+                | Check_model.Own ->
+                    base.data
+                | Reaction _ | New_props | Start | End ->
+                    Option.bind part.event check.input_json
+                );
+              props =
+                ( match (part.root, part.kind) with
+                | Some _, (Check_model.Own | Start) ->
+                    base.props
+                | Some _, (Reaction _ | New_props | End) ->
+                    None
+                | None, _ ->
+                    part.props
+                );
+              snapshot =
+                ( match part.root with
+                | Some state ->
+                    check.machine_json state
+                | None ->
+                    part.snapshot
+                );
+              actions = part.actions;
+              cause =
+                ( match part.kind with
+                | Check_model.Own ->
+                    base.cause
+                | Start ->
+                    Start
+                | Reaction { sender } ->
+                    Child { instance = sender }
+                | New_props ->
+                    Props
+                | End ->
+                    Ended
+                );
+            }
+            : Transition.t
+            )
+        in
+        let parts point =
+          match point.before with
+          | Some (node, _, move) ->
+              model.parts node move
+          | None ->
+              Lazy.force start_parts
+        in
+        let _, firsts, transitions =
+          List.fold_left
+            (fun (seq, firsts, transitions) point ->
+              let records =
+                match parts point with
+                | [] ->
+                    [ record seq point ]
+                | parts ->
+                    List.mapi
+                      (fun index part -> part_record (seq + index) point part)
+                      parts
+              in
+              ( seq + List.length records,
+                seq :: firsts,
+                List.rev_append records transitions
+              )
+            )
+            (1, [], []) points
+        in
+        let firsts = List.rev firsts in
+        let transitions = List.rev_map scrubbed transitions in
         {
           Trace.header =
             {
@@ -3109,7 +3204,7 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
               loop_from =
                 ( match counterexample with
                 | Loop { stem; _ } ->
-                    Some (List.length stem + 2)
+                    List.nth_opt firsts (List.length stem + 1)
                 | Path _ | Waits _ ->
                     None
                 );
@@ -3762,10 +3857,10 @@ let conform_record (Target target) ~expansion ~allow ~url ~(before : kept)
         None
   in
   let properties () =
-    match record.snapshot with
-    | None ->
+    match (record.change, record.snapshot) with
+    | Ended, _ | _, None ->
         (false, [], [])
-    | Some json -> (
+    | (Started | Resumed | Unhandled | Kept | Entered), Some json -> (
         match decode (Machine.state_codec machine) json with
         | Error error ->
             (false, [ Not_decodable { error = "the snapshot: " ^ error } ], [])
@@ -3871,17 +3966,17 @@ let child_view instances (type p s e) ~instance
         (Child_unresolved ("the trace has no snapshot of the child " ^ instance))
 
 let settles pending (record : Transition.t) =
-  ( match (record.cause, record.change) with
-    | Props, _ | _, (Started | Ended) ->
-        true
-    | _ ->
-        false
+  List.exists
+    (fun ((earlier : Transition.t), _) ->
+      match (record.cause, record.change) with
+      | Child { instance }, _ ->
+          instance = earlier.instance
+      | Props, _ | _, (Started | Ended) ->
+          Check_tree.descends ~from:earlier.instance record.instance
+      | _ ->
+          false
     )
-  && List.exists
-       (fun ((parent : Transition.t), _) ->
-         Check_tree.descends ~from:parent.instance record.instance
-       )
-       pending
+    pending
 
 let conforms (type s ev) (Check check : (s, ev) t) (trace : Trace.t) =
   let root = Lazy.force check.root in
