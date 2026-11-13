@@ -23,7 +23,7 @@ two or more arguments has a tuple, so its path uses [/+]. A constructor with no
 [[@route]] is a compile error. The two functions come from one constructor, so
 they always agree. When you write {!Silica.Router.val-route} by hand, the
 checker finds a pair that does not agree: [Check.app] checks
-[parse (print route) = route] for every route it reaches
+[parse (print route) = Ok route] for every route it reaches
 ([route-round-trip]).
 
 {@mlx file=examples/shared/doc_books.mlx[

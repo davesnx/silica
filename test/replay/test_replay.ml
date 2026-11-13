@@ -915,7 +915,8 @@ let app_limit_hint () =
     Check.run
       (Check.app ~max_states:2
          ~routes:[ Pages.Home; About; Secret ]
-         ~parse:Pages.parse ~print:Pages.print
+         ~parse:(fun url -> Ok (Pages.parse url))
+         ~print:Pages.print
          ~url_event:(fun url -> Silica.Router.Url_changed url)
          Pages.app
       )

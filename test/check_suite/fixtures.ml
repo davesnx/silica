@@ -331,7 +331,7 @@ let note =
 
 let broken =
   Check.app ~routes:[]
-    ~parse:(fun _ -> Showing)
+    ~parse:(fun _ -> Ok Showing)
     ~print:(fun Showing -> Url.of_string "/")
     ~url_event:(fun _ -> Noop)
     (fun _ -> shell)

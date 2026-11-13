@@ -66,7 +66,9 @@ let app _ =
     )
 
 let check =
-  Check.app ~routes:[ Home; About; Secret ] ~urls:[ "/secret" ] ~parse ~print
+  Check.app ~routes:[ Home; About; Secret ] ~urls:[ "/secret" ]
+    ~parse:(fun url -> Ok (parse url))
+    ~print
     ~url_event:(fun url -> Router.Url_changed url)
     ~properties:
       [

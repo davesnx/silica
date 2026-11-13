@@ -1172,7 +1172,7 @@ let rec take count = function
 let link_problem ?is_not_found ~parse ~print href =
   let url = Url.of_string href in
   match parse url with
-  | snapshot ->
+  | Ok snapshot ->
       let printed = Url.to_string (print snapshot) in
       if printed <> Url.to_string { url with hash = None } then
         Some
@@ -1187,13 +1187,13 @@ let link_problem ?is_not_found ~parse ~print href =
         Some "which parses to the not-found route"
       else
         None
-  | exception Failure message ->
+  | Error message ->
       Some ("which does not parse: " ^ message)
 
 let round_trips ~parse ~print route =
-  match parse (print route) with
-  | parsed ->
-      parsed = route
+  match print route with
+  | url ->
+      parse url = Ok route
   | exception Failure _ ->
       false
 

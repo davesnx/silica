@@ -765,7 +765,7 @@ let test_app_root_gets_answers () =
     printed := (path, state) :: !printed;
     Url.of_string path
   in
-  let parse url = List.assoc (Url.to_string url) !printed in
+  let parse url = Ok (List.assoc (Url.to_string url) !printed) in
   let report =
     Check.run
       (Check.app
@@ -791,7 +791,7 @@ let test_app_root_timer_owner () =
     "the root machine is checked for ownership" ("timer-owner", [ "go" ])
     (app_trace show_go
        (Check.app ~routes:[ A ]
-          ~parse:(fun _ -> A)
+          ~parse:(fun _ -> Ok A)
           ~print:(fun _ -> Url.of_string "/")
           ~url_event:(fun _ -> Wait)
           (fun _ -> Component.make machine go_view)

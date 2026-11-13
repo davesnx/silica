@@ -369,7 +369,7 @@ val app :
   ?properties:('s app_state, 'e) property list ->
   ?allow:allowance list ->
   routes:'s list ->
-  parse:(Silica.Url.t -> 's) ->
+  parse:(Silica.Url.t -> ('s, string) result) ->
   print:('s -> Silica.Url.t) ->
   ?is_not_found:('s -> bool) ->
   url_event:(Silica.Url.t -> 'e) ->
@@ -400,15 +400,16 @@ val app :
     pages per check, so the product of the router and its pages stays small.
 
     Besides the component rules, two rules hold:
-    - [route-round-trip]: [parse (print route) = route] for every route in
+    - [route-round-trip]: [parse (print route) = Ok route] for every route in
       [routes] and for the route of every reached state, so a
       {!Silica.Router.val-route} whose constructor and data function disagree is
       found. Routes with a query: list one value with the default and one
       without.
     - [link-parses]: for the [href] of every [data-silica-link] anchor in a
-      rendered view, [print (parse href)] is the same URL string (the link is
-      canonical), and, when [is_not_found] is given, [parse href] is not the
-      not-found route. A [parse] that raises [Failure] fails the rule. *)
+      rendered view, [parse href] gives [Ok route] and [print route] is the same
+      URL string (the link is canonical), and, when [is_not_found] is given,
+      [route] is not the not-found route. A [parse] that gives [Error] fails the
+      rule. *)
 
 val id : ('s, 'ev) t -> string
 (** The id of the root machine; for a check with [children] or [pages], the root
