@@ -8,7 +8,7 @@ holds all three in the data of its states.
 |------|-------|------|
 | Local | the client | the data of a state |
 | Remote | the server, one request for each call | {!Silica.Remote}, {!Silica.Remote.call} |
-| Live | the server, sent to the client when it changes | {!Silica.Topic}, {!Silica.Source.live}, {!Silica.Live} |
+| Live | the server, sent to the client when it changes | {!Silica.Topic}, {!Silica.Topic.subscribe}, {!Silica.Live} |
 }
 
 {!Silica.Status.t} shows where Remote or Live data is.
@@ -129,13 +129,16 @@ let component = Component.make machine view
 
 Live data is owned by the server. Silica has two forms of it.
 
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
+
 {2:topics Topics}
 
 A topic is a named piece of server data with a state type. The server
 publishes the full state under a key (see {!page-server.publish}), and each
 subscriber of that key gets it with a sequence number. A snapshot subscribes
-with [Source.live topic key on_update] in its [during] list. The subscription
-runs while the list holds it. The event carries a {!Silica.Topic.update}: a
+with [Topic.subscribe topic key on_update] in its [during] list. The
+subscription runs while the list holds it. The event carries a {!Silica.Topic.update}: a
 sequence number and a [Status.t].
 
 - At the start, the status is [Loading None] while the socket connects.
@@ -164,7 +167,7 @@ let machine =
     ~event_name
     ~during:(fun (Watching _) ->
       [
-        Source.live Example_model.votes_topic "main" (fun update ->
+        Topic.subscribe Example_model.votes_topic "main" (fun update ->
             Update update
         );
       ]
@@ -243,7 +246,7 @@ val phase : int Silica.Topic.update -> phase = <fun>
         | Live -> "watching.live"
         | Offline -> "watching.offline")
       ~states:[ "watching.connecting"; "watching.live"; "watching.offline" ]
-      ~during:(fun _ -> [ Silica.Source.live score "main" phase ])
+      ~during:(fun _ -> [ Silica.Topic.subscribe score "main" phase ])
       (fun _ next -> Silica.Machine.Go next);;
 val machine : (unit, phase, phase) Silica.Machine.t = <abstr>
 # let _, actions, how = Silica.Machine.step machine Live Offline;;

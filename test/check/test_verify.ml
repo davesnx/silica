@@ -401,7 +401,7 @@ let watching_name = function
 
 let watching_states = [ "watching"; "broken"; "away" ]
 
-let watch_source = Source.live topic "all" (fun u -> Update u)
+let watch_source = Topic.subscribe topic "all" (fun u -> Update u)
 
 let watcher ~on_stale =
   Machine.make ~id:"watcher" ~init:(Watching 0) ~name:watching_name
@@ -583,7 +583,10 @@ let test_call_outside_its_state () =
 let test_subscription_outside_its_state () =
   expect_violation show_go "call-owner" [ "go" ]
     (Check.component
-       (Component.make (wrong (Source.live topic "all" (fun _ -> Wait))) go_view)
+       (Component.make
+          (wrong (Topic.subscribe topic "all" (fun _ -> Wait)))
+          go_view
+       )
     )
 
 type attempt = Fetching of int | Fetched of int

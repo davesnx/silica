@@ -37,7 +37,7 @@ let machine =
           [ Remote.call comments_endpoint number (fun answer -> Loaded answer) ]
       | Ready _ ->
           [
-            Source.live comments_topic (string_of_int number) (fun update ->
+            Topic.subscribe comments_topic (string_of_int number) (fun update ->
                 Updated update
             );
           ]

@@ -117,6 +117,9 @@ val during : Tags.t -> event Silica.Source.t list = <fun>
 
 {2:live Live data}
 
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
+
 For data on a Live topic, the changes still go to the server by Remote calls:
 [apply], [settle] and [drop] as above, and [rebase] for each state of the
 topic. The server publishes the new state as soon as it has made the change,

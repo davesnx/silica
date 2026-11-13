@@ -1,8 +1,11 @@
 (** A named, keyed piece of server data with a state type. The server publishes
     the full state under a key; every subscriber of that name and key gets it
-    with a sequence number. The server holds no machine for a topic. *)
+    with a sequence number. The server holds no machine for a topic.
 
-type 's t
+    Experimental: Live updates can change. The checker and the runtime do not
+    agree yet on the order of the first update of a subscription. *)
+
+type 's t = 's Live_topic.t
 
 val declare : name:string -> state:'s Codec.t -> 's t
 (** Declare a topic in shared code. [name] is the same on the server and in the
@@ -18,11 +21,21 @@ val state_id : 's t -> 's Type.Id.t
 (** A type id made by [declare], one for each topic. The checker uses it to find
     the sample states of a topic. *)
 
-type 's update = { seq : int; status : 's Status.t }
+type 's update = 's Live_topic.update = { seq : int; status : 's Status.t }
 (** What a subscription raises as an event. [seq] is the sequence number of the
     state in [status]; it is [0] when the status holds no new state: connecting,
     offline (the old data with [stale = true]) or a failure. A client drops a
     state whose [seq] is not higher than the last one it got on the socket. *)
+
+val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Source.t
+(** Subscribe to the topic under the key, as a source that runs during a state
+    (see the [during] list of {!Machine.make}). The event is raised once with
+    [Loading None] while the socket connects, and again for every state the
+    server publishes, for every loss of the connection (the old data,
+    [stale = true]) and for every failure. The client reconnects by itself.
+
+    Experimental: Live updates can change. The checker and the runtime do not
+    agree yet on the order of the first update of a subscription. *)
 
 val update_codec : 's Codec.t -> 's update Codec.t
 (** [update_codec state] writes [{"seq": n, "status": ..}], the status by

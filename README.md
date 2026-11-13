@@ -9,7 +9,7 @@ silica is a view framework for OCaml where all behaviour lives in statecharts, w
 
 - State machines handle all the possible states, so they can be verified without running, replayed, debugged and run everywhere.
 - The silica code runs on the server as native OCaml and in the browser as JavaScript, thanks to [Melange](https://melange.re).
-- Data can live on the client (local state), on the server (remote data) or live (a WebSocket).
+- Data can live on the client (local state), on the server (remote data) or live (a WebSocket, experimental).
 - It comes with a typed router: the routes are the states of a machine, and one value reads and writes each URL. It has guards, preload, unsaved-changes blocks and lazy routes.
 - All browser actions and states are represented as state machines as well.
 - Machines can compose.

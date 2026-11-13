@@ -1,7 +1,10 @@
 (** One live subscription over a WebSocket, as the Live protocol describes it
     ({!Protocol}). The client sends the hello, keeps the heartbeat, drops old
     states, and connects again after a loss. It reaches the platform only
-    through {!Platform.type-io}. *)
+    through {!Platform.type-io}.
+
+    Experimental: Live updates can change. The checker and the runtime do not
+    agree yet on the order of the first update of a subscription. *)
 
 type config = { ping_ms : int; pong_ms : int }
 (** [ping_ms] is the wait before each ping. [pong_ms] is the wait for the pong

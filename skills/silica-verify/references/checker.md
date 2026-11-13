@@ -248,6 +248,8 @@ The checker has no server. A sample gives the values that the server could give:
 
 An endpoint with no sample can only fail. So the error paths are always checked.
 
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+
 ```ocaml
 # let report =
     Check.run
@@ -321,6 +323,8 @@ The properties of the check, `always` and the temporal ones, see the whole page 
 ## Live components
 
 `Check.live` checks a Live component. Its machine runs on the server, so a state with a source of the page in its `during` list (a focus trap, a key table, a dismiss layer) is a violation of `live-uses-client-source`, and an action that needs an answer of the page (`Measure`, `Copy`, `Load_script`) is a violation of `live-uses-client-action`.
+
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
 
 ## Routed apps
 

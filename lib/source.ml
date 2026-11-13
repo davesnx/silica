@@ -7,9 +7,9 @@ type 'e t =
     }
       -> 'e t
   | Live : {
-      topic : 's Topic.t;
+      topic : 's Live_topic.t;
       key : string;
-      on_update : 's Topic.update -> 'e;
+      on_update : 's Live_topic.update -> 'e;
     }
       -> 'e t
   | Held of 'e Action.source
@@ -19,7 +19,7 @@ let remote_call ?timeout_ms endpoint input on_result =
   Call { endpoint; input; timeout_ms; on_result }
 
 let after ms event = Timer { ms; event }
-let live topic key on_update = Live { topic; key; on_update }
+let topic_subscribe topic key on_update = Live { topic; key; on_update }
 
 let focus_trap ?(return_focus = true) container =
   Held (Action.Focus_trap { container; return_focus })
@@ -65,7 +65,7 @@ let name = function
   | Call call ->
       Endpoint.path call.endpoint
   | Live live ->
-      "live:" ^ Topic.name live.topic
+      "live:" ^ Live_topic.name live.topic
   | Held source ->
       Action.source_name source
   | Timer timer ->
@@ -101,7 +101,7 @@ let key = function
       ^ " "
       ^ Codec.to_string (Endpoint.input call.endpoint) call.input
   | Live live ->
-      "live:" ^ Topic.name live.topic ^ " " ^ live.key
+      "live:" ^ Live_topic.name live.topic ^ " " ^ live.key
   | Held source ->
       String.concat " "
         ((Action.source_name source :: refs source) @ anchor_place source)
@@ -118,7 +118,7 @@ let delay = function
 
 let topic = function
   | Live live ->
-      Some (Topic.name live.topic)
+      Some (Live_topic.name live.topic)
   | Call _ | Held _ | Timer _ ->
       None
 

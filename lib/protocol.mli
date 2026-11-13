@@ -8,7 +8,10 @@
     code. Then: [{"t":"state","seq":n,"ack":n,"state":...,"actions":[...]}] from
     the server, [{"t":"event","id":n,"event":...}] from the client,
     [{"t":"error","code":...}] from the server, and [{"t":"ping"}] from the
-    client, answered by [{"t":"pong"}]. *)
+    client, answered by [{"t":"pong"}].
+
+    Experimental: Live updates can change. The checker and the runtime do not
+    agree yet on the order of the first update of a subscription. *)
 
 val version : int
 (** The protocol version, [2]. A hello with another version closes the socket.

@@ -334,7 +334,10 @@ module Make (Io : IO) : sig
   (** Like {!render_page} for a component with no URL. A [Set_title] action
       replaces [title]. The status is 200, or the last [Set_status]. *)
 
-  (** {2 One island} *)
+  (** {2 One island}
+
+      Experimental: Live updates can change. The checker and the runtime do not
+      agree yet on the order of the first update of a subscription. *)
 
   type runner
   (** The machine of one island and the queue of its events. {!val-upgrade}
@@ -399,6 +402,9 @@ module Make (Io : IO) : sig
       }
         -> topic_def
         (** [init] makes the first state of a key that nobody has published yet.
+
+            Experimental: Live updates can change. The checker and the runtime
+            do not agree yet on the order of the first update of a subscription.
         *)
 
   type t
@@ -500,7 +506,10 @@ module Make (Io : IO) : sig
 
   val publish : t -> 's Silica.Topic.t -> key:string -> 's -> unit Io.t
   (** The new full state of a topic key. Its [seq] is one higher than the last
-      one, and every subscriber gets it. Call it from a handler. *)
+      one, and every subscriber gets it. Call it from a handler.
+
+      Experimental: Live updates can change. The checker and the runtime do not
+      agree yet on the order of the first update of a subscription. *)
 
   val sweep : t -> unit
   (** Housekeeping, called now and then by the adapter (about every 5 seconds):

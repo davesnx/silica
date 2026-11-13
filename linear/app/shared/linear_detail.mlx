@@ -314,7 +314,7 @@ let live (state : view_state) =
   if state.reconnecting then
     Source.after 0 Reconnected
   else
-    Source.live issues_topic issues_key (fun update -> Updated update)
+    Topic.subscribe issues_topic issues_key (fun update -> Updated update)
 
 let page_title number data =
   match Linear_data.find number data with

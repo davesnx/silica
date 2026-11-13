@@ -5,7 +5,8 @@
     Each source has a {!key}. After each step the machine compares the keys of
     the old and the new [during] list: it stops the sources whose key went away
     and starts the new ones, and the others keep running. So the calls of one
-    state can change with its data. Calls are made with {!Remote.call}. *)
+    state can change with its data. Calls are made with {!Remote.call} and
+    subscriptions with {!Topic.subscribe}. *)
 
 type 'e t
 (** A timer or a source that raises events ['e]. *)
@@ -13,12 +14,6 @@ type 'e t
 val after : int -> 'e -> 'e t
 (** A timer: the event is raised once, this many milliseconds after the timer
     starts, unless it was stopped first. *)
-
-val live : 's Topic.t -> string -> ('s Topic.update -> 'e) -> 'e t
-(** Subscribe to the topic under the key. The event is raised once with
-    [Loading None] while the socket connects, and again for every state the
-    server publishes, for every loss of the connection (the old data,
-    [stale = true]) and for every failure. The client reconnects by itself. *)
 
 val focus_trap : ?return_focus:bool -> Ref.t -> 'e t
 (** Keep focus inside the element with this ref while the source runs.
@@ -104,15 +99,15 @@ val same : 'e t -> 'e t -> bool
     the state, or in the input of the call. *)
 
 val name : 'e t -> string
-(** The endpoint path of a call, ["live:" ^ topic name] for a {!live},
-    ["after <ms>ms"] for a timer, or the name of a held source as
-    {!Action.source_name} gives it. *)
+(** The endpoint path of a call, ["live:" ^ topic name] for a
+    {!Topic.subscribe}, ["after <ms>ms"] for a timer, or the name of a held
+    source as {!Action.source_name} gives it. *)
 
 val delay : 'e t -> int option
 (** The milliseconds of an {!after} timer. *)
 
 val topic : 'e t -> string option
-(** The topic name of a {!live} source. *)
+(** The topic name of a {!Topic.subscribe} source. *)
 
 val is_held : 'e t -> bool
 (** A source that is not a call, a subscription or a timer. *)
@@ -132,3 +127,6 @@ val remote_call :
   'i ->
   (('o, 'x) Endpoint.answer -> 'e) ->
   'e t
+
+val topic_subscribe :
+  's Live_topic.t -> string -> ('s Live_topic.update -> 'e) -> 'e t

@@ -120,7 +120,7 @@ snapshot:
 |--------|----------------------------------------|
 | {!Silica.Source.after} | raise an event after a number of milliseconds |
 | {!Silica.Remote.call} | one Remote call; the answer is an event (see {!page-data.remote}) |
-| {!Silica.Source.live} | follow one key of a topic (see {!page-data.topics}) |
+| {!Silica.Topic.subscribe} | follow one key of a topic (see {!page-data.topics}) |
 | {!Silica.Source.keys} | a table of keys for the whole page; keys typed in a text field do not count, except with Ctrl or Meta, and Escape |
 | {!Silica.Source.dismiss} | a dismiss layer: Escape, a press outside or focus that leaves raise events; the newest layer gets them first |
 | {!Silica.Source.focus_trap} | keep focus inside an element, and give it back at the end |

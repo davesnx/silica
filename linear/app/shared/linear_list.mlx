@@ -241,7 +241,7 @@ let live (r : ready) =
   if r.reconnecting then
     Source.after 0 Reconnected
   else
-    Source.live issues_topic issues_key (fun update -> Updated update)
+    Topic.subscribe issues_topic issues_key (fun update -> Updated update)
 
 let machine =
   Machine.make_with_props ~id:"issue-list" ~init:Loading ~name ~states

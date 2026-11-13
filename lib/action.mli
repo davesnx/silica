@@ -198,14 +198,14 @@ type 'e host =
           [on_result (Failed (Network "timeout"))] and drops the answer. *)
   | Start_live : {
       id : string;
-      topic : 's Topic.t;
+      topic : 's Live_topic.t;
       key : string;
-      on_update : 's Topic.update -> 'e;
+      on_update : 's Live_topic.update -> 'e;
     }
       -> 'e host
       (** Subscribe to the topic under the key and raise [on_update] for each
           state, and for each change of the connection (see {!Topic.update}),
-          unless stopped first. Raised when a state with a {!Source.live} is
+          unless stopped first. Raised when a state with a {!Topic.subscribe} is
           entered. A [Stop] with the same id ends the subscription. *)
   | Stop of string
       (** Stop the timer, call or subscription with this id. A stopped timer

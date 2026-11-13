@@ -428,14 +428,14 @@ type 'e host =
           [on_result (Failed (Network "timeout"))] and drops the answer. *)
   | Start_live : {
       id : string;
-      topic : 's Topic.t;
+      topic : 's Live_topic.t;
       key : string;
-      on_update : 's Topic.update -> 'e;
+      on_update : 's Live_topic.update -> 'e;
     }
       -> 'e host
       (** Subscribe to the topic under the key and raise [on_update] for each
           state, and for each change of the connection (see {!Topic.update}),
-          unless stopped first. Raised when a state with a {!Source.live} is
+          unless stopped first. Raised when a state with a {!Topic.subscribe} is
           entered. A [Stop] with the same id ends the subscription. *)
   | Stop of string
 ```
@@ -1640,6 +1640,8 @@ The inverse of `to_string`: `of_string (to_string key)` is `key` when `repeat` i
 
 A component whose state lives on the server, one instance per connection. The client sends encoded events and receives encoded state.
 
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+
 ```ocaml
 type ('s, 'e) t = {
   channel : string;
@@ -1671,6 +1673,8 @@ An island: an empty `div` with `data-silica-live` set to the channel. It has no 
 *For hosts: the browser runtime, `Silica_memory` and the server use it. App code does not call it.*
 
 One live subscription over a WebSocket, as the Live protocol describes it (`Protocol`). The client sends the hello, keeps the heartbeat, drops old states, and connects again after a loss. It reaches the platform only through `Platform.io`.
+
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
 
 ```ocaml
 type config = { ping_ms : int; pong_ms : int }
@@ -1736,6 +1740,40 @@ val subscribe :
 ```
 
 Subscribe to the topic under the key. `deliver` gets the updates that `Action.Start_live` describes. The result stops the subscription.
+
+## Silica.Live_topic
+
+The types of `Topic`, in a module below `Source` and `Action`. Use them through `Topic`.
+
+```ocaml
+type 's t
+```
+
+A topic with state `'s`.
+
+```ocaml
+val declare : name:string -> state:'s Codec.t -> 's t
+```
+
+```ocaml
+val name : 's t -> string
+```
+
+```ocaml
+val state : 's t -> 's Codec.t
+```
+
+```ocaml
+val state_id : 's t -> 's Type.Id.t
+```
+
+```ocaml
+type 's update = { seq : int; status : 's Status.t }
+```
+
+```ocaml
+val update_codec : 's Codec.t -> 's update Codec.t
+```
 
 ## Silica.Machine
 
@@ -2499,6 +2537,8 @@ A press with the main button at `(0, 0)`.
 Live protocol, version 2. Wire messages between a live client and the server, shared by both sides. One socket serves one subscription: an island or a topic key. Every message is one JSON object with a `"t"` tag.
 
 The client sends first `{"t":"hello","v":2,"csrf":...,"sub":...}` where `sub` is `{"island":channel,"id":instance}` or `{"topic":name,"key":key}`. The server answers `{"t":"hello","v":2}`, or closes the socket with a close code. Then: `{"t":"state","seq":n,"ack":n,"state":...,"actions":[...]}` from the server, `{"t":"event","id":n,"event":...}` from the client, `{"t":"error","code":...}` from the server, and `{"t":"ping"}` from the client, answered by `{"t":"pong"}`.
+
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
 
 ```ocaml
 val version : int
@@ -3406,7 +3446,7 @@ The value with each string that is the text of a field of `learn` replaced by `m
 
 Timers and sources of events that run during a state: the `during` list of `Machine.make`. A source starts when it comes into the list and stops when it goes out of the list.
 
-Each source has a `key`. After each step the machine compares the keys of the old and the new `during` list: it stops the sources whose key went away and starts the new ones, and the others keep running. So the calls of one state can change with its data. Calls are made with `Remote.call`.
+Each source has a `key`. After each step the machine compares the keys of the old and the new `during` list: it stops the sources whose key went away and starts the new ones, and the others keep running. So the calls of one state can change with its data. Calls are made with `Remote.call` and subscriptions with `Topic.subscribe`.
 
 ```ocaml
 type 'e t
@@ -3419,12 +3459,6 @@ val after : int -> 'e -> 'e t
 ```
 
 A timer: the event is raised once, this many milliseconds after the timer starts, unless it was stopped first.
-
-```ocaml
-val live : 's Topic.t -> string -> ('s Topic.update -> 'e) -> 'e t
-```
-
-Subscribe to the topic under the key. The event is raised once with `Loading None` while the socket connects, and again for every state the server publishes, for every loss of the connection (the old data, `stale = true`) and for every failure. The client reconnects by itself.
 
 ```ocaml
 val focus_trap : ?return_focus:bool -> Ref.t -> 'e t
@@ -3528,7 +3562,7 @@ The rule after a step that keeps the state: a source whose key went away stops, 
 val name : 'e t -> string
 ```
 
-The endpoint path of a call, `"live:" ^ topic name` for a `live`, `"after <ms>ms"` for a timer, or the name of a held source as `Action.source_name` gives it.
+The endpoint path of a call, `"live:" ^ topic name` for a `Topic.subscribe`, `"after <ms>ms"` for a timer, or the name of a held source as `Action.source_name` gives it.
 
 ```ocaml
 val delay : 'e t -> int option
@@ -3540,7 +3574,7 @@ The milliseconds of an `after` timer.
 val topic : 'e t -> string option
 ```
 
-The topic name of a `live` source.
+The topic name of a `Topic.subscribe` source.
 
 ```ocaml
 val is_held : 'e t -> bool
@@ -3910,8 +3944,10 @@ The status as `[@@deriving json]` writes a variant, with the codec of the data: 
 
 A named, keyed piece of server data with a state type. The server publishes the full state under a key; every subscriber of that name and key gets it with a sequence number. The server holds no machine for a topic.
 
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+
 ```ocaml
-type 's t
+type 's t = 's Live_topic.t
 ```
 
 ```ocaml
@@ -3939,10 +3975,18 @@ val state_id : 's t -> 's Type.Id.t
 A type id made by `declare`, one for each topic. The checker uses it to find the sample states of a topic.
 
 ```ocaml
-type 's update = { seq : int; status : 's Status.t }
+type 's update = 's Live_topic.update = { seq : int; status : 's Status.t }
 ```
 
 What a subscription raises as an event. `seq` is the sequence number of the state in `status`; it is `0` when the status holds no new state: connecting, offline (the old data with `stale = true`) or a failure. A client drops a state whose `seq` is not higher than the last one it got on the socket.
+
+```ocaml
+val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Source.t
+```
+
+Subscribe to the topic under the key, as a source that runs during a state (see the `during` list of `Machine.make`). The event is raised once with `Loading None` while the socket connects, and again for every state the server publishes, for every loss of the connection (the old data, `stale = true`) and for every failure. The client reconnects by itself.
+
+Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
 
 ```ocaml
 val update_codec : 's Codec.t -> 's update Codec.t

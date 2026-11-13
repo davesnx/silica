@@ -76,9 +76,9 @@ val mount :
     script that the server puts in the head of the page ({!Silica.Early_input}),
     and the host presses it again after its first paint, with the same limits.
 
-    Live topics. A state with a {!Silica.Source.live} subscribes to its topic.
-    The host sends [Loading None] at once, then a [Ready] for each state. While
-    the socket is down it sends the old data once with [stale = true] and
+    Live topics. A state with a {!Silica.Topic.subscribe} subscribes to its
+    topic. The host sends [Loading None] at once, then a [Ready] for each state.
+    While the socket is down it sends the old data once with [stale = true] and
     connects again. A fatal close code ends the subscription with [Failed]
     ([Http 403], [Http 404] or [Http 426]; [Network code] for an [Error]
     message). Leaving the state closes the socket.

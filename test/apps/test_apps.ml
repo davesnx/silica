@@ -551,7 +551,7 @@ let watch_machine =
     ~name:watch_state_name ~states:watch_state_states
     ~during:(function
       | Watching _ ->
-          [ Source.live news "room" (fun update -> Update update) ]
+          [ Topic.subscribe news "room" (fun update -> Update update) ]
       | Away _ ->
           []
       )

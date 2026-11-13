@@ -214,7 +214,7 @@ module Watch = struct
         | Idle ->
             []
         | Watching (key, _) ->
-            [ Source.live topic key (fun update -> Update update) ]
+            [ Topic.subscribe topic key (fun update -> Update update) ]
         )
       (fun state event ->
         match (state, event) with
@@ -330,7 +330,7 @@ let source_tests =
     Alcotest.test_case "the source and the active resources name the topic"
       `Quick (fun () ->
         let source =
-          Source.live Watch.topic "k" (fun update -> Watch.Update update)
+          Topic.subscribe Watch.topic "k" (fun update -> Watch.Update update)
         in
         Alcotest.(check string) "name" "live:counts" (Source.name source);
         Alcotest.(check string) "key" "live:counts k" (Source.key source);

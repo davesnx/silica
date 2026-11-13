@@ -873,7 +873,7 @@ let test_sub_states_keep_sources () =
       ~during:(function
         | Connecting | Live | Offline ->
             [
-              Source.live connection_topic "main" (fun _ -> Connecting);
+              Topic.subscribe connection_topic "main" (fun _ -> Connecting);
               Remote.call endpoint "change" (fun _ -> Connecting);
             ]
         | Closed ->

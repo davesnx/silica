@@ -161,11 +161,11 @@ val answers :
 
 val states : 's Silica.Topic.t -> 's list -> sample
 (** [states topic values]: the states that the server can publish on [topic]. A
-    subscription of a state (see {!Silica.Source.live}) gives, in this order of
-    possibility: [Loading None] once; then up to [arrivals] new states ([Ready]
-    with [stale = false], [seq] from 1), each one any of [values]; once, a loss
-    of the connection after a state ([Ready] with the last state and
-    [stale = true], [seq] 0), after which one more state can arrive (the
+    subscription of a state (see {!Silica.Topic.subscribe}) gives, in this order
+    of possibility: [Loading None] once; then up to [arrivals] new states
+    ([Ready] with [stale = false], [seq] from 1), each one any of [values];
+    once, a loss of the connection after a state ([Ready] with the last state
+    and [stale = true], [seq] 0), after which one more state can arrive (the
     reconnect); and once, a fatal failure
     ([Failed { error = Network "down"; last }]), after which nothing arrives. A
     topic with no [states] gives [Loading None] and the failure only. *)

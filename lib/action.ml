@@ -67,9 +67,9 @@ type 'e host =
       -> 'e host
   | Start_live : {
       id : string;
-      topic : 's Topic.t;
+      topic : 's Live_topic.t;
       key : string;
-      on_update : 's Topic.update -> 'e;
+      on_update : 's Live_topic.update -> 'e;
     }
       -> 'e host
   | Stop of string

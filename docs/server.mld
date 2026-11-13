@@ -260,6 +260,9 @@ server knows; otherwise the server closes the socket with a code of
 - [max_message]: a larger message from the client is dropped, and the client
   gets an error message (default 64 KiB).
 
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
+
 {2:islands Islands}
 
 An island is a Live component ({!Silica.Live.t}) whose machine runs on the

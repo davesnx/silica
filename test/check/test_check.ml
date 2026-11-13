@@ -3005,7 +3005,7 @@ let test_sub_states_in_the_spec () =
       ~states:[ "watching.connecting"; "watching.live"; "watching.offline" ]
       ~during:(fun _ ->
         [
-          Source.live phase_topic "main" (fun (update : int Topic.update) ->
+          Topic.subscribe phase_topic "main" (fun (update : int Topic.update) ->
               match update.status with
               | Ready { stale = false; _ } ->
                   Phase_live

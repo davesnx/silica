@@ -1,5 +1,8 @@
 (** A component whose state lives on the server, one instance per connection.
-    The client sends encoded events and receives encoded state. *)
+    The client sends encoded events and receives encoded state.
+
+    Experimental: Live updates can change. The checker and the runtime do not
+    agree yet on the order of the first update of a subscription. *)
 
 type ('s, 'e) t = {
   channel : string;

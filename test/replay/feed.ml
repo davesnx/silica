@@ -20,7 +20,9 @@ let make ~clears_offline ~keeps_last =
     ~init:{ score = None; offline = false }
     ~name:(fun _ -> "watching")
     ~states:[ "watching" ] ~event_name
-    ~during:(fun _ -> [ Source.live topic "main" (fun update -> Update update) ])
+    ~during:(fun _ ->
+      [ Topic.subscribe topic "main" (fun update -> Update update) ]
+    )
     (fun state (Update { status; _ }) ->
       match status with
       | Idle | Loading _ ->

@@ -168,7 +168,7 @@ server and sent in full to every subscriber, with a sequence number.
 _Avoid_: channel, room, stream
 
 **Subscription**:
-One socket that follows one key of a topic: `Source.live` in the `during`
+One socket that follows one key of a topic: `Topic.subscribe` in the `during`
 list of a snapshot. It starts when it comes into the list and stops when it
 goes out of the list. The client reconnects by itself and tells the state when it is offline.
 _Avoid_: listener, watcher
