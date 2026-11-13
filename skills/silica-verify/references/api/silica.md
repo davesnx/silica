@@ -3381,10 +3381,16 @@ val routes :
 The listed routes, in the order they are tried. `base`, such as `"/app"`, is the path that every URL of the app starts with: `parse` needs it and takes it off, `print` puts it first. `not_found` tells the route that `is_not_found` and the server status refer to. A route in `reenter` starts its page again when only its parameters change; any other route keeps its page, which gets the new parameters as new props. `preload` gives the Remote calls that the page of a route makes when it starts, so that a link can fetch them early (see `link`). `chunked` tells the lazy routes: those whose page is a `Node.chunk`. A link to one of them preloads its code (the `chunks` of `make`) as it preloads the calls. The code itself is named in `make`, at the app root, because a page links to routes and so depends on `routes`.
 
 ```ocaml
-val parse : 'r routes -> Url.t -> 'r
+val parse : 'r routes -> Url.t -> ('r, string) result
 ```
 
-Raises `Failure` when the path does not start with the `base` of the routes, or when no listed route matches the path.
+The route of a URL. `Error` when the path does not start with the `base` of the routes, or when no listed route matches the path.
+
+```ocaml
+val parse_exn : 'r routes -> Url.t -> 'r
+```
+
+As `parse`, but raises `Failure` with the message of the `Error`.
 
 ```ocaml
 val print : 'r routes -> 'r -> Url.t

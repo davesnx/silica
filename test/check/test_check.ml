@@ -462,7 +462,7 @@ let app_root ?(extra = []) () url =
   in
   Router.make routes ~render url
 
-let app ?(extra = []) ?properties ?(parse = Router.parse routes)
+let app ?(extra = []) ?properties ?(parse = Router.parse_exn routes)
     ?(print = Router.print routes) ?(routes_to_check = all_routes) ?is_not_found
     () =
   Check.run
@@ -484,7 +484,7 @@ let test_app_ok () =
     Check.always ~name:"history entry matches route"
       (Check.state (fun (state : _ Check.app_state) ->
            let url = List.nth state.history state.index in
-           state.router = Router.parse routes url
+           state.router = Router.parse_exn routes url
            && Url.to_string (Router.print routes state.router)
               = Url.to_string url
        )
@@ -515,7 +515,7 @@ let test_back_returns () =
 let test_app_unreached_routes () =
   let report =
     Check.run
-      (Check.app ~routes:all_routes ~parse:(Router.parse routes)
+      (Check.app ~routes:all_routes ~parse:(Router.parse_exn routes)
          ~print:(Router.print routes)
          ~url_event:(fun url -> Router.Url_changed url)
          (app_root ())
@@ -607,7 +607,7 @@ module Guarded = struct
     Check.run
       (Check.app ~urls:[ "/away" ] ~max_history:2
          ~pages:[ Check.child page ]
-         ~routes:[ Home; Away ] ~parse:(Router.parse routes)
+         ~routes:[ Home; Away ] ~parse:(Router.parse_exn routes)
          ~print:(Router.print routes)
          ~url_event:(fun url -> Router.Url_changed url)
          app
@@ -641,7 +641,7 @@ let test_app_blocked_navigation_names_the_page () =
       ~properties:
         [ Check.always ~name:"never asks" (Check.not_ (Check.shows "Leave")) ]
       ~routes:[ Guarded.Home; Guarded.Away ]
-      ~parse:(Router.parse Guarded.routes)
+      ~parse:(Router.parse_exn Guarded.routes)
       ~print:(Router.print Guarded.routes)
       ~url_event:(fun url -> Router.Url_changed url)
       Guarded.app
@@ -700,7 +700,7 @@ let test_app_cancel_reverts_the_history () =
                ~reason:"the guard cancels every navigation to /away" ();
            ]
          ~routes:[ Guarded.Home; Guarded.Away ]
-         ~parse:(Router.parse Guarded.routes)
+         ~parse:(Router.parse_exn Guarded.routes)
          ~print:(Router.print Guarded.routes)
          ~url_event:(fun url -> Router.Url_changed url)
          (fun url ->
@@ -744,7 +744,7 @@ let test_round_trip_query_printed_wrong () =
 
 let test_round_trip_parse_ignores_query () =
   let parse url =
-    match Router.parse routes url with
+    match Router.parse_exn routes url with
     | Items _ ->
         items_default
     | route ->
@@ -754,7 +754,7 @@ let test_round_trip_parse_ignores_query () =
 
 let test_round_trip_item_parsed_wrong () =
   let parse url =
-    match Router.parse routes url with Item _ -> Item 0 | route -> route
+    match Router.parse_exn routes url with Item _ -> Item 0 | route -> route
   in
   app_violation "route-round-trip" [] (app ~parse ())
 
@@ -776,7 +776,7 @@ let test_round_trip_route_pair_disagrees () =
   let violation =
     first
       (Check.run
-         (Check.app ~routes:[ Front ] ~parse:(Router.parse paged)
+         (Check.app ~routes:[ Front ] ~parse:(Router.parse_exn paged)
             ~print:(Router.print paged)
             ~inputs:(fun _ -> [ Router.Url_changed (Url.of_string "/page/1") ])
             ~url_event:(fun url -> Router.Url_changed url)
@@ -1992,7 +1992,7 @@ let test_invalid_setup () =
   );
   match
     Check.run
-      (Check.app ~routes:[] ~parse:(Router.parse routes)
+      (Check.app ~routes:[] ~parse:(Router.parse_exn routes)
          ~print:(Router.print routes)
          ~url_event:(fun url -> Router.Url_changed url)
          (app_root ())
@@ -2801,7 +2801,7 @@ let test_every_rule () =
       ( "route-round-trip",
         fun () ->
           finding "route-round-trip"
-            (Check.app ~routes:[ Front ] ~parse:(Router.parse paged)
+            (Check.app ~routes:[ Front ] ~parse:(Router.parse_exn paged)
                ~print:(Router.print paged)
                ~inputs:(fun _ ->
                  [ Router.Url_changed (Url.of_string "/page/1") ]
@@ -2813,7 +2813,7 @@ let test_every_rule () =
       ( "link-parses",
         fun () ->
           finding "link-parses"
-            (Check.app ~routes:all_routes ~parse:(Router.parse routes)
+            (Check.app ~routes:all_routes ~parse:(Router.parse_exn routes)
                ~print:(Router.print routes)
                ~url_event:(fun url -> Router.Url_changed url)
                (app_root ~extra:[ raw_link "/items?sort=name" ] ())

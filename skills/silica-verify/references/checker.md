@@ -347,7 +347,8 @@ Experimental: Live updates can change. The checker and the runtime do not agree 
              Search { text = "ocaml"; page = 2 };
              Not_found "/x";
            ]
-         ~parse:(Silica.Router.parse routes) ~print:(Silica.Router.print routes)
+         ~parse:(Silica.Router.parse_exn routes)
+         ~print:(Silica.Router.print routes)
          ~is_not_found:(Silica.Router.is_not_found routes)
          ~url_event:(fun url -> Silica.Router.Url_changed url)
          app)

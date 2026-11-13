@@ -221,7 +221,7 @@ let test_route_round_trip () =
     (fun route ->
       Alcotest.(check bool)
         "round trip" true
-        (Router.parse routes (Router.print routes route) = route)
+        (Router.parse routes (Router.print routes route) = Ok route)
     )
     [ Home; About; Item 0; Item 42; Edit; Locked; Not_found "/nope" ]
 
