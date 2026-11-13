@@ -82,7 +82,7 @@ and cause =
       string * ('i, 'o, 'x) Endpoint.t * ('o, 'x) Endpoint.answer
       -> cause
   | Live : string * 's Topic.t * 's Topic.update -> cause
-  | Source : string * 'm Action.source -> cause
+  | Held : string * 'm Action.held -> cause
   | Result : 'm Action.t -> cause
   | Child : ('p, 's, 'e) cell -> cause
   | Route of Router.event
@@ -276,17 +276,17 @@ and emit : type p s e. (p, s, e) cell -> e Action.host list -> unit =
                    timed ~finished:id ~cause:(Timer (qualified, ms)) cell event;
                }
             )
-      | Action.Start_source { id; source } ->
+      | Action.Start_held { id; held } ->
           let qualified = qualify cell id in
           Hashtbl.replace cell.owned id qualified;
           add
-            (Action.Start_source
+            (Action.Start_held
                {
                  id = qualified;
-                 source =
-                   Action.map_source
-                     (timed ~cause:(Source (qualified, source)) cell)
-                     source;
+                 held =
+                   Action.map_held
+                     (timed ~cause:(Held (qualified, held)) cell)
+                     held;
                }
             )
       | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->

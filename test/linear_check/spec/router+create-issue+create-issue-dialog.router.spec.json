@@ -6,7 +6,7 @@
       "name": "/?new&status&assignee&priority&label&group&order",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

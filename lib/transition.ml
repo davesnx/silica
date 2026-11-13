@@ -20,7 +20,7 @@ type cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string; answer : Json.t option }
   | Live of { id : string; topic : string; update : Json.t option }
-  | Held of { id : string; source : string }
+  | Held of { id : string; name : string }
   | Action_result of { action : string }
   | Props
   | Child of { instance : string }
@@ -110,8 +110,8 @@ let encode_cause cause =
         ([ ("id", string id); ("topic", string topic) ]
         @ optional "update" Fun.id update
         )
-  | Held { id; source } ->
-      typed "held" [ ("id", string id); ("source", string source) ]
+  | Held { id; name } ->
+      typed "held" [ ("id", string id); ("name", string name) ]
   | Action_result { action } ->
       typed "action_result" [ ("action", string action) ]
   | Props ->
@@ -265,8 +265,8 @@ let decode_cause json =
       Ok (Live { id; topic; update })
   | "held" ->
       let* id = text "id" in
-      let* source = text "source" in
-      Ok (Held { id; source })
+      let* name = text "name" in
+      Ok (Held { id; name })
   | "action_result" ->
       let* action = text "action" in
       Ok (Action_result { action })
@@ -379,8 +379,8 @@ let describe_action : type m. m Action.t -> string = function
 let describe : type m. m Action.host -> string = function
   | Action.Run action ->
       describe_action action
-  | Action.Start_source { id; source } ->
-      "start source " ^ id ^ " " ^ Action.source_name source
+  | Action.Start_held { id; held } ->
+      "start held " ^ id ^ " " ^ Action.held_name held
   | Action.Start_timer { id; ms; _ } ->
       "start timer " ^ id ^ " " ^ string_of_int ms ^ "ms"
   | Action.Start_call { id; endpoint; _ } ->
@@ -426,8 +426,8 @@ let cause_label = function
       outcome ^ " " ^ path
   | Live { topic; _ } ->
       "live " ^ topic
-  | Held { source; _ } ->
-      source
+  | Held { name; _ } ->
+      name
   | Action_result { action } ->
       "result " ^ action
   | Props ->
@@ -845,8 +845,8 @@ let make_cause ~mask ~view ~message (cause : Instance.cause) =
         None,
         None
       )
-  | Source (id, source) ->
-      (Held { id; source = Action.source_name source }, None, None)
+  | Held (id, held) ->
+      (Held { id; name = Action.held_name held }, None, None)
   | Result action ->
       (Action_result { action = describe_action action }, None, None)
   | Props ->
@@ -1164,7 +1164,7 @@ let names_only_action rename action =
         ("stop ", fun id -> "stop " ^ rename id);
         ("start timer ", with_last "start timer");
         ("start call ", with_last "start call");
-        ("start source ", with_last "start source");
+        ("start held ", with_last "start held");
         ( "start live ",
           fun rest ->
             match live_id rest with

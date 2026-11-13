@@ -184,7 +184,7 @@ val make :
     use it for "go to login". At the start, [Redirect] starts in the other route
     and raises {!Action.Replace} with its URL (a server render answers it with a
     redirect), and [Cancel] starts in the route of the URL, as there is no route
-    to stay in. For unsaved data inside a page, use {!Source.block}. [exit] runs
+    to stay in. For unsaved data inside a page, use {!Host.block}. [exit] runs
     when a route is left, as the [exit] of its state, and before the page starts
     again when a [reenter] route gets new parameters. [title] gives the document
     title of a route: the router raises {!Action.Set_title} with it at the start

@@ -106,18 +106,18 @@ module Dialog = struct
 
   let sources_of = function
     | "trap" ->
-        [ Source.focus_trap dialog ]
+        [ Host.focus_trap dialog ]
     | "trap-no-return" ->
-        [ Source.focus_trap ~return_focus:false dialog ]
+        [ Host.focus_trap ~return_focus:false dialog ]
     | "lock" ->
-        [ Source.scroll_lock ]
+        [ Host.scroll_lock ]
     | "double-lock" ->
-        [ Source.scroll_lock; Source.scroll_lock ]
+        [ Host.scroll_lock; Host.scroll_lock ]
     | "outside" ->
-        [ Source.outside_press dialog Outside ]
+        [ Host.outside_press dialog Outside ]
     | "keys" ->
         [
-          Source.keys ~prevent:true
+          Host.keys ~prevent:true
             [
               (Key.escape, Escape);
               (Key.make ~ctrl:true "k", Toggle_k);
@@ -126,8 +126,8 @@ module Dialog = struct
         ]
     | "observers" ->
         [
-          Source.resize box (fun rect -> Resized rect.Rect.width);
-          Source.intersection box (fun visible -> Seen visible);
+          Host.resize box (fun rect -> Resized rect.Rect.width);
+          Host.intersection box (fun visible -> Seen visible);
         ]
     | _ ->
         []
@@ -489,10 +489,10 @@ module Gadgets = struct
       ~during:(function
         | Watching _ ->
             [
-              Source.scroll (fun s -> Got (scroll "page" s));
-              Source.scroll ~target:box (fun s -> Got (scroll "box" s));
-              Source.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
-              Source.online (fun v -> Got (Printf.sprintf "online:%b" v));
+              Host.scroll (fun s -> Got (scroll "page" s));
+              Host.scroll ~target:box (fun s -> Got (scroll "box" s));
+              Host.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
+              Host.online (fun v -> Got (Printf.sprintf "online:%b" v));
             ]
         | Idle _ ->
             []
@@ -559,7 +559,7 @@ module Document = struct
     Machine.make ~id:"document" ~init:(Idle []) ~name ~states
       ~during:(function
         | Watching _ ->
-            [ Source.media "(prefers-color-scheme: dark)" (fun d -> Dark d) ]
+            [ Host.media "(prefers-color-scheme: dark)" (fun d -> Dark d) ]
         | Idle _ ->
             []
         )
@@ -887,11 +887,9 @@ module Fake = struct
           note ("paint " ^ Render.to_string node)
         );
       run = (fun action -> note ("run " ^ describe action));
-      start_source =
-        (fun ~id source ->
-          note ("start " ^ id ^ " " ^ Action.source_name source)
-        );
-      stop_source = (fun ~id -> note ("stop " ^ id));
+      start_held =
+        (fun ~id source -> note ("start " ^ id ^ " " ^ Action.held_name source));
+      stop_held = (fun ~id -> note ("stop " ^ id));
     }
 
   let rec first_press node =

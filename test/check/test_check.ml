@@ -245,7 +245,7 @@ let wait_states = [ "waiting"; "over" ]
 let test_after_is_enabled () =
   let machine =
     Machine.make ~id:"c" ~init:Waiting ~name:wait_name ~states:wait_states
-      ~during:(function Waiting -> [ Source.after 100 Go ] | Over -> [])
+      ~during:(function Waiting -> [ Host.after 100 Go ] | Over -> [])
       (fun state event ->
         match (state, event) with
         | Waiting, Go ->
@@ -567,7 +567,7 @@ module Guarded = struct
            )
          ~during:(function
            | Dirty ->
-               [ Source.block (fun navigation -> Attempt navigation) ]
+               [ Host.block (fun navigation -> Attempt navigation) ]
            | Clean | Asking _ ->
                []
            )
@@ -823,7 +823,7 @@ let stale_component =
     Machine.make ~id:"timer" ~init:Waiting ~name:stale_state_name
       ~states:stale_state_states
       ~final:(function Fired | Late -> true | Waiting | Left -> false)
-      ~during:(function Waiting -> [ Source.after 10 Tick ] | _ -> [])
+      ~during:(function Waiting -> [ Host.after 10 Tick ] | _ -> [])
       (fun state event ->
         match (state, event) with
         | Waiting, Leave ->
@@ -898,7 +898,7 @@ let broken_component ~go =
   let machine =
     Machine.make ~id:"broken" ~init:A ~name:broken_name ~states:broken_states
       ~final:(function B -> true | A -> false)
-      ~during:(function A -> [ Source.after 5 (Dec : ev) ] | B -> [])
+      ~during:(function A -> [ Host.after 5 (Dec : ev) ] | B -> [])
       (fun state (event : ev) ->
         match (state, event) with
         | A, Inc ->
@@ -993,7 +993,7 @@ let test_ignored_timer_event () =
   let machine =
     Machine.make ~id:"timer" ~init:0
       ~name:(fun _ -> "counting")
-      ~during:(fun _ -> [ Source.after 5 (Dec : ev) ])
+      ~during:(fun _ -> [ Host.after 5 (Dec : ev) ])
       (fun n (event : ev) ->
         match event with
         | Inc ->
@@ -1011,7 +1011,7 @@ let test_ignored_held_event_is_allowed () =
     Machine.make ~id:"held" ~init:0
       ~name:(fun _ -> "open")
       ~during:(fun _ ->
-        [ Source.focus_trap panel; Source.resize panel (fun _ -> (Dec : ev)) ]
+        [ Host.focus_trap panel; Host.resize panel (fun _ -> (Dec : ev)) ]
       )
       (fun n (event : ev) ->
         match event with
@@ -1056,22 +1056,22 @@ module Dialog = struct
 
   let machine ~escape ~outside ~observers =
     let sources =
-      [ Source.focus_trap panel; Source.scroll_lock ]
+      [ Host.focus_trap panel; Host.scroll_lock ]
       @ ( if escape then
-            [ Source.keys ~prevent:true [ (Key.escape, Close) ] ]
+            [ Host.keys ~prevent:true [ (Key.escape, Close) ] ]
           else
             []
         )
       @ ( if outside then
-            [ Source.outside_press panel Close ]
+            [ Host.outside_press panel Close ]
           else
             []
         )
       @
       if observers then
         [
-          Source.resize panel (fun (_ : Rect.t) -> Resized);
-          Source.intersection panel (fun visible -> Seen visible);
+          Host.resize panel (fun (_ : Rect.t) -> Resized);
+          Host.intersection panel (fun visible -> Seen visible);
         ]
       else
         []
@@ -1244,7 +1244,7 @@ let test_live_rejects_client_only_source () =
       (Dialog.component ~escape:true ~outside:true ~observers:true)
   in
   let violation = first (Check.run (Check.live live)) in
-  Alcotest.(check string) "rule" "live-uses-client-source" violation.rule;
+  Alcotest.(check string) "rule" "live-uses-client-resource" violation.rule;
   Alcotest.(check string)
     "reached in the opened state" "opened"
     (Dialog.name violation.state);
@@ -1357,11 +1357,11 @@ module Watcher = struct
     Machine.make ~id:"watcher" ~init:(Watching []) ~name ~states
       ~during:(fun _ ->
         [
-          Source.scroll (fun (s : Scroll.t) ->
+          Host.scroll (fun (s : Scroll.t) ->
               Got (Printf.sprintf "scroll:%.0f" s.top)
           );
-          Source.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
-          Source.online (fun v -> Got (Printf.sprintf "online:%b" v));
+          Host.visibility (fun v -> Got (Printf.sprintf "visible:%b" v));
+          Host.online (fun v -> Got (Printf.sprintf "online:%b" v));
         ]
       )
       (fun (Watching got) (Got line) ->
@@ -1388,7 +1388,7 @@ let test_new_sources_give_events () =
     ]
     got;
   Alcotest.(check bool)
-    "each step is caused by a held source" true
+    "each step is caused by a held resource" true
     (List.for_all
        (fun (step : _ Check.step) ->
          match step.cause with Check.Held _ -> true | _ -> false
@@ -1540,7 +1540,7 @@ module Search = struct
         )
       ~during:(function
         | Typing _ ->
-            [ Source.after 300 Fire ]
+            [ Host.after 300 Fire ]
         | Searching query ->
             [ Remote.call endpoint query (fun answer -> Got answer) ]
         | Idle | Shown _ | Failed _ ->
@@ -1608,7 +1608,7 @@ module Pending = struct
       ~event_name:(function Arm -> "arm" | Tick -> "tick")
       ~during:(fun (Waiting armed) ->
         if armed then
-          [ Source.after 100 Tick ]
+          [ Host.after 100 Tick ]
         else
           []
       )
@@ -1661,7 +1661,7 @@ let test_spec () =
   in
   Alcotest.(check (list int)) "timers" [ 300 ] (state "typing").timers;
   Alcotest.(check (list string))
-    "sources" [ "/api/search" ] (state "searching").sources;
+    "network" [ "/api/search" ] (state "searching").network;
   Alcotest.(check (list (pair string string)))
     "the edges the run took"
     [
@@ -1723,7 +1723,7 @@ let test_kept_steps_are_labels_not_edges () =
   let machine =
     Machine.make ~id:"kept" ~init:(Counting 0) ~name:kept_name
       ~states:kept_states ~event_name:show
-      ~during:(fun _ -> [ Source.after 5 (Dec : ev) ])
+      ~during:(fun _ -> [ Host.after 5 (Dec : ev) ])
       (fun (Counting n) (event : ev) ->
         match event with
         | Inc ->
@@ -2319,7 +2319,7 @@ let test_dialog_with_trap_passes () =
   let machine =
     Machine.make ~id:"trapped" ~init:0
       ~name:(fun _ -> "open")
-      ~during:(fun _ -> [ Source.focus_trap panel ])
+      ~during:(fun _ -> [ Host.focus_trap panel ])
       (fun _ (event : ev) ->
         match event with Inc -> Machine.Stay [] | _ -> Machine.Ignore
       )
@@ -2346,7 +2346,7 @@ let test_dialog_focus_follows_the_traps () =
   let machine =
     Machine.make ~id:"traps" ~init:0
       ~name:(function 0 -> "trapped" | _ -> "untrapped")
-      ~during:(function 0 -> [ Source.focus_trap panel ] | _ -> [])
+      ~during:(function 0 -> [ Host.focus_trap panel ] | _ -> [])
       (fun state (event : ev) ->
         match (state, event) with
         | 0, Inc ->
@@ -2732,7 +2732,7 @@ let test_every_rule () =
       ( "timer-owner",
         fun () ->
           finding "timer-owner"
-            (Check.component (impure ~source:(Source.after 5 (Dec : ev))))
+            (Check.component (impure ~source:(Host.after 5 (Dec : ev))))
       );
       ( "call-owner",
         fun () ->
@@ -2770,9 +2770,9 @@ let test_every_rule () =
           text_finding "unreached-state"
             (Check.run (Check.component stale_component))
       );
-      ( "live-uses-client-source",
+      ( "live-uses-client-resource",
         fun () ->
-          finding "live-uses-client-source"
+          finding "live-uses-client-resource"
             (Check.live
                (Live.declare ~channel:"dialog" ~state:Dialog.codec
                   ~event:
@@ -2915,7 +2915,7 @@ let save_machine ?states () =
             Remote.call save_endpoint "draft" (fun answer -> Saved_answer answer);
           ]
       | Saved ->
-          [ Source.after 2000 Reset ]
+          [ Host.after 2000 Reset ]
       | Idle | Lost ->
           []
       )
@@ -3099,7 +3099,7 @@ let () =
           Alcotest.test_case "ignored event" `Quick test_ignored_event;
           Alcotest.test_case "ignored timer event" `Quick
             test_ignored_timer_event;
-          Alcotest.test_case "an ignored held source event is allowed" `Quick
+          Alcotest.test_case "an ignored held resource event is allowed" `Quick
             test_ignored_held_event_is_allowed;
           Alcotest.test_case "inputs" `Quick test_inputs;
           Alcotest.test_case "pp_report" `Quick test_pp;

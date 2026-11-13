@@ -12,7 +12,7 @@
     {!Statechart_layout.t.note}.
 
     Each state box shows the name, then the {!Statechart_layout.node.details}:
-    the timers, the sources and the kept steps ([stay on ...]), which have no
+    the timers, the resources and the kept steps ([stay on ...]), which have no
     arrow.
 
     The label of an edge between two states is drawn on a box of the surface

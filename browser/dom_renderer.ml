@@ -764,8 +764,8 @@ let scroll_of array =
     client_height = array.(5);
   }
 
-let start_source (type e) ~(dispatch : e -> unit)
-    ~(block : (Nav.t -> e) -> unit -> unit) (source : e Action.source) :
+let start_held (type e) ~(dispatch : e -> unit)
+    ~(block : (Nav.t -> e) -> unit -> unit) (source : e Action.held) :
     unit -> unit =
   let limited rate deliver =
     match rate with
@@ -1054,7 +1054,7 @@ let make (type e) ~dev ~adopt ~hooks ~root
     on_node Dom.window "scroll" (fun _ -> Scroll.scrolled ())
   );
   let sources : (string, unit -> unit) Hashtbl.t = Hashtbl.create 4 in
-  let stop_source ~id =
+  let stop_held ~id =
     match Hashtbl.find_opt sources id with
     | Some stop ->
         Hashtbl.remove sources id;
@@ -1137,10 +1137,10 @@ let make (type e) ~dev ~adopt ~hooks ~root
         Scroll.after_paint ()
       );
     run;
-    start_source =
+    start_held =
       (fun ~id source ->
-        stop_source ~id;
-        Hashtbl.replace sources id (start_source ~dispatch ~block source)
+        stop_held ~id;
+        Hashtbl.replace sources id (start_held ~dispatch ~block source)
       );
-    stop_source;
+    stop_held;
   }

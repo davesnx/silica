@@ -30,9 +30,9 @@ let door =
     ~during:(function
       | Open ->
           [
-            Source.after 300 Timeout;
+            Host.after 300 Timeout;
             Remote.call endpoint () (fun _ -> Answer);
-            Source.focus_trap panel;
+            Host.focus_trap panel;
           ]
       | Closed | Gone ->
           []
@@ -65,7 +65,7 @@ let view = function
       Node.text "gone"
 
 let state ?(final = false) name : Spec.state =
-  { name; final; timers = []; sources = []; held = [] }
+  { name; final; timers = []; network = []; held = [] }
 
 let dead_end : Spec.t =
   {

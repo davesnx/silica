@@ -6,7 +6,7 @@
       "name": "loading",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/me"
       ],
       "held": []
@@ -15,14 +15,14 @@
       "name": "failed",
       "final": true,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "ready",
       "final": true,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

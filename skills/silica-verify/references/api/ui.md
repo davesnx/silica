@@ -696,7 +696,7 @@ The node. `on_value_change` hears the value of each option the user chose.
 
 A command menu (command palette): a modal `Dialog` that holds an inline `Combobox` with the first match always highlighted. Base UI has no such component; this is the composition that its documentation suggests.
 
-The parent opens it with `open_` (for example from a global shortcut such as Ctrl+K, with `Silica.Source.keys`) and follows `on_open_change`. When it opens, focus goes to the search input, with empty text. Enter or a press on an option runs the option: the menu reports its value and closes. Escape (with empty text; with text, the first Escape clears it) and a press outside close it. On close, focus goes back to the element that had it.
+The parent opens it with `open_` (for example from a global shortcut such as Ctrl+K, with `Silica.Host.keys`) and follows `on_open_change`. When it opens, focus goes to the search input, with empty text. Enter or a press on an option runs the option: the menu reports its value and closes. Escape (with empty text; with text, the first Escape clears it) and a press outside close it. On close, focus goes back to the element that had it.
 
 ```ocaml
 type classes = { dialog : Dialog.classes; combobox : Combobox.classes }
@@ -1409,7 +1409,7 @@ val state_codec : set -> state Silica.Codec.t
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-In `System_scheme` it holds `Source.media "(prefers-color-scheme: dark)"`. Each change of choice sets `data-theme`; a change made in the page (a `Choose`, or props with another choice) also sets the cookie for one year.
+In `System_scheme` it holds `Host.media "(prefers-color-scheme: dark)"`. Each change of choice sets `data-theme`; a change made in the page (a `Choose`, or props with another choice) also sets the cookie for one year.
 
 ```ocaml
 val current : props -> state -> current option
@@ -1496,10 +1496,10 @@ The id and ref of the trigger, `aria-haspopup`, `aria-expanded`, `aria-controls`
 
 ```ocaml
 val dismiss :
-  ?escape:'e -> ?outside:'e -> ?focus_out:'e -> parts -> 'e Silica.Source.t
+  ?escape:'e -> ?outside:'e -> ?focus_out:'e -> parts -> 'e Silica.Host.t
 ```
 
-The dismiss layer of the popup: the trigger and the popup are inside (see `Silica.Source.dismiss`).
+The dismiss layer of the popup: the trigger and the popup are inside (see `Silica.Host.dismiss`).
 
 ```ocaml
 val layer :
@@ -1508,10 +1508,10 @@ val layer :
   ?focus_out:'e ->
   ?place:Silica.Place.t ->
   parts ->
-  'e Silica.Source.t list
+  'e Silica.Host.t list
 ```
 
-The sources of an open popup next to its trigger: `dismiss` and `Silica.Source.anchor` of the popup to the trigger.
+The resources of an open popup next to its trigger: `dismiss` and `Silica.Host.anchor` of the popup to the trigger.
 
 ```ocaml
 val close : ?focus:bool -> parts -> 's -> ('s, 'e) Silica.Machine.next

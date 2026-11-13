@@ -1212,7 +1212,7 @@ let joint (type n s ev e)
               let (Runtime runtime) = runtimes.(entry.listed) in
               let world = world_of runtime entry in
               List.map
-                (Action.map_source (lift_child runtime entry.instance))
+                (Action.map_held (lift_child runtime entry.instance))
                 (Machine.held_with_props runtime.machine world.props world.s)
             )
             node.running

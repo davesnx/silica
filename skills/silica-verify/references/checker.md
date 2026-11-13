@@ -9,7 +9,7 @@ States and events must be plain data: the checker compares and hashes them. A fu
 `Check.component` takes a component and gives a check, a value with the samples, inputs, bounds, properties and allowances. `Check.run` runs it and gives a `Check.report`. The events of a state are:
 
 - the handlers of the view: press, double press, submit, focus, blur, pointer enter and leave, and the key handlers with each key of `keys`;
-- the events of the held sources of the state, such as the keys of a `Source.keys` table or the events of a dismiss layer;
+- the events of the held resources of the state, such as the keys of a `Host.keys` table or the events of a dismiss layer;
 - the events of running timers, in any order, as time is not counted;
 - the answers of running calls and the states of running subscriptions (see [Samples](checker.md#samples));
 - each text of `texts` typed into each field of the view (its `on_input` handler), so the cause of the step is the field by role and name, and the text;
@@ -42,11 +42,11 @@ The built-in rules hold for every component. `Check.rules` lists each with its i
 - `boundary-reset`: the fallback of each boundary can reset it.
 - `dead-end`: some event can happen, unless the state is final or the view holds a child component or an island.
 - `timer-owner`, `call-owner`: every running timer, call and subscription belongs to the current state. A finding is a bug of Silica.
-- `ignored-event`: the machine handles every event of a handler of the view, of a timer, of a call answer and of a subscription. It may ignore the events of held sources, of `inputs`, of action results and new props. So an update that ends with `| _ -> Ignore` cannot hide a button that does nothing.
+- `ignored-event`: the machine handles every event of a handler of the view, of a timer, of a call answer and of a subscription. It may ignore the events of held resources, of `inputs`, of action results and new props. So an update that ends with `| _ -> Ignore` cannot hide a button that does nothing.
 - `raised`: the update, the view, a handler or a property raised an exception. The search does not go on from that state.
 - `unreached-state`: a name of the `states` of the machine (see `Silica.Machine.make`) that no step reached. For a machine with no `states`, the report has a line `unlisted: ...` instead: the checker cannot report its unreached states.
 - `state-limit`: the search stopped at `max_states`.
-- `live-uses-client-source`, `live-uses-client-action`: see [Live components](checker.md#live-components).
+- `live-uses-client-resource`, `live-uses-client-action`: see [Live components](checker.md#live-components).
 - `route-round-trip`, `link-parses`: see [Routed apps](checker.md#routed-apps).
 
 ### Accessibility rules
@@ -63,11 +63,11 @@ These rules read the view of each state as data, with the roles and names of `Si
 - `nested-interactive`: a button, link, tab, option, checkbox, radio, switch, menuitemcheckbox or menuitemradio does not hold a control or an element with a `tabindex` of 0 or more.
 - `keyboard-access`: an element with a press handler is a `button`, a link, a field or `summary`, or has a `tabindex`; a press handler on an element with no role, or with the role button, link, checkbox or switch, and no `tabindex` is a finding. An option or a menu item with no `tabindex` is not, because its widget can move focus with `aria-activedescendant`. The rule does not see a key handler on an element above.
 - `dialog-name`: a dialog or alert dialog has a name.
-- `dialog-focus`: when the view shows a dialog with `aria-modal="true"`, the state has a `Silica.Source.focus_trap` on it or on an element around it in its `during` list. It cannot see a native `<dialog>` opened with `showModal`.
+- `dialog-focus`: when the view shows a dialog with `aria-modal="true"`, the state has a `Silica.Host.focus_trap` on it or on an element around it in its `during` list. It cannot see a native `<dialog>` opened with `showModal`.
 - `heading-order`: a heading is at most one level below the heading before it; each portal starts again. The first heading of a view can have any level, because the rule cannot see the headings of the page around a component.
 - `name-spacing`: in the name that a button, link, tab, option, menu item, checkbox, radio, switch, tree item or heading takes from its content, two inline elements (such as `span`) or an element and a text do not join a letter or digit to a letter or digit with no space, as `<a><span>ENG-2</span><span>Second</span></a>` gives `"ENG-2Second"`. A block element (`div`, `p`, `li`) counts as a space. It cannot see CSS: a `span` that CSS makes a block or a flex item can show a space in a browser, but the view still has none, so add a `" "` text node or an `aria-label`.
 
-Each violation in the report is a record: the `rule`, a `message` with the state, the element and the event, a `hint` that says how to fix it, the `counterexample` (the steps), the `state` and its `state_name` at the failing point, the `view` of that state as text (`Silica.View_text`), and the `element` for a rule of the view. Each step has its `input`, the name of its `event`, its `cause` (the element and handler of the view, the timer, the call, the source), and the names of the states `from` and `target`.
+Each violation in the report is a record: the `rule`, a `message` with the state, the element and the event, a `hint` that says how to fix it, the `counterexample` (the steps), the `state` and its `state_name` at the failing point, the `view` of that state as text (`Silica.View_text`), and the `element` for a rule of the view. Each step has its `input`, the name of its `event`, its `cause` (the element and handler of the view, the timer, the call, the held resource), and the names of the states `from` and `target`.
 
 When the machine ignores the event of a button, disable the button (for example with `Silica.Machine.can`), or handle the event, for example with `Stay []`. This lamp ignores `Toggle` when it is on. The trace ends with the ignored event:
 
@@ -145,7 +145,7 @@ A point of a run is a start, or the state that a step reaches. A condition reads
 
 The checker stores the graph that the search explored and checks each temporal property on it after the search. For `leads_to` it decides which runs count:
 
-- A run may stop in a state where no timer, no call and no action result runs. The app then waits for the user, and the user may do nothing; a server may never publish. So the view, the inputs, held sources and running subscriptions do not keep a run going.
+- A run may stop in a state where no timer, no call and no action result runs. The app then waits for the user, and the user may do nothing; a server may never publish. So the view, the inputs, held resources and running subscriptions do not keep a run going.
 - A run may not stop while a timer, a call or an action result runs.
 - An endless run counts only when it is weakly fair: each timer and each call that runs at every step from some point on is also delivered again and again. Every timer fires and every call answers in the end, even if the user keeps typing. A timer that a step starts again with the same id runs all along.
 
@@ -322,7 +322,7 @@ The properties of the check, `always` and the temporal ones, see the whole page 
 
 ## Live components
 
-`Check.live` checks a Live component. Its machine runs on the server, so a state with a source of the page in its `during` list (a focus trap, a key table, a dismiss layer) is a violation of `live-uses-client-source`, and an action that needs an answer of the page (`Measure`, `Copy`, `Load_script`) is a violation of `live-uses-client-action`.
+`Check.live` checks a Live component. Its machine runs on the server, so a state with a resource of the page in its `during` list (a focus trap, a key table, a dismiss layer) is a violation of `live-uses-client-resource`, and an action that needs an answer of the page (`Measure`, `Copy`, `Load_script`) is a violation of `live-uses-client-action`.
 
 Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
 
@@ -360,11 +360,11 @@ The pages of this example are plain nodes, so they are part of the check. A page
 
 ## Diagrams and Quint
 
-`Silica.Spec` is the graph of a machine that a checker run found: the states it reached, the timers and sources of each, and the steps it took with the names of their events (see [The spec](../../../docs/machines.mld)). The report gives it in `specs`. The names come from the `event_name` of the machine (see [Events](../../../docs/machines.mld)); a machine with no `event_name` gives the label of the cause of each event, such as `press button "Turn on"`. The states come in a fixed order: the initial state first, then by name. It has these exports:
+`Silica.Spec` is the graph of a machine that a checker run found: the states it reached, the resources of each, and the steps it took with the names of their events (see [The spec](../../../docs/machines.mld)). The report gives it in `specs`. The names come from the `event_name` of the machine (see [Events](../../../docs/machines.mld)); a machine with no `event_name` gives the label of the cause of each event, such as `press button "Turn on"`. The states come in a fixed order: the initial state first, then by name. It has these exports:
 
 - `Silica.Spec.to_text`: a text form to read and diff, which `Silica.Spec.of_text` reads back.
 - `Silica.Spec.to_dot`: a Graphviz diagram; `Silica.Spec.to_mermaid`: a Mermaid diagram.
-- `Silica.Spec.to_quint`: a module for [Quint](https://quint-lang.org), a language for the specification of systems. The module has the state, the running timers and sources, and the last event. It has one transition for each edge and event, written as a Quint `action`, and the invariants `resources_owned` (every running resource belongs to the current state), `can_move` and `inv` (both).
+- `Silica.Spec.to_quint`: a module for [Quint](https://quint-lang.org), a language for the specification of systems. The module has the state, the running resources, and the last event. It has one transition for each edge and event, written as a Quint `action`, and the invariants `resources_owned` (every running resource belongs to the current state), `can_move` and `inv` (both).
 
 This lamp names its event `toggle`:
 
@@ -480,7 +480,7 @@ dune exec ./check/main.exe -- rules [--json]
 
 `silica check` builds and runs `check/main.exe`; `silica check --json` adds `--json`, and `silica check --traces DIR` adds `--traces DIR`. `silica replay` and `silica script` run the commands of the same names. `--only ID` runs the entries with these ids. `--specs DIR` also writes the `<id>.spec.json` golden file (`Silica.Spec.to_json`) of each machine into `DIR`. `rules` lists `Check.rules`. `replay` and `script` are in [Replay a finding](checker.md#replay-a-finding).
 
-`silica check --graphs DIR` passes `--specs DIR`, then writes three more files for each machine into `DIR`, for review in a pull request: `<id>.svg` (the chart of `Silica.Statechart_view`), `<id>.txt` (`Silica.Spec.to_text`, one fact per line) and `<id>.md` (a Mermaid block, which GitHub shows as a chart), next to `<id>.spec.json`. For a joint check, `<id>` is `<entry id>.<machine id>`, such as `settings+tabs.tabs`, one for each machine of the entry, as for the golden files; a machine in two entries has a graph for each. The count that the command prints is the count of these graphs. The chart draws an arrow for each step that enters a state, and lists the kept steps of a state in its box, under its timers and sources, as `stay on` and their events, such as `stay on close_request escape-key` for an alert dialog that Escape keeps open. With no browser, read `<id>.txt`: it has the same states, arrows and kept steps (`stay` lines) as the chart.
+`silica check --graphs DIR` passes `--specs DIR`, then writes three more files for each machine into `DIR`, for review in a pull request: `<id>.svg` (the chart of `Silica.Statechart_view`), `<id>.txt` (`Silica.Spec.to_text`, one fact per line) and `<id>.md` (a Mermaid block, which GitHub shows as a chart), next to `<id>.spec.json`. For a joint check, `<id>` is `<entry id>.<machine id>`, such as `settings+tabs.tabs`, one for each machine of the entry, as for the golden files; a machine in two entries has a graph for each. The count that the command prints is the count of these graphs. The chart draws an arrow for each step that enters a state, and lists the kept steps of a state in its box, under its resources, as `stay on` and their events, such as `stay on close_request escape-key` for an alert dialog that Escape keeps open. With no browser, read `<id>.txt`: it has the same states, arrows and kept steps (`stay` lines) as the chart.
 
 ### Exit codes
 
@@ -583,7 +583,7 @@ step = {
          | { "type": "timer", "id", "ms", "text" }
          | { "type": "answer", "id", "path", "text" }
          | { "type": "live", "id", "topic", "text" }
-         | { "type": "held", "id", "source", "text" }
+         | { "type": "held", "id", "name", "text" }
          | { "type": "action_result", "action", "text" }
          | { "type": "child", "instance", "machine", "text" },
   "moved": [ { "instance": string, "machine": string,
@@ -593,12 +593,12 @@ step = {
                                      a child, the root that handles its
                                      output; for a step of the root, the
                                      children it moved, such as the page whose
-                                     Source.block took a navigation; [] when
+                                     Host.block took a navigation; [] when
                                      none
 }
 ```
 
-`data` is the snapshot or the event as JSON when the machine has codecs (see `Silica.Machine.register_codecs`), else `null`. The `text` of a cause is the phrase that the text report prints. `version` changes only when a field changes its meaning or goes away; new fields can appear in the same version. `kind` is `path` for a violation of a rule or an `always` property; `waits` and `loop` come with temporal properties, in the same shape. In a joint check, the `data` of a step of a child is the event of the child by its codec, and `from` and `target` are the states of that child. `trace_file` is the trace file of the violation with `--traces DIR`, else `null`; `test_file` is the file to save its `script` test in, and `null` when `script` cannot write that test (a step with no input in `Silica_memory`, such as an event from `~inputs` or a held source); then `test_error` says why, and `replay` is the red check.
+`data` is the snapshot or the event as JSON when the machine has codecs (see `Silica.Machine.register_codecs`), else `null`. The `text` of a cause is the phrase that the text report prints. `version` changes only when a field changes its meaning or goes away; new fields can appear in the same version. `kind` is `path` for a violation of a rule or an `always` property; `waits` and `loop` come with temporal properties, in the same shape. In a joint check, the `data` of a step of a child is the event of the child by its codec, and `from` and `target` are the states of that child. `trace_file` is the trace file of the violation with `--traces DIR`, else `null`; `test_file` is the file to save its `script` test in, and `null` when `script` cannot write that test (a step with no input in `Silica_memory`, such as an event from `~inputs` or a held resource); then `test_error` says why, and `replay` is the red check.
 
 A violation of the seeded bug in `test/check_suite/`: the saved state shows the Save button, and the update ignores it there.
 
@@ -678,7 +678,7 @@ Some steps have no input in the memory platform, and then `script` prints why on
 
 - a timer that fires before another running timer that is due earlier. The checker keeps abstract time: any running timer can fire next, so it finds races that slow devices and throttled tabs can make. The memory clock keeps real time, so it cannot make that order;
 - an event from `~inputs`, which no element of the view gives;
-- a held source, or the result of an action, which the memory platform gives at once.
+- a held resource, or the result of an action, which the memory platform gives at once.
 
 A Live update is a step of the test: `Silica_memory.live_update` gives it on the socket of the subscription, as the server and the network do (a state, a loss with the reconnect after it, a failure).
 

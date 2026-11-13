@@ -21,7 +21,7 @@ type 'e t =
   | Set_cookie of { name : string; value : string; max_age : int }
   | Remount
 
-type 'e source =
+type 'e held =
   | Focus_trap of { container : Ref.t; return_focus : bool }
   | Scroll_lock
   | Outside_press of { container : Ref.t; event : 'e }
@@ -55,7 +55,7 @@ type 'e source =
 
 type 'e host =
   | Run of 'e t
-  | Start_source of { id : string; source : 'e source }
+  | Start_held of { id : string; held : 'e held }
   | Start_timer of { id : string; ms : int; event : 'e }
   | Start_call : {
       id : string;
@@ -146,7 +146,7 @@ let check = function[@warning "-4"]
   | _ ->
       ()
 
-let source_name = function
+let held_name = function
   | Focus_trap _ ->
       "focus_trap"
   | Scroll_lock ->
@@ -174,7 +174,7 @@ let source_name = function
   | Block _ ->
       "block"
 
-let map_source (type a b) (f : a -> b) : a source -> b source = function
+let map_held (type a b) (f : a -> b) : a held -> b held = function
   | Focus_trap r ->
       Focus_trap r
   | Scroll_lock ->
@@ -239,8 +239,8 @@ let map_refs f = function
 let map_host (type a b) (f : a -> b) : a host -> b host = function
   | Run action ->
       Run (map f action)
-  | Start_source { id; source } ->
-      Start_source { id; source = map_source f source }
+  | Start_held { id; held } ->
+      Start_held { id; held = map_held f held }
   | Start_timer { id; ms; event } ->
       Start_timer { id; ms; event = f event }
   | Start_call { id; endpoint; input; timeout_ms; on_result } ->

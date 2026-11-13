@@ -34,7 +34,7 @@ type resource = {
       (** The clock of the target, in milliseconds, when the resource started.
       *)
 }
-(** A timer or source that an instance owns (see {!Machine.active}). *)
+(** A resource that an instance owns (see {!Machine.active}). *)
 
 type instance = {
   path : string;  (** The instance path, as in {!Transition.t.instance}. *)

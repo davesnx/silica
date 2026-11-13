@@ -48,7 +48,7 @@ module Page = struct
   let machine =
     Machine.make_with_props ~id:"issue" ~init:(Page 0) ~name ~states
       ~entry:(fun _ _ -> [ Action.Set_title "issue" ])
-      ~during:(fun _ _ -> [ Source.after 5 Bump ])
+      ~during:(fun _ _ -> [ Host.after 5 Bump ])
       (fun _ (Page bumps) Bump -> Machine.Go (Page (bumps + 1)))
 
   let view id (Page bumps) : event Node.t =

@@ -169,7 +169,7 @@ let layout ?(observed = []) (spec : Spec.t) =
       (spec.states
       @ List.map
           (fun name ->
-            { Spec.name; final = false; timers = []; sources = []; held = [] }
+            { Spec.name; final = false; timers = []; network = []; held = [] }
           )
           unknown
       )

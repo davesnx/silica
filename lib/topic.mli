@@ -27,8 +27,8 @@ type 's update = 's Live_topic.update = { seq : int; status : 's Status.t }
     offline (the old data with [stale = true]) or a failure. A client drops a
     state whose [seq] is not higher than the last one it got on the socket. *)
 
-val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Source.t
-(** Subscribe to the topic under the key, as a source that runs during a state
+val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Host.t
+(** Subscribe to the topic under the key, as a resource that runs during a state
     (see the [during] list of {!Machine.make}). The event is raised once with
     [Loading None] while the socket connects, and again for every state the
     server publishes, for every loss of the connection (the old data,

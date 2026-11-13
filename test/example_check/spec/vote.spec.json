@@ -6,21 +6,21 @@
       "name": "idle",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "failed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "loading",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/vote"
       ],
       "held": []
@@ -29,14 +29,14 @@
       "name": "ready",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "rejected",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

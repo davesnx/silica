@@ -60,8 +60,8 @@ type cause =
   | Live of { id : string; topic : string; update : Silica_json.Json.t option }
       (** A state or a change of connection of a Live subscription, by
           {!Topic.update_codec}. [None] when data is not recorded. *)
-  | Held of { id : string; source : string }
-      (** A held source, by its {!Action.source_name}. *)
+  | Held of { id : string; name : string }
+      (** A held resource, by its {!Action.held_name}. *)
   | Action_result of { action : string }
       (** The result of an action, such as {!Action.Measure}. *)
   | Props  (** The parent gave new props. *)
@@ -85,10 +85,10 @@ type t = {
           by ["."], and a key is [#key]. [%], [/], [:], [#] and [.] in a key are
           percent encoded. Example: [app/0.2:router/#inbox:issue-list]. *)
   number : int;
-      (** The number of the instance in its tree, as in timer and source ids. *)
+      (** The number of the instance in its tree, as in resource ids. *)
   entry : int;
       (** The number of the entry of the state after the step, as in timer and
-          source ids. *)
+          resource ids. *)
   machine : string;  (** {!Machine.id}. *)
   from : string;
       (** The state name before; [""] for [Started] and [Resumed]. *)
@@ -129,8 +129,8 @@ val cause_label : cause -> string
     in [press button "Save"] or [key_down Escape textbox "Search"];
     [after 2000ms] for a timer; [ok /api/save], [rejected /api/save] or
     [failed /api/save] for the answer of a call ([answer /api/save] when the
-    answer is not recorded); [live <topic>]; the name of a held source, such as
-    [dismiss]; [result <action>]; [props]; [child <instance>]; [url <url>];
+    answer is not recorded); [live <topic>]; the name of a held resource, such
+    as [dismiss]; [result <action>]; [props]; [child <instance>]; [url <url>];
     [preload <url>]; [message]. The checker labels the events of its steps and
     specs the same way. *)
 
@@ -147,12 +147,12 @@ val strip : t -> t
 val names_only : t list -> t list
 (** The records of one trace with names only, as a recorder without data keeps
     them: each record is {!strip}ped, and also:
-    - Each id of a timer, call, subscription or held source, in causes and in
+    - Each id of a timer, call, subscription or held resource, in causes and in
       actions, becomes ["<number>.<entry>/<machine id>/#<n>"], where [n] counts
       the distinct ids of the list from 1. The same id gets the same [n], so a
       start, its answer and its stop still match, but the id no longer holds the
       state, the path, the encoded input of a call or the key of a subscription
-      (see {!Source.key}).
+      (see {!Host.key}).
     - The accessible [name] of the element of a handler is [""]: it can be text
       that a user typed, such as the title of an issue in a link.
     - A URL keeps its path only, without query and fragment: in [Url] and
@@ -163,7 +163,7 @@ val names_only : t list -> t list
     What stays: the sequence numbers, times, instance paths (with the keys that
     the app gave component nodes), machine ids, state and event names, changes,
     handler names, roles and element paths, timer delays, endpoint paths, topic
-    and source names, and the other actions as {!describe} writes them. *)
+    and resource names, and the other actions as {!describe} writes them. *)
 
 (** {1 Observers} *)
 

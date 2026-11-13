@@ -1,10 +1,10 @@
 (rule
- (targets in_goto.output in_stay.output in_entry.output in_source.output)
+ (targets in_goto.output in_stay.output in_entry.output in_held.output)
  (deps
   in_goto.ml
   in_stay.ml
   in_entry.ml
-  in_source.ml
+  in_held.ml
   (glob_files %{project_root}/lib/.silica.objs/byte/*.cmi))
  (action
   (with-accepted-exit-codes
@@ -12,15 +12,15 @@
    (run
     sh
     -c
-    "for name in in_goto in_stay in_entry in_source; do %{ocamlc} -c -I %{project_root}/lib/.silica.objs/byte -I %{project_root}/lib/json/.silica_json.objs/byte $name.ml > $name.output 2>&1 && exit 1; done; exit 0"))))
+    "for name in in_goto in_stay in_entry in_held; do %{ocamlc} -c -I %{project_root}/lib/.silica.objs/byte -I %{project_root}/lib/json/.silica_json.objs/byte $name.ml > $name.output 2>&1 && exit 1; done; exit 0"))))
 
 (rule
  (alias runtest)
- (deps in_goto.output in_stay.output in_entry.output in_source.output)
+ (deps in_goto.output in_stay.output in_entry.output in_held.output)
  (action
   (progn
    (run grep -q "belongs to the variant type" in_goto.output)
    (run grep -q "Silica.Action.host" in_goto.output)
    (run grep -q "Silica.Action.host" in_stay.output)
    (run grep -q "Silica.Action.host" in_entry.output)
-   (run grep -q "Silica.Action.host" in_source.output))))
+   (run grep -q "Silica.Action.host" in_held.output))))

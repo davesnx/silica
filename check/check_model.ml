@@ -78,7 +78,7 @@ type cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string }
   | Live of { id : string; topic : string }
-  | Held of { id : string; source : string }
+  | Held of { id : string; name : string }
   | Action_result of string
   | Props
   | Child of { instance : string; machine : string }
@@ -340,7 +340,7 @@ let host_action host world = function
         world
       else
         { world with results = List.sort compare (results @ world.results) }
-  | Action.Start_source _ ->
+  | Action.Start_held _ ->
       world
 
 let live_moves host world id sub =
@@ -453,7 +453,7 @@ let finished = function
   | By_view | By_typing | By_input | By_feed _ | By_result _ ->
       None
 
-let source_events (sources : _ Action.source list) =
+let source_events (sources : _ Action.held list) =
   List.concat_map
     (function
       | Action.Global_keys { bindings; _ } ->
@@ -554,7 +554,7 @@ let resource_cause machine world via event =
         match (sources, ids) with
         | source :: sources, (id, name) :: ids ->
             if List.mem event (source_events [ source ]) then
-              Some (Held { id; source = name })
+              Some (Held { id; name })
             else
               find sources ids
         | _ ->
@@ -601,7 +601,7 @@ let see recorder machine props state =
           | Machine.Call _ | Machine.Subscription _ | Machine.Held _ ->
               None
           );
-      sources =
+      network =
         pick (function
           | Machine.Call { path; _ } ->
               Some path
@@ -630,7 +630,7 @@ let see recorder machine props state =
         {
           known with
           timers = union known.timers found.timers;
-          sources = union known.sources found.sources;
+          network = union known.network found.network;
           held = union known.held found.held;
         }
       in
@@ -895,8 +895,8 @@ let describe_cause = function
       Printf.sprintf "the answer of the call %s to %s" id path
   | Live { id; topic } ->
       Printf.sprintf "an update of the subscription %s to %s" id topic
-  | Held { id; source } ->
-      Printf.sprintf "the source %s (%s)" source id
+  | Held { id; name } ->
+      Printf.sprintf "the held resource %s (%s)" name id
   | Action_result action ->
       Printf.sprintf "the result of the action %s" action
   | Props ->
@@ -931,8 +931,8 @@ let transition_cause ~answer ~url : cause -> Transition.cause = function
       Answer { id; path; answer }
   | Live { id; topic } ->
       Live { id; topic; update = answer }
-  | Held { id; source } ->
-      Held { id; source }
+  | Held { id; name } ->
+      Held { id; name }
   | Action_result action ->
       Action_result { action }
   | Props ->
@@ -1088,9 +1088,9 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
         @
         if client_only then
           List.map
-            (fun source ->
-              Check_rules.finding "live-uses-client-source"
-                ~values:[ ("source", source) ]
+            (fun name ->
+              Check_rules.finding "live-uses-client-resource"
+                ~values:[ ("resource", name) ]
             )
             (List.filter_map
                (function Machine.Held { name; _ } -> Some name | _ -> None)

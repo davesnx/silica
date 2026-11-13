@@ -265,8 +265,8 @@ module Make (Io : IO) : sig
       [page.dev]. It starts the app, then runs the [Start_call] actions of every
       rendered component against the handlers (with [page.context]), steps the
       machines with the answers, renders again, and repeats until no call is
-      left. [Start_timer] actions, sources and Live subscriptions do not run.
-      Only calls that answer with success count: a call that fails, has no
+      left. [Start_timer] actions, held resources and Live subscriptions do not
+      run. Only calls that answer with success count: a call that fails, has no
       handler or does not answer within [settle_timeout_ms] (default 1000, for
       the whole settle step) is left unanswered, and the page shows that state
       as it is at that moment. An application error ({!implement}) is not an

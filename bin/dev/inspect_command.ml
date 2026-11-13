@@ -458,7 +458,7 @@ let not_checked machine transitions labels =
     states =
       List.map
         (fun name ->
-          { Spec.name; final = false; timers = []; sources = []; held = [] }
+          { Spec.name; final = false; timers = []; network = []; held = [] }
         )
         names;
     edges = labels;
@@ -634,8 +634,8 @@ let tree_command =
             `S Manpage.s_description;
             `P
               "One line for each instance: its path, its machine and its \
-               state; then the timers and sources it owns, and its snapshot \
-               and props when the machine registered its codecs.";
+               state; then the resources it owns, and its snapshot and props \
+               when the machine registered its codecs.";
           ]
          @ exit_status
          )
@@ -668,8 +668,8 @@ let tail_command =
             `P
               "With $(b,--json), each line is the protocol message: a \
                $(b,step) holds the transition record, with its data when the \
-               machine registered its codecs, and $(b,owns), the timers and \
-               sources of the instance after the step.";
+               machine registered its codecs, and $(b,owns), the resources of \
+               the instance after the step.";
           ]
          @ exit_status
          )

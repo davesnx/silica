@@ -155,7 +155,7 @@ test("a hot reload keeps state through codecs, DOM nodes and focus, restarts a s
     click(w, $("bump"));
     assert.equal($("bump").textContent, "103", "the new code handles input once");
     keydown(w, "k");
-    assert.equal($("echo").textContent, "!", "a document key source runs once");
+    assert.equal($("echo").textContent, "!", "a document key resource runs once");
 
     const second = await swap(w, "a");
     assert.deepEqual(second.restarted.map((entry) => entry.path), ["router/1:draft"]);
@@ -174,7 +174,7 @@ test("a hot reload keeps state through codecs, DOM nodes and focus, restarts a s
     click(w, $("bump"));
     assert.equal($("bump").textContent, "104", "input runs once after three swaps");
     keydown(w, "k");
-    assert.equal($("echo").textContent, "!!", "the draft kept its state, and the key source runs once after three swaps");
+    assert.equal($("echo").textContent, "!!", "the draft kept its state, and the key resource runs once after three swaps");
   } finally {
     timers.restore();
   }

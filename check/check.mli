@@ -259,10 +259,10 @@ val component :
     handler of each text field of the view (a [textarea], or an [input] with no
     [type] or a type of text, search, email, url, tel, password or number; not a
     [select] or a checkbox) called with each text of [texts] (default: none),
-    the events of the held sources of the state, [inputs s] (for events that no
-    element of the view gives), the events of running timers, the answers of
+    the events of the held resources of the state, [inputs s] (for events that
+    no element of the view gives), the events of running timers, the answers of
     running calls and the updates of running subscriptions (see {!answers} and
-    {!val-states}; [arrivals] defaults to 2). A [Global_keys] source gives the
+    {!val-states}; [arrivals] defaults to 2). A [Global_keys] resource gives the
     event of each key in its table, which is the press of that key;
     [Outside_press] gives its event; [Resize] gives [on_resize] with
     {!Silica.Rect.zero}; [Intersection] gives [on_change] with [true] and with
@@ -315,8 +315,8 @@ val live :
   ('s, 'e) Silica.Live.t ->
   ('s, (unit, 'e) input) t
 (** Like {!component} for a Live component, whose machine runs on the server,
-    with two more rules: [live-uses-client-source] (a reachable state owns a
-    client-only source: {!Silica.Source.focus_trap}, [scroll_lock],
+    with two more rules: [live-uses-client-resource] (a reachable state owns a
+    client-only resource: {!Silica.Host.focus_trap}, [scroll_lock],
     [outside_press], [keys], [resize], [intersection], [dismiss], [anchor],
     [scroll], [visibility], [online] or [block]) and [live-uses-client-action]
     (a step runs [Measure], [Copy], [Load_script], [Load_chunk], [Resume],
@@ -381,7 +381,7 @@ val app :
     node in it, so the page is listed in [not_explored] and its machine is not
     run. Actions [Navigate], [Replace], [Back], [Forward] and [Reload] change
     the simulated history and become the event [url_event url] of the root
-    machine. As in a browser, while a machine holds a {!Silica.Source.block}, a
+    machine. As in a browser, while a machine holds a {!Silica.Host.block}, a
     link, an opened URL, back, forward and those actions stop before the URL
     changes, and the newest block gets the navigation instead; [Resume] then
     does it, past the block. [Revert_navigation] undoes the navigation that the
@@ -449,7 +449,7 @@ type cause = Check_model.cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string }  (** The answer of a call. *)
   | Live of { id : string; topic : string }  (** An update of a subscription. *)
-  | Held of { id : string; source : string }  (** A held source. *)
+  | Held of { id : string; name : string }  (** A held resource. *)
   | Action_result of string  (** The result of the action with this name. *)
   | Props  (** The parent gave other props. *)
   | Child of { instance : string; machine : string }
@@ -489,9 +489,9 @@ type 'ev step = {
           changed: the root first, then the children in their order. For a step
           of a child, the root when it handles an output of the child; for a
           step of the root, the children it moved, such as the page whose
-          {!Silica.Source.block} took a back, forward, address or link
-          navigation. A child that the step started or ended is not in the list.
-          [[]] when no other machine changed its state name. *)
+          {!Silica.Host.block} took a back, forward, address or link navigation.
+          A child that the step started or ended is not in the list. [[]] when
+          no other machine changed its state name. *)
 }
 
 val describe_step : root:string -> 'ev step -> string
@@ -582,8 +582,8 @@ type ('s, 'ev) report = {
   specs : Silica.Spec.t list;
       (** The specs that the run found, the root machine first, then each listed
           child that started. A spec holds the states it reached, initial state
-          first then by name, each with the timers and sources of the first
-          snapshot reached in it, and the steps it took, with event names. *)
+          first then by name, each with the resources of the first snapshot
+          reached in it, and the steps it took, with event names. *)
   paths : (string * 'ev step list) list;
       (** For each state name, in the order the search reached them, a shortest
           path from a start to its first snapshot. *)
@@ -650,12 +650,12 @@ val rules : rule list
     {b Runs and fairness.} A run starts at a start of the check and takes steps
     of the graph. It may stop in a snapshot where no timer, no call and no
     action result runs: the app waits for the user, who may do nothing, and a
-    server may never publish, so running subscriptions, held sources, inputs and
-    the view do not keep a run going. It may not stop while a timer, a call or
-    an action result runs. An infinite run counts only when it is weakly fair:
-    every timer and call that runs at every step from some point on is also
-    delivered again and again. So every timer fires and every call answers in
-    the end, even if the user keeps typing, and the checker does not report a
+    server may never publish, so running subscriptions, held resources, inputs
+    and the view do not keep a run going. It may not stop while a timer, a call
+    or an action result runs. An infinite run counts only when it is weakly
+    fair: every timer and call that runs at every step from some point on is
+    also delivered again and again. So every timer fires and every call answers
+    in the end, even if the user keeps typing, and the checker does not report a
     run where the user prevents that forever. "Eventually" means: on every such
     run.
 
@@ -833,7 +833,7 @@ val script :
     module named after the machine id, as [Issue_list.component], or [.app] for
     an app). [Error] says why the steps cannot run in [Silica_memory]: a timer
     that fires before another timer that real time fires first (the checker lets
-    running timers fire in any order), an event from [inputs], a held source,
+    running timers fire in any order), an event from [inputs], a held resource,
     the result of an action, an element with no role and no text; also when the
     replay in the check no longer breaks the rule. Replay such a trace in the
     check with {!replay_trace}. In a joint check, the steps of children are

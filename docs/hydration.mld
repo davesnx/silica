@@ -59,7 +59,7 @@ val table : Silica.Answers.t = <abstr>
 - : string option = Some "\"Hello, Ada\""
 ]}
 
-The server renders with no clock: timers, sources and Live subscriptions do
+The server renders with no clock: timers, resources and Live subscriptions do
 not run there. A call that fails, has no handler or takes longer than
 [settle_timeout_ms] (1 second for the whole step) is left out, and the page
 shows the state at that moment.
@@ -147,6 +147,6 @@ And the server lists them in [islands] (see {!page-server.islands}). Then:
 element, with no app around it.
 
 A Live machine runs on the server, where there is no page. So it must not own
-sources of the page (such as a focus trap or a key table) or use actions that
+resources of the page (such as a focus trap or a key table) or use actions that
 need an answer of the page (such as [Copy]). {!Check.live} reports both (see
 {!page-checker}).

@@ -569,7 +569,7 @@ module Make (Io : IO) = struct
       | Action.Stop id ->
           pending := List.filter (fun slot -> slot.id <> id) !pending
       | Action.Start_timer _
-      | Action.Start_source _
+      | Action.Start_held _
       | Action.Start_live _
       | Action.Run _ ->
           ()
@@ -856,7 +856,7 @@ module Make (Io : IO) = struct
             timeout_ms
       | Action.Stop id ->
           Hashtbl.remove owned id
-      | Action.Start_source _ | Action.Start_live _ | Action.Run _ ->
+      | Action.Start_held _ | Action.Start_live _ | Action.Run _ ->
           ()
     and start id =
       incr next_token;

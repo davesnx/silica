@@ -92,7 +92,7 @@ let field = Ref.make "field"
 let tally =
   Machine.make ~id:"tally" ~init:(Counting 0) ~name:tally_name
     ~states:tally_states
-    ~during:(function Waiting _ -> [ Source.after 50 Tick ] | Counting _ -> [])
+    ~during:(function Waiting _ -> [ Host.after 50 Tick ] | Counting _ -> [])
     ~entry:(function Counting _ -> [ Action.Focus field ] | Waiting _ -> [])
     (fun state event ->
       match (state, event) with

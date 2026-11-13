@@ -332,10 +332,10 @@ let source_tests =
         let source =
           Topic.subscribe Watch.topic "k" (fun update -> Watch.Update update)
         in
-        Alcotest.(check string) "name" "live:counts" (Source.name source);
-        Alcotest.(check string) "key" "live:counts k" (Source.key source);
+        Alcotest.(check string) "name" "live:counts" (Host.name source);
+        Alcotest.(check string) "key" "live:counts k" (Host.key source);
         Alcotest.(check (option string))
-          "topic" (Some "counts") (Source.topic source);
+          "topic" (Some "counts") (Host.topic source);
         match
           Machine.active Watch.machine (Watch.Watching ("k", Status.Idle))
         with

@@ -54,7 +54,7 @@ The commands:
 
 - Put behaviour in the machine. A view only reads the state and names events.
 - Disable each element whose event the state does not handle: `disabled=(not (Machine.can machine state Event))`. The checker offers no event of a disabled element, and `Silica_memory` refuses to press it.
-- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. The state name is part of that key: a step to a state with another name stops every source of the old state and starts the sources of the new one, even when both own the same `Source.after 3000 Expire`. To keep a timer running across a change, such as a row that asks for confirmation while it shows "New", keep the change as data inside one state, or give the phases sub-state names with a dot, such as `list.live` and `list.offline`: the part before the dot owns the sources, so they keep running, and the spec and the golden views still show each phase (see [Connection phases](../../../docs/data.mld)). `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
+- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A resource starts again only when its key changes, such as the input of a call. The state name is part of that key: a step to a state with another name stops every resource of the old state and starts the resources of the new one, even when both own the same `Host.after 3000 Expire`. To keep a timer running across a change, such as a row that asks for confirmation while it shows "New", keep the change as data inside one state, or give the phases sub-state names with a dot, such as `list.live` and `list.offline`: the part before the dot owns the resources, so they keep running, and the spec and the golden views still show each phase (see [Connection phases](../../../docs/data.mld)). `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
 
 From `docs/examples/shared/doc_debounce.mlx`:
 
@@ -251,7 +251,7 @@ The counts of states and transitions, such as `counter: 16 states, 45 transition
 | `boundary-reset` | The fallback of a boundary has no element with the reset attribute. | Put `~reset` on a button of the fallback. | Never. |
 | `timer-owner` | A timer runs that the state does not own. | This is a Silica bug: report it with the trace. | Never. |
 | `call-owner` | A call or subscription runs that the state does not own. | This is a Silica bug: report it with the trace. | Never. |
-| `live-uses-client-source` | A Live component runs a source that only a browser has. | Move the source into a client component. | Never. |
+| `live-uses-client-resource` | A Live component runs a resource that only a browser has. | Move the resource into a client component. | Never. |
 | `live-uses-client-action` | A Live component runs an action that needs an answer of the browser. | Run the action in a client component. | Never. |
 | `route-round-trip` | A route prints as a URL that does not parse back to the same route. | Make the parse and the print of the route agree. | Never. |
 | `link-parses` | A link goes to a URL that does not print back the same, or goes to the not-found route. | Make the link with `Router.link`. | A link that leaves the app on purpose. |
@@ -265,7 +265,7 @@ The counts of states and transitions, such as `counter: 16 states, 45 transition
 | `nested-interactive` | A control holds another control. | Move the inner control out. | Never. |
 | `keyboard-access` | An element with a press handler cannot get keyboard focus. | Use a `<button>` or an `<a href>`, or give a role and `tabindex="0"` and handle Enter and Space. | A key handler on an element above handles the keyboard. |
 | `dialog-name` | A dialog has no name. | An `aria-labelledby` to its title, or an `aria-label`. | Never. |
-| `dialog-focus` | A modal dialog shows, and the state has no focus trap on it. | Put `Source.focus_trap` on the dialog in `during`, or use `Silica_ui.Dialog`. | A native `<dialog>` opened with `showModal`, which traps focus itself. |
+| `dialog-focus` | A modal dialog shows, and the state has no focus trap on it. | Put `Host.focus_trap` on the dialog in `during`, or use `Silica_ui.Dialog`. | A native `<dialog>` opened with `showModal`, which traps focus itself. |
 | `landmark-main` | A view has more than one visible main landmark, or a main inside another. | Keep one `main` (or `role="main"`) for the page; make the others a section, a region or a div. A component check sees its own view; a joint check sees the whole page. | Never. |
 | `heading-order` | A heading skips a level after the heading before it. | Use the next level, or add the missing levels. | Never. |
 | `name-spacing` | Two inline parts of a name join with no space, such as `ENG-2Second`. | Put a `" "` text node between them, or an `aria-label`. | Never; CSS spacing does not count. |

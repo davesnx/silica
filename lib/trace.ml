@@ -212,8 +212,8 @@ let cause_text : Transition.cause -> string = function
     )
   | Live { topic; _ } ->
       "live " ^ topic
-  | Held { source; _ } ->
-      "held " ^ source
+  | Held { name; _ } ->
+      "held " ^ name
   | Action_result { action } ->
       "result of " ^ action
   | Props ->

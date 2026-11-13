@@ -6,7 +6,7 @@
       "name": "ready",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

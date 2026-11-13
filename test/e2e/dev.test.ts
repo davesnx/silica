@@ -129,7 +129,7 @@ let start = { count = 0; text = "" }
 
 let machine =
   Machine.make ~id:"hot" ~init:(Idle start) ~name ~states ~event_name
-    ~during:(function Waiting _ -> [ Source.after 2500 Done ] | _ -> [])
+    ~during:(function Waiting _ -> [ Host.after 2500 Done ] | _ -> [])
     (fun state event ->
       match (state, event) with
       | Idle model, Bump ->

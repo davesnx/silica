@@ -17,12 +17,12 @@
     - A new child starts its machine with its props. A child that stays gets its
       new props when they changed (see {!Machine.set_props}).
     - A child that is no longer rendered ends: the actions of leaving its state,
-      and a {!Action.Stop} for every timer and source that still runs, come
-      first for its own children, then for it.
-    - Each entry of a state gets a number. Timer and source ids are
-      ["<instance>.<entry>/<machine>/<state>/<key>"] (see {!Source.key}), so two
+      and a {!Action.Stop} for every resource that still runs, come first for
+      its own children, then for it.
+    - Each entry of a state gets a number. Resource ids are
+      ["<instance>.<entry>/<machine>/<state>/<key>"] (see {!Host.key}), so two
       instances of one machine never share an id. A message from a timer or
-      source of an earlier entry, or of an ended instance, is dropped.
+      resource of an earlier entry, or of an ended instance, is dropped.
     - The result event of an action (such as {!Action.Measure}) goes to the
       instance that ran the action, in any state. It is dropped when that
       instance has ended.
@@ -84,8 +84,8 @@ type cause =
       -> cause  (** The id of a call, its endpoint and its answer. *)
   | Live : string * 's Topic.t * 's Topic.update -> cause
       (** The id of a subscription, its topic and the update. *)
-  | Source : string * 'm Action.source -> cause
-      (** The id of a held source and the source. *)
+  | Held : string * 'm Action.held -> cause
+      (** The id of a held resource and the resource. *)
   | Result : 'm Action.t -> cause  (** The action whose result this is. *)
   | Child : ('p, 's, 'e) cell -> cause
       (** The [output] or [on_final] of this child. *)
@@ -198,7 +198,7 @@ val mount :
     props change and end of each instance of the tree, at the time it happens,
     with its cause: the element of a handler (only with a hook are handler
     messages made with their element), the timer, the answer, the Live update,
-    the held source, the action, the props, the child or the message of the
+    the held resource, the action, the props, the child or the message of the
     host. Give it [Transition.observer] or [Trace.Recorder.observer]. With no
     observer the cost is one test of an option per step. A step that raises is
     not observed.
@@ -218,7 +218,7 @@ val mount_with_props :
 
 val set_props : ('p, 's, 'e) t -> 'p -> unit
 (** Give the root new props, as a parent gives a child new props: the [on_props]
-    of the machine runs and the sources are compared by key. The actions come
+    of the machine runs and the resources are compared by key. The actions come
     with the next {!update}. Props equal to the current ones do nothing. *)
 
 val failure :
@@ -243,8 +243,7 @@ val update :
 (** Deliver the message, if any. Then process the events that components raised
     for their parents, and render until nothing changes. Returns the resolved
     view (it has no component nodes) and the actions raised since the last call,
-    in order. Timer and source ids in the actions are the ids described above.
-*)
+    in order. Resource ids in the actions are the ids described above. *)
 
 val waiting : ('p, 's, 'e) t -> bool
 (** The last {!update} rendered a {!Node.val-chunk} whose value is not here. A

@@ -69,7 +69,7 @@ let combobox_page =
   )
 
 let shortcut =
-  Source.keys ~prevent:true
+  Host.keys ~prevent:true
     [
       (Key.make ~ctrl:true "k", Open_menu); (Key.make ~meta:true "k", Open_menu);
     ]

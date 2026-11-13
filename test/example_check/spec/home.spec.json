@@ -6,7 +6,7 @@
       "name": "home",
       "final": true,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

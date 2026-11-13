@@ -50,7 +50,7 @@ let host_of_host_action : type e. e Action.host -> host option = function
   | Action.Start_timer _
   | Action.Start_call _
   | Action.Start_live _
-  | Action.Start_source _
+  | Action.Start_held _
   | Action.Stop _ ->
       None
 

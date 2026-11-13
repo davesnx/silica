@@ -6,7 +6,7 @@
       "name": "watching",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "live:votes"
       ],
       "held": []

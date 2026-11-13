@@ -211,7 +211,7 @@ val behind_modal : 'e element -> 'e element option
     behind it unless it is inside an open modal (also through a portal) or above
     one in the page; the elements around a portal are not above the portal, as
     its children are painted at the end of the body. This is the page that the
-    browser renderer makes [inert] while a {!Source.focus_trap} runs (the
+    browser renderer makes [inert] while a {!Host.focus_trap} runs (the
     [dialog-focus] rule of the checker asks for that trap on each modal): the
     checker and [Silica_memory] give no input to an element behind a modal. It
     stays in the text view, as it stays drawn. *)

@@ -17,8 +17,8 @@ gives a {!Check.type-report}. The events of a state are:
 
 - the handlers of the view: press, double press, submit, focus, blur, pointer
   enter and leave, and the key handlers with each key of [keys];
-- the events of the held sources of the state, such as the keys of a
-  [Source.keys] table or the events of a dismiss layer;
+- the events of the held resources of the state, such as the keys of a
+  [Host.keys] table or the events of a dismiss layer;
 - the events of running timers, in any order, as time is not counted;
 - the answers of running calls and the states of running subscriptions (see
   {{!section-samples}Samples});
@@ -67,7 +67,7 @@ its id, its message and its hint:
   belongs to the current state. A finding is a bug of Silica.
 - [ignored-event]: the machine handles every event of a handler of the view,
   of a timer, of a call answer and of a subscription. It may ignore the
-  events of held sources, of [inputs], of action results and new props. So an
+  events of held resources, of [inputs], of action results and new props. So an
   update that ends with [| _ -> Ignore] cannot hide a button that does
   nothing.
 - [raised]: the update, the view, a handler or a property raised an
@@ -77,7 +77,7 @@ its id, its message and its hint:
   [states], the report has a line [unlisted: ...] instead: the checker cannot
   report its unreached states.
 - [state-limit]: the search stopped at [max_states].
-- [live-uses-client-source], [live-uses-client-action]: see
+- [live-uses-client-resource], [live-uses-client-action]: see
   {{!section-live}Live components}.
 - [route-round-trip], [link-parses]: see {{!section-app}Routed apps}.
 
@@ -126,7 +126,7 @@ and they see a child component only as a node.
   does not see a key handler on an element above.
 - [dialog-name]: a dialog or alert dialog has a name.
 - [dialog-focus]: when the view shows a dialog with [aria-modal="true"], the
-  state has a {!Silica.Source.focus_trap} on it or on an element around it in
+  state has a {!Silica.Host.focus_trap} on it or on an element around it in
   its [during] list.
   It cannot see a native [<dialog>] opened with [showModal].
 - [heading-order]: a heading is at most one level below the heading before it;
@@ -147,7 +147,7 @@ state, the element and the event, a [hint] that says how to fix it, the
 point, the [view] of that state as text ({!Silica.View_text}), and the
 [element] for a rule of the view. Each step has its [input], the name of its
 [event], its [cause] (the element and handler of the view, the timer, the
-call, the source), and the names of the states [from] and [target].
+call, the held resource), and the names of the states [from] and [target].
 
 When the machine ignores the event of a button, disable the button (for
 example with {!Silica.Machine.can}), or handle the event, for example with
@@ -258,7 +258,7 @@ count:
 
 - A run may stop in a state where no timer, no call and no action result
   runs. The app then waits for the user, and the user may do nothing; a server
-  may never publish. So the view, the inputs, held sources and running
+  may never publish. So the view, the inputs, held resources and running
   subscriptions do not keep a run going.
 - A run may not stop while a timer, a call or an action result runs.
 - An endless run counts only when it is weakly fair: each timer and each call
@@ -535,8 +535,8 @@ parent, or on the check of the child alone.
 {1:live Live components}
 
 {!Check.live} checks a Live component. Its machine runs on the server, so a
-state with a source of the page in its [during] list (a focus trap, a key
-table, a dismiss layer) is a violation of [live-uses-client-source], and an
+state with a resource of the page in its [during] list (a focus trap, a key
+table, a dismiss layer) is a violation of [live-uses-client-resource], and an
 action that needs an answer of the page ([Measure], [Copy], [Load_script]) is a violation of
 [live-uses-client-action].
 
@@ -596,7 +596,7 @@ at a time, so that the product of the router and its pages stays small.
 {1:quint Diagrams and Quint}
 
 {!Silica.Spec} is the graph of a machine that a checker run found: the states it
-reached, the timers and sources of each, and the steps it took with the names
+reached, the resources of each, and the steps it took with the names
 of their events (see {!page-machines.spec}). The report gives it in [specs].
 The names come from the [event_name] of the machine (see
 {!page-machines.events}); a machine with no [event_name] gives the label of the
@@ -609,7 +609,7 @@ fixed order: the initial state first, then by name. It has these exports:
   Mermaid diagram.
 - {!Silica.Spec.to_quint}: a module for {{:https://quint-lang.org} Quint}, a
   language for the specification of systems. The module has the state, the
-  running timers and sources, and the last event. It has one transition
+  running resources, and the last event. It has one transition
   for each edge and event, written as a Quint [action], and the invariants
   [resources_owned] (every running resource belongs to the current state),
   [can_move] and [inv] (both).
@@ -760,7 +760,7 @@ chart), next to [<id>.spec.json]. For a joint check, [<id>] is
 of the entry, as for the golden files; a machine in two entries has a graph
 for each. The count that the command prints is the count of these graphs.
 The chart draws an arrow for each step that enters a state, and lists the
-kept steps of a state in its box, under its timers and sources, as
+kept steps of a state in its box, under its resources, as
 [stay on] and their events, such as [stay on close_request escape-key] for an
 alert dialog that Escape keeps open. With no browser, read [<id>.txt]: it has
 the same states, arrows and kept steps ([stay] lines) as the chart.
@@ -882,7 +882,7 @@ step = {
          | { "type": "timer", "id", "ms", "text" }
          | { "type": "answer", "id", "path", "text" }
          | { "type": "live", "id", "topic", "text" }
-         | { "type": "held", "id", "source", "text" }
+         | { "type": "held", "id", "name", "text" }
          | { "type": "action_result", "action", "text" }
          | { "type": "child", "instance", "machine", "text" },
   "moved": [ { "instance": string, "machine": string,
@@ -892,7 +892,7 @@ step = {
                                      a child, the root that handles its
                                      output; for a step of the root, the
                                      children it moved, such as the page whose
-                                     Source.block took a navigation; [] when
+                                     Host.block took a navigation; [] when
                                      none
 }
 v}
@@ -908,7 +908,7 @@ the [data] of a step of a child is the event of the child by its codec, and
 file of the violation with [--traces DIR], else [null]; [test_file] is the
 file to save its [script] test in, and [null] when [script] cannot write that
 test (a step with no input in {!Silica_memory}, such as an event from
-[~inputs] or a held source); then [test_error] says why, and [replay] is the
+[~inputs] or a held resource); then [test_error] says why, and [replay] is the
 red check.
 
 A violation of the seeded bug in [test/check_suite/]: the saved state shows
@@ -1040,7 +1040,7 @@ on standard error, writes no test and exits [1]:
   races that slow devices and throttled tabs can make. The memory clock keeps
   real time, so it cannot make that order;
 - an event from [~inputs], which no element of the view gives;
-- a held source, or the result of an action, which the memory platform gives
+- a held resource, or the result of an action, which the memory platform gives
   at once.
 
 A Live update is a step of the test: {!Silica_memory.live_update} gives it on

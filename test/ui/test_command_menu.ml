@@ -7,7 +7,7 @@ let strings = Alcotest.(list string)
 let attr sim id name = Sim.attribute sim ~id name
 let ctrl_k = Key.make ~ctrl:true "k"
 let input = "menu-search-input"
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 
 let contains hay needle =
   let n = String.length needle and h = String.length hay in
@@ -25,7 +25,7 @@ let is_open sim = Sim.exists sim ~id:"menu-popup"
 let closed_at_start () =
   let sim = Sim.mount menu_page in
   Alcotest.(check bool) "closed" false (is_open sim);
-  Alcotest.check strings "only the shortcut" [ "keys" ] (source_names sim)
+  Alcotest.check strings "only the shortcut" [ "keys" ] (held_names sim)
 
 let shortcut_opens () =
   let sim = Sim.mount menu_page in
@@ -41,7 +41,7 @@ let shortcut_opens () =
     (attr sim input "aria-activedescendant");
   Alcotest.check strings "shortcut, trap, lock, dismiss"
     [ "keys"; "focus_trap"; "scroll_lock"; "dismiss" ]
-    (source_names sim);
+    (held_names sim);
   Alcotest.(check bool)
     "no open change for the parent's request" false
     (contains (log sim) "open true")
@@ -62,7 +62,7 @@ let enter_runs () =
   Alcotest.(check bool) "Enter used" true (Sim.key_down sim ~id:input Key.enter);
   Alcotest.(check bool) "closed" false (is_open sim);
   has_log sim "run sign-out; open false close-press";
-  Alcotest.check strings "only the shortcut" [ "keys" ] (source_names sim)
+  Alcotest.check strings "only the shortcut" [ "keys" ] (held_names sim)
 
 let press_runs () =
   let sim = Sim.mount menu_page in

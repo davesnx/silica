@@ -20,7 +20,7 @@ let typed : string -> (state, event) Machine.next = function
 let machine =
   Machine.make ~id:"debounce" ~init:Empty ~name
     ~during:(function
-      | Typing _ -> [ Source.after 500 Settle ] | Empty | Settled _ -> []
+      | Typing _ -> [ Host.after 500 Settle ] | Empty | Settled _ -> []
       )
     (fun state event ->
       match (state, event) with

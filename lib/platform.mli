@@ -6,7 +6,7 @@
     the platform only through a value of {!t}:
 
     - {!field-renderer} paints views, adopts a server-painted screen, turns
-      platform input into events (element handlers and held sources), runs the
+      platform input into events (element handlers and held resources), runs the
       platform actions of {!Action.t} (focus, scroll, history, title, ...) and
       paints portals. See {!Renderer}.
     - {!field-location} and the [on_route] argument of {!field-renderer} are the

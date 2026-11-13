@@ -249,15 +249,15 @@ let guarded (platform : Instance.message Platform.t) =
     {
       inner with
       run = (fun action -> if not !halted then inner.run action);
-      start_source =
+      start_held =
         (fun ~id source ->
           Hashtbl.replace sources id ();
-          inner.start_source ~id source
+          inner.start_held ~id source
         );
-      stop_source =
+      stop_held =
         (fun ~id ->
           Hashtbl.remove sources id;
-          inner.stop_source ~id
+          inner.stop_held ~id
         );
     }
   in
@@ -272,7 +272,7 @@ let guarded (platform : Instance.message Platform.t) =
       (fun ((renderer : Instance.message Renderer.t), sources) ->
         let ids = Hashtbl.fold (fun id () all -> id :: all) sources [] in
         Hashtbl.reset sources;
-        List.iter (fun id -> renderer.stop_source ~id) ids
+        List.iter (fun id -> renderer.stop_held ~id) ids
       )
       !renderers
   in

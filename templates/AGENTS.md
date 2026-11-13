@@ -106,7 +106,7 @@ Run every command from this directory.
   browser: `silica inspect tail --json` prints one JSON line for each step of
   each machine of the open pages and of the Live islands of the server, with
   `target`, `machine`, `instance`, `from`, `to`, `change`, `event`, `cause`,
-  `actions`, `owns` (timers and sources after the step), and `data` and
+  `actions`, `owns` (resources after the step), and `data` and
   `snapshot` when the machine registered its codecs. `--machine ID`,
   `--path PATH`, `--event NAME` and `--change kept` keep the output small;
   `--count N` stops after N lines. `silica inspect tree --json` gives each
@@ -138,7 +138,7 @@ Run every command from this directory.
    reports the states that no run reached), `?event_name` (the name of each
    event on the edges; an event with no name is labelled by its cause, such
    as `press button "Save"`, `after 2000ms` or `ok /api/save`), `?during`
-   (the timers, calls and sources of each state). Give a new machine a state
+   (the timers, calls and resources of each state). Give a new machine a state
    codec in `app/shared/codecs.ml` (see `hot-reload` above). Write `name` and `event_name` as a `function` over
    every constructor, with no `_` case, so that a new constructor is a compile
    error, and add each new state name to `states`.

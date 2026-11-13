@@ -98,16 +98,21 @@ _Avoid_: action
 
 **During**:
 The function of a machine that gives the timers, Remote calls, subscriptions
-and held sources that run during each snapshot. A source runs while the list
+and held resources that run during each snapshot. A resource runs while the list
 of the snapshot holds it.
 _Avoid_: invoke, effect
 
-**Source key**:
-The identity of a source in the `during` list of a snapshot: the path and input of a call,
+**Resource**:
+A timer, a Remote call, a subscription or a held resource: an item of the
+`during` list of a snapshot. The module `Silica.Host` makes them.
+_Avoid_: source
+
+**Resource key**:
+The identity of a resource in the `during` list of a snapshot: the path and input of a call,
 the topic and key of a subscription, the delay of a timer. After each step the
-machine stops the sources whose key went away and starts the new ones; the
+machine stops the resources whose key went away and starts the new ones; the
 others keep running.
-_Avoid_: source id (an id names a running source for the host)
+_Avoid_: resource id (an id names a running resource for the host)
 
 **Props**:
 The value that a parent gives to a child component. The update, `during` and the
@@ -131,7 +136,7 @@ _Avoid_: widget, region, child machine
 
 **Spec**:
 What a checker run found about a machine: the states it reached
-(initial state first, then by name), the timers and sources of each, and the
+(initial state first, then by name), the resources of each, and the
 edges it took, each with the name of its event. The Quint export, the text
 form and the diagrams read it.
 _Avoid_: schema, graph (as the name of the value)
@@ -142,7 +147,8 @@ _Avoid_: command, effect, side effect
 
 **Host**:
 The thing that runs machines and carries out their actions: the browser, the
-server, or the model checker.
+server, or the model checker. The module `Silica.Host` makes the resources
+that a machine asks its host to run.
 _Avoid_: runtime, driver, platform
 
 **Renderer**:
@@ -245,7 +251,7 @@ _Avoid_: ignore list, suppression
 
 **Cause**:
 Where a step of a trace came from: an element and handler of the view, an
-input, a timer, a call answer, a subscription update, a held source, an action
+input, a timer, a call answer, a subscription update, a held resource, an action
 result, new props or the browser history.
 _Avoid_: origin, via
 
@@ -306,9 +312,9 @@ _Avoid_: event log, history (the history is the list of URLs)
 
 **Cause**:
 What made a step: the element of a handler (by role, accessible name and
-path), a timer, the answer of a call, a Live update, a held source, the result
+path), a timer, the answer of a call, a Live update, a held resource, the result
 of an action, new props, a child, a URL change or a message of the host.
-_Avoid_: trigger, source (a source is a held resource)
+_Avoid_: trigger, source
 
 **Instance path**:
 The name of an instance in its tree: the machine id of the root, then for each
@@ -332,7 +338,7 @@ _Avoid_: rerun, playback
 **Names-only trace**:
 A trace with no user data, as a recorder keeps it by default: state and event
 names, causes without their data, actions, and ids of timers, calls and
-sources as numbers (`Silica.Trace.names_only`). The default for production.
+resources as numbers (`Silica.Trace.names_only`). The default for production.
 _Avoid_: anonymous trace, redacted trace
 
 **Conformance**:
@@ -366,7 +372,7 @@ A cancel puts the history back where it was.
 _Avoid_: middleware, interceptor
 
 **Block**:
-A held source of a page that has unsaved data. While it is held, no navigation
+A held resource of a page that has unsaved data. While it is held, no navigation
 happens: a link press, a navigation action, back and forward reach the page as
 an attempt, which it can resume; closing the tab asks first.
 _Avoid_: prompt, confirm guard
@@ -472,14 +478,14 @@ a popover, a menu, a list box or a tooltip. It is painted in a portal.
 _Avoid_: overlay, modal (for all popups)
 
 **Dismiss layer**:
-A held source of an open popup that closes it on Escape or on a press outside
+A held resource of an open popup that closes it on Escape or on a press outside
 it, or when focus moves out of it. Layers stack: Escape and outside presses
 reach the newest layer first, and a press inside a newer layer does not close an
 older one. While a modal popup is open, the page behind it is `inert`.
 _Avoid_: click-outside handler
 
 **Anchor**:
-A held source that keeps a popup next to another element (its anchor), on the
+A held resource that keeps a popup next to another element (its anchor), on the
 side and with the alignment of a placement, and moves it to the other side when
 there is no room.
 _Avoid_: positioner, tether
@@ -491,7 +497,7 @@ an **open change**, which it reports to the parent with its reason.
 _Avoid_: controlled prop
 
 **Shortcut**:
-A key binding of a page (`Source.keys`). It does not fire while the user types
+A key binding of a page (`Host.keys`). It does not fire while the user types
 in a text field (unless the key has Ctrl or Meta, or is Escape), and not when an
 element handler already used the key.
 _Avoid_: hotkey

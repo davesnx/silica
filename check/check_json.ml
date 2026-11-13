@@ -70,8 +70,8 @@ let cause (cause : Check.cause) =
         typed "answer" [ ("id", string id); ("path", string path) ]
     | Live { id; topic } ->
         typed "live" [ ("id", string id); ("topic", string topic) ]
-    | Held { id; source } ->
-        typed "held" [ ("id", string id); ("source", string source) ]
+    | Held { id; name } ->
+        typed "held" [ ("id", string id); ("name", string name) ]
     | Action_result action ->
         typed "action_result" [ ("action", string action) ]
     | Props ->

@@ -5,8 +5,8 @@ let goldens =
     (fun (name, text) -> (name, text, Statechart_goldens.Layouts.read text))
     Statechart_goldens.Golden_specs.all
 
-let state ?(final = false) ?(timers = []) ?(sources = []) ?(held = []) name =
-  { Spec.name; final; timers; sources; held }
+let state ?(final = false) ?(timers = []) ?(network = []) ?(held = []) name =
+  { Spec.name; final; timers; network; held }
 
 let odd_spec : Spec.t =
   {
@@ -14,7 +14,7 @@ let odd_spec : Spec.t =
     init = "a b";
     states =
       [
-        state "a b" ~timers:[ 300 ] ~sources:[ "/api/save"; "live:x y" ];
+        state "a b" ~timers:[ 300 ] ~network:[ "/api/save"; "live:x y" ];
         state "quote\"" ~held:[ "focus trap" ];
         state "back\\slash";
         state "line\nbreak";

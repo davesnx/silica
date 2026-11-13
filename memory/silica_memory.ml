@@ -33,7 +33,7 @@ type memory = {
   mutable entries : Url.t list;
   mutable index : int;
   mutable actions : message Action.t list;
-  mutable sources : (string * message Action.source * (message -> unit)) list;
+  mutable sources : (string * message Action.held * (message -> unit)) list;
   mutable title : string;
   mutable document : (string * string) list;
   mutable cookies : (string * string) list;
@@ -1201,11 +1201,11 @@ let paint t node =
 let media_matches t query =
   Option.value (List.assoc_opt query t.media) ~default:false
 
-let stop_source t ~id =
+let stop_held t ~id =
   t.sources <- List.filter (fun (other, _, _) -> other <> id) t.sources
 
-let start_source t ~id (source : message Action.source) =
-  stop_source t ~id;
+let start_held t ~id (source : message Action.held) =
+  stop_held t ~id;
   let deliver =
     match source with
     | Action.Global_keys { rate = Some rate; _ } ->
@@ -1229,8 +1229,8 @@ let platform t : message Platform.t =
         {
           Renderer.paint = paint t;
           run = run t;
-          start_source = start_source t;
-          stop_source = stop_source t;
+          start_held = start_held t;
+          stop_held = stop_held t;
         }
       );
     location = (fun () -> current_url t);
@@ -1343,7 +1343,7 @@ let url t = Url.to_string (current_url t)
 let history t = List.map Url.to_string t.entries
 let history_index t = t.index
 let actions t = List.rev t.actions
-let sources t = List.map (fun (id, source, _) -> (id, source)) t.sources
+let held t = List.map (fun (id, source, _) -> (id, source)) t.sources
 let title t = t.title
 let document_attribute t name = List.assoc_opt name t.document
 let cookies t = t.cookies
@@ -1672,7 +1672,7 @@ let url handle = url handle.memory
 let history handle = history handle.memory
 let history_index handle = history_index handle.memory
 let actions handle = actions handle.memory
-let sources handle = sources handle.memory
+let held handle = held handle.memory
 let title handle = title handle.memory
 let document_attribute handle name = document_attribute handle.memory name
 let cookies handle = cookies handle.memory
@@ -2000,10 +2000,10 @@ let drive handle (record : Transition.t) =
       | exception Invalid_argument error ->
           Error (Not_found { seq = record.seq; error })
     )
-  | Held { source; _ } ->
+  | Held { name; _ } ->
       not_realisable
-        ("the held source " ^ source
-       ^ ": Silica_memory does not replay held sources"
+        ("the held resource " ^ name
+       ^ ": Silica_memory does not replay held resources"
         )
   | Action_result { action } ->
       not_realisable

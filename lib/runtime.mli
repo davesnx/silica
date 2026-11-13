@@ -15,7 +15,7 @@
     Chunks. The runtime carries out {!Action.Load_chunk}. The first paint waits
     until the first view has no {!Node.val-chunk} that is loading, so a renderer
     that adopts the server screen adopts it with the code of its page; timers,
-    calls and sources start at once. *)
+    calls and resources start at once. *)
 
 val start :
   ?dev:bool ->

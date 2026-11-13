@@ -177,7 +177,7 @@ trace debounce / build memory from memory
 
 The cause says what made each step: the element of a handler (by role,
 accessible name and path), a timer, the answer of a call, a Live update, a held
-source, the result of an action, new props, a child, a URL change or a message
+resource, the result of an action, new props, a child, a URL change or a message
 of the host. An ignored event is recorded too, marked [unhandled].
 
 {!Silica.Trace.to_jsonl} writes the trace as a file, JSON Lines: one header
@@ -222,7 +222,7 @@ each record its number and time, the instance path (with the keys that the app
 gave component nodes), the machine id, the state names before and after, the
 change, the event name, the handler, role and element path of an element, the
 delay of a timer, the endpoint path of a call, the topic of a Live update, the
-name of a held source and the actions. The ids of timers, calls and sources
+name of a held resource and the actions. The ids of timers, calls and resources
 are numbers, such as [21.2/comment-composer/#3]: the same id gets the same
 number in one trace. It holds no event data, props, snapshots, answers, Live
 updates, input text, accessible names, URL queries or fragments, page titles
@@ -237,11 +237,11 @@ development or staging (see {!page-checker.conform}).
 [mount ~answers] answers calls before the first paint, as a server render
 does. {!Silica_memory.mount_app} runs a router app with a history: see
 {!page-router.app}. The platform also records the actions, the running
-sources, the title, the cookies, the log and the Live sockets, which the test
+resources, the title, the cookies, the log and the Live sockets, which the test
 opens and feeds with messages.
 
 What the memory platform does not do: it paints islands as empty elements,
-it does not measure (a [Measure] gets {!Silica.Rect.zero}), and the sources
+it does not measure (a [Measure] gets {!Silica.Rect.zero}), and the resources
 that need a layout, such as [Anchor] and [Scroll_lock], are only recorded.
 Test those in a browser.
 

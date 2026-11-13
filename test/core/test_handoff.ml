@@ -17,7 +17,7 @@ let counter ?(id = "counter") ?state () =
        ~during:(fun count ->
          if count > 0 then
            [
-             Source.after 1000 Tick;
+             Host.after 1000 Tick;
              Remote.call echo count (function
                | Remote.Ok value ->
                    Answer value

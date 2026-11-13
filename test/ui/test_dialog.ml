@@ -14,7 +14,7 @@ let has_log sim line =
   if not (contains (log sim) line) then
     Alcotest.failf "log has no %S in %s" line (log sim)
 
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 
 let closed_at_start () =
   let sim = Sim.mount page in
@@ -25,7 +25,7 @@ let closed_at_start () =
   Alcotest.check opt "no controls while closed" None
     (Sim.attribute sim ~id:"note-trigger" "aria-controls");
   Alcotest.(check bool) "no popup" false (Sim.exists sim ~id:"note-popup");
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let trigger_opens () =
   let sim = Sim.mount page in
@@ -48,7 +48,7 @@ let trigger_opens () =
     (Sim.attribute sim ~id:"note-trigger" "aria-controls");
   Alcotest.check strings "trap, lock, dismiss"
     [ "focus_trap"; "scroll_lock"; "dismiss" ]
-    (source_names sim);
+    (held_names sim);
   has_log sim "open true trigger-press"
 
 let escape_closes () =
@@ -56,7 +56,7 @@ let escape_closes () =
   Sim.press_id sim ~id:"note-trigger";
   Alcotest.(check bool) "handled" true (Sim.escape sim);
   Alcotest.(check bool) "closed" false (Sim.exists sim ~id:"note-popup");
-  Alcotest.check strings "sources stopped" [] (source_names sim);
+  Alcotest.check strings "held resources stopped" [] (held_names sim);
   has_log sim "open false escape-key";
   Alcotest.(check bool)
     "focus goes to the trigger" true

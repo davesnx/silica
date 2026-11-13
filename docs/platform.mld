@@ -37,7 +37,7 @@ through one value of {!Silica.Platform.t}:
 
 - [renderer]: a {!Silica.Renderer.t}. It paints views, turns platform input
   into events, runs the platform actions (focus, scroll, history, title) and
-  starts and stops the held sources. It reports each URL change and each link
+  starts and stops the held resources. It reports each URL change and each link
   preload with [on_route].
 - [location]: the URL of the page now.
 - [io]: a clock ([schedule]), one HTTP request form for Remote calls ([post]),

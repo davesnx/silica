@@ -14,7 +14,7 @@ let shown sim =
     [ 0; 1; 2; 3 ]
 let shown_ids = Alcotest.(list int)
 let highlighted sim = attr sim "fruit-input" "aria-activedescendant"
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 
 let contains hay needle =
   let n = String.length needle and h = String.length hay in
@@ -35,7 +35,7 @@ let closed_at_start () =
     (attr sim "fruit-input" "aria-expanded");
   Alcotest.check opt "no highlight" None (highlighted sim);
   Alcotest.(check bool) "no list" false (Sim.exists sim ~id:"fruit-listbox");
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let typing_filters () =
   let sim = mount () in
@@ -58,7 +58,7 @@ let typing_filters () =
   Alcotest.check opt "disabled" (Some "true")
     (attr sim "fruit-option-2" "aria-disabled");
   Alcotest.check strings "dismiss and anchor" [ "dismiss"; "anchor" ]
-    (source_names sim)
+    (held_names sim)
 
 let empty_status () =
   let sim = mount () in
@@ -152,7 +152,7 @@ let outside_press_closes () =
   Sim.input sim ~label:"Fruit" "a";
   Sim.outside_press sim;
   Alcotest.(check bool) "closed" false (Sim.exists sim ~id:"fruit-listbox");
-  Alcotest.check strings "sources stopped" [] (source_names sim);
+  Alcotest.check strings "held resources stopped" [] (held_names sim);
   Alcotest.check opt "text kept" (Some "a") (attr sim "fruit-input" "value")
 
 let tab_closes () =
@@ -163,7 +163,7 @@ let tab_closes () =
   ignore (key sim Key.arrow_down);
   Alcotest.(check bool) "Tab used" true (key sim Key.tab);
   Alcotest.(check bool) "closed" false (Sim.exists sim ~id:"fruit-listbox");
-  Alcotest.check strings "sources stopped" [] (source_names sim);
+  Alcotest.check strings "held resources stopped" [] (held_names sim);
   Alcotest.check opt "text kept" (Some "a") (attr sim "fruit-input" "value");
   Alcotest.(check bool)
     "the highlighted option is not chosen" false
@@ -220,7 +220,7 @@ let inline_mode () =
   Alcotest.(check bool)
     "still shown after a choice" true
     (Sim.exists sim ~id:"pick-listbox");
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let () =
   let t name f = Alcotest.test_case name `Quick f in

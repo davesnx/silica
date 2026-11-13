@@ -65,7 +65,7 @@ let event_name = function
   | Elapsed delay ->
       "elapsed " ^ string_of_int (delay_ms delay)
 
-let timer delay = Source.after (delay_ms delay) (Elapsed delay)
+let timer delay = Host.after (delay_ms delay) (Elapsed delay)
 
 let layer (props : props) =
   Popup.layer ~escape:(Close Popup.Escape_key) ~place:props.place

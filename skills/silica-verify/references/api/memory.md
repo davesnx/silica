@@ -11,13 +11,13 @@ The platform keeps:
 - the HTTP requests of Remote calls, which the test answers one at a time;
 - the Live sockets, which the test opens, sends messages into and closes, or which `live_update` drives as a server does;
 - a history of URLs with an index, which the navigation actions, link presses, `back` and `forward` change;
-- the actions that the renderer ran, the running sources, the title, the log lines and the number of times the session was gone.
+- the actions that the renderer ran, the running resources, the title, the log lines and the number of times the session was gone.
 
-Input follows the browser renderer: a handler on the nearest ancestor of the element answers, as with event delegation; a press on an element inside an `a` with `data-silica-link` (and no `target` or `download`) pushes (or, with `data-silica-replace`, replaces) the history entry and reports the URL to the root as `Silica.Router.event.Url_changed`; a key goes to the key handlers of the focused element, then to the `Global_keys` sources and the Escape of the newest dismiss layer; rated handlers use `Silica.Rate.limiter` with the memory clock.
+Input follows the browser renderer: a handler on the nearest ancestor of the element answers, as with event delegation; a press on an element inside an `a` with `data-silica-link` (and no `target` or `download`) pushes (or, with `data-silica-replace`, replaces) the history entry and reports the URL to the root as `Silica.Router.event.Url_changed`; a key goes to the key handlers of the focused element, then to the `Global_keys` resources and the Escape of the newest dismiss layer; rated handlers use `Silica.Rate.limiter` with the memory clock.
 
-Navigation follows the browser renderer too: while a `Block` source runs, a link press, `Navigate`, `Replace`, `back` and `forward` change nothing and raise its `on_attempt` (the newest block gets it); `Resume` does the navigation past every block; `Revert_navigation` undoes the last reported change without a report. After a push or a back or forward to another path, a task on the clock with delay 0 moves focus to the first element with `data-silica-route-focus` (or to no element), unless a `Focus` action ran since, and announces the title (see `announcements`).
+Navigation follows the browser renderer too: while a `Block` resource runs, a link press, `Navigate`, `Replace`, `back` and `forward` change nothing and raise its `on_attempt` (the newest block gets it); `Resume` does the navigation past every block; `Revert_navigation` undoes the last reported change without a report. After a push or a back or forward to another path, a task on the clock with delay 0 moves focus to the first element with `data-silica-route-focus` (or to no element), unless a `Focus` action ran since, and announces the title (see `announcements`).
 
-Out of scope: islands (`data-silica-live`) are painted as empty elements and never connect; `Focus_trap` (other than as a dismiss layer), `Scroll_lock`, `Resize`, `Intersection`, `Anchor`, `Scroll`, `Visibility` and `Online` sources are kept in `sources` but do nothing; a `Media` source answers from `set_media`; `Scroll_into_view`, `Scroll_to` and `Reload` are only recorded; `Measure` answers `Silica.Rect.zero` when the ref is painted and `None` when it is not; `Copy` and `Load_script` answer `true`; a portal is searchable but its target is ignored; `Set_status` is only recorded; links with `data-silica-preload="viewport"` never preload.
+Out of scope: islands (`data-silica-live`) are painted as empty elements and never connect; `Focus_trap` (other than as a dismiss layer), `Scroll_lock`, `Resize`, `Intersection`, `Anchor`, `Scroll`, `Visibility` and `Online` resources are kept in `held` but do nothing; a `Media` resource answers from `set_media`; `Scroll_into_view`, `Scroll_to` and `Reload` are only recorded; `Measure` answers `Silica.Rect.zero` when the ref is painted and `None` when it is not; `Copy` and `Load_script` answer `true`; a portal is searchable but its target is ignored; `Set_status` is only recorded; links with `data-silica-preload="viewport"` never preload.
 
 ```ocaml
 type 'p t
@@ -264,7 +264,7 @@ exception Not_reachable of { reason : unreachable; message : string }
 val press : element -> unit
 ```
 
-A press: the outside-press sources and dismiss layers see the press start, then a link is followed or the nearest press handler runs. Then, as in a browser, a press on a submit button (a `button` with no `type` or `type="submit"`, or an `input` of type `submit` or `image`) that is still in the view submits its form: the nearest submit handler from the form runs.
+A press: the outside-press resources and dismiss layers see the press start, then a link is followed or the nearest press handler runs. Then, as in a browser, a press on a submit button (a `button` with no `type` or `type="submit"`, or an `input` of type `submit` or `image`) that is still in the view submits its form: the nearest submit handler from the form runs.
 
 ```ocaml
 val double_press : element -> unit
@@ -306,7 +306,7 @@ The element with focus.
 val key : _ t -> Key.t -> unit
 ```
 
-A key goes down on the focused element (or the page when none has focus). Element key handlers run first; Enter and Space press an element that is not a native control; then the `Global_keys` sources and the dismiss layers get the key, unless a handler prevented it.
+A key goes down on the focused element (or the page when none has focus). Element key handlers run first; Enter and Space press an element that is not a native control; then the `Global_keys` resources and the dismiss layers get the key, unless a handler prevented it.
 
 ```ocaml
 val key_up : _ t -> Key.t -> unit
@@ -342,7 +342,7 @@ The forward button of the browser: move to the next history entry, if there is o
 val open_url : _ t -> string -> unit
 ```
 
-The user opens the URL, as in the address bar: a new history entry, which the root gets as `Silica.Router.event.Url_changed`, unless a `Silica.Action.Block` source holds it. The page does not load again: this is the push of a single-page app.
+The user opens the URL, as in the address bar: a new history entry, which the root gets as `Silica.Router.event.Url_changed`, unless a `Silica.Action.Block` resource holds it. The page does not load again: this is the push of a single-page app.
 
 **Clock**
 
@@ -526,10 +526,10 @@ val actions : _ t -> Instance.message Action.t list
 The actions that the renderer ran, oldest first.
 
 ```ocaml
-val sources : _ t -> (string * Instance.message Action.source) list
+val held : _ t -> (string * Instance.message Action.held) list
 ```
 
-The running sources with their ids, in the order they started.
+The running held resources with their ids, in the order they started.
 
 ```ocaml
 val title : _ t -> string
@@ -553,7 +553,7 @@ The cookies that `Silica.Action.Set_cookie` stored, as name and value, in the or
 val set_media : _ t -> string -> bool -> unit
 ```
 
-The media query now matches, or not: each running `Silica.Action.Media` source of that query raises its event at once.
+The media query now matches, or not: each running `Silica.Action.Media` resource of that query raises its event at once.
 
 ```ocaml
 val logs : _ t -> string list
@@ -565,7 +565,7 @@ The log lines of the runtime, oldest first.
 val leave_asks : _ t -> bool
 ```
 
-`true` while a `Silica.Action.Block` source runs: closing or reloading the page would ask the user first.
+`true` while a `Silica.Action.Block` resource runs: closing or reloading the page would ask the user first.
 
 ```ocaml
 val announcements : _ t -> string list
@@ -588,7 +588,7 @@ type replay_result =
       (** The runtime reached another state, or no transition. *)
   | Not_realisable of { seq : int; reason : string }
       (** The step has no input in this platform: a timer that real time does
-          not fire first, a held source, the result of an action, an event of
+          not fire first, a held resource, the result of an action, an event of
           the host or of the inputs of a check, a preload, a step whose data the
           trace does not hold, or text typed into a password field, which a
           trace masks (see {!Silica.Secret}). *)

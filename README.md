@@ -43,7 +43,7 @@ let machine =
        stops them. *)
     ~during:(function
       | Saving -> [ Remote.call save "draft" (fun answer -> Answer answer) ]
-      | Saved _ -> [ Source.after 2000 Reset ]
+      | Saved _ -> [ Host.after 2000 Reset ]
       | Idle | Failed -> [])
     (* The transitions. [Saving] ignores [Save], so a double click sends
        one request. *)

@@ -4,7 +4,7 @@ type state = {
   name : string;
   final : bool;
   timers : int list;
-  sources : string list;
+  network : string list;
   held : string list;
 }
 
@@ -191,7 +191,7 @@ let to_quint t =
   let set items = "Set(" ^ String.concat ", " items ^ ")" in
   let owned s =
     List.map (Printf.sprintf "\"%s/after %dms\"" s.name) s.timers
-    @ List.map (Printf.sprintf "\"%s/invoke %s\"" s.name) s.sources
+    @ List.map (Printf.sprintf "\"%s/invoke %s\"" s.name) s.network
     @ List.map (Printf.sprintf "\"%s/hold %s\"" s.name) s.held
   in
   let on e =
@@ -299,7 +299,7 @@ let to_quint t =
 
 let details s =
   List.map (Printf.sprintf "after %dms") s.timers
-  @ List.map (fun path -> "invoke " ^ path) s.sources
+  @ List.map (fun path -> "invoke " ^ path) s.network
   @ List.map (fun name -> "hold " ^ name) s.held
 
 let to_dot t =
@@ -401,7 +401,7 @@ let to_text t =
         )
         );
       List.iter (fun ms -> line [ "  after"; string_of_int ms ^ "ms" ]) s.timers;
-      List.iter (fun path -> line [ "  invoke"; token path ]) s.sources;
+      List.iter (fun path -> line [ "  invoke"; token path ]) s.network;
       List.iter (fun name -> line [ "  hold"; token name ]) s.held
     )
     t.states;
@@ -497,7 +497,7 @@ type reading = {
 
 let of_text text =
   let state name final =
-    { name; final; timers = []; sources = []; held = [] }
+    { name; final; timers = []; network = []; held = [] }
   in
   let read number (reading : reading) words =
     let fail () =
@@ -534,7 +534,7 @@ let of_text text =
             fail ()
       )
     | [ "invoke"; path ] ->
-        detail (fun s -> { s with sources = s.sources @ [ path ] })
+        detail (fun s -> { s with network = s.network @ [ path ] })
     | [ "hold"; name ] ->
         detail (fun s -> { s with held = s.held @ [ name ] })
     | [ "edge"; from; "->"; target ] ->
@@ -675,7 +675,7 @@ let to_json t =
                 ("name", string s.name);
                 ("final", bool s.final);
                 ("timers", list int s.timers);
-                ("sources", list string s.sources);
+                ("network", list string s.network);
                 ("held", list string s.held);
               ]
           )
@@ -757,9 +757,9 @@ let of_json json =
            let* name = json_field "name" json_string json in
            let* final = json_field "final" json_bool json in
            let* timers = json_field "timers" (json_list json_int) json in
-           let* sources = json_field "sources" (json_list json_string) json in
+           let* network = json_field "network" (json_list json_string) json in
            let* held = json_field "held" (json_list json_string) json in
-           Ok { name; final; timers; sources; held }
+           Ok { name; final; timers; network; held }
        )
       )
       json

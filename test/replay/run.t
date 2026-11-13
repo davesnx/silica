@@ -27,7 +27,7 @@ URL that the user opens        Memory.open_url              pages
 props change                   Check_expect.set_props       changing
 step of a child                its element in the page      joint run.t
 Live update                    Memory.live_update           feed
-held source                    refused: no input for it in memory
+held resource                  refused: no input for it in memory
 action result                  refused: memory gives it at once
 event from ~inputs             refused: no element gives it (use ~texts)
 

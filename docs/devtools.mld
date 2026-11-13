@@ -2,7 +2,7 @@
 
 Under [silica dev], a program can read what the machines of the app do while
 it runs: the instance tree, the state and data of each machine, each step as
-it happens, and the timers and sources that run. Each open page of the app is
+it happens, and the resources that run. Each open page of the app is
 one target, and the server is one more target for its Live islands. The
 messages of all targets come in one stream, and each message names its
 target.
@@ -21,7 +21,7 @@ default; [--json] prints the protocol messages, one per line.
 
 - [silica inspect targets]: the pages and the server.
 - [silica inspect tree [--target T] [--machine ID] [--path PATH]]: each
-  running instance with its machine, state, the timers and sources that run,
+  running instance with its machine, state, the resources that run,
   and its snapshot and props when the machine registered its codecs (see
   {!Silica.Machine.register_codecs}). The props are the last ones the parent
   gave, also when the machine ignored them.
@@ -90,7 +90,7 @@ connects again; the hub answers a [tree] request with it:
 v}
 
 [mount] is an instance that started, with its state, data, props and
-[owns], the timers, calls, subscriptions and held sources that run during its
+[owns], the timers, calls, subscriptions and held resources that run during its
 snapshot, with the time each started:
 
 {v

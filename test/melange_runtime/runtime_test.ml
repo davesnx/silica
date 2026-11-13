@@ -45,8 +45,8 @@ let platform : Instance.message Platform.t =
         {
           paint = (fun node -> painted := Some node);
           run = (fun _ -> ());
-          start_source = (fun ~id:_ _ -> ());
-          stop_source = (fun ~id:_ -> ());
+          start_held = (fun ~id:_ _ -> ());
+          stop_held = (fun ~id:_ -> ());
         }
       );
     location = (fun () -> Url.of_string "/");

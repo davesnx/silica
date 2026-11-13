@@ -29,17 +29,17 @@ type host =
   | Reload
 
 val host_of_host_action : 'e Action.host -> host option
-(** [None] for [Start_timer], [Start_call], [Start_live], [Start_source],
-    [Stop], [Set_title] and [Remount], which never cross the wire, and for the
-    actions with a result event ([Measure], [Copy], [Load_script]): the event
-    would be made by a function on the server, and the protocol carries no
-    answer from the client to an action. [None] too for the navigation and page
-    actions that only make sense for the page that owns them: [Resume] answers a
-    [Block] source, which a Live machine cannot hold; [Revert_navigation]
-    belongs to the router of the page; [Preload] fills the call cache of the
-    page runtime, which a Live machine does not use; [Set_status] is for a
-    server render, and an island renders from its initial state. The checker
-    ([Check.live]) reports a Live machine that runs one of these. *)
+(** [None] for [Start_timer], [Start_call], [Start_live], [Start_held], [Stop],
+    [Set_title] and [Remount], which never cross the wire, and for the actions
+    with a result event ([Measure], [Copy], [Load_script]): the event would be
+    made by a function on the server, and the protocol carries no answer from
+    the client to an action. [None] too for the navigation and page actions that
+    only make sense for the page that owns them: [Resume] answers a [Block]
+    resource, which a Live machine cannot hold; [Revert_navigation] belongs to
+    the router of the page; [Preload] fills the call cache of the page runtime,
+    which a Live machine does not use; [Set_status] is for a server render, and
+    an island renders from its initial state. The checker ([Check.live]) reports
+    a Live machine that runs one of these. *)
 
 val host_to_action : host -> 'e Action.t
 (** The action that a host message stands for. *)

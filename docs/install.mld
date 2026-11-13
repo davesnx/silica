@@ -127,7 +127,7 @@ the app bundle. A test in [test/budget] checks the bundles for it.
 {2:dev-hot Hot reload}
 
 After a build that changed the client, the page stops the running code (its
-timers, calls, Live sockets, held sources and listeners), keeps the snapshot of
+timers, calls, Live sockets, held resources and listeners), keeps the snapshot of
 each machine instance by its instance path, loads the new bundle, and resumes
 every instance whose snapshot the new code decodes: the new view shows, the
 DOM nodes that did not change stay (so focus and scroll stay), and the timers

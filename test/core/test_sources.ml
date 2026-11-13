@@ -15,7 +15,7 @@ let poller =
   Component.make
     (Machine.make ~id:"poll" ~init:(Polling 0) ~name:poll_name
        ~states:poll_states
-       ~during:(fun _ -> [ Source.after 1000 Tick ])
+       ~during:(fun _ -> [ Host.after 1000 Tick ])
        (fun (Polling n) Tick -> Go (Polling (n + 1)))
     )
     (fun (Polling n) -> Node.text (string_of_int n))
@@ -73,7 +73,7 @@ let pair =
        ~init:(Timers ([ A; B ], None))
        ~name:pair_name ~states:pair_states
        ~during:(fun (Timers (events, _)) ->
-         List.map (fun event -> Source.after 1000 event) events
+         List.map (fun event -> Host.after 1000 event) events
        )
        (fun (Timers (events, last)) -> function
          | Drop ->
@@ -97,7 +97,7 @@ let table =
     (Machine.make ~id:"table" ~init:(Table A) ~name:table_name
        ~states:table_states
        ~during:(fun (Table event) ->
-         [ Source.keys [ (Key.enter, Pressed event) ] ]
+         [ Host.keys [ (Key.enter, Pressed event) ] ]
        )
        (fun (Table _) -> function
          | Switch -> Go (Table B) | Pressed event -> Go (Table event)
@@ -119,7 +119,7 @@ let renamer =
   Component.make
     (Machine.make ~id:"rename" ~init:(Keep "first") ~name:kept_name
        ~states:kept_states
-       ~during:(fun (Keep label) -> [ Source.after 1000 (Fired label) ])
+       ~during:(fun (Keep label) -> [ Host.after 1000 (Fired label) ])
        (fun (Keep _) -> function
          | Rename label ->
              Go (Keep label)

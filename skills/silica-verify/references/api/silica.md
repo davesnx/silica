@@ -229,7 +229,7 @@ val modal : 'e element -> bool
 val behind_modal : 'e element -> 'e element option
 ```
 
-The open modal that the element is behind, if any. An open modal is an element with `aria-modal="true"` that is not `hidden` and has no other open modal inside it (a modal opened from inside another one is in front of it, also through a portal). While the view shows an open modal, an element is behind it unless it is inside an open modal (also through a portal) or above one in the page; the elements around a portal are not above the portal, as its children are painted at the end of the body. This is the page that the browser renderer makes `inert` while a `Source.focus_trap` runs (the `dialog-focus` rule of the checker asks for that trap on each modal): the checker and `Silica_memory` give no input to an element behind a modal. It stays in the text view, as it stays drawn.
+The open modal that the element is behind, if any. An open modal is an element with `aria-modal="true"` that is not `hidden` and has no other open modal inside it (a modal opened from inside another one is in front of it, also through a portal). While the view shows an open modal, an element is behind it unless it is inside an open modal (also through a portal) or above one in the page; the elements around a portal are not above the portal, as its children are painted at the end of the body. This is the page that the browser renderer makes `inert` while a `Host.focus_trap` runs (the `dialog-focus` rule of the checker asks for that trap on each modal): the checker and `Silica_memory` give no input to an element behind a modal. It stays in the text view, as it stays drawn.
 
 ## Silica.Action
 
@@ -239,14 +239,14 @@ Requests that a machine asks its host to carry out. App code builds `t` values o
 type 'e t =
   | Focus of Ref.t
       (** Move keyboard focus to the element. The browser does not scroll to an
-          element inside a portal: an anchor source places a popup. *)
+          element inside a portal: an anchor resource places a popup. *)
   | Blur of Ref.t
   | Scroll_into_view of Ref.t
       (** Scroll the element into view by the smallest distance, as
           [scrollIntoView({ block: "nearest" })]. The browser does it after the
-          other actions and the sources of the same step, so an {!Anchor} places
-          a new popup first and the page does not scroll to where the popup was
-          before. *)
+          other actions and the resources of the same step, so an {!Anchor}
+          places a new popup first and the page does not scroll to where the
+          popup was before. *)
   | Scroll_to of { target : Ref.t option; left : int; top : int }
       (** Scroll the element with the ref [target], or the window when [target]
           is [None], so that the point ([left], [top]) of its content is at its
@@ -270,8 +270,8 @@ type 'e t =
   | Forward
   | Reload
   | Resume of Nav.t
-      (** Do this navigation past every {!Source.block}: the answer of a page
-          that stopped a navigation with a block and then lets it happen. *)
+      (** Do this navigation past every {!Host.block}: the answer of a page that
+          stopped a navigation with a block and then lets it happen. *)
   | Revert_navigation
       (** Undo the last URL change that the renderer reported: back one entry
           after a push, the old URL after a replace, the other way after a back
@@ -308,7 +308,7 @@ type 'e t =
 ```
 
 ```ocaml
-type 'e source =
+type 'e held =
   | Focus_trap of { container : Ref.t; return_focus : bool }
       (** Keep keyboard focus inside the element with the ref [container]: focus
           moves into it, Tab and Shift+Tab wrap, and focus that leaves it comes
@@ -379,7 +379,7 @@ type 'e source =
   | Anchor of { anchor : Ref.t; popup : Ref.t; place : Place.t }
 ```
 
-A held resource that runs during a state: it starts when the state is entered and stops when the state is left. Build them with the constructors in `Source`. A renderer carries them out. `rate` limits how often the renderer delivers the event (see `Rate`).
+A held resource that runs during a state: it starts when the state is entered and stops when the state is left. Build them with the constructors in `Host`. A renderer carries them out. `rate` limits how often the renderer delivers the event (see `Rate`).
 
 ```ocaml
 val check : 'e t -> unit
@@ -388,32 +388,32 @@ val check : 'e t -> unit
 Raises `Invalid_argument` for a `Set_document_attribute` or `Set_cookie` with a name or value outside the rules of those actions. Hosts call it before they run either.
 
 ```ocaml
-val source_name : 'e source -> string
+val held_name : 'e held -> string
 ```
 
 `"focus_trap"`, `"scroll_lock"`, `"outside_press"`, `"keys"`, `"resize"`, `"intersection"`, `"dismiss"`, `"anchor"`, `"scroll"`, `"visibility"`, `"online"`, `"media"` or `"block"`.
 
 ```ocaml
-val map_source : ('a -> 'b) -> 'a source -> 'b source
+val map_held : ('a -> 'b) -> 'a held -> 'b held
 ```
 
-Change the events that a source sends.
+Change the events that a resource sends.
 
 ```ocaml
-val map_refs : (Ref.t -> Ref.t) -> 'e source -> 'e source
+val map_refs : (Ref.t -> Ref.t) -> 'e held -> 'e held
 ```
 
-The same source with each ref replaced.
+The same resource with each ref replaced.
 
 ```ocaml
 type 'e host =
   | Run of 'e t
-  | Start_source of { id : string; source : 'e source }
+  | Start_held of { id : string; held : 'e held }
       (** Start the held resource. A [Stop] with the same id ends it. Raised
-          when a state starts to own that source. *)
+          when a state starts to own that resource. *)
   | Start_timer of { id : string; ms : int; event : 'e }
       (** Raise [event] after [ms] milliseconds, unless stopped first. Raised
-          when a state starts to own a {!Source.after} timer. *)
+          when a state starts to own a {!Host.after} timer. *)
   | Start_call : {
       id : string;
       endpoint : ('i, 'o, 'x) Endpoint.t;
@@ -874,7 +874,7 @@ The JavaScript of the script element, with no `<script>` tag.
 
 ## Silica.Endpoint
 
-The types of `Remote`, in a module below `Source` and `Action`. Use them through `Remote`.
+The types of `Remote`, in a module below `Host` and `Action`. Use them through `Remote`.
 
 ```ocaml
 type ('i, 'o, 'x) t
@@ -1038,6 +1038,158 @@ The `Instance.resume` of the handoff, and what it did so far. An instance whose 
 
 An `Encoded` snapshot resumes when the state codec of the new code, from `codecs` (default `registered`), decodes it. An `At_start` snapshot resumes at the snapshot that `Machine.start_with_props` gives in the new code, with no entry: a closed popup with no codec keeps being closed. Any other instance starts again from its initial snapshot, and the outcome says why.
 
+## Silica.Host
+
+What a machine asks its host to run during a state: the resources in the `during` list of `Machine.make`, which are timers, calls, subscriptions and held resources. A resource starts when it comes into the list and stops when it goes out of the list.
+
+Each resource has a `key`. After each step the machine compares the keys of the old and the new `during` list: it stops the resources whose key went away and starts the new ones, and the others keep running. So the calls of one state can change with its data. Calls are made with `Remote.call` and subscriptions with `Topic.subscribe`.
+
+```ocaml
+type 'e t
+```
+
+A resource that raises events `'e`.
+
+```ocaml
+val after : int -> 'e -> 'e t
+```
+
+A timer: the event is raised once, this many milliseconds after the timer starts, unless it was stopped first.
+
+```ocaml
+val focus_trap : ?return_focus:bool -> Ref.t -> 'e t
+```
+
+Keep focus inside the element with this ref while the resource runs. `return_focus` defaults to `true`. See `Action.Focus_trap`.
+
+```ocaml
+val scroll_lock : 'e t
+```
+
+The page does not scroll while the resource runs.
+
+```ocaml
+val outside_press : Ref.t -> 'e -> 'e t
+```
+
+A press outside the element with this ref raises the event.
+
+```ocaml
+val keys : ?prevent:bool -> ?rate:Rate.t -> (Key.t * 'e) list -> 'e t
+```
+
+A key press anywhere in the page, from the table, raises its event. The table is data, so the checker presses each key of the active state. Keys typed in a text field and keys that an element handler prevented do not count (see `Action.Global_keys`).
+
+```ocaml
+val dismiss : ?escape:'e -> ?outside:'e -> ?focus_out:'e -> Ref.t list -> 'e t
+```
+
+A dismiss layer for a popup whose elements have these refs: Escape raises `escape` in the newest layer only, a press outside the elements raises `outside`, and focus that moves outside the elements raises `focus_out`, unless the press or the focus is inside a newer layer. See `Action.Dismiss`.
+
+```ocaml
+val anchor : ?place:Place.t -> anchor:Ref.t -> Ref.t -> 'e t
+```
+
+Keep the popup with this ref next to the `anchor` element while the resource runs. `place` defaults to `Place.default`. See `Action.Anchor`.
+
+```ocaml
+val resize : ?rate:Rate.t -> Ref.t -> (Rect.t -> 'e) -> 'e t
+```
+
+The element changes size.
+
+```ocaml
+val intersection : ?rate:Rate.t -> Ref.t -> (bool -> 'e) -> 'e t
+```
+
+The element enters (`true`) or leaves (`false`) the viewport.
+
+```ocaml
+val scroll : ?rate:Rate.t -> ?target:Ref.t -> (Scroll.t -> 'e) -> 'e t
+```
+
+The element with the ref `target`, or the page when `target` is not given, scrolls. The event is raised once at the start and for each scroll. See `Action.Scroll`.
+
+```ocaml
+val visibility : (bool -> 'e) -> 'e t
+```
+
+The document becomes visible (`true`) or hidden (`false`). The event is raised once at the start with the value then.
+
+```ocaml
+val online : (bool -> 'e) -> 'e t
+```
+
+The browser goes online (`true`) or offline (`false`). The event is raised once at the start with the value then.
+
+```ocaml
+val media : string -> (bool -> 'e) -> 'e t
+```
+
+The media query, such as `"(prefers-color-scheme: dark)"`, matches (`true`) or not (`false`). The event is raised once at the start with the value then and again at each change. See `Action.Media`.
+
+```ocaml
+val block : (Nav.t -> 'e) -> 'e t
+```
+
+While the resource runs, every navigation stops before the URL changes and raises the event instead: a page with unsaved data asks, then sends `Action.Resume` with the navigation to let it happen. Closing or reloading the page asks the user first. See `Action.Block`.
+
+```ocaml
+val map_refs : (Ref.t -> Ref.t) -> 'e t -> 'e t
+```
+
+The same held resource with each of its refs replaced. A component that can have more than one instance in a page uses it to give each instance its own refs, for example from an id in its props. Other resources are returned unchanged.
+
+```ocaml
+val key : 'e t -> string
+```
+
+The identity of the resource in a `during` list: the path and encoded input of a call, the topic and key of a subscription, `"after <ms>ms"` for a timer, the kind and refs of a held resource, and the place of an `anchor`. When an `during` list holds two resources with the same key, the second one gets `"#2"` after its key, and so on.
+
+```ocaml
+val same : 'e t -> 'e t -> bool
+```
+
+Two resources with the same key also have the same data: the event of a timer, the table of `keys`, the events of `outside_press` and `dismiss`. Compared with `=`. Functions cannot be compared: a part that is a function counts as the same.
+
+The rule after a step that keeps the state: a resource whose key went away stops, a new key starts, and a resource whose key stays but whose data is not `same` stops and starts again, so it raises the event of the current `during` list. A function, such as the answer function of a call, is the one of its first start while the key and the data stay: put the data it needs in the state, or in the input of the call.
+
+```ocaml
+val name : 'e t -> string
+```
+
+The endpoint path of a call, `"live:" ^ topic name` for a `Topic.subscribe`, `"after <ms>ms"` for a timer, or the name of a held resource as `Action.held_name` gives it.
+
+```ocaml
+val delay : 'e t -> int option
+```
+
+The milliseconds of an `after` timer.
+
+```ocaml
+val topic : 'e t -> string option
+```
+
+The topic name of a `Topic.subscribe` resource.
+
+```ocaml
+val is_held : 'e t -> bool
+```
+
+A held resource: a resource that is not a call, a subscription or a timer.
+
+```ocaml
+val held : 'e t -> 'e Action.held option
+```
+
+The held resource, when the resource is not a call, a subscription or a timer.
+
+```ocaml
+val start : string -> 'e t -> 'e Action.host
+```
+
+`start id resource` is the action that starts `resource` under `id`.
+
 ## Silica.Inspect
 
 The inspector protocol: what a running app tells a tool about its machines.
@@ -1074,7 +1226,7 @@ type resource = {
 }
 ```
 
-A timer or source that an instance owns (see `Machine.active`).
+A resource that an instance owns (see `Machine.active`).
 
 ```ocaml
 type instance = {
@@ -1257,8 +1409,8 @@ A tree has a root component. Rendering a view that holds component nodes (see `N
 - A child is identified by its position in the view of its parent, by the `Machine.id` of its machine and by its key, not by the machine value. A key keeps the child when the siblings are reordered, a key that is removed ends the child, and a key that comes back starts a new one.
 - One id is one machine in a tree. The state of a child is kept only when its machine has the same type as before, and the types are known equal only for the same `Machine.make` call (`Machine.type_id`). So a tree that meets two machine values with one id, such as a machine made again in a view or two machines that share an id, raises `Invalid_argument` with that id, rather than starting the child again at each render. Make each machine once, at the top level.
 - A new child starts its machine with its props. A child that stays gets its new props when they changed (see `Machine.set_props`).
-- A child that is no longer rendered ends: the actions of leaving its state, and a `Action.Stop` for every timer and source that still runs, come first for its own children, then for it.
-- Each entry of a state gets a number. Timer and source ids are `"<instance>.<entry>/<machine>/<state>/<key>"` (see `Source.key`), so two instances of one machine never share an id. A message from a timer or source of an earlier entry, or of an ended instance, is dropped.
+- A child that is no longer rendered ends: the actions of leaving its state, and a `Action.Stop` for every resource that still runs, come first for its own children, then for it.
+- Each entry of a state gets a number. Resource ids are `"<instance>.<entry>/<machine>/<state>/<key>"` (see `Host.key`), so two instances of one machine never share an id. A message from a timer or resource of an earlier entry, or of an ended instance, is dropped.
 - The result event of an action (such as `Action.Measure`) goes to the instance that ran the action, in any state. It is dropped when that instance has ended.
 - A view must be a function of its snapshot. An instance whose snapshot is physically the same as at its last render, whose props did not change, under which no instance stepped and no boundary failed or was reset, and that was not remounted, is not rendered again: its last resolved view is used.
 
@@ -1317,8 +1469,8 @@ type cause =
       -> cause  (** The id of a call, its endpoint and its answer. *)
   | Live : string * 's Topic.t * 's Topic.update -> cause
       (** The id of a subscription, its topic and the update. *)
-  | Source : string * 'm Action.source -> cause
-      (** The id of a held source and the source. *)
+  | Held : string * 'm Action.held -> cause
+      (** The id of a held resource and the resource. *)
   | Result : 'm Action.t -> cause  (** The action whose result this is. *)
   | Child : ('p, 's, 'e) cell -> cause
       (** The [output] or [on_final] of this child. *)
@@ -1446,7 +1598,7 @@ Create the root and start its machine. The actions are returned by the first `up
 
 An exception from the machine step or the view of a component under a `Node.boundary` does not leave `update`: the boundary shows its fallback. `on_error` gets the exception and the `Node.error` the fallback gets; with no hook the error goes to stderr. `dev` (default `false`) puts the details in `Node.error.detail`. An exception with no boundary above it leaves `update`; the tree is then not safe to use and the host should drop it.
 
-`observe` gets one `observed` for each start, step (also an ignored event), props change and end of each instance of the tree, at the time it happens, with its cause: the element of a handler (only with a hook are handler messages made with their element), the timer, the answer, the Live update, the held source, the action, the props, the child or the message of the host. Give it `Transition.observer` or `Trace.Recorder.observer`. With no observer the cost is one test of an option per step. A step that raises is not observed.
+`observe` gets one `observed` for each start, step (also an ignored event), props change and end of each instance of the tree, at the time it happens, with its cause: the element of a handler (only with a hook are handler messages made with their element), the timer, the answer, the Live update, the held resource, the action, the props, the child or the message of the host. Give it `Transition.observer` or `Trace.Recorder.observer`. With no observer the cost is one test of an option per step. A step that raises is not observed.
 
 `resume` starts the tree from the snapshots of an earlier run (see `resume`).
 
@@ -1467,7 +1619,7 @@ Like `mount`, for a root component with props.
 val set_props : ('p, 's, 'e) t -> 'p -> unit
 ```
 
-Give the root new props, as a parent gives a child new props: the `on_props` of the machine runs and the sources are compared by key. The actions come with the next `update`. Props equal to the current ones do nothing.
+Give the root new props, as a parent gives a child new props: the `on_props` of the machine runs and the resources are compared by key. The actions come with the next `update`. Props equal to the current ones do nothing.
 
 ```ocaml
 val failure :
@@ -1499,7 +1651,7 @@ val update :
   ('p, 's, 'e) t -> message option -> message Node.t * message Action.host list
 ```
 
-Deliver the message, if any. Then process the events that components raised for their parents, and render until nothing changes. Returns the resolved view (it has no component nodes) and the actions raised since the last call, in order. Timer and source ids in the actions are the ids described above.
+Deliver the message, if any. Then process the events that components raised for their parents, and render until nothing changes. Returns the resolved view (it has no component nodes) and the actions raised since the last call, in order. Resource ids in the actions are the ids described above.
 
 ```ocaml
 val waiting : ('p, 's, 'e) t -> bool
@@ -1743,7 +1895,7 @@ Subscribe to the topic under the key. `deliver` gets the updates that `Action.St
 
 ## Silica.Live_topic
 
-The types of `Topic`, in a module below `Source` and `Action`. Use them through `Topic`.
+The types of `Topic`, in a module below `Host` and `Action`. Use them through `Topic`.
 
 ```ocaml
 type 's t
@@ -1801,7 +1953,7 @@ The states are the constructors of a plain OCaml variant, with their data inside
         | Saving ->
             [ Remote.call save "draft" (fun answer -> Answer answer) ]
         | Saved _ ->
-            [ Source.after 2000 Reset ]
+            [ Host.after 2000 Reset ]
         | Idle | Failed _ ->
             []
         )
@@ -1816,7 +1968,7 @@ The states are the constructors of a plain OCaml variant, with their data inside
       )
 ```
 
-The machine enters a state when its `name` changes. A step to a state with the same name keeps its timers and sources running, except those whose `Source.key` changed; `Reenter` stops and starts them all again. A name with a dot names a sub-state: the part before the first dot is the state that owns the timers and sources, so a step from `"list.live"` to `"list.offline"` runs no `exit` and no `entry` and keeps each source whose key did not change, as a step that keeps the name does, while the spec, the traces and the golden views still show two states. Use it for the phases of a state that owns a subscription or calls, such as the connection of a Live topic. Hosts carry this out through the actions `Action.host`: `Start_timer`, `Start_call`, `Start_live`, `Start_source` and `Stop`; a host drops a timer or answer whose id was stopped.
+The machine enters a state when its `name` changes. A step to a state with the same name keeps its resources running, except those whose `Host.key` changed; `Reenter` stops and starts them all again. A name with a dot names a sub-state: the part before the first dot is the state that owns the resources, so a step from `"list.live"` to `"list.offline"` runs no `exit` and no `entry` and keeps each resource whose key did not change, as a step that keeps the name does, while the spec, the traces and the golden views still show two states. Use it for the phases of a state that owns a subscription or calls, such as the connection of a Live topic. Hosts carry this out through the actions `Action.host`: `Start_timer`, `Start_call`, `Start_live`, `Start_held` and `Stop`; a host drops a timer or answer whose id was stopped.
 
 A component with props uses `make_with_props`: the update, `during`, `entry` and `exit` get the props, and the props are not an event.
 
@@ -1828,8 +1980,8 @@ type ('s, 'e) next =
   | Go of 's
       (** Go to the snapshot. When its name is the name of the current one, or a
           sub-state of the same state (the same part before the first dot), no
-          exit, no entry, and the timers and sources whose key did not change
-          keep running. *)
+          exit, no entry, and the resources whose key did not change keep
+          running. *)
   | Go_with of 's * 'e Action.t list
       (** Like [Go], and run the actions between the exit and the entry. *)
   | Reenter of 's
@@ -1854,7 +2006,7 @@ val make :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?during:('s -> 'e Source.t list) ->
+  ?during:('s -> 'e Host.t list) ->
   ?entry:('s -> 'e Action.t list) ->
   ?exit:('s -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -1865,13 +2017,13 @@ val make :
 
 `make ~id ~init ~name update` is a machine with no props, for example `Machine.make ~id:"save" ~init:Idle ~name ~during update`.
 
-`id` names the machine in the spec, in the checker and in the ids of timers and sources. `name` names the state of a snapshot: two snapshots with one name are one state, which the machine enters once. A dot makes sub-states of one state, such as `"list.live"` and `"list.offline"` (see above).
+`id` names the machine in the spec, in the checker and in the ids of its resources. `name` names the state of a snapshot: two snapshots with one name are one state, which the machine enters once. A dot makes sub-states of one state, such as `"list.live"` and `"list.offline"` (see above).
 
 `states` lists every name that `name` gives, so that the checker can report the states that no run reached; with no `states`, the checker says that it cannot report them for this machine.
 
 `event_name` names an event on the edges of the spec, in the checker and in traces, and `Check.event` finds an event by it. With no `event_name`, the tools label an event by its cause, such as `press button "Save"`, `after 2000ms` or `ok /api/save` (see `Transition.cause_label`).
 
-`during` lists the timers (`Source.after`), calls (`Remote.call`) and sources that run during a snapshot (see `Source.key`). `entry` and `exit` give the actions of entering and leaving a state. A `final` snapshot handles no event. `start` are actions that run once, before the entry of `init`.
+`during` lists the timers (`Host.after`), calls (`Remote.call`) and resources that run during a snapshot (see `Host.key`). `entry` and `exit` give the actions of entering and leaving a state. A `final` snapshot handles no event. `start` are actions that run once, before the entry of `init`.
 
 The update ends with `| _ -> Ignore` in most machines; the checker reports an event that the view offers and the machine ignores (see `Check`).
 
@@ -1882,7 +2034,7 @@ val make_with_props :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?during:('p -> 's -> 'e Source.t list) ->
+  ?during:('p -> 's -> 'e Host.t list) ->
   ?entry:('p -> 's -> 'e Action.t list) ->
   ?exit:('p -> 's -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -1892,7 +2044,7 @@ val make_with_props :
   ('p, 's, 'e) t
 ```
 
-Like `make`, for a component with props: the parent gives them with `Component.node`, and the update, `during`, `entry` and `exit` get the props of the moment. `on_props previous props state` runs when the component starts (`previous = None`) and when the parent gives other props; it defaults to `Ignore`. After it, the sources are compared by key, as after a step, so a source that depends on the props starts again when they change.
+Like `make`, for a component with props: the parent gives them with `Component.node`, and the update, `during`, `entry` and `exit` get the props of the moment. `on_props previous props state` runs when the component starts (`previous = None`) and when the parent gives other props; it defaults to `Ignore`. After it, the resources are compared by key, as after a step, so a resource that depends on the props starts again when they change.
 
 ```ocaml
 val id : ('p, 's, 'e) t -> string
@@ -1998,7 +2150,7 @@ type resource =
 val active : (unit, 's, 'e) t -> 's -> resource list
 ```
 
-The timers and sources that run during the snapshot. After `start`, `step` or `set_props`, the actions and this list agree: a resource is running if and only if its id was started and not stopped.
+The resources that run during the snapshot. After `start`, `step` or `set_props`, the actions and this list agree: a resource is running if and only if its id was started and not stopped.
 
 ```ocaml
 val active_with_props : ('p, 's, 'e) t -> 'p -> 's -> resource list
@@ -2007,13 +2159,13 @@ val active_with_props : ('p, 's, 'e) t -> 'p -> 's -> resource list
 `active` with the props.
 
 ```ocaml
-val held : (unit, 's, 'e) t -> 's -> 'e Action.source list
+val held : (unit, 's, 'e) t -> 's -> 'e Action.held list
 ```
 
-The held sources (see `Source.focus_trap`) that run during the snapshot. The checker reads them to know which presses can happen.
+The held resources (see `Host.focus_trap`) that run during the snapshot. The checker reads them to know which presses can happen.
 
 ```ocaml
-val held_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
+val held_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.held list
 ```
 
 `held` with the props.
@@ -2050,7 +2202,7 @@ val start_with_props : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
 val resume : (unit, 's, 'e) t -> 's -> 'e Action.host list
 ```
 
-`resume machine snapshot` gives the actions that run the machine again at a snapshot it reached before, in another process or bundle: the starts of the timers, calls, subscriptions and held sources that run during the snapshot, in the order of `during`, with the ids of `active`. A timer starts with its full delay and a call is sent again.
+`resume machine snapshot` gives the actions that run the machine again at a snapshot it reached before, in another process or bundle: the starts of the timers, calls, subscriptions and held resources that run during the snapshot, in the order of `during`, with the ids of `active`. A timer starts with its full delay and a call is sent again.
 
 It gives no `start` actions, no `entry` and no `on_props`: the snapshot entered its state before, when they ran, and their effects (a focus, a title, a navigation, a call made by an action) must not happen twice. After it, the actions and `active` agree, as after `start`.
 
@@ -2069,9 +2221,9 @@ val step :
   's * 'e Action.host list * how
 ```
 
-Run the update. A final state handles nothing; `Ignore` leaves the snapshot unchanged (`Unhandled`). On a change of state the actions are: `exit` and stops of the old state, the actions of the step, `entry` and starts of the new state (`Entered`). A step that keeps the name, or moves to another sub-state of the same state, stops the sources whose key went away, runs the actions and starts the new sources (`Kept`). `Reenter` is `Entered` even when the name stays. Hosts use `Entered` to give each entry of a state its own instance (see `Instance`).
+Run the update. A final state handles nothing; `Ignore` leaves the snapshot unchanged (`Unhandled`). On a change of state the actions are: `exit` and stops of the old state, the actions of the step, `entry` and starts of the new state (`Entered`). A step that keeps the name, or moves to another sub-state of the same state, stops the resources whose key went away, runs the actions and starts the new resources (`Kept`). `Reenter` is `Entered` even when the name stays. Hosts use `Entered` to give each entry of a state its own instance (see `Instance`).
 
-`finished` is the id of the timer or call that raised the event: it ended when it delivered. A handled step that keeps the name and still has a source with that id in `during` starts it again, so a state whose `during` gives `Source.after 1000 Tick` and handles `Tick` with `Go` ticks every second. Hosts give it for timers and calls; subscriptions and held sources do not end when they deliver.
+`finished` is the id of the timer or call that raised the event: it ended when it delivered. A handled step that keeps the name and still has a resource with that id in `during` starts it again, so a state whose `during` gives `Host.after 1000 Tick` and handles `Tick` with `Go` ticks every second. Hosts give it for timers and calls; subscriptions and held resources do not end when they deliver.
 
 ```ocaml
 val step_with_props :
@@ -2090,13 +2242,13 @@ val set_props :
   ('p, 's, 'e) t -> previous:'p -> 'p -> 's -> 's * 'e Action.host list * how
 ```
 
-The parent gave new props: run `on_props (Some previous) props`, then compare the sources by key. `Unhandled` when nothing changed.
+The parent gave new props: run `on_props (Some previous) props`, then compare the resources by key. `Unhandled` when nothing changed.
 
 ```ocaml
 val exit : (unit, 's, 'e) t -> 's -> 'e Action.host list
 ```
 
-The actions of leaving the snapshot: `exit`, then the stops of its timers and sources.
+The actions of leaving the snapshot: `exit`, then the stops of its resources.
 
 ```ocaml
 val exit_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
@@ -2106,7 +2258,7 @@ val exit_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
 
 ## Silica.Nav
 
-One navigation, as a `Source.block` sees it.
+One navigation, as a `Host.block` sees it.
 
 ```ocaml
 type t =
@@ -2451,7 +2603,7 @@ The contract between a host runtime (`Runtime`) and the platform it runs on: a b
 
 The runtime keeps the queue of events, the instance tree, timers, calls, subscriptions, the error page and the replay of server answers. It reaches the platform only through a value of `t`:
 
-- `renderer` paints views, adopts a server-painted screen, turns platform input into events (element handlers and held sources), runs the platform actions of `Action.t` (focus, scroll, history, title, ...) and paints portals. See `Renderer`.
+- `renderer` paints views, adopts a server-painted screen, turns platform input into events (element handlers and held resources), runs the platform actions of `Action.t` (focus, scroll, history, title, ...) and paints portals. See `Renderer`.
 - `location` and the `on_route` argument of `renderer` are the navigation part: the URL at the start, each URL change (a navigation action, a link press, back and forward) and each preload of a link, which the runtime gives to the root component.
 - `io` holds what the runtime itself needs: a clock, one HTTP request form for Remote calls, a socket for Live subscriptions, and a log.
 
@@ -2563,7 +2715,7 @@ type host =
 val host_of_host_action : 'e Action.host -> host option
 ```
 
-`None` for `Start_timer`, `Start_call`, `Start_live`, `Start_source`, `Stop`, `Set_title` and `Remount`, which never cross the wire, and for the actions with a result event (`Measure`, `Copy`, `Load_script`): the event would be made by a function on the server, and the protocol carries no answer from the client to an action. `None` too for the navigation and page actions that only make sense for the page that owns them: `Resume` answers a `Block` source, which a Live machine cannot hold; `Revert_navigation` belongs to the router of the page; `Preload` fills the call cache of the page runtime, which a Live machine does not use; `Set_status` is for a server render, and an island renders from its initial state. The checker (`Check.live`) reports a Live machine that runs one of these.
+`None` for `Start_timer`, `Start_call`, `Start_live`, `Start_held`, `Stop`, `Set_title` and `Remount`, which never cross the wire, and for the actions with a result event (`Measure`, `Copy`, `Load_script`): the event would be made by a function on the server, and the protocol carries no answer from the client to an action. `None` too for the navigation and page actions that only make sense for the page that owns them: `Resume` answers a `Block` resource, which a Live machine cannot hold; `Revert_navigation` belongs to the router of the page; `Preload` fills the call cache of the page runtime, which a Live machine does not use; `Set_status` is for a server render, and an island renders from its initial state. The checker (`Check.live`) reports a Live machine that runs one of these.
 
 ```ocaml
 val host_to_action : host -> 'e Action.t
@@ -2871,10 +3023,10 @@ val call :
   ('i, 'o, 'x) endpoint ->
   'i ->
   (('o, 'x) answer -> 'e) ->
-  'e Source.t
+  'e Host.t
 ```
 
-One request to the endpoint with this input, as a source that runs during a state (see the `during` list of `Machine.make`). The answer is raised as an event unless the call was stopped first. The key of the call is its path and its encoded input: a step that keeps the state but changes the input stops the old call and starts a new one. There is no timeout unless `timeout_ms` is given. When it passes before the answer, the call ends with `Failed (Network "timeout")`, and a later answer is dropped.
+One request to the endpoint with this input, as a resource that runs during a state (see the `during` list of `Machine.make`). The answer is raised as an event unless the call was stopped first. The key of the call is its path and its encoded input: a step that keeps the state but changes the input stops the old call and starts a new one. There is no timeout unless `timeout_ms` is given. When it passes before the answer, the call ends with `Failed (Network "timeout")`, and a later answer is dropped.
 
 ```ocaml
 val error_codec : error Codec.t
@@ -2959,7 +3111,7 @@ val make :
   (unit, ('i, 'o, 'x) state, ('i, 'o, 'x) event) Machine.t
 ```
 
-A `Remote.call` on the endpoint runs during `Loading`, with `timeout_ms` when given. The events are named `"load"`, `"retry"`, `"settled ok"`, `"settled rejected"`, `"settled error"` and `"reset"`. There is no automatic retry: a `Retrying` state with a `Source.after` timer in `during` that counts the attempts is a pattern for the app.
+A `Remote.call` on the endpoint runs during `Loading`, with `timeout_ms` when given. The events are named `"load"`, `"retry"`, `"settled ok"`, `"settled rejected"`, `"settled error"` and `"reset"`. There is no automatic retry: a `Retrying` state with a `Host.after` timer in `during` that counts the attempts is a pattern for the app.
 
 ## Silica.Render
 
@@ -2984,7 +3136,7 @@ Like `to_string`, adding the HTML to the buffer.
 
 The boundary between a host and the platform it paints on.
 
-A renderer paints views, turns platform input into events and carries out the platform actions and held sources. It is the only part of a browser host that touches the DOM. The queue of events, timers, calls, the error boundary and the instance tree stay in the host runtime, and are the same for any renderer. A renderer for another platform replaces this record and nothing else.
+A renderer paints views, turns platform input into events and carries out the platform actions and held resources. It is the only part of a browser host that touches the DOM. The queue of events, timers, calls, the error boundary and the instance tree stay in the host runtime, and are the same for any renderer. A renderer for another platform replaces this record and nothing else.
 
 A renderer is made for one host with a `dispatch` function: it calls `dispatch` for each event that platform input produces, and the host queues it. Rate limits and `prevent` are applied by the renderer, when it receives the platform input.
 
@@ -2997,10 +3149,10 @@ type 'e t = {
   run : 'e Action.t -> unit;
       (** Carry out an action. {!Action.Remount} and {!Action.Preload} never
           reach a renderer. *)
-  start_source : id:string -> 'e Action.source -> unit;
+  start_held : id:string -> 'e Action.held -> unit;
       (** Start a held resource under the id. The view is already painted. Start
           with an id that is running replaces it. *)
-  stop_source : id:string -> unit;
+  stop_held : id:string -> unit;
       (** Stop the held resource. Stopping an id that is not running does
           nothing. *)
 }
@@ -3332,7 +3484,7 @@ val make :
   (unit, 'r, event) Component.t
 ```
 
-The router component for the app root, starting at the URL. `render` shows the page of the current route, as a component node. `guard` runs before a URL change to another URL takes effect, and at the start with `from = None`: use it for "go to login". At the start, `Redirect` starts in the other route and raises `Action.Replace` with its URL (a server render answers it with a redirect), and `Cancel` starts in the route of the URL, as there is no route to stay in. For unsaved data inside a page, use `Source.block`. `exit` runs when a route is left, as the `exit` of its state, and before the page starts again when a `reenter` route gets new parameters. `title` gives the document title of a route: the router raises `Action.Set_title` with it at the start and at each change of route or parameters, before the actions of the page, so a page machine that sets its own title wins. A change to the same printed URL does nothing. `chunks` gives the code that `render` shows with `Node.chunk` for a route: the router loads it when a link to that route preloads (see `routes`, `chunked`). The router names its events `"url changed"` and `"preload"`.
+The router component for the app root, starting at the URL. `render` shows the page of the current route, as a component node. `guard` runs before a URL change to another URL takes effect, and at the start with `from = None`: use it for "go to login". At the start, `Redirect` starts in the other route and raises `Action.Replace` with its URL (a server render answers it with a redirect), and `Cancel` starts in the route of the URL, as there is no route to stay in. For unsaved data inside a page, use `Host.block`. `exit` runs when a route is left, as the `exit` of its state, and before the page starts again when a `reenter` route gets new parameters. `title` gives the document title of a route: the router raises `Action.Set_title` with it at the start and at each change of route or parameters, before the actions of the page, so a page machine that sets its own title wins. A change to the same printed URL does nothing. `chunks` gives the code that `render` shows with `Node.chunk` for a route: the router loads it when a link to that route preloads (see `routes`, `chunked`). The router names its events `"url changed"` and `"preload"`.
 
 ## Silica.Runtime
 
@@ -3342,7 +3494,7 @@ The host runtime: the queue of events, the instance tree, timers, Remote calls, 
 
 Preload. The runtime carries out `Action.Preload`: it sends the call at once and keeps a `200` answer for 30 seconds from its arrival, for one use. The next call of the same endpoint path with the same encoded input takes the kept answer with no request, or waits for the preload that is still in flight. A failed or non-`200` preload is not kept: a call that waited for it sends its own request. A preload of a call that is kept or in flight does nothing.
 
-Chunks. The runtime carries out `Action.Load_chunk`. The first paint waits until the first view has no `Node.chunk` that is loading, so a renderer that adopts the server screen adopts it with the code of its page; timers, calls and sources start at once.
+Chunks. The runtime carries out `Action.Load_chunk`. The first paint waits until the first view has no `Node.chunk` that is loading, so a renderer that adopts the server screen adopts it with the code of its page; timers, calls and resources start at once.
 
 ```ocaml
 val start :
@@ -3442,174 +3594,21 @@ val scrub : t -> Silica_json.Json.t -> Silica_json.Json.t
 
 The value with each string that is the text of a field of `learn` replaced by `mask`, in all lists and objects. A secret that the app changed, such as a hash or a part of it, does not match and stays.
 
-## Silica.Source
-
-Timers and sources of events that run during a state: the `during` list of `Machine.make`. A source starts when it comes into the list and stops when it goes out of the list.
-
-Each source has a `key`. After each step the machine compares the keys of the old and the new `during` list: it stops the sources whose key went away and starts the new ones, and the others keep running. So the calls of one state can change with its data. Calls are made with `Remote.call` and subscriptions with `Topic.subscribe`.
-
-```ocaml
-type 'e t
-```
-
-A timer or a source that raises events `'e`.
-
-```ocaml
-val after : int -> 'e -> 'e t
-```
-
-A timer: the event is raised once, this many milliseconds after the timer starts, unless it was stopped first.
-
-```ocaml
-val focus_trap : ?return_focus:bool -> Ref.t -> 'e t
-```
-
-Keep focus inside the element with this ref while the source runs. `return_focus` defaults to `true`. See `Action.Focus_trap`.
-
-```ocaml
-val scroll_lock : 'e t
-```
-
-The page does not scroll while the source runs.
-
-```ocaml
-val outside_press : Ref.t -> 'e -> 'e t
-```
-
-A press outside the element with this ref raises the event.
-
-```ocaml
-val keys : ?prevent:bool -> ?rate:Rate.t -> (Key.t * 'e) list -> 'e t
-```
-
-A key press anywhere in the page, from the table, raises its event. The table is data, so the checker presses each key of the active state. Keys typed in a text field and keys that an element handler prevented do not count (see `Action.Global_keys`).
-
-```ocaml
-val dismiss : ?escape:'e -> ?outside:'e -> ?focus_out:'e -> Ref.t list -> 'e t
-```
-
-A dismiss layer for a popup whose elements have these refs: Escape raises `escape` in the newest layer only, a press outside the elements raises `outside`, and focus that moves outside the elements raises `focus_out`, unless the press or the focus is inside a newer layer. See `Action.Dismiss`.
-
-```ocaml
-val anchor : ?place:Place.t -> anchor:Ref.t -> Ref.t -> 'e t
-```
-
-Keep the popup with this ref next to the `anchor` element while the source runs. `place` defaults to `Place.default`. See `Action.Anchor`.
-
-```ocaml
-val resize : ?rate:Rate.t -> Ref.t -> (Rect.t -> 'e) -> 'e t
-```
-
-The element changes size.
-
-```ocaml
-val intersection : ?rate:Rate.t -> Ref.t -> (bool -> 'e) -> 'e t
-```
-
-The element enters (`true`) or leaves (`false`) the viewport.
-
-```ocaml
-val scroll : ?rate:Rate.t -> ?target:Ref.t -> (Scroll.t -> 'e) -> 'e t
-```
-
-The element with the ref `target`, or the page when `target` is not given, scrolls. The event is raised once at the start and for each scroll. See `Action.Scroll`.
-
-```ocaml
-val visibility : (bool -> 'e) -> 'e t
-```
-
-The document becomes visible (`true`) or hidden (`false`). The event is raised once at the start with the value then.
-
-```ocaml
-val online : (bool -> 'e) -> 'e t
-```
-
-The browser goes online (`true`) or offline (`false`). The event is raised once at the start with the value then.
-
-```ocaml
-val media : string -> (bool -> 'e) -> 'e t
-```
-
-The media query, such as `"(prefers-color-scheme: dark)"`, matches (`true`) or not (`false`). The event is raised once at the start with the value then and again at each change. See `Action.Media`.
-
-```ocaml
-val block : (Nav.t -> 'e) -> 'e t
-```
-
-While the source runs, every navigation stops before the URL changes and raises the event instead: a page with unsaved data asks, then sends `Action.Resume` with the navigation to let it happen. Closing or reloading the page asks the user first. See `Action.Block`.
-
-```ocaml
-val map_refs : (Ref.t -> Ref.t) -> 'e t -> 'e t
-```
-
-The same held source with each of its refs replaced. A component that can have more than one instance in a page uses it to give each instance its own refs, for example from an id in its props. Other sources are returned unchanged.
-
-```ocaml
-val key : 'e t -> string
-```
-
-The identity of the source in a `during` list: the path and encoded input of a call, the topic and key of a subscription, `"after <ms>ms"` for a timer, the kind and refs of a held source, and the place of an `anchor`. When an `during` list holds two sources with the same key, the second one gets `"#2"` after its key, and so on.
-
-```ocaml
-val same : 'e t -> 'e t -> bool
-```
-
-Two sources with the same key also have the same data: the event of a timer, the table of `keys`, the events of `outside_press` and `dismiss`. Compared with `=`. Functions cannot be compared: a part that is a function counts as the same.
-
-The rule after a step that keeps the state: a source whose key went away stops, a new key starts, and a source whose key stays but whose data is not `same` stops and starts again, so it raises the event of the current `during` list. A function, such as the answer function of a call, is the one of its first start while the key and the data stay: put the data it needs in the state, or in the input of the call.
-
-```ocaml
-val name : 'e t -> string
-```
-
-The endpoint path of a call, `"live:" ^ topic name` for a `Topic.subscribe`, `"after <ms>ms"` for a timer, or the name of a held source as `Action.source_name` gives it.
-
-```ocaml
-val delay : 'e t -> int option
-```
-
-The milliseconds of an `after` timer.
-
-```ocaml
-val topic : 'e t -> string option
-```
-
-The topic name of a `Topic.subscribe` source.
-
-```ocaml
-val is_held : 'e t -> bool
-```
-
-A source that is not a call, a subscription or a timer.
-
-```ocaml
-val held : 'e t -> 'e Action.source option
-```
-
-The held resource of a source that is not a call, a subscription or a timer.
-
-```ocaml
-val start : string -> 'e t -> 'e Action.host
-```
-
-`start id source` is the action that starts `source` under `id`.
-
 ## Silica.Spec
 
-The shape of a machine as a checker run found it: the states it reached, the steps it took with the names of their events, and the timers and sources of each state. `Check.run` gives one in the `specs` of its report. The timers and sources of a state are those of every snapshot of it that the run reached: a timer that runs only for some data of the state is listed.
+The shape of a machine as a checker run found it: the states it reached, the steps it took with the names of their events, and the resources of each state. `Check.run` gives one in the `specs` of its report. The resources of a state are those of every snapshot of it that the run reached: a timer that runs only for some data of the state is listed.
 
 ```ocaml
 type state = {
   name : string;
   final : bool;
-  timers : int list;
-      (** Delays in milliseconds of the {!Source.after} timers. *)
-  sources : string list;
+  timers : int list;  (** Delays in milliseconds of the {!Host.after} timers. *)
+  network : string list;
       (** Endpoint paths of the calls and ["live:" ^ topic] of the
           subscriptions. *)
   held : string list;
-      (** Names of the other sources, such as ["focus_trap"]: they are resources
-          of a client renderer. *)
+      (** Names of the held resources, such as ["focus_trap"]: they are
+          resources of a client renderer. *)
 }
 ```
 
@@ -3617,7 +3616,7 @@ type state = {
 type label = { from : string; target : string; event : string; kept : bool }
 ```
 
-A step that a checker run took, with the name of the event that took it. `event` is `""` when the machine gives no event names. `kept` is `true` for a step that kept the state (`Go` to a state with the same name, or `Stay`: the data may change, the timers and sources keep running); then `target = from`. A step between two sub-states of one state, such as `"list.live"` to `"list.offline"` (see `Machine.make`), keeps the timers and sources but changes the name, so it has `kept = false`.
+A step that a checker run took, with the name of the event that took it. `event` is `""` when the machine gives no event names. `kept` is `true` for a step that kept the state (`Go` to a state with the same name, or `Stay`: the data may change, the resources keep running); then `target = from`. A step between two sub-states of one state, such as `"list.live"` to `"list.offline"` (see `Machine.make`), keeps the timers and resources but changes the name, so it has `kept = false`.
 
 ```ocaml
 type t = {
@@ -3662,19 +3661,19 @@ val issue_to_string : issue -> string
 val details : state -> string list
 ```
 
-The timers and sources of a state as lines: `"after 300ms"`, `"invoke /api/save"`, `"hold focus_trap"`.
+The resources of a state as lines: `"after 300ms"`, `"invoke /api/save"`, `"hold focus_trap"`.
 
 ```ocaml
 val to_dot : t -> string
 ```
 
-A Graphviz digraph. Timers and sources are listed in the state label; final states are double circles. An arrow shows the events of its edges; kept steps are not shown.
+A Graphviz digraph. Timers and resources are listed in the state label; final states are double circles. An arrow shows the events of its edges; kept steps are not shown.
 
 ```ocaml
 val to_quint : t -> string
 ```
 
-A Quint module named after the machine id, with `'-'` as `'_'`. Variables: `state` (one constructor for each state), `running` (the timers and sources that run, as strings `"state/after 300ms"`, `"state/invoke /api/path"` and `"state/hold name"`) and `last` (the event of the last step: `Start` at init, the event of the edge, or `Any` for an edge with no event name). One transition for each arrow and event, and one for each kept step; each transition is written as a Quint `action`. `enter` starts the resources of the target and stops the others. The transition of a kept step is named `<state>_stays_on_<event>` and changes only `last`. Invariants: `resources_owned` (every running resource belongs to the current state), `can_move` (the state is final, has an edge or a kept step) and `inv`, both together. Handler code and data are not exported: the model holds the edges only, so it allows more runs than the machine.
+A Quint module named after the machine id, with `'-'` as `'_'`. Variables: `state` (one constructor for each state), `running` (the resources that run, as strings `"state/after 300ms"`, `"state/invoke /api/path"` and `"state/hold name"`) and `last` (the event of the last step: `Start` at init, the event of the edge, or `Any` for an edge with no event name). One transition for each arrow and event, and one for each kept step; each transition is written as a Quint `action`. `enter` starts the resources of the target and stops the others. The transition of a kept step is named `<state>_stays_on_<event>` and changes only `last`. Invariants: `resources_owned` (every running resource belongs to the current state), `can_move` (the state is final, has an edge or a kept step) and `inv`, both together. Handler code and data are not exported: the model holds the edges only, so it allows more runs than the machine.
 
 ```ocaml
 val to_text : t -> string
@@ -3714,7 +3713,7 @@ A Mermaid `stateDiagram-v2` block, left to right. A state shows its `details` in
 val to_json : t -> Silica_json.Json.t
 ```
 
-An object with the fields `"id"`, `"init"`, `"states"` (objects with `"name"`, `"final"`, `"timers"`, `"sources"`, `"held"`) and `"edges"` (objects with `"from"`, `"target"`, `"event"`, `"kept"`).
+An object with the fields `"id"`, `"init"`, `"states"` (objects with `"name"`, `"final"`, `"timers"`, `"network"`, `"held"`) and `"edges"` (objects with `"from"`, `"target"`, `"event"`, `"kept"`).
 
 ```ocaml
 val of_json : Silica_json.Json.t -> (t, string) result
@@ -3728,7 +3727,7 @@ type change =
   | State_added of state
   | State_removed of state
   | State_changed of { before : state; after : state }
-      (** The same name, with another [final], timers or sources. *)
+      (** The same name, with another [final], timers or resources. *)
   | Edge_added of label
   | Edge_removed of label
 ```
@@ -3884,7 +3883,7 @@ An SVG drawing of a `Statechart_layout.t`. Colors come from the silica-ui theme 
 
 Class names for styles and tests: `chart` on the `svg`; `chart-node` on each state group, with `is-active`, `is-final`, `is-initial` and `is-drift`, and the state name in `data-state`; `chart-edge` on each edge group, with `is-taken`, `is-back` and `is-drift`, and the states in `data-from` and `data-target`; `chart-start` on the start mark; `chart-note` on the `Statechart_layout.t.note`.
 
-Each state box shows the name, then the `Statechart_layout.node.details`: the timers, the sources and the kept steps (`stay on ...`), which have no arrow.
+Each state box shows the name, then the `Statechart_layout.node.details`: the timers, the resources and the kept steps (`stay on ...`), which have no arrow.
 
 The label of an edge between two states is drawn on a box of the surface color, so the line stops at the label and goes on after it. Drift nodes and edges (`Statechart_layout.layout` with `observed`) are dashed, in the danger color.
 
@@ -3981,10 +3980,10 @@ type 's update = 's Live_topic.update = { seq : int; status : 's Status.t }
 What a subscription raises as an event. `seq` is the sequence number of the state in `status`; it is `0` when the status holds no new state: connecting, offline (the old data with `stale = true`) or a failure. A client drops a state whose `seq` is not higher than the last one it got on the socket.
 
 ```ocaml
-val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Source.t
+val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Host.t
 ```
 
-Subscribe to the topic under the key, as a source that runs during a state (see the `during` list of `Machine.make`). The event is raised once with `Loading None` while the socket connects, and again for every state the server publishes, for every loss of the connection (the old data, `stale = true`) and for every failure. The client reconnects by itself.
+Subscribe to the topic under the key, as a resource that runs during a state (see the `during` list of `Machine.make`). The event is raised once with `Loading None` while the socket connects, and again for every state the server publishes, for every loss of the connection (the old data, `stale = true`) and for every failure. The client reconnects by itself.
 
 Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
 
@@ -4010,7 +4009,7 @@ What a trace holds, for replay: the start of each instance with its props and sn
 
 What a trace does not hold: values with no registered codec; the view (only the element of each handler, by role, name and path); focus, scroll and other browser state that is not in a snapshot; the HTTP status and body of an answer (only the answer as the machine got it); the Live socket frames; the server state behind calls and topics; the events of a step that raised (the step is not recorded); the records dropped by a full recorder (only their number).
 
-A trace with names only (see `names_only`) holds no event data, props, snapshots, answers, Live updates, input text, accessible names, URL queries or page titles, and its ids of timers, calls and sources are numbers: the id of a call no longer holds its encoded input (see `Source.key`).
+A trace with names only (see `names_only`) holds no event data, props, snapshots, answers, Live updates, input text, accessible names, URL queries or page titles, and its ids of timers, calls and resources are numbers: the id of a call no longer holds its encoded input (see `Host.key`).
 
 ```ocaml
 type origin =
@@ -4179,8 +4178,8 @@ type cause =
   | Live of { id : string; topic : string; update : Silica_json.Json.t option }
       (** A state or a change of connection of a Live subscription, by
           {!Topic.update_codec}. [None] when data is not recorded. *)
-  | Held of { id : string; source : string }
-      (** A held source, by its {!Action.source_name}. *)
+  | Held of { id : string; name : string }
+      (** A held resource, by its {!Action.held_name}. *)
   | Action_result of { action : string }
       (** The result of an action, such as {!Action.Measure}. *)
   | Props  (** The parent gave new props. *)
@@ -4206,10 +4205,10 @@ type t = {
           by ["."], and a key is [#key]. [%], [/], [:], [#] and [.] in a key are
           percent encoded. Example: [app/0.2:router/#inbox:issue-list]. *)
   number : int;
-      (** The number of the instance in its tree, as in timer and source ids. *)
+      (** The number of the instance in its tree, as in resource ids. *)
   entry : int;
       (** The number of the entry of the state after the step, as in timer and
-          source ids. *)
+          resource ids. *)
   machine : string;  (** {!Machine.id}. *)
   from : string;
       (** The state name before; [""] for [Started] and [Resumed]. *)
@@ -4249,7 +4248,7 @@ One action as short text, such as `"start timer 1.2/save/saved/after 2000ms 2000
 val cause_label : cause -> string
 ```
 
-The label of an event that its machine does not name: the handler, the key of a key handler, the role and the quoted accessible name of the element, as in `press button "Save"` or `key_down Escape textbox "Search"`; `after 2000ms` for a timer; `ok /api/save`, `rejected /api/save` or `failed /api/save` for the answer of a call (`answer /api/save` when the answer is not recorded); `live <topic>`; the name of a held source, such as `dismiss`; `result <action>`; `props`; `child <instance>`; `url <url>`; `preload <url>`; `message`. The checker labels the events of its steps and specs the same way.
+The label of an event that its machine does not name: the handler, the key of a key handler, the role and the quoted accessible name of the element, as in `press button "Save"` or `key_down Escape textbox "Search"`; `after 2000ms` for a timer; `ok /api/save`, `rejected /api/save` or `failed /api/save` for the answer of a call (`answer /api/save` when the answer is not recorded); `live <topic>`; the name of a held resource, such as `dismiss`; `result <action>`; `props`; `child <instance>`; `url <url>`; `preload <url>`; `message`. The checker labels the events of its steps and specs the same way.
 
 ```ocaml
 val label : t -> string
@@ -4269,12 +4268,12 @@ val names_only : t list -> t list
 
 The records of one trace with names only, as a recorder without data keeps them: each record is `strip`ped, and also:
 
-- Each id of a timer, call, subscription or held source, in causes and in actions, becomes `"<number>.<entry>/<machine id>/#<n>"`, where `n` counts the distinct ids of the list from 1. The same id gets the same `n`, so a start, its answer and its stop still match, but the id no longer holds the state, the path, the encoded input of a call or the key of a subscription (see `Source.key`).
+- Each id of a timer, call, subscription or held resource, in causes and in actions, becomes `"<number>.<entry>/<machine id>/#<n>"`, where `n` counts the distinct ids of the list from 1. The same id gets the same `n`, so a start, its answer and its stop still match, but the id no longer holds the state, the path, the encoded input of a call or the key of a subscription (see `Host.key`).
 - The accessible `name` of the element of a handler is `""`: it can be text that a user typed, such as the title of an issue in a link.
 - A URL keeps its path only, without query and fragment: in `Url` and `Preload` causes and in `navigate` and `replace` actions.
 - `set_title` actions lose their title, `start live` actions their key, and `set_document_attribute` actions their value.
 
-What stays: the sequence numbers, times, instance paths (with the keys that the app gave component nodes), machine ids, state and event names, changes, handler names, roles and element paths, timer delays, endpoint paths, topic and source names, and the other actions as `describe` writes them.
+What stays: the sequence numbers, times, instance paths (with the keys that the app gave component nodes), machine ids, state and event names, changes, handler names, roles and element paths, timer delays, endpoint paths, topic and resource names, and the other actions as `describe` writes them.
 
 **Observers**
 

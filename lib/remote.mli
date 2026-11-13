@@ -47,13 +47,13 @@ val call :
   ('i, 'o, 'x) endpoint ->
   'i ->
   (('o, 'x) answer -> 'e) ->
-  'e Source.t
-(** One request to the endpoint with this input, as a source that runs during a
-    state (see the [during] list of {!Machine.make}). The answer is raised as an
-    event unless the call was stopped first. The key of the call is its path and
-    its encoded input: a step that keeps the state but changes the input stops
-    the old call and starts a new one. There is no timeout unless [timeout_ms]
-    is given. When it passes before the answer, the call ends with
+  'e Host.t
+(** One request to the endpoint with this input, as a resource that runs during
+    a state (see the [during] list of {!Machine.make}). The answer is raised as
+    an event unless the call was stopped first. The key of the call is its path
+    and its encoded input: a step that keeps the state but changes the input
+    stops the old call and starts a new one. There is no timeout unless
+    [timeout_ms] is given. When it passes before the answer, the call ends with
     [Failed (Network "timeout")], and a later answer is dropped. *)
 
 val error_codec : error Codec.t

@@ -182,8 +182,8 @@ type event =
 type state =
   | Fixed_theme of t  (** A fixed theme. Its state name is ["fixed"]. *)
   | System_scheme of bool option
-      (** The system setting decides: [Some dark] once the media source answers,
-          [None] before. Its state name is ["system"]. *)
+      (** The system setting decides: [Some dark] once the media resource
+          answers, [None] before. Its state name is ["system"]. *)
 
 val state_codec : set -> state Silica.Codec.t
 (** [["Fixed_theme", name]] or [["System_scheme", dark]], with [dark] a boolean
@@ -191,7 +191,7 @@ val state_codec : set -> state Silica.Codec.t
     name that the set does not have does not decode. *)
 
 val machine : (props, state, event) Silica.Machine.t
-(** In [System_scheme] it holds [Source.media "(prefers-color-scheme: dark)"].
+(** In [System_scheme] it holds [Host.media "(prefers-color-scheme: dark)"].
     Each change of choice sets [data-theme]; a change made in the page (a
     [Choose], or props with another choice) also sets the cookie for one year.
 *)

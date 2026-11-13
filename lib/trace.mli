@@ -27,8 +27,8 @@
 
     A trace with names only (see {!names_only}) holds no event data, props,
     snapshots, answers, Live updates, input text, accessible names, URL queries
-    or page titles, and its ids of timers, calls and sources are numbers: the id
-    of a call no longer holds its encoded input (see {!Source.key}). *)
+    or page titles, and its ids of timers, calls and resources are numbers: the
+    id of a call no longer holds its encoded input (see {!Host.key}). *)
 
 type origin =
   | Checker of { rule : string; start : int; choices : int list }

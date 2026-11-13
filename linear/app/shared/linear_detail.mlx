@@ -312,7 +312,7 @@ let picker_keys =
 
 let live (state : view_state) =
   if state.reconnecting then
-    Source.after 0 Reconnected
+    Host.after 0 Reconnected
   else
     Topic.subscribe issues_topic issues_key (fun update -> Updated update)
 
@@ -337,7 +337,7 @@ let machine =
           [ Remote.call issues_endpoint () (fun answer -> Loaded answer) ]
       | Ready state ->
           live state
-          :: Source.keys ~prevent:true picker_keys
+          :: Host.keys ~prevent:true picker_keys
           :: Linear_data.calls state.data (fun id answer -> Saved (id, answer))
       | Not_found | Failed _ ->
           []

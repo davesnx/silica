@@ -49,7 +49,7 @@ module Counter = struct
 
   let machine =
     Machine.make ~id:"counter" ~init:(Idle 0) ~name ~states
-      ~during:(function Ticking _ -> [ Source.after 50 Tick ] | Idle _ -> [])
+      ~during:(function Ticking _ -> [ Host.after 50 Tick ] | Idle _ -> [])
       (fun state event ->
         match (state, event) with
         | Idle count, Bump ->
@@ -109,7 +109,7 @@ module Draft = struct
 
   let[@warning "-11"] machine =
     Machine.make ~id:"draft" ~init:(Writing "") ~name ~states
-      ~during:(fun _ -> [ Source.keys [ (Key.make "k", Key) ] ])
+      ~during:(fun _ -> [ Host.keys [ (Key.make "k", Key) ] ])
       (fun state event ->
         match (state, event) with
         | _, Typed text ->

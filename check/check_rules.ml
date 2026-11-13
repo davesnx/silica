@@ -116,8 +116,8 @@ let rules =
          {element}, but the state holds no focus trap on it or on an element \
          around it.";
       hint =
-        "Own Source.focus_trap with the ref of the {role} at {element} in \
-         state {state}, or use Silica_ui.Dialog.";
+        "Own Host.focus_trap with the ref of the {role} at {element} in state \
+         {state}, or use Silica_ui.Dialog.";
       applies_to = "state";
     };
     {
@@ -187,8 +187,8 @@ let rules =
       id = "dead-end";
       message =
         "State {state} is not final, and nothing can happen in it: the view \
-         offers no handler, and no timer, call, subscription, source or input \
-         gives an event.";
+         offers no handler, and no timer, call, subscription, held resource or \
+         input gives an event.";
       hint =
         "Add a button, a timer or an input that leaves {state}, or mark \
          {state} final with ~final when the machine is done there.";
@@ -239,13 +239,13 @@ let rules =
       applies_to = "machine";
     };
     {
-      id = "live-uses-client-source";
+      id = "live-uses-client-resource";
       message =
-        "In state {state}, the Live component runs the client-only source \
-         {source}, but a Live machine runs on the server.";
+        "In state {state}, the Live component runs the client-only held \
+         resource {resource}, but a Live machine runs on the server.";
       hint =
-        "Move the {source} source into a client component, or remove it from \
-         during of {state}.";
+        "Move the held resource {resource} into a client component, or remove \
+         it from during of {state}.";
       applies_to = "state";
     };
     {

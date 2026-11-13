@@ -45,16 +45,16 @@ val input : ('p, 's, 'e) t -> label:string -> string -> unit
 val running : ('p, 's, 'e) t -> string list
 (** The ids of the running timers and calls, sorted. *)
 
-val sources : ('p, 's, 'e) t -> (string * string) list
-(** The running held sources, as (id, {!Silica.Action.source_name}), in start
+val held : ('p, 's, 'e) t -> (string * string) list
+(** The running held resources, as (id, {!Silica.Action.held_name}), in start
     order. *)
 
 val press_key : ('p, 's, 'e) t -> Silica.Key.t -> bool
-(** A key press in the page: the first running [Global_keys] source that binds
+(** A key press in the page: the first running [Global_keys] resource that binds
     the key gets it. [false] when none does. *)
 
 val outside_press : ('p, 's, 'e) t -> unit
-(** A press outside the elements of every running [Outside_press] source and
+(** A press outside the elements of every running [Outside_press] resource and
     [Dismiss] layer: each one with an outside event gets it, newest first.
 
     @raise Failure when none is running. *)

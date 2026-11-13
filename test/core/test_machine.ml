@@ -55,7 +55,7 @@ let search =
   Machine.make ~id:"search" ~init:Idle ~name ~states
     ~during:(function
       | Typing _ ->
-          [ Source.after 300 Fire ]
+          [ Host.after 300 Fire ]
       | Searching query ->
           [ Remote.call endpoint query (fun answer -> Got answer) ]
       | Idle | Shown _ | Failed _ ->
@@ -175,7 +175,7 @@ let tracker () =
       (function
         | Action.Start_timer { id; _ }
         | Action.Start_call { id; _ }
-        | Action.Start_source { id; _ }
+        | Action.Start_held { id; _ }
         | Action.Start_live { id; _ } ->
             if List.mem id !running then Alcotest.fail ("started twice: " ^ id);
             running := List.sort compare (id :: !running)
@@ -228,9 +228,7 @@ let test_entry_exit_order () =
     Machine.make ~id:"pair" ~init:A ~name:pair_name
       ~entry:(function A -> [ note "enter a" ] | B -> [ note "enter b" ])
       ~exit:(function A -> [ note "exit a" ] | B -> [])
-      ~during:(function
-        | A -> [ Source.after 5 () ] | B -> [ Source.after 7 () ]
-        )
+      ~during:(function A -> [ Host.after 5 () ] | B -> [ Host.after 7 () ])
       (fun state () ->
         match state with
         | A ->
@@ -279,7 +277,7 @@ let test_self_goto_keeps_resources () =
       ~name:(function Count _ -> "count")
       ~entry:(fun _ -> [ note "enter" ])
       ~exit:(fun _ -> [ note "exit" ])
-      ~during:(fun _ -> [ Source.after 10 `Tick ])
+      ~during:(fun _ -> [ Host.after 10 `Tick ])
       (fun (Count n) -> function
         | `Tick ->
             Machine.Go (Count (n + 1))
@@ -374,15 +372,13 @@ let test_keyed_sources () =
     (described actions);
   Alcotest.(check string)
     "source key" "/api/item \"a\""
-    (Source.key (Remote.call list_endpoint "a" (fun _ -> ())));
-  Alcotest.(check string)
-    "timer key" "after 5ms"
-    (Source.key (Source.after 5 ()))
+    (Host.key (Remote.call list_endpoint "a" (fun _ -> ())));
+  Alcotest.(check string) "timer key" "after 5ms" (Host.key (Host.after 5 ()))
 
 let test_anchor_place_is_in_key () =
   let popup = Ref.make "popup" and trigger = Ref.make "trigger" in
   let anchored side =
-    Source.anchor ~place:{ Place.default with side } ~anchor:trigger popup
+    Host.anchor ~place:{ Place.default with side } ~anchor:trigger popup
   in
   let machine =
     Machine.make ~id:"anchored" ~init:Place.Bottom
@@ -397,7 +393,7 @@ let test_anchor_place_is_in_key () =
     "the old anchor stops, the new one starts" 2 (List.length actions);
   Alcotest.(check bool)
     "keys differ" true
-    (Source.key (anchored Place.Top) <> Source.key (anchored Place.Bottom))
+    (Host.key (anchored Place.Top) <> Host.key (anchored Place.Bottom))
 
 let test_state_names () =
   Alcotest.check strings "every constructor, in order"
@@ -560,7 +556,7 @@ let item_machine on_props =
     ~name:(function Showing -> "showing" | Loading_item _ -> "loading_item")
     ~during:(fun number -> function
       | Showing ->
-          [ Source.after (number * 10) `Tick ]
+          [ Host.after (number * 10) `Tick ]
       | Loading_item n ->
           [ Remote.call item_endpoint n (fun _ -> `Answer) ]
       )
@@ -643,8 +639,8 @@ let test_on_props_default () =
     [ "stop item/showing/after 30ms"; "start item/showing/after 40ms 40ms" ]
     (described actions)
 
-let spec_state ?(final = false) ?(timers = []) ?(sources = []) name =
-  { Spec.name; final; timers; sources; held = [] }
+let spec_state ?(final = false) ?(timers = []) ?(network = []) name =
+  { Spec.name; final; timers; network; held = [] }
 
 let edges pairs =
   List.map
@@ -659,7 +655,7 @@ let search_spec =
       [
         spec_state "idle";
         spec_state "failed";
-        spec_state ~sources:[ "/api/search" ] "searching";
+        spec_state ~network:[ "/api/search" ] "searching";
         spec_state "shown";
         spec_state ~timers:[ 300 ] "typing";
       ];

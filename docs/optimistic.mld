@@ -112,7 +112,7 @@ val change_tags : (change, unit, string) Silica.Remote.endpoint = <abstr>
       (fun (id, change) ->
         Silica.Remote.call change_tags change (fun answer -> Answered (id, answer)))
       (Tags.pending tags);;
-val during : Tags.t -> event Silica.Source.t list = <fun>
+val during : Tags.t -> event Silica.Host.t list = <fun>
 ]}
 
 {2:live Live data}

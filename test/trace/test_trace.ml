@@ -72,7 +72,7 @@ let panel_machine =
       | Waiting ->
           [ Remote.call endpoint () (fun answer -> Answered answer) ]
       | Loaded _ ->
-          [ Source.after 500 Tick ]
+          [ Host.after 500 Tick ]
       | Idle ->
           []
     )
@@ -153,8 +153,8 @@ let cause_text (cause : Transition.cause) =
       ^ Option.fold answer ~none:"-" ~some:Silica_json.Json.to_string
   | Live { topic; _ } ->
       "live " ^ topic
-  | Held { source; _ } ->
-      "held " ^ source
+  | Held { name; _ } ->
+      "held " ^ name
   | Action_result { action } ->
       "result " ^ action
   | Props ->

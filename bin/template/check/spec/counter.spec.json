@@ -6,28 +6,28 @@
       "name": "counting",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "save_failed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "saved",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "saving",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/save"
       ],
       "held": []

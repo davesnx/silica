@@ -239,7 +239,7 @@ let list_keys =
 
 let live (r : ready) =
   if r.reconnecting then
-    Source.after 0 Reconnected
+    Host.after 0 Reconnected
   else
     Topic.subscribe issues_topic issues_key (fun update -> Updated update)
 
@@ -254,7 +254,7 @@ let machine =
           [ Remote.call issues_endpoint () (fun answer -> Loaded answer) ]
       | Ready r ->
           live r
-          :: Source.keys ~prevent:true list_keys
+          :: Host.keys ~prevent:true list_keys
           :: Linear_data.calls r.data (fun id answer -> Saved (id, answer))
       | Failed _ ->
           []

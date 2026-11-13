@@ -32,7 +32,7 @@ type ('p, 's, 'e) t = {
   states : string list option;
   event_name : ('e -> string) option;
   final : 's -> bool;
-  during : 'p -> 's -> 'e Source.t list;
+  during : 'p -> 's -> 'e Host.t list;
   entry : 'p -> 's -> 'e Action.t list;
   exit : 'p -> 's -> 'e Action.t list;
   first : 'e Action.t list;
@@ -136,7 +136,7 @@ let owned machine props state =
   let counts = Hashtbl.create 8 in
   List.map
     (fun source ->
-      let key = Source.key source in
+      let key = Host.key source in
       let count = 1 + Option.value ~default:0 (Hashtbl.find_opt counts key) in
       Hashtbl.replace counts key count;
       let unique =
@@ -152,23 +152,22 @@ let owned machine props state =
 let active_with_props machine props state =
   List.map
     (fun (id, source) ->
-      match (Source.delay source, Source.topic source) with
+      match (Host.delay source, Host.topic source) with
       | Some ms, _ ->
           Timer { id; ms }
       | None, Some topic ->
           Subscription { id; topic }
-      | None, None when Source.is_held source ->
-          Held { id; name = Source.name source }
+      | None, None when Host.is_held source ->
+          Held { id; name = Host.name source }
       | None, None ->
-          Call { id; path = Source.name source }
+          Call { id; path = Host.name source }
     )
     (owned machine props state)
 
 let held_with_props machine props state =
-  List.filter_map Source.held (machine.during props state)
+  List.filter_map Host.held (machine.during props state)
 
-let starts sources =
-  List.map (fun (id, source) -> Source.start id source) sources
+let starts sources = List.map (fun (id, source) -> Host.start id source) sources
 let stops sources = List.map (fun (id, _) -> Action.Stop id) sources
 
 let enter machine props state =
@@ -199,7 +198,7 @@ let move ?finished machine ~from_props ~to_props state next ~reenter actions =
         (fun (id, source) ->
           match List.assoc_opt id before with
           | Some old ->
-              not (Source.same old source)
+              not (Host.same old source)
           | None ->
               false
         )

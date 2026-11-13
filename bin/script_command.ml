@@ -78,7 +78,7 @@ let command =
            `P
              "Some steps have no input in Silica_memory: a timer that fires \
               before a timer that is due earlier (the checker lets running \
-              timers fire in any order), a held source, an event from the \
+              timers fire in any order), a held resource, an event from the \
               inputs of the check, the result of an action. A Live update is \
               given with $(b,Memory.live_update). Then the command prints why \
               and writes no test; $(b,silica replay) checks the trace instead.";

@@ -14,7 +14,7 @@ let has_log sim line =
   if not (contains (Sim.html sim) line) then
     Alcotest.failf "page log has no %S in %s" line (Sim.html sim)
 
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 let option i = Silica_ui.Select.option_id "status" i
 let trigger = "status-trigger"
 let key name = Key.make name
@@ -69,7 +69,7 @@ let closed_at_start () =
     "no input without a name" false
     (Sim.exists sim ~id:"priority-input");
   Alcotest.(check bool) "no listbox" false (Sim.exists sim ~id:"status-popup");
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let keys_open () =
   List.iter
@@ -86,7 +86,7 @@ let keys_open () =
       Alcotest.check strings (k ^ ": focus stays") [] (focuses sim);
       Alcotest.check strings
         (k ^ ": dismiss and anchor")
-        [ "dismiss"; "anchor" ] (source_names sim);
+        [ "dismiss"; "anchor" ] (held_names sim);
       has_log sim ("status open true " ^ why)
     )
     [

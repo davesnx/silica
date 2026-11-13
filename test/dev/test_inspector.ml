@@ -373,7 +373,7 @@ module Saver = struct
 
   let machine =
     Machine.make ~id:"saver" ~init:Idle ~name ~states ~event_name
-      ~during:(function Idle -> [] | Saving -> [ Source.after 2000 Done ])
+      ~during:(function Idle -> [] | Saving -> [ Host.after 2000 Done ])
       (fun state event ->
         match (state, event) with
         | Idle, Save ->

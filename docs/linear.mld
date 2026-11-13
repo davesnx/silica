@@ -130,7 +130,7 @@ node shows, and stops when the node goes away.
 - [linear_comments.mlx], [linear_comment.mlx] and [linear_composer.mlx]: the
   comments of one issue, one comment, and the field that adds a comment.
 - [linear_unsaved.mlx]: shown by the detail while a title or description draft
-  differs from the saved text. It holds a {!Silica.Source.block}: a navigation
+  differs from the saved text. It holds a {!Silica.Host.block}: a navigation
   becomes a question (Discard or Keep editing), and Discard resumes it.
 
 A parent talks to a child with props: a value that the parent gives with the

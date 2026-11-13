@@ -31,7 +31,7 @@ type ('p, 's, 'e) t = {
   mutable node : Instance.message Node.t;
   mutable timers : (string * Instance.message) list;
   mutable calls : call list;
-  mutable sources : (string * Instance.message Action.source) list;
+  mutable sources : (string * Instance.message Action.held) list;
   mutable subscriptions : subscription list;
   mutable ever : (string * (unit -> unit)) list;
   mutable log : string list;
@@ -54,9 +54,9 @@ let rec apply t actions =
           note t ("start " ^ id);
           t.timers <- (id, event) :: List.remove_assoc id t.timers;
           t.ever <- (id, fun () -> deliver t event) :: t.ever
-      | Action.Start_source { id; source } ->
+      | Action.Start_held { id; held } ->
           note t ("start " ^ id);
-          t.sources <- (id, source) :: List.remove_assoc id t.sources
+          t.sources <- (id, held) :: List.remove_assoc id t.sources
       | Action.Start_call { id; endpoint; input; timeout_ms; on_result } ->
           note t ("start " ^ id);
           let call =
@@ -317,8 +317,8 @@ let running t =
     @ List.map fst t.sources
     )
 
-let sources t =
-  List.rev_map (fun (id, source) -> (id, Action.source_name source)) t.sources
+let held t =
+  List.rev_map (fun (id, source) -> (id, Action.held_name source)) t.sources
 
 let press_key t key =
   let delivered = ref false in
@@ -344,7 +344,7 @@ let outside_press t =
   let events =
     List.filter_map
       (fun (_, source) ->
-        match (source : Instance.message Action.source) with
+        match (source : Instance.message Action.held) with
         | Action.Outside_press { event; _ } ->
             Some event
         | Action.Dismiss { on_outside; _ } ->
@@ -364,7 +364,7 @@ let escape t =
   match
     List.find_map
       (fun (_, source) ->
-        match (source : Instance.message Action.source) with
+        match (source : Instance.message Action.held) with
         | Action.Dismiss { on_escape; _ } ->
             on_escape
         | _ ->

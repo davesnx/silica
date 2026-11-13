@@ -786,7 +786,7 @@ type cause = Check_model.cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string }
   | Live of { id : string; topic : string }
-  | Held of { id : string; source : string }
+  | Held of { id : string; name : string }
   | Action_result of string
   | Props
   | Child of { instance : string; machine : string }
@@ -1874,7 +1874,7 @@ let similar (first : cause) (second : cause) =
   | Live first, Live second ->
       first.topic = second.topic
   | Held first, Held second ->
-      first.source = second.source
+      first.name = second.name
   | Action_result first, Action_result second ->
       first = second
   | Input, Input | Props, Props | Navigation, Navigation ->
@@ -2695,8 +2695,8 @@ let check_cause : Transition.cause -> cause option = function
       Some (Answer { id; path })
   | Live { id; topic; _ } ->
       Some (Live { id; topic })
-  | Held { id; source } ->
-      Some (Held { id; source })
+  | Held { id; name } ->
+      Some (Held { id; name })
   | Action_result { action } ->
       Some (Action_result action)
   | Props ->
@@ -3308,10 +3308,10 @@ let script_action (type n s ev e) (model : (n, s, ev, e) Check_model.model)
               not_replayable index
                 ("is an update of the Live topic " ^ topic ^ " with no data")
         )
-      | Held { source; _ } ->
+      | Held { name; _ } ->
           not_replayable index
-            ("comes from the held source " ^ source
-           ^ "; Silica_memory does not replay held sources from a trace"
+            ("comes from the held resource " ^ name
+           ^ "; Silica_memory does not replay held resources from a trace"
             )
       | Action_result action ->
           not_replayable index
@@ -3336,7 +3336,7 @@ let track_timers clock ~index (point : (_, _, _, _) point) =
             (id, (now + ms, index)) :: List.remove_assoc id running
         | Stop id ->
             List.remove_assoc id running
-        | Run _ | Start_source _ | Start_call _ | Start_live _ ->
+        | Run _ | Start_held _ | Start_call _ | Start_live _ ->
             running
       )
       running point.host

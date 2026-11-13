@@ -6,7 +6,7 @@
       "name": "closed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
@@ -16,7 +16,7 @@
         300,
         0
       ],
-      "sources": [],
+      "network": [],
       "held": [
         "dismiss",
         "anchor"
@@ -26,7 +26,7 @@
       "name": "open",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": [
         "dismiss",
         "anchor"
@@ -39,7 +39,7 @@
         600,
         0
       ],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

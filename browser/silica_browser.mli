@@ -141,7 +141,7 @@ val mount_app :
     A page sets [document.title] with the action [Set_title]; [Set_status] is
     ignored.
 
-    Blocks. While a {!Silica.Action.Block} source runs, a link press,
+    Blocks. While a {!Silica.Action.Block} resource runs, a link press,
     [Navigate], [Replace], back and forward change nothing and raise
     [on_attempt] of the newest block. For back and forward the host goes back to
     the entry it left with [history.go] and reports nothing for that move.

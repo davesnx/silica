@@ -31,7 +31,7 @@ let machine =
     Machine.make ~id:"clock" ~init:Idle ~name ~states ~event_name
       ~during:(function
         | Waiting ->
-            [ Source.after 300 Short; Source.after 2000 Long ]
+            [ Host.after 300 Short; Host.after 2000 Long ]
         | Idle | Ready | Timed_out ->
             []
         )

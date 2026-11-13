@@ -6,21 +6,21 @@
       "name": "closed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "inline",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "open",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": [
         "dismiss",
         "anchor"

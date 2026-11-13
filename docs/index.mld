@@ -48,12 +48,12 @@ For coding agents:
 
 Concepts:
 
-- {!page-machines}: states, the update, the next step, owned sources and
+- {!page-machines}: states, the update, the next step, owned resources and
   props.
 - {!page-components}: views in JSX, child components, props and output.
 - {!page-data}: Local, Remote and Live data, and [Status].
 - {!page-optimistic}: show a change before the server confirms it.
-- {!page-actions}: what a machine asks the host to do, and the sources that
+- {!page-actions}: what a machine asks the host to do, and the resources that
   run during a state.
 - {!page-platform}: the runtime, the platform and the three renderers.
 - {!page-router}: routes, links, guards, blocks, preload and titles.

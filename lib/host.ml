@@ -12,7 +12,7 @@ type 'e t =
       on_update : 's Live_topic.update -> 'e;
     }
       -> 'e t
-  | Held of 'e Action.source
+  | Held of 'e Action.held
   | Timer of { ms : int; event : 'e }
 
 let remote_call ?timeout_ms endpoint input on_result =
@@ -67,7 +67,7 @@ let name = function
   | Live live ->
       "live:" ^ Live_topic.name live.topic
   | Held source ->
-      Action.source_name source
+      Action.held_name source
   | Timer timer ->
       timer_name timer.ms
 
@@ -83,7 +83,7 @@ let refs source =
     );
   List.rev !found
 
-let anchor_place : type e. e Action.source -> string list =
+let anchor_place : type e. e Action.held -> string list =
   function[@warning "-4"]
   | Action.Anchor { place; _ } ->
       [
@@ -104,7 +104,7 @@ let key = function
       "live:" ^ Live_topic.name live.topic ^ " " ^ live.key
   | Held source ->
       String.concat " "
-        ((Action.source_name source :: refs source) @ anchor_place source)
+        ((Action.held_name source :: refs source) @ anchor_place source)
   | Timer timer ->
       timer_name timer.ms
 
@@ -149,7 +149,7 @@ let start id = function
   | Live live ->
       Action.Start_live
         { id; topic = live.topic; key = live.key; on_update = live.on_update }
-  | Held source ->
-      Action.Start_source { id; source }
+  | Held held ->
+      Action.Start_held { id; held }
   | Timer timer ->
       Action.Start_timer { id; ms = timer.ms; event = timer.event }

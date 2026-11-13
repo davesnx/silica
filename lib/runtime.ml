@@ -201,8 +201,8 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
         Chunk.load chunk (fun () -> Option.iter send on_ready)
     | Action.Run action ->
         r.run action
-    | Action.Start_source { id; source } ->
-        r.start_source ~id source
+    | Action.Start_held { id; held } ->
+        r.start_held ~id held
     | Action.Start_timer { id; ms; event } ->
         stop running id;
         let cancel =
@@ -256,7 +256,7 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
         )
     | Action.Stop id ->
         stop running id;
-        r.stop_source ~id
+        r.stop_held ~id
   and exec actions = List.iter exec_one actions
   and paint node = (Lazy.force renderer_value).paint node
   and step message =
