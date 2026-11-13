@@ -261,7 +261,7 @@ let test_route_round_trip () =
       let printed = Router.print routes snapshot in
       Alcotest.(check string)
         "print . parse . print" (Url.to_string printed)
-        (Url.to_string (Router.print routes (Router.parse routes printed)))
+        (Url.to_string (Router.print routes (Router.parse_exn routes printed)))
     )
     [
       Home;
@@ -273,7 +273,9 @@ let test_route_round_trip () =
     ];
   Alcotest.(check bool)
     "same data" true
-    (Router.parse routes (u "/issues?status=closed&page=4") = Issues (Closed, 4))
+    (Router.parse routes (u "/issues?status=closed&page=4")
+    = Ok (Issues (Closed, 4))
+    )
 
 let test_guard_cancel () =
   let guard ~from:_ ~target =
@@ -324,10 +326,10 @@ let test_base_path () =
   let routes = preload_routes ~base:"/app" () in
   Alcotest.(check bool)
     "parse takes the base off" true
-    (Router.parse routes (u "/app/issues/7") = Issue 7);
+    (Router.parse routes (u "/app/issues/7") = Ok (Issue 7));
   Alcotest.(check bool)
     "the root under the base" true
-    (Router.parse routes (u "/app") = Home);
+    (Router.parse routes (u "/app") = Ok Home);
   Alcotest.(check string)
     "print puts the base first" "/app/issues?page=2"
     (Url.to_string (Router.print routes (Issues (Open, 2))));
@@ -335,6 +337,12 @@ let test_base_path () =
     "the root prints as the base" "/app"
     (Url.to_string (Router.print routes Home));
   ( match Router.parse routes (u "/issues/7") with
+  | Error _ ->
+      ()
+  | Ok _ ->
+      Alcotest.fail "expected Error for a path outside the base"
+  );
+  ( match Router.parse_exn routes (u "/issues/7") with
   | _ ->
       Alcotest.fail "expected Failure for a path outside the base"
   | exception Failure _ ->
@@ -622,13 +630,21 @@ let test_state_names () =
     "the router machine names its state by route" "/issues/:int"
     (Router.name routes (Sim.snapshot sim))
 
+let test_decode_outside_base () =
+  let routes = preload_routes ~base:"/app" () in
+  match Codec.of_string (Router.state_codec routes) {|"/issues/7"|} with
+  | Error _ ->
+      ()
+  | Ok _ ->
+      Alcotest.fail "expected Error for a path outside the base"
+
 let test_no_catch_all () =
   let routes = Router.routes [ List.hd route_list ] in
   match Router.parse routes (u "/x") with
-  | _ ->
-      Alcotest.fail "expected Failure"
-  | exception Failure _ ->
+  | Error _ ->
       ()
+  | Ok _ ->
+      Alcotest.fail "expected Error"
 
 let test_route_units () =
   let open Route in
@@ -699,6 +715,7 @@ let () =
           t "guard redirects" test_guard_redirect;
           t "guard at the first url" test_guard_at_first_url;
           t "base path" test_base_path;
+          t "decode outside the base" test_decode_outside_base;
           t "hash" test_hash;
           t "current link" test_current;
           t "preload attribute" test_preload_attribute;

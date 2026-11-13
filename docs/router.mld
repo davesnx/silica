@@ -116,9 +116,10 @@ val url : Silica.Url.t =
   {Silica.Url.path = ["search"]; query = [("page", "x"); ("q", "ocaml")];
    hash = None}
 # let route = Silica.Router.parse Doc_books.routes url;;
-val route : Doc_books.route =
-  Doc_books.Search {Doc_books.text = "ocaml"; page = 1}
-# Silica.Url.to_string (Silica.Router.print Doc_books.routes route);;
+val route : (Doc_books.route, string) result =
+  Ok (Doc_books.Search {Doc_books.text = "ocaml"; page = 1})
+# Silica.Url.to_string
+    (Silica.Router.print Doc_books.routes (Result.get_ok route));;
 - : string = "/search?q=ocaml"
 # Silica.Router.name Doc_books.routes (Doc_books.Book 7);;
 - : string = "/books/:int"

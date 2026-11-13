@@ -297,9 +297,9 @@ let navigate ~answer publications app arguments =
                 None
             | Routes { routes; published; _ } -> (
                 match Router.parse routes parsed with
-                | route when published route ->
+                | Ok route when published route ->
                     Some (Ok ())
-                | route ->
+                | Ok route ->
                     Some
                       (Error
                          (Printf.sprintf
@@ -308,7 +308,7 @@ let navigate ~answer publications app arguments =
                             url (Router.name routes route)
                          )
                       )
-                | exception Failure reason ->
+                | Error reason ->
                     Some (Error (Printf.sprintf "The URL %s: %s" url reason))
               )
             )

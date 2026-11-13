@@ -80,7 +80,8 @@ let router () =
   Check.app ~max_states:500_000 ~allow:[ locked_opens_first ]
     ~urls:
       [ "/"; "/item/1"; "/item/2"; "/about"; "/edit"; "/locked"; "/nowhere" ]
-    ~routes:all_routes ~parse:(Router.parse routes) ~print:(Router.print routes)
+    ~routes:all_routes ~parse:(Router.parse_exn routes)
+    ~print:(Router.print routes)
     ~is_not_found:(Router.is_not_found routes)
     ~url_event:(fun u -> Silica.Router.Url_changed u)
     Example_app.app
@@ -164,7 +165,8 @@ let joint_router ?(max_history = 2) page =
   Check.app ~max_states:1_000_000 ~max_history ~pages:[ page ]
     ~allow:[ locked_opens_first ]
     ~urls:[ "/"; "/item/1"; "/about"; "/edit"; "/nowhere" ]
-    ~routes:all_routes ~parse:(Router.parse routes) ~print:(Router.print routes)
+    ~routes:all_routes ~parse:(Router.parse_exn routes)
+    ~print:(Router.print routes)
     ~is_not_found:(Router.is_not_found routes)
     ~url_event:(fun u -> Silica.Router.Url_changed u)
     Example_app.app

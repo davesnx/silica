@@ -30,28 +30,36 @@ let rec strip prefix path =
       None
 
 let parse routes (url : Url.t) =
-  let inner =
-    match strip routes.base url.path with
-    | Some path ->
-        { url with path }
-    | None ->
-        failwith
-          ("Router: " ^ Url.to_string url ^ " is outside the base /"
-          ^ String.concat "/" routes.base
-          )
-  in
-  match
-    List.find_map
-      (fun (Route route) -> Option.map route.make (Route.parse route.path inner))
-      routes.listed
-  with
-  | Some route ->
-      route
+  match strip routes.base url.path with
   | None ->
-      failwith
-        ("Router: no route matches " ^ Url.to_string url
-       ^ "; end the list with a Route.rest route"
+      Error
+        ("Router: " ^ Url.to_string url ^ " is outside the base /"
+        ^ String.concat "/" routes.base
         )
+  | Some path -> (
+      let inner = { url with path } in
+      match
+        List.find_map
+          (fun (Route route) ->
+            Option.map route.make (Route.parse route.path inner)
+          )
+          routes.listed
+      with
+      | Some route ->
+          Ok route
+      | None ->
+          Error
+            ("Router: no route matches " ^ Url.to_string url
+           ^ "; end the list with a Route.rest route"
+            )
+    )
+
+let parse_exn routes url =
+  match parse routes url with
+  | Ok route ->
+      route
+  | Error message ->
+      failwith message
 
 let find routes r =
   List.find_map
@@ -182,7 +190,7 @@ let event_codec : event Codec.t =
 let state_codec routes : 'r Codec.t =
   {
     encode = (fun route -> url_codec.encode (print routes route));
-    decode = (fun json -> Result.map (parse routes) (url_codec.decode json));
+    decode = (fun json -> Result.bind (url_codec.decode json) (parse routes));
   }
 
 type made = { made : 'r. 'r routes -> (unit, 'r, event) Machine.t -> unit }
@@ -218,7 +226,7 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
   in
   let update current = function
     | Preload url ->
-        let target = parse routes url in
+        let target = parse_exn routes url in
         Machine.Stay
           (List.map
              (fun request -> Action.Preload request)
@@ -228,7 +236,7 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
               (chunks target)
           )
     | Url_changed url -> (
-        let target = parse routes url in
+        let target = parse_exn routes url in
         if same_url target current then
           Machine.Stay []
         else
@@ -244,7 +252,7 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
       )
   in
   fun url ->
-    let target = parse routes url in
+    let target = parse_exn routes url in
     let init, (start : event Action.t list) =
       match guard ~from:None ~target with
       | Allow | Cancel ->

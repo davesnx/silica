@@ -85,9 +85,12 @@ val routes :
     {!make}, at the app root, because a page links to routes and so depends on
     [routes]. *)
 
-val parse : 'r routes -> Url.t -> 'r
-(** Raises [Failure] when the path does not start with the [base] of the routes,
-    or when no listed route matches the path. *)
+val parse : 'r routes -> Url.t -> ('r, string) result
+(** The route of a URL. [Error] when the path does not start with the [base] of
+    the routes, or when no listed route matches the path. *)
+
+val parse_exn : 'r routes -> Url.t -> 'r
+(** As {!parse}, but raises [Failure] with the message of the [Error]. *)
 
 val print : 'r routes -> 'r -> Url.t
 (** The URL of a route, after the [base] of the routes. Raises [Failure] when no
