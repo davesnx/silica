@@ -3,7 +3,7 @@ open Silica
 type 'e vnode = {
   key : string option;
   kind : 'e kind;
-  mutable dom : Dom.node option;
+  mutable dom : Dom_bindings.node option;
 }
 
 and 'e kind =
@@ -164,23 +164,23 @@ let attribute_namespace name =
 let read_attribute el name =
   match attribute_namespace name with
   | Some (namespace, local) ->
-      Dom.opt (Dom.get_attribute_ns el namespace local)
+      Dom_bindings.opt (Dom_bindings.get_attribute_ns el namespace local)
   | None ->
-      Dom.opt (Dom.get_attribute el name)
+      Dom_bindings.opt (Dom_bindings.get_attribute el name)
 
 let write_attribute el name value =
   match attribute_namespace name with
   | Some (namespace, _) ->
-      Dom.set_attribute_ns el namespace name value
+      Dom_bindings.set_attribute_ns el namespace name value
   | None ->
-      Dom.set_attribute el name value
+      Dom_bindings.set_attribute el name value
 
 let erase_attribute el name =
   match attribute_namespace name with
   | Some (namespace, local) ->
-      Dom.remove_attribute_ns el namespace local
+      Dom_bindings.remove_attribute_ns el namespace local
   | None ->
-      Dom.remove_attribute el name
+      Dom_bindings.remove_attribute el name
 
 let attr_name : _ Node.attr -> string option = function
   | Node.String (k, _) | Node.Bool (k, _) ->
@@ -193,7 +193,7 @@ let attr_name : _ Node.attr -> string option = function
 let is_field tag = tag = "input" || tag = "textarea" || tag = "select"
 
 let sync_value tag el v =
-  if is_field tag && Dom.value el <> v then Dom.set_value el v
+  if is_field tag && Dom_bindings.value el <> v then Dom_bindings.set_value el v
 
 let set_attr tag el : _ Node.attr -> unit = function
   | Node.String (k, v) ->
@@ -204,18 +204,18 @@ let set_attr tag el : _ Node.attr -> unit = function
         write_attribute el k ""
       else
         erase_attribute el k;
-      if k = "checked" && tag = "input" then Dom.set_checked el v
+      if k = "checked" && tag = "input" then Dom_bindings.set_checked el v
   | Node.Ref r ->
-      Dom.set_attribute el "data-silica-ref" (Ref.name r)
+      Dom_bindings.set_attribute el "data-silica-ref" (Ref.name r)
   | _ ->
       ()
 
 let drop_attr tag el name =
   erase_attribute el name;
   if name = "value" && is_field tag then
-    Dom.set_value el ""
+    Dom_bindings.set_value el ""
   else if name = "checked" && tag = "input" then
-    Dom.set_checked el false
+    Dom_bindings.set_checked el false
 
 let set_last tag el name attrs =
   let last =
@@ -264,7 +264,7 @@ let patch_attrs tag el olds news =
         if a <> b then
           set_last tag el k news
         else if k = "checked" && tag = "input" then
-          Dom.set_checked el b
+          Dom_bindings.set_checked el b
     | Node.Ref a, Node.Ref b ->
         if Ref.name a <> Ref.name b then set_last tag el "data-silica-ref" news
     | _, n ->
@@ -276,9 +276,9 @@ let patch_attrs tag el olds news =
     patch_attrs_from_dom tag el olds news
 
 type hooks = {
-  start : Dom.node -> string -> unit;
-  stop : Dom.node -> unit;
-  viewport : Dom.node -> unit;
+  start : Dom_bindings.node -> string -> unit;
+  stop : Dom_bindings.node -> unit;
+  viewport : Dom_bindings.node -> unit;
 }
 
 let no_hooks = { start = (fun _ _ -> ()); stop = ignore; viewport = ignore }
@@ -292,15 +292,19 @@ let viewport_link tag attrs =
        attrs
 
 let stop_islands_in h dom =
-  if Dom.node_type dom = 1 then (
-    Array.iter h.stop (Dom.array_from (Dom.query_all dom "[data-silica-live]"));
-    if Dom.opt (Dom.get_attribute dom "data-silica-live") <> None then
+  if Dom_bindings.node_type dom = 1 then (
+    Array.iter h.stop
+      (Dom_bindings.array_from (Dom_bindings.query_all dom "[data-silica-live]"));
+    if
+      Dom_bindings.opt (Dom_bindings.get_attribute dom "data-silica-live")
+      <> None
+    then
       h.stop dom
   )
 
 let remove_node h parent dom =
   stop_islands_in h dom;
-  Dom.remove_child parent dom
+  Dom_bindings.remove_child parent dom
 
 let rec stop_islands h v =
   match v.kind with
@@ -313,24 +317,27 @@ let rec stop_islands h v =
 
 let remove h parent v =
   stop_islands h v;
-  Dom.remove_child parent (dom_of v)
+  Dom_bindings.remove_child parent (dom_of v)
 
 let rec create h namespace v =
   let dom =
     match v.kind with
     | Txt s ->
-        Dom.create_text Dom.document s
+        Dom_bindings.create_text Dom_bindings.document s
     | Elt { tag; attrs; children; channel; _ } ->
         let el =
           match own namespace tag with
           | Svg ->
-              Dom.create_element_ns Dom.document svg_namespace tag
+              Dom_bindings.create_element_ns Dom_bindings.document svg_namespace
+                tag
           | Html ->
-              Dom.create_element Dom.document tag
+              Dom_bindings.create_element Dom_bindings.document tag
         in
         let inner = inside namespace tag in
         if Option.is_none channel then
-          Array.iter (fun c -> Dom.append_child el (create h inner c)) children;
+          Array.iter
+            (fun c -> Dom_bindings.append_child el (create h inner c))
+            children;
         List.iter (set_attr tag el) attrs;
         Option.iter (h.start el) channel;
         if viewport_link tag attrs then h.viewport el;
@@ -340,11 +347,13 @@ let rec create h namespace v =
   dom
 
 let namespace_below parent =
-  if Dom.node_type parent <> 1 then
+  if Dom_bindings.node_type parent <> 1 then
     Html
-  else if Dom.tag_name parent = "foreignObject" then
+  else if Dom_bindings.tag_name parent = "foreignObject" then
     Html
-  else if Dom.opt (Dom.namespace_uri parent) = Some svg_namespace then
+  else if
+    Dom_bindings.opt (Dom_bindings.namespace_uri parent) = Some svg_namespace
+  then
     Svg
   else
     Html
@@ -354,9 +363,9 @@ let children parent =
     | None ->
         List.rev acc
     | Some n ->
-        go (n :: acc) (Dom.opt (Dom.next_sibling n))
+        go (n :: acc) (Dom_bindings.opt (Dom_bindings.next_sibling n))
   in
-  go [] (Dom.opt (Dom.first_child parent))
+  go [] (Dom_bindings.opt (Dom_bindings.first_child parent))
 
 let same a b =
   same_option a.key b.key
@@ -409,14 +418,14 @@ let remove_range h parent olds first last =
   let whole =
     first = 0
     && last = Array.length olds - 1
-    && ( match Dom.opt (Dom.first_child parent) with
+    && ( match Dom_bindings.opt (Dom_bindings.first_child parent) with
       | Some d ->
           d == dom_of olds.(0)
       | None ->
           false
       )
     &&
-    match Dom.opt (Dom.last_child parent) with
+    match Dom_bindings.opt (Dom_bindings.last_child parent) with
     | Some d ->
         d == dom_of olds.(last)
     | None ->
@@ -424,7 +433,7 @@ let remove_range h parent olds first last =
   in
   if whole then (
     Array.iter (stop_islands h) olds;
-    Dom.set_text_content parent ""
+    Dom_bindings.set_text_content parent ""
   ) else
     for i = first to last do
       remove h parent olds.(i)
@@ -435,7 +444,7 @@ let rec patch_node h namespace old nw =
   nw.dom <- Some dom;
   match (old.kind, nw.kind) with
   | Txt a, Txt b ->
-      if a <> b then Dom.set_node_value dom b
+      if a <> b then Dom_bindings.set_node_value dom b
   | Elt o, Elt n -> (
       let tag = n.tag in
       let changed = not (same_option o.channel n.channel) in
@@ -451,7 +460,7 @@ let rec patch_node h namespace old nw =
       | Some _, None ->
           List.iter (remove_node h dom) (children dom);
           Array.iter
-            (fun c -> Dom.append_child dom (create h inner c))
+            (fun c -> Dom_bindings.append_child dom (create h inner c))
             n.children
       | _, Some _ ->
           ()
@@ -464,7 +473,9 @@ and patch_children h namespace parent olds news =
   if new_count = 0 then (
     if old_count > 0 then remove_range h parent olds 0 (old_count - 1)
   ) else if old_count = 0 then
-    Array.iter (fun v -> Dom.append_child parent (create h namespace v)) news
+    Array.iter
+      (fun v -> Dom_bindings.append_child parent (create h namespace v))
+      news
   else
     let start = ref 0 in
     while
@@ -489,12 +500,13 @@ and patch_children h namespace parent olds news =
       if new_end + 1 < new_count then
         news.(new_end + 1).dom
       else
-        Dom.opt (Dom.next_sibling (dom_of olds.(old_count - 1)))
+        Dom_bindings.opt
+          (Dom_bindings.next_sibling (dom_of olds.(old_count - 1)))
     in
     if start > old_end then
       let anchor = Js.Nullable.fromOption (after ()) in
       for i = start to new_end do
-        Dom.insert_before parent (create h namespace news.(i)) anchor
+        Dom_bindings.insert_before parent (create h namespace news.(i)) anchor
       done
     else if start > new_end then
       remove_range h parent olds start old_end
@@ -558,20 +570,21 @@ and patch_middle h namespace parent olds news start old_end new_end tail =
   for k = count - 1 downto 0 do
     let dom = dom_of news.(start + k) in
     if not kept.(k) then
-      Dom.insert_before parent dom (Js.Nullable.fromOption !anchor);
+      Dom_bindings.insert_before parent dom (Js.Nullable.fromOption !anchor);
     anchor := Some dom
   done
 
 exception Mismatch of string
 
-let is_marker dom = Dom.node_type dom = 8 && Dom.node_value dom = " "
+let is_marker dom =
+  Dom_bindings.node_type dom = 8 && Dom_bindings.node_value dom = " "
 
 let lowercase = String.lowercase_ascii
 
 let describe dom =
-  match Dom.node_type dom with
+  match Dom_bindings.node_type dom with
   | 1 ->
-      "<" ^ lowercase (Dom.tag_name dom) ^ ">"
+      "<" ^ lowercase (Dom_bindings.tag_name dom) ^ ">"
   | 3 ->
       "text"
   | 8 ->
@@ -596,13 +609,13 @@ let rec check_adoption parent news =
       let v = news.(i) in
       match v.kind with
       | Txt _ ->
-          if Dom.node_type dom <> 3 then
+          if Dom_bindings.node_type dom <> 3 then
             raise
               (Mismatch ("text in the view, " ^ describe dom ^ " in the page"))
       | Elt { tag; channel; children; _ } ->
           if
-            Dom.node_type dom <> 1
-            || lowercase (Dom.tag_name dom) <> lowercase tag
+            Dom_bindings.node_type dom <> 1
+            || lowercase (Dom_bindings.tag_name dom) <> lowercase tag
           then
             raise
               (Mismatch
@@ -615,14 +628,15 @@ let rec check_adoption parent news =
 let quote text = "\"" ^ String.escaped text ^ "\""
 
 let warn ~dev message =
-  if dev then Dom.console_warn ("silica: hydration: " ^ message)
+  if dev then Dom_bindings.console_warn ("silica: hydration: " ^ message)
 
 let typed_before_paint tag dom =
-  (tag = "input" || tag = "textarea") && Dom.value dom <> Dom.default_value dom
+  (tag = "input" || tag = "textarea")
+  && Dom_bindings.value dom <> Dom_bindings.default_value dom
 
 let rec adopt h ~dev ~typed parent news =
   List.iter
-    (fun dom -> if is_marker dom then Dom.remove_child parent dom)
+    (fun dom -> if is_marker dom then Dom_bindings.remove_child parent dom)
     (children parent);
   List.iteri
     (fun i dom ->
@@ -630,13 +644,13 @@ let rec adopt h ~dev ~typed parent news =
       v.dom <- Some dom;
       match v.kind with
       | Txt s ->
-          if Dom.node_value dom <> s then (
+          if Dom_bindings.node_value dom <> s then (
             warn ~dev
               ("text differs: page "
-              ^ quote (Dom.node_value dom)
+              ^ quote (Dom_bindings.node_value dom)
               ^ ", view " ^ quote s
               );
-            Dom.set_node_value dom s
+            Dom_bindings.set_node_value dom s
           )
       | Elt { tag; attrs; children = cs; channel; _ } ->
           let user_typed = typed_before_paint tag dom in
@@ -653,7 +667,7 @@ let rec adopt h ~dev ~typed parent news =
                   drop_attr tag dom name
               )
             )
-            (Dom.attribute_names dom);
+            (Dom_bindings.attribute_names dom);
           List.iter
             (fun attr ->
               match attr with
@@ -679,16 +693,18 @@ let rec adopt h ~dev ~typed parent news =
 let compatible namespace dom v =
   match v.kind with
   | Txt _ ->
-      Dom.node_type dom = 3
+      Dom_bindings.node_type dom = 3
   | Elt { tag; _ } ->
-      Dom.node_type dom = 1
-      && lowercase (Dom.tag_name dom) = lowercase tag
+      Dom_bindings.node_type dom = 1
+      && lowercase (Dom_bindings.tag_name dom) = lowercase tag
       && own namespace tag = Svg
-         = (Dom.opt (Dom.namespace_uri dom) = Some svg_namespace)
+         = (Dom_bindings.opt (Dom_bindings.namespace_uri dom)
+           = Some svg_namespace
+           )
 
 let rec adopt_changed h namespace parent news =
   List.iter
-    (fun dom -> if is_marker dom then Dom.remove_child parent dom)
+    (fun dom -> if is_marker dom then Dom_bindings.remove_child parent dom)
     (children parent);
   let doms = Array.of_list (children parent) in
   Array.iteri
@@ -698,25 +714,26 @@ let rec adopt_changed h namespace parent news =
         v.dom <- Some dom;
         match v.kind with
         | Txt text ->
-            if Dom.node_value dom <> text then Dom.set_node_value dom text
+            if Dom_bindings.node_value dom <> text then
+              Dom_bindings.set_node_value dom text
         | Elt { tag; attrs; children = inner; channel; _ } ->
             let names = List.filter_map attr_name attrs in
             Array.iter
               (fun name ->
                 if not (List.mem name names) then drop_attr tag dom name
               )
-              (Dom.attribute_names dom);
+              (Dom_bindings.attribute_names dom);
             List.iter (set_attr tag dom) attrs;
             if channel = None then
               adopt_changed h (inside namespace tag) dom inner;
             Option.iter (h.start dom) channel;
             if viewport_link tag attrs then h.viewport dom
       ) else if i < Array.length doms then (
-        Dom.insert_before parent (create h namespace v)
+        Dom_bindings.insert_before parent (create h namespace v)
           (Js.Nullable.return doms.(i));
         remove_node h parent doms.(i)
       ) else
-        Dom.append_child parent (create h namespace v)
+        Dom_bindings.append_child parent (create h namespace v)
     )
     news;
   Array.iteri
@@ -724,27 +741,30 @@ let rec adopt_changed h namespace parent news =
     doms
 
 type adopter = {
-  adopt : 'e. hooks * namespace * Dom.node * 'e vnode array -> unit;
+  adopt : 'e. hooks * namespace * Dom_bindings.node * 'e vnode array -> unit;
 }
 
 let adopter : adopter option ref = ref None
 
 type 'e t = {
-  root : Dom.node;
+  root : Dom_bindings.node;
+  portal_parent : string option -> Dom_bindings.node option;
   hooks : hooks;
   dev : bool;
   on_portal : ('e t -> unit) option;
   namespace : namespace;
   mutable adopting : bool;
-  mutable typed : Dom.node list;
+  mutable typed : Dom_bindings.node list;
   mutable vnodes : 'e vnode array;
   mutable portals : (string option * segment list * 'e t) list;
 }
 
-let make ?(hooks = no_hooks) ?(adopt = false) ?(dev = false) ?on_portal root =
+let make ?(hooks = no_hooks) ?(adopt = false) ?(dev = false) ?on_portal
+    ~portal_parent root =
   if not adopt then List.iter (remove_node hooks root) (children root);
   {
     root;
+    portal_parent;
     hooks;
     dev;
     on_portal;
@@ -759,7 +779,7 @@ let clear t = List.iter (remove_node t.hooks t.root) (children t.root)
 
 let hydrate t nw =
   t.adopting <- false;
-  if Dom.opt (Dom.first_child t.root) = None then (
+  if Dom_bindings.opt (Dom_bindings.first_child t.root) = None then (
     patch_children t.hooks t.namespace t.root [||] nw;
     t.vnodes <- nw
   ) else
@@ -773,7 +793,7 @@ let hydrate t nw =
         if t.dev then
           failwith ("silica: hydration mismatch: " ^ message)
         else (
-          Dom.console_warn
+          Dom_bindings.console_warn
             ("silica: hydration mismatch, the page is rendered again: "
            ^ message
             );
@@ -792,13 +812,6 @@ let first_paint t nw =
   | None ->
       hydrate t nw
 
-let portal_parent target =
-  match target with
-  | None ->
-      Some (Dom.body Dom.document)
-  | Some id ->
-      Dom.opt (Dom.get_by_id Dom.document id)
-
 let paint_nodes t nw =
   if t.adopting then
     first_paint t nw
@@ -806,6 +819,12 @@ let paint_nodes t nw =
     patch_children t.hooks t.namespace t.root t.vnodes nw;
     t.vnodes <- nw
   )
+
+let remove_portal sub =
+  clear sub;
+  Option.iter
+    (fun parent -> Dom_bindings.remove_child parent sub.root)
+    (Dom_bindings.opt (Dom_bindings.parent_node sub.root))
 
 let paint_portals t found =
   let kept =
@@ -818,15 +837,15 @@ let paint_portals t found =
           | Some (_, _, sub) ->
               Some sub
           | None -> (
-              match portal_parent target with
+              match t.portal_parent target with
               | None ->
-                  Dom.console_warn "silica: portal target not found";
+                  Dom_bindings.console_warn "silica: portal target not found";
                   None
               | Some parent ->
-                  let container = Dom.create_portal_root parent in
+                  let container = Dom_bindings.create_portal_root parent in
                   let sub =
                     make ~hooks:t.hooks ~dev:t.dev ?on_portal:t.on_portal
-                      container
+                      ~portal_parent:t.portal_parent container
                   in
                   Option.iter (fun f -> f sub) t.on_portal;
                   Some sub
@@ -834,10 +853,13 @@ let paint_portals t found =
         in
         Option.map
           (fun sub ->
-            if Dom.opt (Dom.get_attribute sub.root "data-theme") <> theme then
+            if
+              Dom_bindings.opt (Dom_bindings.get_attribute sub.root "data-theme")
+              <> theme
+            then
               Option.fold theme
-                ~none:(Dom.remove_attribute sub.root "data-theme")
-                ~some:(Dom.set_attribute sub.root "data-theme");
+                ~none:(Dom_bindings.remove_attribute sub.root "data-theme")
+                ~some:(Dom_bindings.set_attribute sub.root "data-theme");
             paint_nodes sub nodes;
             (target, path, sub)
           )
@@ -847,15 +869,18 @@ let paint_portals t found =
   in
   List.iter
     (fun (_, _, sub) ->
-      if not (List.exists (fun (_, _, kept_sub) -> kept_sub == sub) kept) then (
-        clear sub;
-        Option.iter
-          (fun parent -> Dom.remove_child parent sub.root)
-          (Dom.opt (Dom.parent_node sub.root))
-      )
+      if not (List.exists (fun (_, _, kept_sub) -> kept_sub == sub) kept) then
+        remove_portal sub
     )
     t.portals;
   t.portals <- kept
+
+let containers t = t.root :: List.map (fun (_, _, sub) -> sub.root) t.portals
+
+let release t =
+  List.iter (fun (_, _, sub) -> remove_portal sub) t.portals;
+  t.portals <- [];
+  List.iter (stop_islands_in t.hooks) (children t.root)
 
 let render t node =
   let portals = ref [] in
@@ -874,8 +899,9 @@ let take_typed t =
 let elements t target =
   let is_island n =
     n != t.root
-    && Dom.node_type n = 1
-    && Dom.opt (Dom.get_attribute n "data-silica-live") <> None
+    && Dom_bindings.node_type n = 1
+    && Dom_bindings.opt (Dom_bindings.get_attribute n "data-silica-live")
+       <> None
   in
   let rec path n acc =
     if n == t.root then
@@ -883,7 +909,7 @@ let elements t target =
     else if is_island n then
       None
     else
-      match Dom.opt (Dom.parent_node n) with
+      match Dom_bindings.opt (Dom_bindings.parent_node n) with
       | None ->
           None
       | Some p ->

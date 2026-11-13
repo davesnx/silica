@@ -262,11 +262,15 @@ path and the error paths.
 {2:browser The browser}
 
 The client file mounts the component into the element with the id
-[silica-root]. Dune compiles it with Melange, and a bundler such as esbuild
+[silica-root]. The mount returns the app, which the page could stop with
+[Silica_browser.send app Stop]. Dune compiles it with Melange, and a bundler such as esbuild
 makes the file for the page.
 
 {@ocaml file=examples/client/tutorial_client.ml[
-let () = Silica_browser.mount ~root:"silica-root" Tutorial_greeting.component
+let app =
+  Silica_browser.mount
+    ~root:(Silica_browser.by_id "silica-root")
+    Tutorial_greeting.component
 ]}
 
 {2 The server}

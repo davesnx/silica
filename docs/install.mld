@@ -325,7 +325,7 @@ val state : Doc_lamp.state = Doc_lamp.On
 ]}
 
 In the browser, one call of {!Silica_browser.mount} paints it into an element
-of the page. The {{!page-tutorial.browser}tutorial} shows the client file.
+of the page and returns the app, which {!Silica_browser.send} can stop. The {{!page-tutorial.browser}tutorial} shows the client file.
 
 {1:next Next}
 

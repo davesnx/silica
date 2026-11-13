@@ -3,6 +3,7 @@ type 'e t = {
   run : 'e Action.t -> unit;
   start_held : id:string -> 'e Action.held -> unit;
   stop_held : id:string -> unit;
+  release : unit -> unit;
 }
 
 type 'e make = dispatch:('e -> unit) -> 'e t

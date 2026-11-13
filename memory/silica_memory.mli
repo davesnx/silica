@@ -98,7 +98,14 @@ val mount_with_props :
 val set_props : 'p t -> 'p -> unit
 (** Give the root new props, as a parent does: the [on_props] of the machine
     runs, and the view paints again. Props equal to the current ones do nothing.
-*)
+    It sends {!Silica.Runtime.event.Props} to the runtime. *)
+
+val stop : _ t -> unit
+(** Stop the runtime ({!Silica.Runtime.event.Stop}): the view is empty, no
+    resource is held, and no timer, call or subscription delivers again. *)
+
+val lifecycle : _ t -> Runtime.state
+(** The state of the runtime: running, showing the error page, or stopped. *)
 
 (** {1 View} *)
 

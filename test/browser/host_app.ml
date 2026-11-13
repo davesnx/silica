@@ -138,7 +138,8 @@ module Dialog = struct
       view
 end
 
-let mount_dialog kind root = Silica_browser.mount ~root (Dialog.component kind)
+let mount_dialog kind root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) (Dialog.component kind)
 
 module Events = struct
   type event = Log of string
@@ -209,7 +210,8 @@ module Events = struct
       view
 end
 
-let mount_events root = Silica_browser.mount ~root Events.component
+let mount_events root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Events.component
 let traced = ref None
 
 let mount_traced ~data root =
@@ -217,7 +219,8 @@ let mount_traced ~data root =
   traced := Some recorder;
   Silica_browser.mount
     ~observe:(Trace.Recorder.observer recorder)
-    ~root Events.component
+    ~root:(Silica_browser.by_id root)
+    Events.component
 
 let traced_trace () =
   match !traced with
@@ -292,11 +295,13 @@ let server_html component =
 
 let hydrate_html () = server_html Hydrate.component
 
-let mount_hydrate ~dev root = Silica_browser.mount ~dev ~root Hydrate.component
+let mount_hydrate ~dev root =
+  Silica_browser.mount ~dev ~root:(Silica_browser.by_id root) Hydrate.component
 
 let lookup_html () = fst (App.lookup_server ())
 let lookup_answers () = Answers.to_script (snd (App.lookup_server ()))
-let mount_lookup root = Silica_browser.mount ~root App.Lookup.component
+let mount_lookup root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) App.Lookup.component
 
 module Svg = struct
   type event = Toggle | Grow
@@ -347,7 +352,8 @@ module Svg = struct
       view
 end
 
-let mount_svg root = Silica_browser.mount ~root Svg.component
+let mount_svg root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Svg.component
 
 module Portal = struct
   type event = Inc | Toggle | Move
@@ -395,7 +401,8 @@ module Portal = struct
       view
 end
 
-let mount_portal root = Silica_browser.mount ~root Portal.component
+let mount_portal root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Portal.component
 
 module Gadgets = struct
   type event =
@@ -533,7 +540,8 @@ module Gadgets = struct
   let component = Component.make machine view
 end
 
-let mount_gadgets root = Silica_browser.mount ~root Gadgets.component
+let mount_gadgets root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Gadgets.component
 
 module Document = struct
   type event =
@@ -606,7 +614,9 @@ module Document = struct
 end
 
 let mount_document root =
-  Silica_browser.mount ~dev:true ~root Document.component
+  Silica_browser.mount ~dev:true
+    ~root:(Silica_browser.by_id root)
+    Document.component
 let read_cookie name =
   Option.value (Silica_browser.cookie name) ~default:"(none)"
 
@@ -656,7 +666,8 @@ module Twin = struct
       view
 end
 
-let mount_twin root = Silica_browser.mount ~root Twin.component
+let mount_twin root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Twin.component
 
 module Scoped = struct
   module Theme = Silica_ui.Theme
@@ -702,7 +713,8 @@ module Scoped = struct
       view
 end
 
-let mount_scoped root = Silica_browser.mount ~root Scoped.component
+let mount_scoped root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Scoped.component
 
 module Rows = struct
   type event =
@@ -799,7 +811,8 @@ module Rows = struct
       view
 end
 
-let mount_rows root = Silica_browser.mount ~root Rows.component
+let mount_rows root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Rows.component
 
 module Clamp = struct
   type event = Typed of string
@@ -826,7 +839,8 @@ module Clamp = struct
       )
 end
 
-let mount_clamp root = Silica_browser.mount ~root Clamp.component
+let mount_clamp root =
+  Silica_browser.mount ~root:(Silica_browser.by_id root) Clamp.component
 
 let errors : string list ref = ref []
 let reported () = Array.of_list (List.rev !errors)
@@ -835,10 +849,14 @@ let on_error exn (error : Node.error) =
   errors := (Printexc.to_string exn ^ "|" ^ error.id) :: !errors
 
 let mount_boundary ~guarded ~dev root =
-  Silica_browser.mount ~dev ~on_error ~root (App.Shell.component ~guarded)
+  Silica_browser.mount ~dev ~on_error
+    ~root:(Silica_browser.by_id root)
+    (App.Shell.component ~guarded)
 
 let mount_mismatch ~dev root =
-  Silica_browser.mount ~dev ~on_error ~root Hydrate.component
+  Silica_browser.mount ~dev ~on_error
+    ~root:(Silica_browser.by_id root)
+    Hydrate.component
 
 module Fake = struct
   let log : string list ref = ref []
@@ -890,6 +908,7 @@ module Fake = struct
       start_held =
         (fun ~id source -> note ("start " ^ id ^ " " ^ Action.held_name source));
       stop_held = (fun ~id -> note ("stop " ^ id));
+      release = (fun () -> note "release");
     }
 
   let rec first_press node =
@@ -927,3 +946,127 @@ let fake_press () = Fake.press ()
 let fake_log () = Array.of_list (List.rev !Fake.log)
 
 let early_script () = Early_input.script
+
+module Guest = struct
+  type event = Focus_field | Toggle | Bump | Title
+
+  type state = { count : int; open_ : bool; label : string }
+
+  let field = Ref.make "field"
+  let test name = Attr.string "data-test" name
+
+  let machine =
+    Machine.make_with_props ~id:"guest"
+      ~init:{ count = 0; open_ = false; label = "" }
+      ~name:(fun state ->
+        if state.open_ then
+          "open"
+        else
+          "closed"
+      )
+      ~states:[ "closed"; "open" ]
+      ~during:(fun _ state ->
+        if state.open_ then
+          [
+            Host.scroll_lock;
+            Host.keys [ (Key.make "j", Bump) ];
+            Host.dismiss ~escape:Toggle [ field ];
+          ]
+          @
+          if state.count = 0 then
+            [ Host.after 40 Bump ]
+          else
+            []
+        else
+          []
+      )
+      ~on_props:(fun _ label state -> Go { state with label })
+      (fun _ state -> function
+        | Focus_field ->
+            Stay [ Action.Focus field ]
+        | Toggle ->
+            Go { state with open_ = not state.open_ }
+        | Bump ->
+            Go { state with count = state.count + 1 }
+        | Title ->
+            Stay
+              [
+                Action.Set_title ("guest " ^ state.label);
+                Action.Set_cookie
+                  { name = "guest"; value = state.label; max_age = 60 };
+                Action.Set_document_attribute
+                  { name = "data-guest"; value = Some state.label };
+              ]
+        )
+
+  let view state =
+    el "main" []
+      [
+        el "input" [ test "field"; Attr.ref_ field ] [];
+        el "button" [ test "focus"; Attr.on_press Focus_field ] [ txt "focus" ];
+        el "button" [ test "toggle"; Attr.on_press Toggle ] [ txt "toggle" ];
+        el "button" [ test "title"; Attr.on_press Title ] [ txt "title" ];
+        el "p" [ test "count" ] [ txt (string_of_int state.count) ];
+        el "p" [ test "label" ] [ txt state.label ];
+        ( if state.open_ then
+            Node.portal [ el "div" [ test "popup" ] [ txt "popup" ] ]
+          else
+            Node.list []
+        );
+      ]
+
+  let component = Component.make machine view
+end
+
+let guest_recorder = Silica_browser.recorder ~build:"jsdom" ()
+
+let guest_steps () =
+  List.length (Trace.Recorder.trace guest_recorder ~url:(Some "/")).transitions
+
+let document_log : string list ref = ref []
+
+let logging_document =
+  Silica_browser.Document.make (fun request ->
+      let line =
+        match request with
+        | Set_title title ->
+            "title " ^ title
+        | Set_cookie { name; value; _ } ->
+            "cookie " ^ name ^ "=" ^ value
+        | Set_document_attribute { name; value } ->
+            "attribute " ^ name ^ "=" ^ Option.value value ~default:"-"
+        | Lock_scroll ->
+            "lock"
+        | Unlock_scroll ->
+            "unlock"
+      in
+      document_log := line :: !document_log
+  )
+
+let document_lines () = Array.of_list (List.rev !document_log)
+
+let guest ~document root label =
+  Silica_browser.mount_with_props ~document
+    ~observe:(Trace.Recorder.observer guest_recorder)
+    ~props:label ~root Guest.component
+
+let mount_guest root label =
+  guest ~document:Silica_browser.Document.browser root label
+
+let clear_document_log () = document_log := []
+let mount_guest_on_logging_document root label =
+  guest ~document:logging_document root label
+
+let set_label app label = Silica_browser.send app (Props label)
+let stop app = Silica_browser.send app Stop
+
+let lifecycle app =
+  match Silica_browser.state app with
+  | Running ->
+      "running"
+  | Failed ->
+      "failed"
+  | Stopped ->
+      "stopped"
+
+let mount_router_into root = Silica_browser.mount_app ~root App.app

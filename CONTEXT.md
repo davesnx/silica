@@ -164,6 +164,19 @@ log). The browser and the in-memory platform of the tests are two platforms of
 the same runtime.
 _Avoid_: driver, adapter (an adapter is a server term), environment
 
+**Lifecycle**:
+The machine of a mounted app in the host runtime: running, failed (the error
+page shows) or stopped. The host gives it new props, stops it, or suspends it
+for a hot reload.
+_Avoid_: handle, instance (an instance is one component in the tree)
+
+**Document**:
+What lies outside the element of a browser app and has no node in it: the
+title, the cookies, the attributes of `<html>` and the scroll lock (the module
+`Silica_browser.Document`). An app reaches it only through one port, which a
+host can replace or refuse.
+_Avoid_: window
+
 **Island**:
 A place in a view where a Live component runs, owned by its own connection.
 _Avoid_: portal, embed

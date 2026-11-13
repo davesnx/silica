@@ -47,6 +47,7 @@ let platform : Instance.message Platform.t =
           run = (fun _ -> ());
           start_held = (fun ~id:_ _ -> ());
           stop_held = (fun ~id:_ -> ());
+          release = (fun () -> ());
         }
       );
     location = (fun () -> Url.of_string "/");
@@ -108,9 +109,11 @@ let contains text wanted =
   from 0
 
 let start ?(dev = false) ~on_error component =
-  Runtime.start ~dev ~on_error ~platform
-    ~create:(fun ~dev ~on_error -> Instance.mount ~dev ?on_error component)
-    ()
+  ignore
+    (Runtime.start ~dev ~on_error ~platform ~props:()
+       ~create:(fun ~dev ~on_error () -> Instance.mount ~dev ?on_error component)
+       ()
+    )
 
 let press () =
   match Option.bind !painted find_press with

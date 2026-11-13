@@ -119,4 +119,7 @@ let view (q : state) : event Node.t =
   </div>
 
 let component = Component.make machine view
-let () = Silica_browser.mount ~hydrate:false ~root:"main" component
+let app =
+  Silica_browser.mount ~hydrate:false
+    ~root:(Silica_browser.by_id "main")
+    component

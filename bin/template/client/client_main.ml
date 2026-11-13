@@ -1,1 +1,4 @@
-let () = Silica_browser.mount ~root:"silica-root" Counter.component
+let app =
+  Silica_browser.mount
+    ~root:(Silica_browser.by_id "silica-root")
+    Counter.component

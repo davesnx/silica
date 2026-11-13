@@ -1,5 +1,5 @@
 {
-  "site": { "first_js": 69500, "lazy_js": 19800, "css": 5800 },
+  "site": { "first_js": 70300, "lazy_js": 19800, "css": 5800 },
   "linear": { "first_js": 66700, "lazy_js": 0, "css": 4000 },
-  "keyed": { "first_js": 42500 }
+  "keyed": { "first_js": 42900 }
 }

@@ -1200,6 +1200,56 @@ let try_again_uses_the_last_props () =
   string "the root starts again with the last props" "-2 -2 1"
     (text memory "props")
 
+module Holding = struct
+  let component =
+    Component.make
+      (Machine.make ~id:"holding" ~init:0
+         ~name:(fun _ -> "only")
+         ~during:(fun _ -> [ Host.scroll_lock; Host.after 20 1 ])
+         (fun count step -> Machine.Go (count + step))
+      )
+      (fun count ->
+        Node.element "p"
+          [ Attr.string "id" "count" ]
+          [ Node.text (string_of_int count) ]
+      )
+end
+
+let stop_releases_the_page () =
+  let memory = Memory.mount Holding.component in
+  int "one held resource" 1 (List.length (Memory.held memory));
+  int "one timer" 1 (List.length (Memory.timers memory));
+  Memory.stop memory;
+  bool "stopped" true (Memory.lifecycle memory = Runtime.Stopped);
+  string "the view is empty" "" (Memory.html memory);
+  int "no held resource" 0 (List.length (Memory.held memory));
+  int "no timer" 0 (List.length (Memory.timers memory));
+  Memory.advance memory 40;
+  string "still empty" "" (Memory.html memory)
+
+let stop_drops_a_late_answer () =
+  let memory = basic () in
+  press memory "ask";
+  let request = only (Memory.pending memory) in
+  Memory.stop memory;
+  Memory.reply request "42";
+  Memory.advance memory 100;
+  string "the view stays empty" "" (Memory.html memory);
+  Memory.stop memory;
+  Memory.set_props memory ();
+  bool "still stopped" true (Memory.lifecycle memory = Runtime.Stopped)
+
+let props_on_the_error_page_wait_for_try_again () =
+  let memory = Memory.mount_with_props ~props:(-1) With_props.component in
+  Memory.press (Memory.by_role ~name:"Step" memory Accessibility.Button);
+  bool "failed" true (Memory.lifecycle memory = Runtime.Failed);
+  Memory.set_props memory 3;
+  bool "still failed" true (Memory.lifecycle memory = Runtime.Failed);
+  Memory.press (Memory.by_text memory "Try again");
+  bool "running" true (Memory.lifecycle memory = Runtime.Running);
+  string "the new tree has the props given on the error page" "3 3 1"
+    (text memory "props")
+
 module Form_submit = struct
   let component =
     Component.make
@@ -1655,6 +1705,17 @@ let () =
           case "set_props reaches the root" set_props_reaches_the_root;
           case "Try again starts the root with the last props"
             try_again_uses_the_last_props;
+        ]
+      );
+      ( "lifecycle",
+        [
+          case "a stop empties the view and releases held resources and timers"
+            stop_releases_the_page;
+          case
+            "a stop drops a late answer, and a stopped runtime takes no event"
+            stop_drops_a_late_answer;
+          case "props given on the error page reach the tree of Try again"
+            props_on_the_error_page_wait_for_try_again;
         ]
       );
       ( "host",

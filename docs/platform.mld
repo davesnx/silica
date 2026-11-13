@@ -38,7 +38,8 @@ through one value of {!Silica.Platform.t}:
 - [renderer]: a {!Silica.Renderer.t}. It paints views, turns platform input
   into events, runs the platform actions (focus, scroll, history, title) and
   starts and stops the held resources. It reports each URL change and each link
-  preload with [on_route].
+  preload with [on_route]. When the runtime stops, it releases all that it
+  holds ([release]).
 - [location]: the URL of the page now.
 - [io]: a clock ([schedule]), one HTTP request form for Remote calls ([post]),
   a Live socket ([connect]), the CSRF token of the page, a hook for a session
@@ -48,12 +49,38 @@ A platform for another screen writes one value of this type and no runtime
 code. The decoding of answers, the replay of server answers, the reconnect
 and the heartbeat of Live sockets are the same for every platform.
 
+{2:lifecycle The lifecycle}
+
+The runtime is a machine with three states, and the host sends it events
+with {!Silica.Runtime.send}:
+
+- [Running]: events, timers, calls, subscriptions and held resources run.
+  [Props p] gives the root new props.
+- [Failed]: the error page shows. "Try again" starts a fresh tree with the
+  last props. [Props p] keeps the props for that tree.
+- [Stopped]: final. [Stop] cancels every timer, call, preload and
+  subscription, paints an empty view, releases the renderer and ends the
+  tree. [Suspend] does the same but keeps the painted view and the tree, for
+  a hot reload.
+
 {1:browser The browser}
 
 {!Silica_browser} ([silica.browser], Melange only) is the browser platform:
 the runtime with a renderer for the DOM.
 
-- {!Silica_browser.mount} paints a component into the element with an id.
+- {!Silica_browser.mount} paints a component into an element that the host
+  gives ({!Silica_browser.by_id} finds one by its id), and returns an app.
+  {!Silica_browser.send} stops it or gives it new props:
+  {@ocaml skip[
+    let app =
+      Silica_browser.mount_with_props ~props:"Ada"
+        ~root:(Silica_browser.by_id "silica-root")
+        Hello.component
+    in
+    Silica_browser.send app (Props "Grace");
+    Silica_browser.send app Stop
+  ]}
+- {!Silica_browser.mount_with_props} does the same for a root with props.
 - {!Silica_browser.mount_app} does the same for a router app: link presses,
   back and forward reach the router (see {!page-router}).
 - {!Silica_browser.mount_live} renders a Live component whose machine runs on
@@ -67,6 +94,26 @@ The first paint adopts the HTML of the server instead of building it again
 (see {!page-hydration}). After it, the root element gets the attribute
 [data-silica-ready]. Events are delegated: for a DOM event, the renderer finds
 the handler of the nearest element in the view.
+
+{2:scope The scope of an app}
+
+An app stays inside the element that the host gives, so several apps can
+share a document, and an app can run in a shadow root or in a tree that is
+not in the document:
+
+- The app looks up its refs in its root and in its own portals only.
+- Its listeners for keys, outside presses, dismiss layers and focus traps are
+  on [root.getRootNode()]: the document, the shadow root, or the top node of
+  the tree.
+- A portal with no target, and the route announcer, go into the body of the
+  document, the shadow root, or the top node of the tree.
+- The title, the cookies, the attributes of [<html>] and the scroll lock are
+  outside every element. The app asks for them through its document,
+  {!Silica_browser.Document}: the default, [Document.browser], carries them
+  out on the document of the browser; a host that owns them gives
+  [~document:(Document.make port)], and the port gets each request or refuses
+  it. The document counts the scroll locks, so the port gets one lock and one
+  unlock for the locks of all the apps that share it.
 
 {1:server The server render}
 

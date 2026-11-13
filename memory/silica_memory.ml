@@ -1231,6 +1231,7 @@ let platform t : message Platform.t =
           run = run t;
           start_held = start_held t;
           stop_held = stop_held t;
+          release = (fun () -> t.sources <- []);
         }
       );
     location = (fun () -> current_url t);
@@ -1287,11 +1288,13 @@ let make ~csrf ~url ~media =
 
 let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
     ?(url = "/") ?(media = []) ~(on_route : (Router.event -> e) option)
+    ~(props : p)
     ~(create :
        memory ->
        dev:bool ->
        on_error:_ ->
        observe:Instance.observer ->
+       p ->
        (p, s, e) Instance.t
        ) () =
   let t = make ~csrf ~url ~media in
@@ -1315,23 +1318,26 @@ let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
         );
     }
   in
-  Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
-    ~platform:(platform t)
-    ~create:(fun ~dev ~on_error -> create t ~dev ~on_error ~observe)
-    ();
-  t
+  let runtime =
+    Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
+      ~platform:(platform t) ~props
+      ~create:(fun ~dev ~on_error -> create t ~dev ~on_error ~observe)
+      ()
+  in
+  (t, runtime)
 
 let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
   start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
-    ~create:(fun _ ~dev ~on_error ~observe ->
+    ~props:()
+    ~create:(fun _ ~dev ~on_error ~observe () ->
       Instance.mount ~dev ?on_error ~observe component
     )
     ()
 
 let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
   start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
-    ~on_route:(Some Fun.id)
-    ~create:(fun t ~dev ~on_error ~observe ->
+    ~on_route:(Some Fun.id) ~props:()
+    ~create:(fun t ~dev ~on_error ~observe () ->
       Instance.mount ~dev ?on_error ~observe (app (current_url t))
     )
     ()
@@ -1548,60 +1554,44 @@ let view_text memory = View_text.to_string memory.view
 
 type 'p t = {
   memory : memory;
-  props : 'p -> unit;
+  runtime : 'p Runtime.t;
   props_of_json : Silica_json.Json.t -> ('p, string) result;
 }
 
 let no_props _ = Ok ()
 
 let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
-  {
-    memory =
-      mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component;
-    props = ignore;
-    props_of_json = no_props;
-  }
+  let memory, runtime =
+    mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component
+  in
+  { memory; runtime; props_of_json = no_props }
 
 let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
-  {
-    memory =
-      mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app;
-    props = ignore;
-    props_of_json = no_props;
-  }
+  let memory, runtime =
+    mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app
+  in
+  { memory; runtime; props_of_json = no_props }
 
 let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
     ~props component =
-  let current = ref props in
-  let tree = ref None in
-  let memory =
+  let memory, runtime =
     start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
-      ~create:(fun _ ~dev ~on_error ~observe ->
-        let created =
-          Instance.mount_with_props ~dev ?on_error ~observe ~props:!current
-            component
-        in
-        tree := Some created;
-        created
+      ~props
+      ~create:(fun _ ~dev ~on_error ~observe props ->
+        Instance.mount_with_props ~dev ?on_error ~observe ~props component
       )
       ()
-  in
-  let props next =
-    memory.dispatch
-      (Instance.callback (fun () ->
-           current := next;
-           Option.iter (fun created -> Instance.set_props created next) !tree
-       )
-      )
   in
   let props_of_json json =
     Result.bind (Machine.props_codec component.Component.machine)
       (fun (codec : _ Codec.t) -> codec.decode json
     )
   in
-  { memory; props; props_of_json }
+  { memory; runtime; props_of_json }
 
-let set_props handle props = handle.props props
+let set_props handle props = Runtime.send handle.runtime (Props props)
+let stop handle = Runtime.send handle.runtime Stop
+let lifecycle handle = Runtime.state handle.runtime
 let view handle = view handle.memory
 let html handle = html handle.memory
 let paints handle = paints handle.memory
@@ -1972,7 +1962,7 @@ let drive handle (record : Transition.t) =
       | Some json -> (
           match handle.props_of_json json with
           | Ok props ->
-              Ok (handle.props props)
+              Ok (set_props handle props)
           | Error error ->
               not_realisable ("the props do not decode: " ^ error)
         )

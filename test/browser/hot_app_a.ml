@@ -183,4 +183,4 @@ let app =
 let mount root =
   Machine.register_codecs Counter.machine ~state:Counter.state_codec ();
   Machine.register_codecs Draft.machine ~state:Draft.state_codec ();
-  Silica_browser.mount_app ~root app
+  Silica_browser.mount_app ~root:(Silica_browser.by_id root) app

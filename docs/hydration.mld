@@ -124,7 +124,8 @@ The browser entry lists the Live components of the page:
 
 From [example/client/client_main.ml]:
 {@ocaml skip[
-  mount_app ~root:"silica-root"
+let app =
+  mount_app ~root:(by_id "silica-root")
     ~lives:[ Live Example_counter.live ]
     Example_app.app
 ]}

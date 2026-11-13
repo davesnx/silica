@@ -127,28 +127,12 @@ let outcome_json (outcome : Handoff.outcome) =
        )
     )
 
-let remove_portals : unit -> unit =
-  [%mel.raw
-    {|function () {
-  document.querySelectorAll("[data-silica-portal]").forEach(function (portal) { portal.remove() });
-}|}]
-
-let cleanups : (unit -> unit) list ref = ref []
-
-let run_cleanups () =
-  let all = !cleanups in
-  cleanups := [];
-  List.iter (fun cleanup -> cleanup ()) all
-
-let close_sessions () =
-  let all = List.rev !Hot_hook.sessions in
-  Hot_hook.sessions := [];
+let islands () =
   List.filter_map
-    (fun (node, close) ->
-      close ();
+    (fun (node, _) ->
       match
-        ( Dom.opt (Dom.get_attribute node "data-silica-live"),
-          Dom.opt (Dom.get_property node "__silica_instance")
+        ( Dom_bindings.opt (Dom_bindings.get_attribute node "data-silica-live"),
+          Dom_bindings.opt (Dom_bindings.get_property node "__silica_instance")
         )
       with
       | Some channel, Some instance ->
@@ -156,7 +140,7 @@ let close_sessions () =
       | _ ->
           None
     )
-    all
+    (List.rev !Hot_hook.sessions)
 
 type router =
   | Router : 'r Router.routes * (unit, 'r, Router.event) Machine.t -> router
@@ -201,89 +185,15 @@ let resume () =
           };
       Some (hook, outcome)
 
-let guarded (platform : Instance.message Platform.t) =
-  let halted = ref false in
-  let timers = Hashtbl.create 16 and next_timer = ref 0 in
-  let sockets = ref [] in
-  let renderers = ref [] in
-  let io = platform.io in
-  let schedule ms run =
-    incr next_timer;
-    let key = !next_timer in
-    let cancel =
-      io.schedule ms (fun () ->
-          Hashtbl.remove timers key;
-          if not !halted then run ()
-      )
-    in
-    Hashtbl.replace timers key cancel;
-    fun () ->
-      Hashtbl.remove timers key;
-      cancel ()
-  in
-  let post ~path ~body answer =
-    io.post ~path ~body (fun result -> if not !halted then answer result)
-  in
-  let connect (events : Platform.socket_events) =
-    let alive () = not !halted in
-    let socket =
-      io.connect
-        {
-          on_open = (fun () -> if alive () then events.on_open ());
-          on_message = (fun text -> if alive () then events.on_message text);
-          on_close = (fun code -> if alive () then events.on_close code);
-          on_error = (fun () -> if alive () then events.on_error ());
-        }
-    in
-    sockets := socket :: !sockets;
-    socket
-  in
-  let renderer ~on_route ~dispatch =
-    let sources = Hashtbl.create 8 in
-    let inner : Instance.message Renderer.t =
-      platform.renderer ~on_route ~dispatch:(fun event ->
-          if not !halted then dispatch event
-      )
-    in
-    renderers := (inner, sources) :: !renderers;
-    {
-      inner with
-      run = (fun action -> if not !halted then inner.run action);
-      start_held =
-        (fun ~id source ->
-          Hashtbl.replace sources id ();
-          inner.start_held ~id source
-        );
-      stop_held =
-        (fun ~id ->
-          Hashtbl.remove sources id;
-          inner.stop_held ~id
-        );
-    }
-  in
-  let halt () =
-    halted := true;
-    let cancels = Hashtbl.fold (fun _ cancel all -> cancel :: all) timers [] in
-    Hashtbl.reset timers;
-    List.iter (fun cancel -> cancel ()) cancels;
-    List.iter (fun (socket : Platform.socket) -> socket.close 1000) !sockets;
-    sockets := [];
-    List.iter
-      (fun ((renderer : Instance.message Renderer.t), sources) ->
-        let ids = Hashtbl.fold (fun id () all -> id :: all) sources [] in
-        Hashtbl.reset sources;
-        List.iter (fun id -> renderer.stop_held ~id) ids
-      )
-      !renderers
-  in
-  ({ platform with renderer; io = { io with schedule; post; connect } }, halt)
-
 let remove_answers () =
-  match Dom.opt (Dom.get_by_id Dom.document Answers.script_id) with
+  match
+    Dom_bindings.opt
+      (Dom_bindings.get_by_id Dom_bindings.document Answers.script_id)
+  with
   | Some script ->
       Option.iter
-        (fun parent -> Dom.remove_child parent script)
-        (Dom.opt (Dom.parent_node script))
+        (fun parent -> Dom_bindings.remove_child parent script)
+        (Dom_bindings.opt (Dom_bindings.parent_node script))
   | None ->
       ()
 
@@ -291,27 +201,32 @@ let after_mount : (unit -> unit) -> unit =
   [%mel.raw
     {|function (run) { Promise.resolve().then(function () { run() }) }|}]
 
-let wrap platform create =
-  let resumed = resume () in
+let running = ref (fun () -> [])
+let resumed = ref None
+
+let wrap create =
+  resumed := resume ();
   Option.iter
     (fun (hook, _) ->
       Hot_hook.pending := Some hook;
       remove_answers ()
     )
-    resumed;
-  let platform, halt = guarded platform in
-  let tree = ref None in
+    !resumed;
+  fun ~dev ~on_error props ->
+    let created = create ~dev ~on_error props in
+    (running := fun () -> Instance.running created);
+    created
+
+let started suspend =
   publish (fun () ->
       Inspect_target.stop ();
-      halt ();
-      run_cleanups ();
-      remove_portals ();
-      let islands = close_sessions () in
+      let islands = islands () in
       let handoff =
         Handoff.of_running ~codecs ~islands
           ~url:(Dom_renderer.current_url ())
-          (match !tree with Some tree -> Instance.running tree | None -> [])
+          (!running ())
       in
+      suspend ();
       encode
         (Array.of_list (List.map entry_of handoff.instances))
         (Array.of_list handoff.islands)
@@ -325,13 +240,7 @@ let wrap platform create =
           Inspect_target.resumed outcome
       )
     )
-    resumed;
-  ( platform,
-    fun ~dev ~on_error ->
-      let created = create ~dev ~on_error in
-      tree := Some created;
-      created
-  )
+    !resumed
 
 let () =
   Router.on_make :=
@@ -339,5 +248,4 @@ let () =
       made =
         (fun routes machine -> routers := Router (routes, machine) :: !routers);
     };
-  Dom_renderer.cleanups := Some (fun cleanup -> cleanups := cleanup :: !cleanups);
-  Hot_hook.current := Some { wrap; observe = Inspect_target.observe }
+  Hot_hook.current := Some { wrap; started; observe = Inspect_target.observe }

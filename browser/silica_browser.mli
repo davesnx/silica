@@ -3,9 +3,65 @@
 
     Mounting adopts the HTML that the server painted into the root element
     instead of building it again: the first paint walks the existing nodes
-    beside the view and keeps them (see {!mount}). *)
+    beside the view and keeps them (see {!mount}).
+
+    The host gives the element to mount into. A mount returns an {!type-app}:
+    the host stops it or gives it new props with {!send} (see
+    {!Silica.Runtime.type-state} for the states of its lifecycle). *)
 
 open Silica
+
+(** {1 Document}
+
+    What lies outside the element of an app and has no node in it: the title,
+    the cookies, the attributes of [<html>] and the scroll of the page. An app
+    reaches them only through its document. A host that owns one of these, such
+    as a web view that shows the title in its own bar, gives a document of its
+    own. *)
+
+module Document : sig
+  (** What an app asks of its document. The first three come from the actions of
+      the same names (see {!Silica.Action.t}). The locks come from each
+      {!Silica.Host.scroll_lock} that runs. *)
+  type request =
+    | Set_title of string
+    | Set_cookie of { name : string; value : string; max_age : int }
+    | Set_document_attribute of { name : string; value : string option }
+        (** Set the attribute of [<html>], or remove it with [None]. *)
+    | Lock_scroll  (** Stop the scroll of the page. *)
+    | Unlock_scroll  (** Let the page scroll again as before the lock. *)
+
+  type t
+  (** A document: a small machine with one port. Its state is the number of
+      scroll locks that run. It gives each request to the port, but
+      [Lock_scroll] only when the first lock starts and [Unlock_scroll] only
+      when the last lock stops. Mounts that share a document share its locks. *)
+
+  val make : (request -> unit) -> t
+  (** A document whose port is the function. [Document.make ignore] refuses
+      every request:
+
+      {[
+        let document =
+          Silica_browser.Document.make (function
+            | Set_title title ->
+                Bridge.set_title title
+            | request ->
+                Silica_browser.Document.apply request
+            )
+      ]} *)
+
+  val apply : request -> unit
+  (** Carry out the request on the document of the browser: [document.title],
+      [document.cookie] (with [Path=/] and [SameSite=Lax]), the attribute of
+      [document.documentElement], and its [overflow] (with a padding for the
+      width of the scroll bar). *)
+
+  val browser : t
+  (** The document of the browser: [make apply]. The default of each mount. *)
+end
+
+(** {1 Mounting} *)
 
 type live_config = Live_client.config = { ping_ms : int; pong_ms : int }
 (** Times of the live heartbeat, in milliseconds. [ping_ms] is the wait before
@@ -25,17 +81,47 @@ type live =
           component with no instance tree: that view must not hold component
           nodes. *)
 
+type 'p app
+(** A mounted app whose root has props ['p]. *)
+
+val send : 'p app -> 'p Runtime.event -> unit
+(** Give the app an event of its lifecycle (see {!Silica.Runtime.type-event}):
+
+    {[
+      let app =
+        Silica_browser.mount_with_props ~props:"Ada" ~root Hello.component
+      in
+      Silica_browser.send app (Props "Grace");
+      Silica_browser.send app Stop
+    ]}
+
+    [Stop] releases all that the app holds: its listeners on the root, the scope
+    and the window, its timers, calls, preloads and Live sockets, its held
+    resources (focus trap, scroll lock, observers, key and outside press
+    listeners, blocks), its portals, islands and route announcer, and every node
+    it painted in the root. The root element stays, without [data-silica-ready].
+    A rated handler whose delay runs at that time fires once, and its event is
+    dropped. *)
+
+val state : 'p app -> Runtime.state
+(** The state of the lifecycle of the app now. *)
+
+val by_id : string -> Dom.element
+(** The element with the id in the document. Raises [Failure] when there is
+    none: [Silica_browser.mount ~root:(Silica_browser.by_id "silica-root")]. *)
+
 val mount :
   ?live_config:live_config ->
   ?on_session_gone:(unit -> unit) ->
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
   ?hydrate:bool ->
+  ?document:Document.t ->
   ?lives:live list ->
   ?observe:Instance.observer ->
-  root:string ->
+  root:Dom.element ->
   (unit, 's, 'e) Component.t ->
-  unit
+  unit app
 (** [on_session_gone] runs when a Live socket closes with
     {!Silica.Protocol.close_session}: the server no longer knows the session,
     for example after a restart. The default reloads the page once, which gets a
@@ -45,10 +131,22 @@ val mount :
     in {!mount_app} and {!mount_live}.
 
     Mount the component as the root of an instance tree and paint it into the
-    element with the given id. Child components in its view run their own
-    machines while they are rendered. Events raised while one is handled are
-    queued. [Navigate] and [Replace] change the history but deliver nothing, as
-    the root has no URL event. [Set_title] sets [document.title].
+    [root] element. Child components in its view run their own machines while
+    they are rendered. Events raised while one is handled are queued. [Navigate]
+    and [Replace] change the history but deliver nothing, as the root has no URL
+    event. [Set_title], [Set_cookie], [Set_document_attribute] and each
+    [Scroll_lock] resource go to [document] (default {!Document.browser}).
+
+    Scope. The root can be in the document, in a shadow root or in a tree that
+    is not in the document. Its scope is [root.getRootNode()]. The app looks up
+    its refs only in the root and in its own portals, so two apps in one
+    document do not see each other's refs. The key, outside press, dismiss and
+    focus trap listeners are on the scope, and focus is read from the scope. A
+    portal with no target goes to the end of the body of the document, of the
+    shadow root, or of the top node of the tree; a root with no parent has
+    nowhere to put it, and the portal is not painted. A portal target is looked
+    up by id in the scope. The route announcer of {!mount_app} goes in the same
+    place as a portal.
 
     After the first paint the root element gets the attribute
     [data-silica-ready]: from then on the page reacts to input. Tests wait for
@@ -110,7 +208,8 @@ val recorder :
 
     {[
       let recorder = Silica_browser.recorder ~build:"1.4.2" () in
-      Silica_browser.mount_app ~root:"app"
+      Silica_browser.mount_app
+        ~root:(Silica_browser.by_id "app")
         ~observe:(Trace.Recorder.observer recorder)
         app
     ]}
@@ -120,26 +219,44 @@ val recorder :
     value, not the recorder, so an app that makes no recorder carries no
     recorder code. *)
 
+val mount_with_props :
+  ?live_config:live_config ->
+  ?on_session_gone:(unit -> unit) ->
+  ?dev:bool ->
+  ?on_error:(exn -> Node.error -> unit) ->
+  ?hydrate:bool ->
+  ?document:Document.t ->
+  ?lives:live list ->
+  ?observe:Instance.observer ->
+  props:'p ->
+  root:Dom.element ->
+  ('p, 's, 'e) Component.t ->
+  'p app
+(** Like {!mount}, for a root component with props. [send app (Props p)] gives
+    it new props; "Try again" on the error page starts it with the last props.
+*)
+
 val mount_app :
   ?live_config:live_config ->
   ?on_session_gone:(unit -> unit) ->
   ?dev:bool ->
   ?on_error:(exn -> Node.error -> unit) ->
   ?hydrate:bool ->
+  ?document:Document.t ->
   ?lives:live list ->
   ?observe:Instance.observer ->
-  root:string ->
+  root:Dom.element ->
   (Url.t -> (unit, 's, Router.event) Component.t) ->
-  unit
+  unit app
 (** Mount the app component, made for the current URL (see [Router.make]), and
-    paint it into the element with the given id; hydration, answers and errors
-    work as in {!mount}. A press on [a[data-silica-link]] pushes a history entry
-    and sends [Url_changed]; when the anchor has [data-silica-replace], the
-    press replaces the entry instead. A press with a modifier key, another
-    button, or on an anchor with [target] or [download] is left to the browser.
-    [popstate] and the actions [Navigate] and [Replace] send [Url_changed] too.
-    A page sets [document.title] with the action [Set_title]; [Set_status] is
-    ignored.
+    paint it into the [root] element; hydration, answers, errors, the scope and
+    the document work as in {!mount}. A press on [a[data-silica-link]] pushes a
+    history entry and sends [Url_changed]; when the anchor has
+    [data-silica-replace], the press replaces the entry instead. A press with a
+    modifier key, another button, or on an anchor with [target] or [download] is
+    left to the browser. [popstate] and the actions [Navigate] and [Replace]
+    send [Url_changed] too. A page sets the title with the action [Set_title];
+    [Set_status] is ignored.
 
     Blocks. While a {!Silica.Action.Block} resource runs, a link press,
     [Navigate], [Replace], back and forward change nothing and raise
@@ -163,8 +280,9 @@ val mount_app :
     that change are done, the host moves focus, with no scroll, to the first
     element in the root with [data-silica-route-focus], or else to the root; it
     gives the element [tabindex="-1"] when it has no [tabindex]. A [Focus]
-    action after the change cancels this move. A polite live region
-    ([data-silica-announcer], added to the body) then reads the document title.
+    action after the change cancels this move. A polite live region of the app
+    ([data-silica-announcer], added where a portal goes; see Scope in {!mount})
+    then reads the document title.
 
     Preload. The pointer entering, or focus on, an anchor with
     [data-silica-preload="intent"] sends {!Silica.Router.event.Preload} with its
@@ -176,9 +294,10 @@ val mount_live :
   ?live_config:live_config ->
   ?on_session_gone:(unit -> unit) ->
   ?dev:bool ->
-  root:string ->
+  ?document:Document.t ->
+  root:Dom.element ->
   ('s, 'e) Live.t ->
-  unit
+  unit app
 (** Connect to [/_silica/live] and render the latest server state with the
     component's view. The hello names the channel and an instance id that the
     host makes once and keeps across reconnects. The server HTML in the root
@@ -197,7 +316,10 @@ val mount_live :
     pong in time (see {!live_config}). It does not connect again after a fatal
     close code ({!Silica.Protocol.close_version}, {!Silica.Protocol.close_csrf},
     {!Silica.Protocol.close_unknown}) or an [Error] message; the page keeps its
-    last render and the console logs it. *)
+    last render and the console logs it.
+
+    [Stop] closes the socket and removes the nodes. The app never fails, and
+    [Props] does nothing. *)
 
 val mount_with_renderer :
   ?dev:bool ->
@@ -206,7 +328,7 @@ val mount_with_renderer :
   ?observe:Instance.observer ->
   renderer:Instance.message Renderer.make ->
   (unit, 's, 'e) Component.t ->
-  unit
+  unit app
 (** Run the component with any {!Silica.Renderer} in place of the DOM renderer,
     and the browser clock and network. The runtime is {!Silica.Runtime}, the one
     that {!mount} uses. *)

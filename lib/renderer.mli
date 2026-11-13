@@ -26,6 +26,11 @@ type 'e t = {
   stop_held : id:string -> unit;
       (** Stop the held resource. Stopping an id that is not running does
           nothing. *)
+  release : unit -> unit;
+      (** Let go of all that the renderer holds: stop every held resource,
+          remove its listeners, its portals and every other node it added
+          outside the painted view, and take no more input. The painted view
+          stays. The host calls it once, when it stops. *)
 }
 
 type 'e make = dispatch:('e -> unit) -> 'e t
