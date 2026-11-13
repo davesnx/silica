@@ -17,7 +17,7 @@ type Response =
 
 type Notification = { jsonrpc: "2.0"; method: string };
 
-const executable = process.argv[2] ?? "_build/default/linear/mcp/linear_mcp.exe";
+const executable = process.argv[2] ?? "_build/default/example/mcp/example_mcp.exe";
 const server = spawn(executable, [], { stdio: ["pipe", "pipe", "inherit"] });
 const lines = createInterface({ input: server.stdout });
 
@@ -88,14 +88,7 @@ function text(result: ToolResult): string {
   return result.content.map((item) => item.text).join("\n");
 }
 
-const createTools = [
-  "new_issue.title",
-  "new_issue.description",
-  "new_issue.status_picked",
-  "new_issue.priority_picked",
-  "new_issue.submit",
-  "new_issue.cancel",
-];
+const editTools = ["edit.draft", "edit.save", "edit.leave", "edit.stay"];
 
 async function main(): Promise<void> {
   const initialized = await request("initialize", {
@@ -114,52 +107,81 @@ async function main(): Promise<void> {
   send({ jsonrpc: "2.0", method: "notifications/initialized" });
   await request("ping");
 
-  const onList = await listTools();
+  const onHome = await listTools();
   expect(
-    onList.includes("navigate") && onList.includes("read") && !createTools.some((tool) => onList.includes(tool)),
-    "the list page offers navigate and read, and no create tool",
+    onHome.includes("navigate") &&
+      onHome.includes("read") &&
+      onHome.includes("vote.cast") &&
+      !editTools.some((tool) => onHome.includes(tool)),
+    "the home page offers navigate, read and vote.cast, and no edit tool",
   );
 
-  const early = await call("new_issue.title", { title: "Too early" });
-  expect(early.isError && text(early).includes("closed"), "a create tool while the dialog is closed is refused");
+  const early = await call("edit.draft", { text: "Too early" });
+  expect(early.isError && text(early).includes("no instance of edit runs"), "an edit tool on the home page is refused");
 
   const refused = await call("navigate", { url: "/nowhere/at/all" });
   expect(refused.isError && text(refused).includes("not published"), "navigate to the Not_found route is refused");
 
-  const opened = await call("navigate", { url: "/?new=true" });
-  expect(!opened.isError && text(opened).includes("create-issue at router/0.2:create-issue: editing"), "navigate opens the dialog: create-issue is editing");
-  expect(notifications.includes("notifications/tools/list_changed"), "the server says the tool list changed");
+  const locked = await call("navigate", { url: "/locked" });
+  expect(locked.isError && text(locked).includes("/locked, which is not published"), "navigate to the Locked route is refused");
 
-  const inDialog = await listTools();
-  expect(createTools.every((tool) => inDialog.includes(tool)), "the dialog offers every create tool");
+  const notificationsBeforeVote = notifications.length;
+  const voted = await call("vote.cast");
+  expect(
+    !voted.isError && text(voted).includes("Before:\n  vote at router/:home/4:vote: idle\nAfter:\n  vote at router/:home/4:vote: ready"),
+    "vote.cast gets the answer of the real vote handler: vote is ready",
+  );
 
-  const badStatus = await call("new_issue.status_picked", { status: "Someday" });
-  expect(badStatus.isError && text(badStatus).includes("do not decode"), "a status that is not a label does not decode");
+  const afterVote = await listTools();
+  expect(notifications.length > notificationsBeforeVote, "the server says the tool list changed after the vote");
+  expect(!afterVote.includes("vote.cast"), "vote.cast left the list");
 
-  const empty = await call("new_issue.submit");
-  expect(!empty.isError && text(empty).includes("Title is required"), "a submit with no title stays in editing with the error");
+  const again = await call("vote.cast");
+  expect(again.isError && text(again).includes("in the state ready"), "vote.cast in the state ready is refused");
 
-  const titled = await call("new_issue.title", { title: "Made by an agent" });
-  expect(!titled.isError && text(titled).includes('value="Made by an agent"'), "the title shows in the field");
+  const notificationsBeforeEdit = notifications.length;
+  const opened = await call("navigate", { url: "/edit" });
+  expect(!opened.isError && text(opened).includes("After:\n  edit at router/:edit: clean"), "navigate opens the edit page: edit is clean");
 
-  await call("new_issue.priority_picked", { priority: "High" });
+  const onEdit = await listTools();
+  expect(notifications.length > notificationsBeforeEdit, "the server says the tool list changed");
+  expect(editTools.every((tool) => onEdit.includes(tool)), "the edit page offers every edit tool");
 
-  const notificationsBefore = notifications.length;
-  const submitted = await call("new_issue.submit");
-  expect(!submitted.isError && text(submitted).includes("create-issue at router/0.2:create-issue: closed"), "submit creates the issue and closes the dialog");
-  expect(notifications.length > notificationsBefore, "the server says the tool list changed after the submit");
+  const badDraft = await call("edit.draft", { text: 5 });
+  expect(badDraft.isError && text(badDraft).includes("do not decode"), "a draft that is not a string does not decode");
 
-  const afterSubmit = await listTools();
-  expect(!createTools.some((tool) => afterSubmit.includes(tool)), "the create tools left the list");
+  const ignored = await call("edit.leave");
+  expect(ignored.isError && text(ignored).includes("in the state clean ignores this edit.leave event"), "edit.leave in the state clean is refused");
 
-  const issue = await call("navigate", { url: "/issue/31" });
-  expect(!issue.isError && text(issue).includes("Made by an agent"), "the new issue ENG-31 opens from the store");
+  const drafted = await call("edit.draft", { text: "Made by an agent" });
+  expect(
+    !drafted.isError && text(drafted).includes("edit at router/:edit: dirty") && text(drafted).includes('value="Made by an agent"'),
+    "the draft shows in the field: edit is dirty",
+  );
+
+  const held = await call("navigate", { url: "/about" });
+  expect(
+    !held.isError && text(held).includes("edit at router/:edit: asking") && text(held).includes("URL: /edit\n"),
+    "navigate away from the draft is held: edit is asking and the URL stays /edit",
+  );
+
+  const left = await call("edit.leave");
+  expect(!left.isError && text(left).includes("URL: /about\n"), "edit.leave drops the draft and opens /about");
+
+  const afterLeave = await listTools();
+  expect(!editTools.some((tool) => afterLeave.includes(tool)), "the edit tools left the list");
+
+  const item = await call("navigate", { url: "/item/3" });
+  expect(
+    !item.isError && text(item).includes("item at router/:item: loaded") && text(item).includes('heading "Item 3"') && text(item).includes('"$4.00"'),
+    "navigate to /item/3 gets the answer of the real item handler: Item 3 at $4.00",
+  );
 
   const read = await call("read");
-  expect(!read.isError && text(read).includes("URL: /issue/31"), "read gives the URL");
+  expect(!read.isError && text(read).includes("URL: /item/3"), "read gives the URL");
 
-  const gone = await call("new_issue.submit");
-  expect(gone.isError, "submit on the issue page is refused");
+  const gone = await call("edit.save");
+  expect(gone.isError, "edit.save on the item page is refused");
 }
 
 main()

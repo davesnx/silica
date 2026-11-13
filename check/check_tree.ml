@@ -40,22 +40,46 @@ type ('ev, 'e) resolution = {
   bindings : (string * 'ev binding) list;
 }
 
-type ('ev, 'e) effects = {
-  mutable pending : 'ev list;
+type ('s, 'ev, 'e) effects = {
+  mutable pending : (string option * 'ev) list;
   mutable actions : 'ev Action.host list;
   mutable navigation : 'e Action.host list;
   mutable root_actions : 'e Action.host list;
   mutable remounts : string list;
+  mutable delivered : 'ev list;
+  mutable log : ('s, 'ev) Check_model.part list option;
 }
 
-let effects () =
+let effects ?(logged = false) () =
   {
     pending = [];
     actions = [];
     navigation = [];
     remounts = [];
     root_actions = [];
+    delivered = [];
+    log =
+      ( if logged then
+          Some []
+        else
+          None
+      );
   }
+
+let logging effects = Option.is_some effects.log
+let log effects part = effects.log <- Option.map (List.cons part) effects.log
+let logged effects = List.rev (Option.value effects.log ~default:[])
+
+let encoded codec value =
+  Result.to_option
+    (Result.map (fun (codec : _ Codec.t) -> codec.encode value) codec)
+
+let parent_of instance =
+  match String.rindex_opt instance '/' with
+  | Some slash ->
+      String.sub instance 0 slash
+  | None ->
+      ""
 
 let rec restrict_attr : type a b.
     (a -> b option) -> a Node.attr -> b Node.attr option =
@@ -182,6 +206,70 @@ let descends ~from instance =
   String.length instance > String.length prefix
   && String.sub instance 0 (String.length prefix) = prefix
 
+type expansion = {
+  expand :
+    'p 's 'e.
+    instance:string -> ('p, 's, 'e) Component.t -> 'p -> 'e Node.t option;
+}
+
+let expand expansion ~owner node =
+  let rec walk : type x. owner:string -> x Node.t -> segment list -> x Node.t =
+   fun ~owner node path ->
+    let walk_all children =
+      List.mapi
+        (fun index child -> walk ~owner child (Index index :: path))
+        children
+    in
+    match Node.view node with
+    | Node.Text _ ->
+        node
+    | Node.Element (tag, attrs, children) ->
+        Node.element tag attrs (walk_all children)
+    | Node.List children ->
+        Node.list (walk_all children)
+    | Node.Keyed (key, child) ->
+        Node.keyed key (walk ~owner child (Key key :: path))
+    | Node.Chunk (Node.Chunk_view { chunk; loading; render }) -> (
+        match Chunk.get chunk with
+        | Some value ->
+            walk ~owner (render value) (Index 0 :: path)
+        | None ->
+            walk ~owner loading (Index 1 :: path)
+      )
+    | Node.Portal (target, children) ->
+        Node.portal ?target (walk_all children)
+    | Node.Boundary { fallback; body } ->
+        Node.boundary ~fallback (walk ~owner body (Index 0 :: path))
+    | Node.Component child -> (
+        let slot =
+          match (child.key, path) with
+          | Some key, _ :: parent ->
+              Key key :: parent
+          | Some key, [] ->
+              [ Key key ]
+          | None, _ ->
+              path
+        in
+        let instance =
+          instance_name ~owner slot (Machine.id child.component.machine)
+        in
+        match expansion.expand ~instance child.component child.props with
+        | None ->
+            node
+        | Some view -> (
+            let resolved =
+              restrict (fun _ -> None) (walk ~owner:instance view [])
+            in
+            match child.key with
+            | Some key ->
+                Node.keyed key resolved
+            | None ->
+                resolved
+          )
+      )
+  in
+  walk ~owner node []
+
 let typed_event : type p s e.
     (p, s, e) runtime -> Check_model.child_event -> e option =
  fun runtime (Child_event { witness; event; _ }) ->
@@ -306,7 +394,7 @@ let joint (type n s ev e)
       actions
   in
   let emit_child : type p r c.
-      (ev, e) effects ->
+      (s, ev, e) effects ->
       (p, r, c) runtime ->
       string ->
       c Action.host list ->
@@ -327,9 +415,78 @@ let joint (type n s ev e)
     if remounts actions then
       effects.remounts <- model.machine :: effects.remounts
   in
-  let queue effects events = effects.pending <- effects.pending @ events in
-  let resolve (effects : (ev, e) effects) (node : n joint) : (ev, e) resolution
-      =
+  let child_part : type p r c.
+      (p, r, c) runtime ->
+      string ->
+      Check_model.kind ->
+      from:r option ->
+      (p, r, c) Check_model.world ->
+      Machine.how ->
+      c option ->
+      c Action.host list ->
+      (s, ev) Check_model.part =
+   fun runtime instance kind ~from world how event actions ->
+    let machine = runtime.machine in
+    {
+      Check_model.instance;
+      machine = Machine.id machine;
+      from =
+        (match from with Some from -> Machine.name machine from | None -> "");
+      target = Machine.name machine world.s;
+      how;
+      kind;
+      event = Option.map (lift_child runtime instance) event;
+      root = None;
+      props =
+        ( match kind with
+        | Check_model.Start | Check_model.New_props ->
+            encoded (Machine.props_codec machine) world.props
+        | Check_model.Own | Check_model.Reaction _ | Check_model.End ->
+            None
+        );
+      snapshot = encoded (Machine.state_codec machine) world.s;
+      actions = List.map Transition.describe actions;
+    }
+  in
+  let root_part kind ~from root how event actions : (s, ev) Check_model.part =
+    {
+      instance = model.machine;
+      machine = model.machine;
+      from = (match from with Some from -> model.name from | None -> "");
+      target = model.name root;
+      how;
+      kind;
+      event;
+      root = Some (model.snapshot root);
+      props = None;
+      snapshot = None;
+      actions = List.map Transition.describe actions;
+    }
+  in
+  let end_child : type p r c.
+      (s, ev, e) effects -> (p, r, c) runtime -> running -> unit =
+   fun effects runtime entry ->
+    let world = world_of runtime entry in
+    let actions = Machine.exit_with_props runtime.machine world.props world.s in
+    emit_child effects runtime entry.instance actions;
+    if logging effects then
+      log effects
+        (child_part runtime entry.instance Check_model.End ~from:(Some world.s)
+           world Machine.Kept None actions
+        )
+  in
+  let queue effects ~sender events =
+    effects.pending <-
+      effects.pending @ List.map (fun event -> (sender, event)) events
+  in
+  let resolve (effects : (s, ev, e) effects) ~order (node : n joint) :
+      (ev, e) resolution =
+    let rank instance =
+      ( Option.value ~default:max_int
+          (List.find_index (String.equal instance) order),
+        instance
+      )
+    in
     let removed =
       List.filter
         (fun entry ->
@@ -351,6 +508,36 @@ let joint (type n s ev e)
       let frozen = Array.make count 0 in
       let running index =
         List.length (List.filter (fun entry -> entry.listed = index) !claimed)
+      in
+      let finish owner =
+        let unclaimed (entry : running) =
+          not
+            (List.exists
+               (fun (taken : running) -> taken.instance = entry.instance)
+               !claimed
+            )
+        in
+        let rec ended owner =
+          List.concat_map
+            (fun (entry : running) -> ended entry.instance @ [ entry ])
+            (List.sort
+               (fun (first : running) (second : running) ->
+                 compare (rank first.instance) (rank second.instance)
+               )
+               (List.filter
+                  (fun (entry : running) ->
+                    parent_of entry.instance = owner && unclaimed entry
+                  )
+                  old
+               )
+            )
+        in
+        List.iter
+          (fun (entry : running) ->
+            let (Runtime runtime) = runtimes.(entry.listed) in
+            end_child effects runtime entry
+          )
+          (ended owner)
       in
       let rec walk : type x.
           lift:(x -> ev) ->
@@ -466,7 +653,7 @@ let joint (type n s ev e)
             in
             if existing = None && room <= 0 then (
               frozen.(runtime.index) <- frozen.(runtime.index) + 1;
-              let snapshot, _ = Machine.start machine child.props in
+              let snapshot, _ = Machine.start_with_props machine child.props in
               keyed
                 (walk
                    ~lift:(lift_child runtime instance)
@@ -480,35 +667,50 @@ let joint (type n s ev e)
                 | Some entry ->
                     let world = world_of runtime entry in
                     if world.props <> child.props then (
-                      let snapshot, actions, _ =
+                      let snapshot, actions, how =
                         Check_model.change_props runtime.recorder machine world
                           child.props
                       in
                       emit_child effects runtime instance actions;
-                      ( List.fold_left
+                      let changed =
+                        List.fold_left
                           (Check_model.host_action runtime.host)
                           { world with s = snapshot; props = child.props }
-                          actions,
-                        entry.final_sent
-                      )
+                          actions
+                      in
+                      if logging effects then
+                        log effects
+                          (child_part runtime instance Check_model.New_props
+                             ~from:(Some world.s) changed how None actions
+                          );
+                      (changed, entry.final_sent)
                     ) else
                       (world, entry.final_sent)
                 | None ->
-                    let snapshot, actions = Machine.start machine child.props in
+                    let snapshot, actions =
+                      Machine.start_with_props machine child.props
+                    in
                     Check_model.started runtime.recorder machine snapshot;
                     Check_model.see runtime.recorder machine child.props
                       snapshot;
                     emit_child effects runtime instance actions;
-                    ( List.fold_left
+                    let started =
+                      List.fold_left
                         (Check_model.host_action runtime.host)
                         (Check_model.empty_world child.props snapshot)
-                        actions,
-                      false
-                    )
+                        actions
+                    in
+                    if logging effects then
+                      log effects
+                        (child_part runtime instance Check_model.Start
+                           ~from:None started Machine.Kept None actions
+                        );
+                    (started, false)
               in
               let final_sent =
                 if (not final_sent) && Machine.is_final machine world.s then (
-                  queue effects (List.map lift (child.on_final world.s));
+                  queue effects ~sender:(Some instance)
+                    (List.map lift (child.on_final world.s));
                   true
                 ) else
                   final_sent
@@ -528,6 +730,7 @@ let joint (type n s ev e)
                   (child.component.view world.props world.s)
                   []
               in
+              finish instance;
               bindings :=
                 ( instance,
                   Binding
@@ -549,6 +752,7 @@ let joint (type n s ev e)
       let view =
         walk ~lift:own ~owner:model.machine ~frozen:false own_view []
       in
+      finish model.machine;
       (own_view, view, List.rev !claimed, !bindings, frozen)
     in
     let rec settle old round =
@@ -592,11 +796,9 @@ let joint (type n s ev e)
                 )
             then
               let (Runtime runtime) = runtimes.(entry.listed) in
-              let world = world_of runtime entry in
-              emit_child effects runtime entry.instance
-                (Machine.exit runtime.machine world.props world.s)
+              end_child effects runtime entry
           )
-          node.running;
+          removed;
         {
           view;
           own;
@@ -612,7 +814,8 @@ let joint (type n s ev e)
     in
     settle start 0
   in
-  let step_child ~label effects (node : n joint) bindings child_event via =
+  let step_child ~label ~kind effects (node : n joint) bindings child_event via
+      =
     let (Check_model.Child_event { instance; _ }) = child_event in
     match
       ( List.find_opt
@@ -627,6 +830,7 @@ let joint (type n s ev e)
             (node, Machine.Unhandled)
         | Some event ->
             let runtime = binding.runtime in
+            let from = (world_of runtime entry).s in
             let world = Check_model.consume (world_of runtime entry) via in
             let snapshot, actions, how =
               Check_model.send ?finished:(Check_model.finished via) ~label
@@ -639,17 +843,24 @@ let joint (type n s ev e)
                 actions
             in
             emit_child effects runtime instance actions;
+            if logging effects then
+              log effects
+                (child_part runtime instance kind ~from:(Some from) world how
+                   (Some event) actions
+                );
             let final_sent =
               match how with
               | Machine.Unhandled ->
                   entry.final_sent
               | Machine.Kept | Machine.Entered ->
-                  queue effects (binding.output event snapshot);
+                  queue effects ~sender:(Some instance)
+                    (binding.output event snapshot);
                   if
                     (not entry.final_sent)
                     && Machine.is_final runtime.machine snapshot
                   then (
-                    queue effects (binding.on_final snapshot);
+                    queue effects ~sender:(Some instance)
+                      (binding.on_final snapshot);
                     true
                   ) else
                     entry.final_sent
@@ -679,19 +890,30 @@ let joint (type n s ev e)
     | _ ->
         (node, Machine.Unhandled)
   in
-  let deliver effects (node : n joint) bindings event =
+  let deliver effects (node : n joint) bindings (sender, event) =
+    let kind =
+      match sender with
+      | Some sender ->
+          Check_model.Reaction { sender }
+      | None ->
+          Check_model.Own
+    in
     match out_of event with
     | Some child_event ->
         fst
           (step_child
              ~label:(fun () -> "message")
-             effects node bindings child_event Check_model.By_input
+             ~kind effects node bindings child_event Check_model.By_input
           )
     | None ->
-        let root, actions, _ =
+        effects.delivered <- event :: effects.delivered;
+        let root, actions, how =
           model.step node.root { event; via = Check_model.By_input }
         in
         emit_root effects actions;
+        if logging effects then
+          log effects
+            (root_part kind ~from:(Some node.root) root how (Some event) actions);
         { node with root }
   in
   let child_block (node : n joint) bindings =
@@ -702,7 +924,7 @@ let joint (type n s ev e)
             let world = world_of runtime entry in
             match
               Check_model.newest_block
-                (Machine.held runtime.machine world.props world.s)
+                (Machine.held_with_props runtime.machine world.props world.s)
             with
             | Some on_attempt ->
                 Some
@@ -723,12 +945,14 @@ let joint (type n s ev e)
         match effects.pending with
         | [] ->
             node
-        | event :: rest ->
+        | pending :: rest ->
             effects.pending <- rest;
-            drain (deliver effects node bindings event)
+            drain (deliver effects node bindings pending)
       in
       let node = drain node in
-      let resolution = resolve effects node in
+      let resolution =
+        resolve effects ~order:(List.rev_map fst bindings) node
+      in
       let node = { node with running = resolution.running } in
       if effects.pending = [] then
         (node, resolution)
@@ -754,7 +978,7 @@ let joint (type n s ev e)
                   (fun action ->
                     match model.tree.attempt_action node.root action with
                     | Some navigation ->
-                        queue effects [ attempt navigation ];
+                        queue effects ~sender:None [ attempt navigation ];
                         false
                     | None ->
                         true
@@ -778,7 +1002,7 @@ let joint (type n s ev e)
     | Some (_, resolution) ->
         resolution
     | None ->
-        let resolution = resolve (effects ()) node in
+        let resolution = resolve (effects ()) ~order:[] node in
         remember node resolution;
         resolution
   in
@@ -811,14 +1035,29 @@ let joint (type n s ev e)
            else
              invalid_arg "Check_tree: the actions of a step that is not recent"
   );
+  let begin_with effects (root, actions) =
+    emit_root effects actions;
+    if logging effects then
+      log effects
+        (root_part Check_model.Start ~from:None root Machine.Kept None actions);
+    settle effects { root; running = [] } []
+  in
   let start () =
     List.map
-      (fun (root, actions) ->
+      (fun started ->
         let effects = effects () in
-        emit_root effects actions;
-        let node, resolution = settle effects { root; running = [] } [] in
+        let node, resolution = begin_with effects started in
         remember node resolution;
         (node, returned `Start effects)
+      )
+      (model.start ())
+  in
+  let start_parts () =
+    List.map
+      (fun started ->
+        let effects = effects ~logged:true () in
+        ignore (begin_with effects started);
+        logged effects
       )
       (model.start ())
   in
@@ -866,7 +1105,7 @@ let joint (type n s ev e)
                   { Check_model.event = lift event; via = Check_model.By_input }
                 )
                 (Check_model.source_events
-                   (Machine.held runtime.machine world.props world.s)
+                   (Machine.held_with_props runtime.machine world.props world.s)
                 @ runtime.options.inputs world.s
                 )
               @ List.map
@@ -881,7 +1120,7 @@ let joint (type n s ev e)
     let resolution = resolved node in
     Hashtbl.replace roots node.root ();
     Check_rules.dedup
-      (model.enabled node.root resolution.own
+      (model.enabled node.root (restrict own_of view)
       @ ( match link with
         | Some link ->
             List.map
@@ -947,9 +1186,8 @@ let joint (type n s ev e)
     | None ->
         model.answer node.root move
   in
-  let step node (move : ev Check_model.move) =
+  let run_step effects node (move : ev Check_model.move) =
     let bindings = (resolved node).bindings in
-    let effects = effects () in
     let node, how =
       match out_of move.event with
       | Some child_event ->
@@ -958,7 +1196,7 @@ let joint (type n s ev e)
               Check_model.cause_label ~answer:(answer node move)
                 (cause node (resolved node).view move)
             )
-            effects node bindings child_event move.via
+            ~kind:Check_model.Own effects node bindings child_event move.via
       | None -> (
           match
             (model.tree.attempt node.root move.event, child_block node bindings)
@@ -971,26 +1209,114 @@ let joint (type n s ev e)
                       Check_model.cause_label ~answer:None
                         (cause node (resolved node).view move)
                     )
-                    effects node bindings child_event Check_model.By_input
+                    ~kind:Check_model.Own effects node bindings child_event
+                    Check_model.By_input
               | None ->
                   (node, Machine.Unhandled)
             )
           | _ ->
               let root, actions, how = model.step node.root move in
               emit_root effects actions;
+              if logging effects then
+                log effects
+                  (root_part Check_model.Own ~from:(Some node.root) root how
+                     (Some move.event) actions
+                  );
               ({ node with root }, how)
         )
     in
     let node, resolution = settle effects node bindings in
     remember node resolution;
+    (node, how)
+  in
+  let step node move =
+    let effects = effects () in
+    let node, how = run_step effects node move in
     (node, returned `Step effects, how)
   in
-  let state_of node instance =
-    match binding_of node instance with
-    | Some (entry, Binding { runtime; _ }) ->
-        Some (Machine.name runtime.machine (world_of runtime entry).s)
-    | None ->
-        None
+  let delivered node move =
+    let effects = effects () in
+    ignore (run_step effects node move);
+    List.rev effects.delivered
+  in
+  let parts node move =
+    let effects = effects ~logged:true () in
+    ignore (run_step effects node move);
+    logged effects
+  in
+  let states (node : n joint) =
+    let bindings = (resolved node).bindings in
+    List.filter_map
+      (fun (entry : running) ->
+        match List.assoc_opt entry.instance bindings with
+        | Some (Binding { runtime; _ }) ->
+            Some
+              {
+                Check_model.instance = entry.instance;
+                machine = Machine.id runtime.machine;
+                state = Machine.name runtime.machine (world_of runtime entry).s;
+              }
+        | None ->
+            None
+      )
+      node.running
+  in
+  let owner (node : n joint) =
+    let table =
+      lazy
+        (let resolution = resolved node in
+         let rec tag owner (node : ev Node.t) =
+           let owner =
+             match
+               List.find_opt
+                 (fun (_, Binding { subtree; _ }) -> subtree == node)
+                 resolution.bindings
+             with
+             | Some (instance, _) ->
+                 Some instance
+             | None ->
+                 owner
+           in
+           match Node.view node with
+           | Node.Element (name, attrs, children) ->
+               Node.element name
+                 ( match owner with
+                 | Some instance ->
+                     Node.String ("data-silica-owner", instance) :: attrs
+                 | None ->
+                     attrs
+                 )
+                 (List.map (tag owner) children)
+           | Node.List children ->
+               Node.list (List.map (tag owner) children)
+           | Node.Keyed (key, child) ->
+               Node.keyed key (tag owner child)
+           | Node.Portal (target, children) ->
+               Node.portal ?target (List.map (tag owner) children)
+           | Node.Boundary { fallback; body } ->
+               Node.boundary ~fallback (tag owner body)
+           | Node.Text _ | Node.Chunk _ | Node.Component _ ->
+               node
+         in
+         List.filter_map
+           (fun element ->
+             Option.map
+               (fun instance -> (Accessibility.path element, instance))
+               (Accessibility.attribute element "data-silica-owner")
+           )
+           (Accessibility.elements (tag None resolution.view))
+        )
+    in
+    fun path ->
+      Option.bind
+        (List.assoc_opt path (Lazy.force table))
+        (fun instance ->
+          List.find_opt
+            (fun (running : Check_model.running_state) ->
+              running.instance = instance
+            )
+            (states node)
+        )
   in
   let child_rules (node : n joint) _ event =
     let resolution = resolved node in
@@ -1058,6 +1384,9 @@ let joint (type n s ev e)
     snapshot = (fun node -> model.snapshot node.root);
     event_name;
     event_of = (fun event -> Some event);
+    delivered;
+    parts;
+    start_parts;
     cause;
     state_rules =
       (fun node view ->
@@ -1067,8 +1396,8 @@ let joint (type n s ev e)
               let (Runtime runtime) = runtimes.(entry.listed) in
               let world = world_of runtime entry in
               List.map
-                (Action.map_source (lift_child runtime entry.instance))
-                (Machine.held runtime.machine world.props world.s)
+                (Action.map_held (lift_child runtime entry.instance))
+                (Machine.held_with_props runtime.machine world.props world.s)
             )
             node.running
         in
@@ -1134,7 +1463,8 @@ let joint (type n s ev e)
             | None ->
                 None
           );
-        state_of;
+        states;
+        owner;
         rules = child_rules;
         inside =
           (fun node ->

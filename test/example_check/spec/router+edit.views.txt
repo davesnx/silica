@@ -51,7 +51,7 @@ state /edit, view 3
 path
   / -> /edit on open /edit, by the user opens /edit
   clean -> dirty on draft, by an input
-  /edit -> /edit on back, by the browser history
+  /edit -> /edit on link /, by the view offers press on link "Home" at div > nav > a[1]
 view
   heading "Edit" level=1
   navigation

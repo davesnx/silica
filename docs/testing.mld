@@ -124,6 +124,11 @@ text "Waiting for you to stop."
 - : unit = ()
 ]}
 
+The value of a password field, an [<input type="password">], prints as
+[value="••••••••"], eight bullets whatever its length, so that a typed secret
+does not end in a golden file or a counterexample; an empty value prints as
+[value=""] (see {!Silica.Secret}).
+
 {2:props A root with props}
 
 {!Silica_memory.mount_with_props} mounts a component that has props, and
@@ -172,7 +177,7 @@ trace debounce / build memory from memory
 
 The cause says what made each step: the element of a handler (by role,
 accessible name and path), a timer, the answer of a call, a Live update, a held
-source, the result of an action, new props, a child, a URL change or a message
+resource, the result of an action, new props, a child, a URL change or a message
 of the host. An ignored event is recorded too, marked [unhandled].
 
 {!Silica.Trace.to_jsonl} writes the trace as a file, JSON Lines: one header
@@ -181,6 +186,14 @@ it back and names the line of an error. A record holds the event data, the
 props and the snapshot only for machines whose codecs are registered with
 {!Silica.Machine.register_codecs}; names, causes, answers and Live updates are
 always there. The {!Silica.Trace} page says what a trace does not hold.
+
+Text typed into a password field is masked in every trace, in the inspector
+and in [silica inspect]: the input text of the cause is [••••••••], and in the
+event data, props and snapshots each string that is the last text typed into a
+password field is [••••••••] too (see {!Silica.Transition.observer}). A replay
+of such a step in the check still runs, by the choice of the checker or by the
+element of the cause; {!Silica_memory.val-replay} stops there, since it cannot
+type the text again.
 
 {!Silica_memory.val-replay} gives a fresh mount the inputs of a trace, such as a
 counterexample of the checker or a recorded run, and says at which step the
@@ -209,7 +222,7 @@ each record its number and time, the instance path (with the keys that the app
 gave component nodes), the machine id, the state names before and after, the
 change, the event name, the handler, role and element path of an element, the
 delay of a timer, the endpoint path of a call, the topic of a Live update, the
-name of a held source and the actions. The ids of timers, calls and sources
+name of a held resource and the actions. The ids of timers, calls and resources
 are numbers, such as [21.2/comment-composer/#3]: the same id gets the same
 number in one trace. It holds no event data, props, snapshots, answers, Live
 updates, input text, accessible names, URL queries or fragments, page titles
@@ -224,11 +237,11 @@ development or staging (see {!page-checker.conform}).
 [mount ~answers] answers calls before the first paint, as a server render
 does. {!Silica_memory.mount_app} runs a router app with a history: see
 {!page-router.app}. The platform also records the actions, the running
-sources, the title, the cookies, the log and the Live sockets, which the test
+resources, the title, the cookies, the log and the Live sockets, which the test
 opens and feeds with messages.
 
 What the memory platform does not do: it paints islands as empty elements,
-it does not measure (a [Measure] gets {!Silica.Rect.zero}), and the sources
+it does not measure (a [Measure] gets {!Silica.Rect.zero}), and the resources
 that need a layout, such as [Anchor] and [Scroll_lock], are only recorded.
 Test those in a browser.
 

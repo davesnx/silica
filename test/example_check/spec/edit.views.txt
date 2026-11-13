@@ -31,7 +31,7 @@ view
 state asking
 path
   clean -> dirty on draft, by the view offers input "note" on textbox "Draft" at div > textarea
-  dirty -> asking on attempt, by the source block (edit/dirty/block)
+  dirty -> asking on attempt, by the held resource block (edit/dirty/block)
 view
   heading "Edit" level=1
   navigation

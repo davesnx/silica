@@ -14,7 +14,12 @@ type node = {
   height : float;
   final : bool;
   initial : bool;
-  details : string list;  (** {!Spec.details} of the state. *)
+  details : string list;
+      (** {!Spec.details} of the state, then its kept steps (the [stay] line of
+          {!Spec.to_text}): ["stay on"] and their event names, wrapped at about
+          24 characters, with the next lines indented by two spaces; ["stay"]
+          for kept steps with no event name. A kept step is not an arrow, so
+          this line is how the drawing shows it. *)
   drift : bool;
       (** The state is not in the spec: only an [observed] step names it. *)
 }

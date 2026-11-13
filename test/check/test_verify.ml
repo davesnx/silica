@@ -313,7 +313,7 @@ let test_fired_timer_runs_again () =
   let ticker =
     Machine.make ~id:"ticker" ~init:(Waiting 0) ~name:ticking_name
       ~states:ticking_states
-      ~during:(fun _ -> [ Source.after 100 Retry ])
+      ~during:(fun _ -> [ Host.after 100 Retry ])
       (fun (Waiting count) -> function
         | Retry ->
             Machine.Go (Waiting (count + 1))
@@ -345,7 +345,7 @@ let test_violation_does_not_stop_exploration () =
   let ticker =
     Machine.make ~id:"ticker" ~init:(Waiting 0) ~name:ticking_name
       ~states:ticking_states
-      ~during:(fun _ -> [ Source.after 100 Retry ])
+      ~during:(fun _ -> [ Host.after 100 Retry ])
       (fun (Waiting count) -> function
         | Retry ->
             Machine.Go (Waiting (count + 1))
@@ -401,7 +401,7 @@ let watching_name = function
 
 let watching_states = [ "watching"; "broken"; "away" ]
 
-let watch_source = Source.live topic "all" (fun u -> Update u)
+let watch_source = Topic.subscribe topic "all" (fun u -> Update u)
 
 let watcher ~on_stale =
   Machine.make ~id:"watcher" ~init:(Watching 0) ~name:watching_name
@@ -572,7 +572,7 @@ let go_view _ =
 
 let test_timer_outside_its_state () =
   expect_violation show_go "timer-owner" [ "go" ]
-    (Check.component (Component.make (wrong (Source.after 100 Wait)) go_view))
+    (Check.component (Component.make (wrong (Host.after 100 Wait)) go_view))
 
 let test_call_outside_its_state () =
   expect_violation show_go "call-owner" [ "go" ]
@@ -583,7 +583,10 @@ let test_call_outside_its_state () =
 let test_subscription_outside_its_state () =
   expect_violation show_go "call-owner" [ "go" ]
     (Check.component
-       (Component.make (wrong (Source.live topic "all" (fun _ -> Wait))) go_view)
+       (Component.make
+          (wrong (Topic.subscribe topic "all" (fun _ -> Wait)))
+          go_view
+       )
     )
 
 type attempt = Fetching of int | Fetched of int
@@ -755,7 +758,7 @@ let app_trace show check =
 let test_app_root_gets_answers () =
   let machine = loader () in
   let root _ = Component.make machine loader_view in
-  let start, _ = Machine.start machine () in
+  let start, _ = Machine.start machine in
   let printed = ref [] in
   let print state =
     let path = "/" ^ string_of_int (Hashtbl.hash state) in
@@ -783,7 +786,7 @@ let test_app_root_gets_answers () =
     )
 
 let test_app_root_timer_owner () =
-  let machine = wrong (Source.after 100 Wait) in
+  let machine = wrong (Host.after 100 Wait) in
   Alcotest.(check (pair string (list string)))
     "the root machine is checked for ownership" ("timer-owner", [ "go" ])
     (app_trace show_go
@@ -951,15 +954,15 @@ let door : Spec.t =
     init = "closed";
     states =
       [
-        { name = "closed"; final = false; timers = []; sources = []; held = [] };
+        { name = "closed"; final = false; timers = []; network = []; held = [] };
         {
           name = "open";
           final = false;
           timers = [ 300 ];
-          sources = [ "/api/x" ];
+          network = [ "/api/x" ];
           held = [ "focus_trap" ];
         };
-        { name = "gone"; final = true; timers = []; sources = []; held = [] };
+        { name = "gone"; final = true; timers = []; network = []; held = [] };
       ];
     edges =
       [
@@ -1045,7 +1048,7 @@ let test_quint_without_edges () =
             name = "shown";
             final = false;
             timers = [];
-            sources = [];
+            network = [];
             held = [];
           };
         ];
@@ -1076,7 +1079,7 @@ let test_quint_without_edges () =
 
 let test_quint_state_names () =
   let state name : Spec.state =
-    { name; final = false; timers = []; sources = []; held = [] }
+    { name; final = false; timers = []; network = []; held = [] }
   in
   let spec : Spec.t =
     {

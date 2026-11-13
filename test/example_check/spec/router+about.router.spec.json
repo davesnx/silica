@@ -6,35 +6,35 @@
       "name": "/",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "/*",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "/about",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "/edit",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "/item/:int",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

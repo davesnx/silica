@@ -67,13 +67,20 @@ val event : ('e -> bool) -> ('s, 'e) condition
     machine passes the test. It does not hold at a start, nor after a step with
     no event of the machine (new props, a link, an opened URL, back, forward).
     So in {!app}, [event] never sees the [Router.Url_changed] that a navigation
-    gives the router: test the route with {!val-state} or {!entered}. *)
+    gives the router: test the route with {!val-state} or {!entered}. In a check
+    with [children], [event] sees each event that the root machine took in the
+    step: the event of a step of the root, then the events that the outputs of
+    children gave it in that step. On a step of a child, those are the events of
+    its outputs, such as the [Delete Confirm_delete] that the [on_content] of a
+    dialog gives the page; a step of a child whose outputs give the root no
+    event has no event of the machine. *)
 
 val transition : ('s -> 'e -> 's -> bool) -> ('s, 'e) condition
 (** [transition test]: a step condition that holds on the point reached by a
     step with an event of the machine when [test before event after] holds, with
-    the snapshots before and after the step. It does not hold at a start, nor
-    after a step with no event of the machine. "Increment adds the step":
+    the snapshots before and after the step, for each event of the machine that
+    {!val-event} sees in the step. It does not hold at a start, nor after a step
+    with no event of the machine. "Increment adds the step":
     {[
       Check.always ~name:"increment adds the step"
         Check.(
@@ -84,7 +91,8 @@ val transition : ('s -> 'e -> 's -> bool) -> ('s, 'e) condition
         )
     ]}
     The [not_ (event ...)] part makes the property hold at a start and on the
-    other steps. *)
+    other steps. Without it, the property fails at a start, where there is no
+    step, and the message says so. *)
 
 val ( &&& ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
 val ( ||| ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
@@ -102,10 +110,12 @@ val always :
     [always ~name (not_ (event (( = ) Reset)) ||| state is_zero)] fails on a
     Reset step that keeps the count even when the snapshot it reaches was first
     reached by another step; the checker then stores the explored graph, as for
-    {!never_after}. A violation has the rule [name], a [Path] to the first
-    failing point, and the [hint]; [hint] may name [{state}] for the state of
-    the failing point. Without [hint], the hint asks to change the update, the
-    view, or the property. *)
+    {!never_after}. A start has no step, so a step condition such as
+    [always ~name (transition test)] fails at a start, with a message that says
+    so: write [not_ (event test) ||| transition test]. A violation has the rule
+    [name], a [Path] to the first failing point, and the [hint]; [hint] may name
+    [{state}] for the state of the failing point. Without [hint], the hint asks
+    to change the update, the view, or the property. *)
 
 (** {1 Allowances} *)
 
@@ -151,11 +161,11 @@ val answers :
 
 val states : 's Silica.Topic.t -> 's list -> sample
 (** [states topic values]: the states that the server can publish on [topic]. A
-    subscription of a state (see {!Silica.Source.live}) gives, in this order of
-    possibility: [Loading None] once; then up to [arrivals] new states ([Ready]
-    with [stale = false], [seq] from 1), each one any of [values]; once, a loss
-    of the connection after a state ([Ready] with the last state and
-    [stale = true], [seq] 0), after which one more state can arrive (the
+    subscription of a state (see {!Silica.Topic.subscribe}) gives, in this order
+    of possibility: [Loading None] once; then up to [arrivals] new states
+    ([Ready] with [stale = false], [seq] from 1), each one any of [values];
+    once, a loss of the connection after a state ([Ready] with the last state
+    and [stale = true], [seq] 0), after which one more state can arrive (the
     reconnect); and once, a fatal failure
     ([Failed { error = Network "down"; last }]), after which nothing arrives. A
     topic with no [states] gives [Loading None] and the failure only. *)
@@ -249,10 +259,10 @@ val component :
     handler of each text field of the view (a [textarea], or an [input] with no
     [type] or a type of text, search, email, url, tel, password or number; not a
     [select] or a checkbox) called with each text of [texts] (default: none),
-    the events of the held sources of the state, [inputs s] (for events that no
-    element of the view gives), the events of running timers, the answers of
+    the events of the held resources of the state, [inputs s] (for events that
+    no element of the view gives), the events of running timers, the answers of
     running calls and the updates of running subscriptions (see {!answers} and
-    {!val-states}; [arrivals] defaults to 2). A [Global_keys] source gives the
+    {!val-states}; [arrivals] defaults to 2). A [Global_keys] resource gives the
     event of each key in its table, which is the press of that key;
     [Outside_press] gives its event; [Resize] gives [on_resize] with
     {!Silica.Rect.zero}; [Intersection] gives [on_change] with [true] and with
@@ -273,7 +283,10 @@ val component :
     [Silica_memory], a handler is not enabled on an element that has [hidden] or
     [inert] or is inside one, or that is a disabled [button], [input], [select],
     [textarea], [option], [optgroup] or [fieldset] or is inside one; a portal
-    starts again outside them.
+    starts again outside them. Nor is it enabled on an element behind an open
+    modal ({!Silica.Accessibility.behind_modal}), which the browser renderer
+    makes [inert]; in a check with [children], this holds for the handlers of
+    the root behind the modal of a child too.
 
     The built-in rules are in {!val-rules}. [max_states] (default 100000) bounds
     the search; when it stops the search, the report is not [complete]. [within]
@@ -285,7 +298,8 @@ val component :
     [children]. To check a child, make a check of its own machine with [~props]
     from {!props}, or list it in [children] to run it inside this check (see
     {!val-child}). With [children], properties see the whole resolved view with
-    only the handlers of the root machine. *)
+    only the handlers of the root machine, and {!val-event} sees the events of
+    the root machine (see {!val-event}). *)
 
 val live :
   ?max_states:int ->
@@ -301,8 +315,8 @@ val live :
   ('s, 'e) Silica.Live.t ->
   ('s, (unit, 'e) input) t
 (** Like {!component} for a Live component, whose machine runs on the server,
-    with two more rules: [live-uses-client-source] (a reachable state owns a
-    client-only source: {!Silica.Source.focus_trap}, [scroll_lock],
+    with two more rules: [live-uses-client-resource] (a reachable state owns a
+    client-only resource: {!Silica.Host.focus_trap}, [scroll_lock],
     [outside_press], [keys], [resize], [intersection], [dismiss], [anchor],
     [scroll], [visibility], [online] or [block]) and [live-uses-client-action]
     (a step runs [Measure], [Copy], [Load_script], [Load_chunk], [Resume],
@@ -367,7 +381,7 @@ val app :
     node in it, so the page is listed in [not_explored] and its machine is not
     run. Actions [Navigate], [Replace], [Back], [Forward] and [Reload] change
     the simulated history and become the event [url_event url] of the root
-    machine. As in a browser, while a machine holds a {!Silica.Source.block}, a
+    machine. As in a browser, while a machine holds a {!Silica.Host.block}, a
     link, an opened URL, back, forward and those actions stop before the URL
     changes, and the newest block gets the navigation instead; [Resume] then
     does it, past the block. [Revert_navigation] undoes the navigation that the
@@ -422,8 +436,9 @@ type cause = Check_model.cause =
       handler : string;
           (** ["press"], ["double_press"], ["submit"], ["focus"], ["blur"],
               ["pointer_enter"], ["pointer_leave"], ["key_down Enter"],
-              ["key_up Escape"], or ["input 0"] for the text ["0"] of [texts]
-              typed into the field. *)
+              ["key_up Escape"], ["key_down Shift+Enter"] (the key as
+              {!Silica.Key.to_string} prints it), or ["input 0"] for the text
+              ["0"] of [texts] typed into the field. *)
       element : string;
           (** The path of the element, such as ["main > form > button[2]"] (see
               {!Silica.Accessibility.path}). *)
@@ -434,7 +449,7 @@ type cause = Check_model.cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string }  (** The answer of a call. *)
   | Live of { id : string; topic : string }  (** An update of a subscription. *)
-  | Held of { id : string; source : string }  (** A held source. *)
+  | Held of { id : string; name : string }  (** A held resource. *)
   | Action_result of string  (** The result of the action with this name. *)
   | Props  (** The parent gave other props. *)
   | Child of { instance : string; machine : string }
@@ -445,6 +460,14 @@ val describe_cause : cause -> string
 (** One phrase, such as
     ["the view offers press on button \"Save\" at form > button"] or
     ["the timer save/saved/after 2000ms (2000 ms)"]. *)
+
+type move = {
+  instance : string;  (** ["0"] for the root machine. *)
+  machine : string;  (** The machine id. *)
+  from : string;  (** The name of the state before the step. *)
+  target : string;  (** The name of the state after the step. *)
+}
+(** A change of state name of a machine other than the one that took a step. *)
 
 type 'ev step = {
   input : 'ev;
@@ -461,19 +484,24 @@ type 'ev step = {
   target : string;
       (** The name of the state after the step; [from] for a step that the
           update ignored or that raised. *)
-  root_moved : (string * string) option;
-      (** For a step of a child in a joint check: the state names of the root
-          machine before and after the step, when the step changed it, such as a
-          parent that handles an output of the child. [None] for a step of the
-          root, or when the root kept its state name. *)
+  moved : move list;
+      (** In a joint check, the other machines whose state name the step
+          changed: the root first, then the children in their order. For a step
+          of a child, the root when it handles an output of the child; for a
+          step of the root, the children it moved, such as the page whose
+          {!Silica.Host.block} took a back, forward, address or link navigation.
+          A child that the step started or ended is not in the list. [[]] when
+          no other machine changed its state name. *)
 }
 
 val describe_step : root:string -> 'ev step -> string
 (** One line for a step, as the text report prints it: the machine and instance
-    of a child, the states, the event and the cause, then the change of the root
-    machine [root] when the step moved it, such as
+    of a child, the states, the event and the cause, then each of [moved], with
+    [root] as the name of the root machine, such as
     ["[step at wizard/2:step] editing -> saved: save, by ...; then wizard: dirty
-     -> clean"]. *)
+     -> clean"] or
+    ["/edit -> /edit: back, by ...; then [editor at router/:editor] dirty ->
+     asking"]. *)
 
 type 'ev counterexample =
   | Path of 'ev step list
@@ -521,6 +549,7 @@ val views_per_state : int
 (** The most views of one state that a report keeps. *)
 
 type ('s, 'ev) report = {
+  id : string;  (** The id of the check ({!val-id}). *)
   machine : string;  (** The id of the root machine. *)
   states : int;  (** The explored snapshots. *)
   transitions : int;  (** Every explored pair of a snapshot and a step. *)
@@ -553,8 +582,8 @@ type ('s, 'ev) report = {
   specs : Silica.Spec.t list;
       (** The specs that the run found, the root machine first, then each listed
           child that started. A spec holds the states it reached, initial state
-          first then by name, each with the timers and sources of the first
-          snapshot reached in it, and the steps it took, with event names. *)
+          first then by name, each with the resources of the first snapshot
+          reached in it, and the steps it took, with event names. *)
   paths : (string * 'ev step list) list;
       (** For each state name, in the order the search reached them, a shortest
           path from a start to its first snapshot. *)
@@ -585,10 +614,10 @@ val steps : 'ev counterexample -> 'ev step list
     cycle once. *)
 
 val pp_report : Format.formatter -> ('s, 'ev) report -> unit
-(** The report as text: the counts, then each violation with its message, hint,
-    numbered steps with their causes, state and view, then the unreached states,
-    the machines that give no [states], the allowances and what was not
-    explored. *)
+(** The report as text: the id of the check ({!val-id}) and the counts, then
+    each violation with its message, hint, numbered steps with their causes,
+    state and view, then the unreached states, the machines that give no
+    [states], the allowances and what was not explored. *)
 
 (** {1 Rules} *)
 
@@ -621,12 +650,12 @@ val rules : rule list
     {b Runs and fairness.} A run starts at a start of the check and takes steps
     of the graph. It may stop in a snapshot where no timer, no call and no
     action result runs: the app waits for the user, who may do nothing, and a
-    server may never publish, so running subscriptions, held sources, inputs and
-    the view do not keep a run going. It may not stop while a timer, a call or
-    an action result runs. An infinite run counts only when it is weakly fair:
-    every timer and call that runs at every step from some point on is also
-    delivered again and again. So every timer fires and every call answers in
-    the end, even if the user keeps typing, and the checker does not report a
+    server may never publish, so running subscriptions, held resources, inputs
+    and the view do not keep a run going. It may not stop while a timer, a call
+    or an action result runs. An infinite run counts only when it is weakly
+    fair: every timer and call that runs at every step from some point on is
+    also delivered again and again. So every timer fires and every call answers
+    in the end, even if the user keeps typing, and the checker does not report a
     run where the user prevents that forever. "Eventually" means: on every such
     run.
 
@@ -715,7 +744,12 @@ type ('s, 'ev) replay =
   | Not_enabled of {
       at : int;  (** The number of the step, from 1, that is not enabled. *)
       steps : ('s, 'ev) replayed_step list;  (** The points before it. *)
-      enabled : 'ev step list;  (** What the check offers there instead. *)
+      enabled : 'ev step list;
+          (** What the check offers there instead, each with the state it
+              reaches as [target], or [""] when its update raised. *)
+      reason : string option;
+          (** Why the step fits none of them, when the check can say: such as a
+              typed text that is not one of the texts of the check. *)
     }
 
 val replay : ('s, 'ev) t -> 'ev list -> ('s, 'ev) replay
@@ -756,7 +790,19 @@ val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
     the cause [Message]; a back or forward has the cause [Url] with the URL it
     reached. A check with several [props] starts with the props where the last
     step breaks [rule]. Raises [Invalid_argument] when a step of the
-    counterexample is not enabled in the check. *)
+    counterexample is not enabled in the check.
+
+    In a joint check (see {!val-child}), the trace has one transition for each
+    move of each instance, in the order of a trace that the runtime records: the
+    step of the instance that got the event, the step of a parent on the output
+    of a child (the cause [Child]), then the new props, the start and the end of
+    each listed child, where a child ends after its own children. The start of
+    the root comes before the start of each child. Each transition holds the
+    actions of its instance only, and the props and snapshot data of its
+    machine. [number], [entry] and the instance prefix of the ids in the actions
+    are not the ones of a run, and a navigation that a child starts in a step
+    has no [Url] transition. {!replay_trace} and {!script} read the steps only,
+    so they take both kinds of trace; {!conforms} reads all the transitions. *)
 
 val script :
   ?component:string ->
@@ -767,9 +813,11 @@ val script :
 (** [script check trace] is the OCaml text of a test that drives the component
     in [Silica_memory] through the steps of a counterexample that {!export}
     wrote, with the queries a person uses: an element by its role and name, an
-    answer to the pending call of a path, the clock moved to the timer. It ends
-    with a check of the rule of the trace that fails exactly while the rule is
-    broken on that run:
+    answer to the pending call of a path, the clock moved to the timer, a Live
+    update by {!Silica_memory.live_update} (the first one, [Loading], comes when
+    the subscription starts, so the test leaves it out). It ends with a check of
+    the rule of the trace that fails exactly while the rule is broken on that
+    run:
     - [ignored-event]: the last input is given when the view still offers its
       element, and the update must handle it;
     - [raised]: no error reached [on_error];
@@ -788,12 +836,11 @@ val script :
     module named after the machine id, as [Issue_list.component], or [.app] for
     an app). [Error] says why the steps cannot run in [Silica_memory]: a timer
     that fires before another timer that real time fires first (the checker lets
-    running timers fire in any order), an event from [inputs], a Live update, a
-    held source, the result of an action, an element with no role and no text;
-    also when the replay in the check no longer breaks the rule. Replay such a
-    trace in the check with {!replay_trace}. In a joint check, the steps of
-    children are steps of the trace too: an element of a child is found in the
-    whole page. *)
+    running timers fire in any order), an event from [inputs], a held resource,
+    the result of an action, an element with no role and no text; also when the
+    replay in the check no longer breaks the rule. Replay such a trace in the
+    check with {!replay_trace}. In a joint check, the steps of children are
+    steps of the trace too: an element of a child is found in the whole page. *)
 
 val view_violations :
   ?rule:string -> state:string -> 'e Silica.Node.t -> string list
@@ -837,6 +884,9 @@ type conformance = {
   steps : int list;  (** The [seq] of each record whose step the code ran. *)
   snapshots : int list;
       (** The [seq] of each record whose snapshot the properties read. *)
+  unchecked : (string * string) list;
+      (** Each property not evaluated because it reads a view with a listed
+          child that the trace does not resolve, with the reason, once. *)
   deviations : deviation list;  (** In the order of the trace. *)
 }
 
@@ -844,19 +894,28 @@ val conforms : ('s, 'ev) t -> Silica.Trace.t -> conformance
 (** [conforms check trace] runs, for each record of the root machine of [check]
     and of its listed children (see {!val-child}), the code of this build on the
     data of the trace, with no search:
-    - The step: a start runs {!Silica.Machine.start} with the props of the
-      record (not for the root of an app, whose start depends on the URL, which
-      the record does not hold); a step runs {!Silica.Machine.step} on the
-      snapshot of the record before it in the same instance, with the event of
-      the record; new props run {!Silica.Machine.set_props}. The state name, the
-      change and the snapshot (by the state codec) must be the ones of the
-      record.
+    - The step: a start runs {!Silica.Machine.start_with_props} with the props
+      of the record (not for the root of an app, whose start depends on the URL,
+      which the record does not hold); a step runs
+      {!Silica.Machine.step_with_props} on the snapshot of the record before it
+      in the same instance, with the event of the record; new props run
+      {!Silica.Machine.set_props}. The state name, the change and the snapshot
+      (by the state codec) must be the ones of the record.
     - The properties: every {!always} property of the check (of the child, for a
       child) holds on the snapshot of the record and its view, with the event of
       the record. For an app, the URL is the last [Url] cause of the root, or
-      the URL of the header. The view is the view of that machine alone, with
-      its children as component nodes. {!action} never holds; temporal
-      properties are not checked here. Allowances apply.
+      the URL of the header. The view is the view of that machine with the view
+      of each listed child (see {!val-child}) in place of its component node,
+      from the snapshot of the child in the trace, as the checker composes it; a
+      child that the check does not list stays a component node. The properties
+      of a record run after the records that its step caused (the step of its
+      parent on its output, and the new props, the start and the end of its
+      children), so the children have their props. An end has no properties to
+      check: its snapshot is the one of the record before it. A property that
+      reads a view with a listed child that has no snapshot in the trace, or
+      whose snapshot does not decode, is not evaluated: it is in [unchecked],
+      never a deviation. {!action} never holds; temporal properties are not
+      checked here. Allowances apply.
 
     A record is skipped when the data it needs is not there: a trace with names
     only, a machine with no registered codecs, a step whose snapshot before was

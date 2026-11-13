@@ -165,6 +165,34 @@
     %{deps}))))
 
 (rule
+ (target ui.md)
+ (deps
+  %{project_root}/ui/dialog.mli
+  %{project_root}/ui/popover.mli
+  %{project_root}/ui/tooltip.mli
+  %{project_root}/ui/menu.mli
+  %{project_root}/ui/select.mli
+  %{project_root}/ui/combobox.mli
+  %{project_root}/ui/command_menu.mli
+  %{project_root}/ui/checkbox.mli
+  %{project_root}/ui/switch.mli
+  %{project_root}/ui/tabs.mli
+  %{project_root}/ui/toast.mli
+  %{project_root}/ui/theme.mli
+  %{project_root}/ui/popup.mli
+  %{project_root}/ui/style.mli
+  %{project_root}/ui/story.mli)
+ (action
+  (with-stdout-to
+   %{target}
+   (run
+    %{exe:../../site/gen/llms.exe}
+    api
+    "API: the library silica-ui"
+    Silica_ui.
+    %{deps}))))
+
+(rule
  (target server.md)
  (deps %{project_root}/server/silica_server.mli)
  (action
@@ -193,4 +221,5 @@
    (diff
     %{project_root}/skills/silica-verify/references/api/server.md
     server.md)
-   (diff %{project_root}/skills/silica-verify/references/api/json.md json.md))))
+   (diff %{project_root}/skills/silica-verify/references/api/json.md json.md)
+   (diff %{project_root}/skills/silica-verify/references/api/ui.md ui.md))))

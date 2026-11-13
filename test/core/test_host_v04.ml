@@ -279,13 +279,13 @@ module Held = struct
 
   let sources =
     [
-      Source.focus_trap panel;
-      Source.scroll_lock;
-      Source.outside_press panel Outside;
-      Source.keys ~prevent:true
+      Host.focus_trap panel;
+      Host.scroll_lock;
+      Host.outside_press panel Outside;
+      Host.keys ~prevent:true
         [ (Key.escape, Escape); (Key.make ~ctrl:true "k", Close) ];
-      Source.resize box (fun rect -> Resized rect);
-      Source.intersection box (fun visible -> Seen visible);
+      Host.resize box (fun rect -> Resized rect);
+      Host.intersection box (fun visible -> Seen visible);
     ]
 
   let machine =
@@ -333,17 +333,17 @@ end
 
 let test_machine_sources () =
   let machine = Held.machine in
-  let state, actions = Machine.start machine () in
+  let state, actions = Machine.start machine in
   Alcotest.(check int) "no source in the first state" 0 (List.length actions);
   Alcotest.(check int)
-    "no held source" 0
-    (List.length (Machine.held machine () state));
-  let state, actions, _ = Machine.step machine () state Held.Open in
+    "no held resource" 0
+    (List.length (Machine.held machine state));
+  let state, actions, _ = Machine.step machine state Held.Open in
   let started =
     List.filter_map
       (function
-        | Action.Start_source { id; source } ->
-            Some (id ^ " " ^ Action.source_name source)
+        | Action.Start_held { id; held } ->
+            Some (id ^ " " ^ Action.held_name held)
         | _ ->
             None
         )
@@ -361,8 +361,8 @@ let test_machine_sources () =
     started;
   Alcotest.(check int)
     "held lists them" 6
-    (List.length (Machine.held machine () state));
-  Alcotest.check strings "active names the held sources"
+    (List.length (Machine.held machine state));
+  Alcotest.check strings "active names the held resources"
     [
       "focus_trap";
       "scroll_lock";
@@ -378,16 +378,16 @@ let test_machine_sources () =
          | Machine.Timer _ | Machine.Call _ | Machine.Subscription _ ->
              "not held"
          )
-       (Machine.active machine () state)
+       (Machine.active machine state)
     );
   Alcotest.(check bool)
-    "every held source is held" true
-    (List.for_all Source.is_held Held.sources);
-  let state, actions, how = Machine.step machine () state (Held.Seen true) in
+    "every held resource is held" true
+    (List.for_all Host.is_held Held.sources);
+  let state, actions, how = Machine.step machine state (Held.Seen true) in
   Alcotest.(check bool)
     "a step in the state keeps the sources" true
     (how = Machine.Kept && actions = []);
-  let _, actions, _ = Machine.step machine () state Held.Escape in
+  let _, actions, _ = Machine.step machine state Held.Escape in
   let stopped =
     List.filter_map (function Action.Stop id -> Some id | _ -> None) actions
   in
@@ -397,12 +397,12 @@ let test_sim_sources () =
   let sim = Sim.mount Held.component in
   Alcotest.check strings "nothing runs while shut" [] (Sim.running sim);
   Sim.press sim "open";
-  Alcotest.(check int) "sources run" 6 (List.length (Sim.sources sim));
+  Alcotest.(check int) "sources run" 6 (List.length (Sim.held sim));
   Alcotest.(check bool)
     "ids are qualified by instance and entry" true
     (List.for_all
        (fun (id, _) -> String.starts_with ~prefix:"1.1/held/popup/" id)
-       (Sim.sources sim)
+       (Sim.held sim)
     );
   Alcotest.(check bool)
     "an unbound key reaches nobody" false
@@ -430,7 +430,7 @@ module Bomb = struct
     Machine.make ~id:"bomb"
       ~init:(Live { count = 0; ticks = 0; broken = false })
       ~name ~states
-      ~during:(fun _ -> [ Source.after 10 Tick ])
+      ~during:(fun _ -> [ Host.after 10 Tick ])
       (fun (Live data) -> function
         | Inc ->
             Machine.Go (Live { data with count = data.count + 1 })

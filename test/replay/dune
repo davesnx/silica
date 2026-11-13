@@ -16,7 +16,9 @@
   badge
   rows
   answer_kinds
-  gestures)
+  gestures
+  feed
+  composer_keys)
  (libraries silica silica.check silica.jsonkit jsonkit)
  (preprocess
   (pps jsonkit.ppx silica.ppx)))
@@ -30,6 +32,7 @@
   silica.check
   silica.memory
   silica.json
+  silica_test_support
   alcotest))
 
 (executable
@@ -390,6 +393,36 @@
    Rows.changing_fixed
    Rows.changing_fixed_check)))
 
+(rule
+ (with-stdout-to
+  feed_offline_script.ml
+  (run ./gen_script.exe feed "a new score is not offline")))
+
+(rule
+ (with-stdout-to
+  feed_offline_fixed_script.ml
+  (run
+   ./gen_script.exe
+   feed
+   "a new score is not offline"
+   Feed.fixed
+   Feed.fixed_check)))
+
+(rule
+ (with-stdout-to
+  feed_lost_script.ml
+  (run ./gen_script.exe feed "a lost feed keeps the last score")))
+
+(rule
+ (with-stdout-to
+  feed_lost_fixed_script.ml
+  (run
+   ./gen_script.exe
+   feed
+   "a lost feed keeps the last score"
+   Feed.fixed
+   Feed.fixed_check)))
+
 (executables
  (names
   save_script
@@ -441,7 +474,11 @@
   gestures_pointer_leave_fixed_script
   pages_forward_script
   changing_script
-  changing_fixed_script)
+  changing_fixed_script
+  feed_offline_script
+  feed_offline_fixed_script
+  feed_lost_script
+  feed_lost_fixed_script)
  (modules
   save_script
   save_fixed_script
@@ -492,7 +529,11 @@
   gestures_pointer_leave_fixed_script
   pages_forward_script
   changing_script
-  changing_fixed_script)
+  changing_fixed_script
+  feed_offline_script
+  feed_offline_fixed_script
+  feed_lost_script
+  feed_lost_fixed_script)
  (libraries replay_fixtures silica silica.check silica.memory))
 
 (cram
@@ -590,4 +631,10 @@
   changing_script.ml
   changing_script.exe
   changing_fixed_script.ml
-  changing_fixed_script.exe))
+  changing_fixed_script.exe
+  feed_offline_script.ml
+  feed_offline_script.exe
+  feed_offline_fixed_script.exe
+  feed_lost_script.ml
+  feed_lost_script.exe
+  feed_lost_fixed_script.exe))

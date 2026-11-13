@@ -43,6 +43,7 @@ type request =
   | Export of string option
   | Travel of { target : string; seq : int }
   | Return_live of string
+  | Seen of string
 
 type message =
   | Hello_target of target
@@ -53,6 +54,11 @@ type message =
   | Subscribed of { id : int option }
   | Target_list of { id : int option; targets : target list }
   | Trace_file of { id : int option; target : string; trace : string }
+  | Seen_steps of {
+      id : int option;
+      machine : string;
+      steps : Transition.t list;
+    }
   | Gone of string
   | Failure of { id : int option; message : string }
 
@@ -217,6 +223,8 @@ let encode = function
       typed "travel" ?id [ ("target", string target); ("seq", int seq) ]
   | Request { id; request = Return_live target } ->
       typed "live" ?id [ ("target", string target) ]
+  | Request { id; request = Seen machine } ->
+      typed "seen" ?id [ ("machine", string machine) ]
   | Subscribed { id } ->
       typed "subscribed" ?id []
   | Target_list { id; targets } ->
@@ -234,6 +242,14 @@ let encode = function
         ]
   | Trace_file { id; target; trace } ->
       typed "trace" ?id [ ("target", string target); ("trace", string trace) ]
+  | Seen_steps { id; machine; steps } ->
+      typed "seen" ?id
+        [
+          ("machine", string machine);
+          ( "steps",
+            Json.declassify (`List (List.map Transition.codec.encode steps))
+          );
+        ]
   | Gone target ->
       typed "gone" [ ("target", string target) ]
   | Failure { id; message } ->
@@ -475,6 +491,13 @@ let decode json =
       let* target = target_field () in
       let* seq = field fields "seq" as_int in
       request (Travel { target; seq })
+  | "seen" when has "steps" ->
+      let* machine = field fields "machine" as_string in
+      let* steps = field fields "steps" (as_list Transition.codec.decode) in
+      Ok (Seen_steps { id; machine; steps })
+  | "seen" ->
+      let* machine = field fields "machine" as_string in
+      request (Seen machine)
   | "subscribed" ->
       Ok (Subscribed { id })
   | "trace" ->
@@ -553,7 +576,8 @@ let to_text = function
   | Request _
   | Subscribed _
   | Target_list _
-  | Trace_file _ ->
+  | Trace_file _
+  | Seen_steps _ ->
       None
 
 module Target = struct
@@ -569,10 +593,18 @@ module Target = struct
     send : event -> unit;
     instances : (string, entry) Hashtbl.t;
     mutable next : int;
+    secrets : Secret.t;
   }
 
   let create ~target ~clock ~send () =
-    { name = target; clock; send; instances = Hashtbl.create 16; next = 0 }
+    {
+      name = target;
+      clock;
+      send;
+      instances = Hashtbl.create 16;
+      next = 0;
+      secrets = Secret.create ();
+    }
 
   let name target = target.name
 
@@ -613,7 +645,9 @@ module Target = struct
         Held { held with id = Printf.sprintf "%d.%d/%s" number entry held.id }
 
   let instance_of target since ~path ~in_tree (Instance.Inspected step) =
-    let active = Machine.active step.machine step.props step.snapshot in
+    let active =
+      Machine.active_with_props step.machine step.props step.snapshot
+    in
     let active =
       if in_tree then
         List.map (qualify ~number:step.number ~entry:step.entry) active
@@ -635,6 +669,9 @@ module Target = struct
           Hashtbl.replace since id (target.clock ())
       )
       ids;
+    let encoded codec value =
+      Option.map (Secret.scrub target.secrets) (encoded codec value)
+    in
     {
       path;
       machine = Machine.id step.machine;
@@ -673,7 +710,9 @@ module Target = struct
       | Started | Resumed | Unhandled | Kept | Entered ->
           ()
     in
-    let transitions = Transition.observer ~clock:target.clock record in
+    let transitions =
+      Transition.observer ~clock:target.clock ~secrets:target.secrets record
+    in
     {
       transitions with
       observe =
@@ -685,6 +724,7 @@ module Target = struct
             match observed with Observed _ -> true | Detached _ -> false
           in
           let at = path step.instance in
+          Transition.learn target.secrets observed;
           ( match step.change with
           | Started | Resumed ->
               let since = Hashtbl.create 4 in
@@ -697,6 +737,12 @@ module Target = struct
               owns := Some instance.owns;
               target.send (Mount instance)
           | Unhandled ->
+              Option.iter
+                (fun entry ->
+                  entry.instance <-
+                    instance_of target entry.since ~path:at ~in_tree inspected
+                )
+                (Hashtbl.find_opt target.instances at);
               owns := None
           | Ended ->
               owns := Some []

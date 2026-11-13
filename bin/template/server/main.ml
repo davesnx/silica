@@ -54,5 +54,4 @@ let () =
       )
       ()
   in
-  Printf.printf "http://127.0.0.1:%d\n%!" port;
   Silica_adapter.run ~port ~on_stop:(fun () -> Server.shutdown server) server

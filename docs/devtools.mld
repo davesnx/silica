@@ -2,7 +2,7 @@
 
 Under [silica dev], a program can read what the machines of the app do while
 it runs: the instance tree, the state and data of each machine, each step as
-it happens, and the timers and sources that run. Each open page of the app is
+it happens, and the resources that run. Each open page of the app is
 one target, and the server is one more target for its Live islands. The
 messages of all targets come in one stream, and each message names its
 target.
@@ -21,9 +21,10 @@ default; [--json] prints the protocol messages, one per line.
 
 - [silica inspect targets]: the pages and the server.
 - [silica inspect tree [--target T] [--machine ID] [--path PATH]]: each
-  running instance with its machine, state, the timers and sources that run,
-  and its snapshot when the machine registered its codecs (see
-  {!Silica.Machine.register_codecs}).
+  running instance with its machine, state, the resources that run,
+  and its snapshot and props when the machine registered its codecs (see
+  {!Silica.Machine.register_codecs}). The props are the last ones the parent
+  gave, also when the machine ignored them.
 - [silica inspect tail [--target T] [--machine ID]... [--path PATH]
   [--event NAME]... [--change CHANGE]... [--count N]]: each step from now on.
   [--path] keeps the instance and the instances under it.
@@ -31,13 +32,16 @@ default; [--json] prints the protocol messages, one per line.
   page as a trace file (see {!Silica.Trace}), for [silica inspect replay],
   [silica replay] and [silica conform]. With no [--target], the one page.
 - [silica inspect replay FILE [--machine ID]]: runs [silica replay] on the
-  root machine of the trace, or on [ID].
-- [silica inspect graph ID [--specs DIR]]: the text form of the spec of the
-  machine (from [DIR/ID.spec.json] or [DIR/ID.spec.txt]), then a [current]
-  line for each running instance, a [seen] line for each edge of the spec
-  that the app took, and a [drift] line for each edge the app took that the
-  spec does not have. With no spec, the graph that the app took, under the
-  line [not checked].
+  root machine of the trace, or on [ID]. The root machine selects the entry
+  whose root it is, such as [panel+preview] for [panel].
+- [silica inspect graph ID [--specs DIR]]: each golden spec of the machine
+  in [DIR] ([ID.spec.json] or [ID.spec.txt], and [<entry id>.ID.spec.json] or
+  [<entry id>.ID.spec.txt] of each joint check), as a [spec FILE] line and the
+  text form, then a [current] line for each running instance, a [seen] line
+  for each edge that the app took and one of the specs has, and a [drift]
+  line for each edge the app took that no spec has. The edges are the ones of
+  every page since [silica dev] started, also before a reload. With no spec,
+  the graph that the app took, under the line [not checked].
 
 Exit code 0: done; 1: the hub answered with an error; 3: no [silica dev] runs
 here, or bad arguments.
@@ -86,7 +90,7 @@ connects again; the hub answers a [tree] request with it:
 v}
 
 [mount] is an instance that started, with its state, data, props and
-[owns], the timers, calls, subscriptions and held sources that run during its
+[owns], the timers, calls, subscriptions and held resources that run during its
 snapshot, with the time each started:
 
 {v
@@ -172,6 +176,16 @@ the field [trace] of the answer:
 {v
 {"t":"export","id":5,"target":"server"}
 {"t":"trace","id":5,"target":"server","trace":"{\"root\":\"counter\",\"build\":\"dev\",\"origin\":{\"type\":\"runtime\",\"platform\":\"server\"},\"dropped\":0}\n{\"seq\":1,\"time_ms\":1794453604567.145,\"instance\":\"counter#dbe0cc4ee340b863\",\"number\":1,\"entry\":0,\"machine\":\"counter\",\"from\":\"\",\"to\":\"counter\",\"change\":\"started\",\"event\":\"\",\"snapshot\":0,\"cause\":{\"type\":\"start\"}}\n{\"seq\":2,\"time_ms\":1794453605969.875,\"instance\":\"counter#dbe0cc4ee340b863\",\"number\":1,\"entry\":0,\"machine\":\"counter\",\"from\":\"counter\",\"to\":\"counter\",\"change\":\"kept\",\"event\":\"incr\",\"data\":[\"Incr\"],\"snapshot\":1,\"cause\":{\"type\":\"message\"}}\n"}
+v}
+
+[seen] asks for the steps of a machine that the hub got from every target
+since [silica dev] started, also from pages that reloaded: one step of each
+kind (change, states, event), with no user data. [silica inspect graph]
+reads its edges from it:
+
+{v
+{"t":"seen","id":6,"machine":"counter"}
+{"t":"seen","id":6,"machine":"counter","steps":[{"seq":1,"time_ms":1794453604567.145,"instance":"counter#dbe0cc4ee340b863","number":1,"entry":0,"machine":"counter","from":"","to":"counter","change":"started","event":"","cause":{"type":"start"}}]}
 v}
 
 [travel] and [live] with no [dir] will pause a target at a step and leave

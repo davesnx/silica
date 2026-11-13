@@ -64,17 +64,17 @@ A machine is a plain value. You can start it and send events to it without a
 browser. [Machine.start] gives the first state and the actions that the host
 must run. [Machine.step] gives the next state, the actions, and how the step
 changed the state. A machine made with [Machine.make] has no props, so both
-get [()] as the props.
+take no props.
 
 {@ocaml[
 # let counter = Tutorial_counter.machine;;
 val counter :
   (unit, Tutorial_counter.state, Tutorial_counter.event) Silica.Machine.t =
   <abstr>
-# let state, _ = Silica.Machine.start counter ();;
+# let state, _ = Silica.Machine.start counter;;
 val state : Tutorial_counter.state = Tutorial_counter.Count 0
 # let state, _, _ =
-    Silica.Machine.step counter () state Tutorial_counter.Increment;;
+    Silica.Machine.step counter state Tutorial_counter.Increment;;
 val state : Tutorial_counter.state = Tutorial_counter.Count 1
 ]}
 
@@ -213,17 +213,17 @@ The host runs the call. The test below does not run it, so the machine stays in
 val greeting :
   (unit, Tutorial_greeting.state, Tutorial_greeting.event) Silica.Machine.t =
   <abstr>
-# let state, _ = Silica.Machine.start greeting ();;
+# let state, _ = Silica.Machine.start greeting;;
 val state : Tutorial_greeting.state = Tutorial_greeting.Idle
 # let state, actions, _ =
-    Silica.Machine.step greeting () state Tutorial_greeting.Ask;;
+    Silica.Machine.step greeting state Tutorial_greeting.Ask;;
 val state : Tutorial_greeting.state = Tutorial_greeting.Asking
 val actions : Tutorial_greeting.event Silica.Action.host list =
   [Silica.Action.Start_call
     {Silica.Action.id = "greeting/asking//api/greeting \"Ada\"";
      endpoint = <abstr>; input = <poly>; timeout_ms = None;
      on_result = <fun>}]
-# Silica.Machine.active greeting () state;;
+# Silica.Machine.active greeting state;;
 - : Silica.Machine.resource list =
 [Silica.Machine.Call
   {Silica.Machine.id = "greeting/asking//api/greeting \"Ada\"";
@@ -234,7 +234,7 @@ The machine gets the answer as an event, as any other event:
 
 {@ocaml[
 # let state, _, _ =
-    Silica.Machine.step greeting () state
+    Silica.Machine.step greeting state
       (Tutorial_greeting.Answered (Ok "Hello, Ada"));;
 val state : Tutorial_greeting.state = Tutorial_greeting.Shown "Hello, Ada"
 # Silica.Render.to_string (Tutorial_greeting.view state);;
@@ -262,11 +262,15 @@ path and the error paths.
 {2:browser The browser}
 
 The client file mounts the component into the element with the id
-[silica-root]. Dune compiles it with Melange, and a bundler such as esbuild
+[silica-root]. The mount returns the app, which the page could stop with
+[Silica_browser.send app Stop]. Dune compiles it with Melange, and a bundler such as esbuild
 makes the file for the page.
 
 {@ocaml file=examples/client/tutorial_client.ml[
-let () = Silica_browser.mount ~root:"silica-root" Tutorial_greeting.component
+let app =
+  Silica_browser.mount
+    ~root:(Silica_browser.by_id "silica-root")
+    Tutorial_greeting.component
 ]}
 
 {2 The server}

@@ -55,7 +55,7 @@ let search =
   Machine.make ~id:"search" ~init:Idle ~name ~states
     ~during:(function
       | Typing _ ->
-          [ Source.after 300 Fire ]
+          [ Host.after 300 Fire ]
       | Searching query ->
           [ Remote.call endpoint query (fun answer -> Got answer) ]
       | Idle | Shown _ | Failed _ ->
@@ -85,13 +85,13 @@ let typing_id = "search/typing/after 300ms"
 let searching_id query = "search/searching//api/search \"" ^ query ^ "\""
 
 let send snapshot event =
-  let snapshot, actions, how = Machine.step search () snapshot event in
+  let snapshot, actions, how = Machine.step search snapshot event in
   (snapshot, described actions, how)
 
-let start () = fst (Machine.start search ())
+let start () = fst (Machine.start search)
 
 let test_start () =
-  let snapshot, actions = Machine.start search () in
+  let snapshot, actions = Machine.start search in
   Alcotest.(check string) "init" "idle" (name snapshot);
   Alcotest.check strings "no entry" [] (described actions);
   Alcotest.(check string) "id" "search" (Machine.id search);
@@ -148,7 +148,7 @@ let test_late_result_is_unhandled () =
 
 let test_start_input_uses_data () =
   let snapshot, _, _ = send (start ()) (Input "cats") in
-  let _, actions, _ = Machine.step search () snapshot Fire in
+  let _, actions, _ = Machine.step search snapshot Fire in
   match actions with
   | [ _; Action.Start_call { input; endpoint; _ } ] ->
       Alcotest.(check string)
@@ -157,7 +157,7 @@ let test_start_input_uses_data () =
   | _ ->
       Alcotest.fail "expected stop and call"
 
-let resource_ids machine props snapshot =
+let resource_ids machine snapshot =
   List.map
     (function
       | Machine.Timer { id; _ }
@@ -166,7 +166,7 @@ let resource_ids machine props snapshot =
       | Machine.Held { id; _ } ->
           id
       )
-    (Machine.active machine props snapshot)
+    (Machine.active machine snapshot)
 
 let tracker () =
   let running = ref [] in
@@ -175,7 +175,7 @@ let tracker () =
       (function
         | Action.Start_timer { id; _ }
         | Action.Start_call { id; _ }
-        | Action.Start_source { id; _ }
+        | Action.Start_held { id; _ }
         | Action.Start_live { id; _ } ->
             if List.mem id !running then Alcotest.fail ("started twice: " ^ id);
             running := List.sort compare (id :: !running)
@@ -192,17 +192,17 @@ let tracker () =
 
 let test_active_follows_actions () =
   let running, apply = tracker () in
-  let snapshot, actions = Machine.start search () in
+  let snapshot, actions = Machine.start search in
   apply actions;
   let snapshot = ref snapshot in
   List.iter
     (fun event ->
-      let next, actions, _ = Machine.step search () !snapshot event in
+      let next, actions, _ = Machine.step search !snapshot event in
       snapshot := next;
       apply actions;
       Alcotest.check strings
         (name next ^ " resources")
-        (List.sort compare (resource_ids search () next))
+        (List.sort compare (resource_ids search next))
         !running
     )
     [
@@ -228,9 +228,7 @@ let test_entry_exit_order () =
     Machine.make ~id:"pair" ~init:A ~name:pair_name
       ~entry:(function A -> [ note "enter a" ] | B -> [ note "enter b" ])
       ~exit:(function A -> [ note "exit a" ] | B -> [])
-      ~during:(function
-        | A -> [ Source.after 5 () ] | B -> [ Source.after 7 () ]
-        )
+      ~during:(function A -> [ Host.after 5 () ] | B -> [ Host.after 7 () ])
       (fun state () ->
         match state with
         | A ->
@@ -253,11 +251,11 @@ let test_entry_exit_order () =
         )
       actions
   in
-  let snapshot, actions = Machine.start machine () in
+  let snapshot, actions = Machine.start machine in
   Alcotest.check strings "start"
     [ "enter a"; "start pair/a/after 5ms" ]
     (describe actions);
-  let _, actions, _ = Machine.step machine () snapshot () in
+  let _, actions, _ = Machine.step machine snapshot () in
   Alcotest.check strings "transition"
     [
       "exit a";
@@ -269,7 +267,7 @@ let test_entry_exit_order () =
     (describe actions);
   Alcotest.check strings "exit"
     [ "exit a"; "stop pair/a/after 5ms" ]
-    (describe (Machine.exit machine () snapshot))
+    (describe (Machine.exit machine snapshot))
 
 type counter = Count of int
 
@@ -279,7 +277,7 @@ let test_self_goto_keeps_resources () =
       ~name:(function Count _ -> "count")
       ~entry:(fun _ -> [ note "enter" ])
       ~exit:(fun _ -> [ note "exit" ])
-      ~during:(fun _ -> [ Source.after 10 `Tick ])
+      ~during:(fun _ -> [ Host.after 10 `Tick ])
       (fun (Count n) -> function
         | `Tick ->
             Machine.Go (Count (n + 1))
@@ -289,16 +287,16 @@ let test_self_goto_keeps_resources () =
             Machine.Stay [ note "stay" ]
         )
   in
-  let snapshot, _ = Machine.start machine () in
-  let ticked, actions, how = Machine.step machine () snapshot `Tick in
+  let snapshot, _ = Machine.start machine in
+  let ticked, actions, how = Machine.step machine snapshot `Tick in
   Alcotest.(check int) "go: no actions" 0 (List.length actions);
   Alcotest.(check bool) "go: kept" true (how = Machine.Kept);
   Alcotest.(check bool) "go: new data" true (ticked = Count 1);
-  let _, actions, how = Machine.step machine () snapshot `Again in
+  let _, actions, how = Machine.step machine snapshot `Again in
   Alcotest.(check int)
     "reenter: exit, stop, enter, start" 4 (List.length actions);
   Alcotest.(check bool) "reenter: entered" true (how = Machine.Entered);
-  let stayed, actions, how = Machine.step machine () snapshot `Note in
+  let stayed, actions, how = Machine.step machine snapshot `Note in
   Alcotest.check strings "stay: its actions only" [ "note stay" ]
     (described actions);
   Alcotest.(check bool) "stay: kept" true (how = Machine.Kept);
@@ -332,11 +330,11 @@ let call_id item = "watch/watching//api/item \"" ^ item ^ "\""
 
 let test_keyed_sources () =
   let running, apply = tracker () in
-  let snapshot, actions = Machine.start watcher () in
+  let snapshot, actions = Machine.start watcher in
   apply actions;
   Alcotest.check strings "both calls run" [ call_id "a"; call_id "b" ] !running;
   let snapshot, actions, how =
-    Machine.step watcher () snapshot (`Set [ "a"; "c" ])
+    Machine.step watcher snapshot (`Set [ "a"; "c" ])
   in
   apply actions;
   Alcotest.(check bool) "kept" true (how = Machine.Kept);
@@ -345,20 +343,20 @@ let test_keyed_sources () =
     (described actions);
   Alcotest.check strings "running" [ call_id "a"; call_id "c" ] !running;
   let snapshot, actions, _ =
-    Machine.step watcher () snapshot (`Set [ "a"; "c" ])
+    Machine.step watcher snapshot (`Set [ "a"; "c" ])
   in
   Alcotest.check strings "unchanged keys keep running" [] (described actions);
   let snapshot, actions, _ =
-    Machine.step watcher () snapshot (`Set [ "a"; "c"; "a" ])
+    Machine.step watcher snapshot (`Set [ "a"; "c"; "a" ])
   in
   apply actions;
   Alcotest.check strings "a duplicate gets #2"
     [ "call " ^ call_id "a" ^ "#2 /api/item" ]
     (described actions);
   Alcotest.check strings "active agrees" !running
-    (List.sort compare (resource_ids watcher () snapshot));
+    (List.sort compare (resource_ids watcher snapshot));
   let _, actions, how =
-    Machine.step watcher () snapshot (`Restart [ "a"; "c"; "a" ])
+    Machine.step watcher snapshot (`Restart [ "a"; "c"; "a" ])
   in
   apply actions;
   Alcotest.(check bool) "reenter entered" true (how = Machine.Entered);
@@ -374,15 +372,13 @@ let test_keyed_sources () =
     (described actions);
   Alcotest.(check string)
     "source key" "/api/item \"a\""
-    (Source.key (Remote.call list_endpoint "a" (fun _ -> ())));
-  Alcotest.(check string)
-    "timer key" "after 5ms"
-    (Source.key (Source.after 5 ()))
+    (Host.key (Remote.call list_endpoint "a" (fun _ -> ())));
+  Alcotest.(check string) "timer key" "after 5ms" (Host.key (Host.after 5 ()))
 
 let test_anchor_place_is_in_key () =
   let popup = Ref.make "popup" and trigger = Ref.make "trigger" in
   let anchored side =
-    Source.anchor ~place:{ Place.default with side } ~anchor:trigger popup
+    Host.anchor ~place:{ Place.default with side } ~anchor:trigger popup
   in
   let machine =
     Machine.make ~id:"anchored" ~init:Place.Bottom
@@ -390,14 +386,14 @@ let test_anchor_place_is_in_key () =
       ~during:(fun side -> [ anchored side ])
       (fun _ side -> Machine.Go side)
   in
-  let snapshot, _ = Machine.start machine () in
-  let _, actions, how = Machine.step machine () snapshot Place.Top in
+  let snapshot, _ = Machine.start machine in
+  let _, actions, how = Machine.step machine snapshot Place.Top in
   Alcotest.(check bool) "kept" true (how = Machine.Kept);
   Alcotest.(check int)
     "the old anchor stops, the new one starts" 2 (List.length actions);
   Alcotest.(check bool)
     "keys differ" true
-    (Source.key (anchored Place.Top) <> Source.key (anchored Place.Bottom))
+    (Host.key (anchored Place.Top) <> Host.key (anchored Place.Bottom))
 
 let test_state_names () =
   Alcotest.check strings "every constructor, in order"
@@ -462,34 +458,32 @@ let test_final_ignores_events () =
             Machine.Ignore
       )
   in
-  let snapshot, _ = Machine.start machine () in
-  let closed, _, _ = Machine.step machine () snapshot `Close in
+  let snapshot, _ = Machine.start machine in
+  let closed, _, _ = Machine.step machine snapshot `Close in
   Alcotest.(check bool) "final" true (Machine.is_final machine closed);
   List.iter
     (fun event ->
-      let next, actions, how = Machine.step machine () closed event in
+      let next, actions, how = Machine.step machine closed event in
       Alcotest.(check bool) "unhandled" true (how = Machine.Unhandled);
       Alcotest.(check int) "no actions" 0 (List.length actions);
       Alcotest.(check bool) "same" true (next == closed);
-      Alcotest.(check bool) "cannot" false (Machine.can machine () closed event)
+      Alcotest.(check bool) "cannot" false (Machine.can machine closed event)
     )
     [ `Close; `Reopen ];
-  let _, _, how = Machine.step machine () snapshot `Reopen in
+  let _, _, how = Machine.step machine snapshot `Reopen in
   Alcotest.(check bool) "handled while not final" true (how <> Machine.Unhandled)
 
 let test_can () =
   let idle = start () in
   Alcotest.(check bool)
     "input in idle" true
-    (Machine.can search () idle (Input "a"));
-  Alcotest.(check bool) "fire in idle" false (Machine.can search () idle Fire);
+    (Machine.can search idle (Input "a"));
+  Alcotest.(check bool) "fire in idle" false (Machine.can search idle Fire);
   let typing, _, _ = send idle (Input "a") in
-  Alcotest.(check bool)
-    "fire while typing" true
-    (Machine.can search () typing Fire);
+  Alcotest.(check bool) "fire while typing" true (Machine.can search typing Fire);
   Alcotest.(check bool)
     "retry while typing" false
-    (Machine.can search () typing Retry);
+    (Machine.can search typing Retry);
   let typing_again, _, _ = send typing Retry in
   Alcotest.(check bool) "can agrees with step" true (typing_again == typing)
 
@@ -562,7 +556,7 @@ let item_machine on_props =
     ~name:(function Showing -> "showing" | Loading_item _ -> "loading_item")
     ~during:(fun number -> function
       | Showing ->
-          [ Source.after (number * 10) `Tick ]
+          [ Host.after (number * 10) `Tick ]
       | Loading_item n ->
           [ Remote.call item_endpoint n (fun _ -> `Answer) ]
       )
@@ -593,7 +587,7 @@ let test_on_props () =
   Alcotest.(check (option unit))
     "no default props" None
     (Option.map ignore (Machine.default_props machine));
-  let snapshot, actions = Machine.start machine 1 in
+  let snapshot, actions = Machine.start_with_props machine 1 in
   Alcotest.(check (list (pair (option int) int)))
     "start: previous None"
     [ (None, 1) ]
@@ -631,11 +625,11 @@ let test_on_props () =
   Alcotest.(check bool) "state" true (snapshot = Loading_item 7);
   Alcotest.(check bool)
     "update gets the props" true
-    (Machine.can machine 7 Showing `Tick)
+    (Machine.can_with_props machine 7 Showing `Tick)
 
 let test_on_props_default () =
   let machine = item_machine (fun _ _ _ -> Machine.Ignore) in
-  let snapshot, actions = Machine.start machine 3 in
+  let snapshot, actions = Machine.start_with_props machine 3 in
   Alcotest.check strings "start"
     [ "start item/showing/after 30ms 30ms" ]
     (described actions);
@@ -645,8 +639,8 @@ let test_on_props_default () =
     [ "stop item/showing/after 30ms"; "start item/showing/after 40ms 40ms" ]
     (described actions)
 
-let spec_state ?(final = false) ?(timers = []) ?(sources = []) name =
-  { Spec.name; final; timers; sources; held = [] }
+let spec_state ?(final = false) ?(timers = []) ?(network = []) name =
+  { Spec.name; final; timers; network; held = [] }
 
 let edges pairs =
   List.map
@@ -661,7 +655,7 @@ let search_spec =
       [
         spec_state "idle";
         spec_state "failed";
-        spec_state ~sources:[ "/api/search" ] "searching";
+        spec_state ~network:[ "/api/search" ] "searching";
         spec_state "shown";
         spec_state ~timers:[ 300 ] "typing";
       ];
@@ -743,11 +737,11 @@ let double =
 
 let test_remote_machine () =
   let machine = Remote_machine.make ~id:"r" double in
-  let snapshot, actions = Machine.start machine () in
+  let snapshot, actions = Machine.start machine in
   Alcotest.(check bool) "idle" true (snapshot = Remote_machine.Idle);
   Alcotest.(check int) "no entry" 0 (List.length actions);
   let loading, actions, _ =
-    Machine.step machine () snapshot (Remote_machine.Load 4)
+    Machine.step machine snapshot (Remote_machine.Load 4)
   in
   Alcotest.(check bool)
     "loading" true
@@ -771,7 +765,7 @@ let test_remote_machine () =
         Alcotest.fail "expected one Start_call"
   in
   let loaded, actions, _ =
-    Machine.step machine () loading (Remote_machine.Settled (Remote.Ok 8))
+    Machine.step machine loading (Remote_machine.Settled (Remote.Ok 8))
   in
   Alcotest.(check bool)
     "ready" true
@@ -780,15 +774,14 @@ let test_remote_machine () =
     [ "stop " ^ first_id ]
     (described actions);
   let failed, _, _ =
-    Machine.step machine () loading
+    Machine.step machine loading
       (Remote_machine.Settled (Remote.Failed (Http 500)))
   in
   Alcotest.(check bool)
     "failed" true
     (failed = Remote_machine.Failed { input = 4; error = Http 500; last = None });
   let rejected, _, _ =
-    Machine.step machine () loading
-      (Remote_machine.Settled (Remote.Rejected "no"))
+    Machine.step machine loading (Remote_machine.Settled (Remote.Rejected "no"))
   in
   Alcotest.(check bool)
     "rejected" true
@@ -796,10 +789,10 @@ let test_remote_machine () =
     = Remote_machine.Rejected { input = 4; reason = "no"; last = None }
     );
   let _, _, how =
-    Machine.step machine () snapshot (Remote_machine.Settled (Remote.Ok 1))
+    Machine.step machine snapshot (Remote_machine.Settled (Remote.Ok 1))
   in
   Alcotest.(check bool) "result without a call" true (how = Machine.Unhandled);
-  let reset, _, _ = Machine.step machine () loaded Remote_machine.Reset in
+  let reset, _, _ = Machine.step machine loaded Remote_machine.Reset in
   Alcotest.(check bool) "reset" true (reset = Remote_machine.Idle)
 
 type slow = Waiting | Done
@@ -821,7 +814,7 @@ let test_call_timeout () =
         match state with Waiting -> Machine.Go Done | Done -> Machine.Ignore
       )
   in
-  let _, actions = Machine.start machine () in
+  let _, actions = Machine.start machine in
   let timeouts =
     List.map
       (function
@@ -837,12 +830,10 @@ let test_call_timeout () =
 
 let test_remote_machine_reload () =
   let machine = Remote_machine.make ~id:"r" double in
-  let snapshot, _ = Machine.start machine () in
-  let snapshot, _, _ =
-    Machine.step machine () snapshot (Remote_machine.Load 1)
-  in
+  let snapshot, _ = Machine.start machine in
+  let snapshot, _, _ = Machine.step machine snapshot (Remote_machine.Load 1) in
   let snapshot, actions, _ =
-    Machine.step machine () snapshot (Remote_machine.Load 2)
+    Machine.step machine snapshot (Remote_machine.Load 2)
   in
   Alcotest.(check bool)
     "newest input" true
@@ -852,10 +843,75 @@ let test_remote_machine_reload () =
       "stop r/loading//api/double 1"; "call r/loading//api/double 2 /api/double";
     ]
     (described actions);
-  let _, actions, _ = Machine.step machine () snapshot Reset in
+  let _, actions, _ = Machine.step machine snapshot Reset in
   Alcotest.check strings "reset stops"
     [ "stop r/loading//api/double 2" ]
     (described actions)
+
+type connection = Connecting | Live | Offline | Closed
+
+let connection_topic = Topic.declare ~name:"feed" ~state:Codec.int
+
+let connection_name = function
+  | Connecting ->
+      "list.connecting"
+  | Live ->
+      "list.live"
+  | Offline ->
+      "list.offline"
+  | Closed ->
+      "closed"
+
+let test_sub_states_keep_sources () =
+  let machine =
+    Machine.make ~id:"feed" ~init:Connecting ~name:connection_name
+      ~entry:(fun state -> [ note ("enter " ^ connection_name state) ])
+      ~during:(function
+        | Connecting | Live | Offline ->
+            [
+              Topic.subscribe connection_topic "main" (fun _ -> Connecting);
+              Remote.call endpoint "change" (fun _ -> Connecting);
+            ]
+        | Closed ->
+            []
+        )
+      (fun _ next -> Machine.Go next)
+  in
+  let actions from next =
+    let _, actions, how = Machine.step machine from next in
+    (described actions, how)
+  in
+  let sub_state =
+    Alcotest.testable
+      (fun format (actions, how) ->
+        Format.fprintf format "%s (%s)"
+          (String.concat "; " actions)
+          ( match how with
+          | Machine.Kept ->
+              "kept"
+          | Machine.Entered ->
+              "entered"
+          | Machine.Unhandled ->
+              "unhandled"
+          )
+      )
+      ( = )
+  in
+  Alcotest.check sub_state
+    "list.connecting to list.live keeps the subscription and the call"
+    ([], Machine.Kept) (actions Connecting Live);
+  Alcotest.check sub_state "list.live to list.offline too" ([], Machine.Kept)
+    (actions Live Offline);
+  Alcotest.check sub_state
+    "list.offline to closed leaves list: stops both, enters closed"
+    ( [
+        "stop feed/list/live:feed main";
+        "stop feed/list//api/search \"change\"";
+        "note enter closed";
+      ],
+      Machine.Entered
+    )
+    (actions Offline Closed)
 
 let () =
   let t name f = Alcotest.test_case name `Quick f in
@@ -874,6 +930,8 @@ let () =
           t "entry and exit order" test_entry_exit_order;
           t "self goto keeps resources" test_self_goto_keeps_resources;
           t "keyed sources" test_keyed_sources;
+          t "sub-states of a dotted name keep the sources"
+            test_sub_states_keep_sources;
           t "state names cover every state" test_state_names;
           t "event_name" test_event_name;
           t "final ignores events" test_final_ignores_events;

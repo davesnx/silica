@@ -1,11 +1,11 @@
 (** The boundary between a host and the platform it paints on.
 
     A renderer paints views, turns platform input into events and carries out
-    the platform actions and held sources. It is the only part of a browser host
-    that touches the DOM. The queue of events, timers, calls, the error boundary
-    and the instance tree stay in the host runtime, and are the same for any
-    renderer. A renderer for another platform replaces this record and nothing
-    else.
+    the platform actions and held resources. It is the only part of a browser
+    host that touches the DOM. The queue of events, timers, calls, the error
+    boundary and the instance tree stay in the host runtime, and are the same
+    for any renderer. A renderer for another platform replaces this record and
+    nothing else.
 
     A renderer is made for one host with a [dispatch] function: it calls
     [dispatch] for each event that platform input produces, and the host queues
@@ -20,12 +20,17 @@ type 'e t = {
   run : 'e Action.t -> unit;
       (** Carry out an action. {!Action.Remount} and {!Action.Preload} never
           reach a renderer. *)
-  start_source : id:string -> 'e Action.source -> unit;
+  start_held : id:string -> 'e Action.held -> unit;
       (** Start a held resource under the id. The view is already painted. Start
           with an id that is running replaces it. *)
-  stop_source : id:string -> unit;
+  stop_held : id:string -> unit;
       (** Stop the held resource. Stopping an id that is not running does
           nothing. *)
+  release : unit -> unit;
+      (** Let go of all that the renderer holds: stop every held resource,
+          remove its listeners, its portals and every other node it added
+          outside the painted view, and take no more input. The painted view
+          stays. The host calls it once, when it stops. *)
 }
 
 type 'e make = dispatch:('e -> unit) -> 'e t

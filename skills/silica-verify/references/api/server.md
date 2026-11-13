@@ -300,8 +300,8 @@ module Make (Io : IO) : sig
       [page.dev]. It starts the app, then runs the [Start_call] actions of every
       rendered component against the handlers (with [page.context]), steps the
       machines with the answers, renders again, and repeats until no call is
-      left. [Start_timer] actions, sources and Live subscriptions do not run.
-      Only calls that answer with success count: a call that fails, has no
+      left. [Start_timer] actions, held resources and Live subscriptions do not
+      run. Only calls that answer with success count: a call that fails, has no
       handler or does not answer within [settle_timeout_ms] (default 1000, for
       the whole settle step) is left unanswered, and the page shows that state
       as it is at that moment. An application error ({!implement}) is not an
@@ -334,7 +334,10 @@ module Make (Io : IO) : sig
   (** Like {!render_page} for a component with no URL. A [Set_title] action
       replaces [title]. The status is 200, or the last [Set_status]. *)
 
-  (** {2 One island} *)
+  (** {2 One island}
+
+      Experimental: Live updates can change. The checker and the runtime do not
+      agree yet on the order of the first update of a subscription. *)
 
   type runner
   (** The machine of one island and the queue of its events. {!val-upgrade}
@@ -399,6 +402,9 @@ module Make (Io : IO) : sig
       }
         -> topic_def
         (** [init] makes the first state of a key that nobody has published yet.
+
+            Experimental: Live updates can change. The checker and the runtime
+            do not agree yet on the order of the first update of a subscription.
         *)
 
   type t
@@ -488,19 +494,22 @@ module Make (Io : IO) : sig
       accepted and the socket is closed at once with
       {!Silica.Protocol.close_session}: a browser cannot read the status of a
       refused upgrade, so a refusal would look like a lost network. The first
-      message of the connection must be a {!Silica.Protocol.Hello} with version
-      1, the CSRF token of the session and an island or a topic that the server
-      knows; the server answers with [Hello_ok] and then a state. Otherwise it
-      closes the socket with the close code of {!Silica.Protocol}. An island
-      with the same session, channel and instance that is still held (see
-      [live_keep]) is attached again and sent its state; the event ids go on. A
-      message above [max_message] gets an [error] message and is dropped. A step
-      that raises closes the socket with {!Silica.Protocol.close_server_error}
-      and ends the island. *)
+      message of the connection must be a {!Silica.Protocol.Hello} with the
+      version {!Silica.Protocol.version}, the CSRF token of the session and an
+      island or a topic that the server knows; the server answers with
+      [Hello_ok] and then a state. Otherwise it closes the socket with the close
+      code of {!Silica.Protocol}. An island with the same session, channel and
+      instance that is still held (see [live_keep]) is attached again and sent
+      its state; the event ids go on. A message above [max_message] gets an
+      [error] message and is dropped. A step that raises closes the socket with
+      {!Silica.Protocol.close_server_error} and ends the island. *)
 
   val publish : t -> 's Silica.Topic.t -> key:string -> 's -> unit Io.t
   (** The new full state of a topic key. Its [seq] is one higher than the last
-      one, and every subscriber gets it. Call it from a handler. *)
+      one, and every subscriber gets it. Call it from a handler.
+
+      Experimental: Live updates can change. The checker and the runtime do not
+      agree yet on the order of the first update of a subscription. *)
 
   val sweep : t -> unit
   (** Housekeeping, called now and then by the adapter (about every 5 seconds):

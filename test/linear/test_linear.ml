@@ -427,7 +427,7 @@ let test_create_closed () =
   has "trigger" html "New issue";
   has "trigger target" html "href=\"/?new=true\"";
   lacks "no dialog" html "role=\"dialog\"";
-  Alcotest.(check int) "no sources" 0 (List.length (Sim.sources sim))
+  Alcotest.(check int) "no sources" 0 (List.length (Sim.held sim))
 
 let test_create_open () =
   let sim = open_create () in
@@ -439,7 +439,7 @@ let test_create_open () =
   Alcotest.(check (list string))
     "the dialog holds the trap, the scroll lock and the dismiss layer"
     [ "dismiss"; "focus_trap"; "scroll_lock" ]
-    (List.sort compare (List.map snd (Sim.sources sim)));
+    (List.sort compare (List.map snd (Sim.held sim)));
   Alcotest.(check (option string))
     "labelled by its heading" (Some "create-issue-title")
     (Sim.attribute sim ~id:"create-issue-popup" "aria-labelledby")
@@ -476,7 +476,7 @@ let test_create_submit_and_close () =
   Alcotest.(check bool)
     "focus returns to the trigger" true
     (List.mem "focus new-issue" (Sim.log sim));
-  Alcotest.(check int) "sources stopped" 0 (List.length (Sim.sources sim))
+  Alcotest.(check int) "sources stopped" 0 (List.length (Sim.held sim))
 
 let test_create_failure_and_retry () =
   let sim = open_create () in
@@ -579,10 +579,10 @@ let test_app_navigation_keeps_header () =
     "only the detail asks, the user is not asked again; the theme keeps its \
      media source"
     [ "media" ]
-    (List.map snd (Sim.sources sim));
+    (List.map snd (Sim.held sim));
   Alcotest.(check int)
     "one call or timer" 1
-    (List.length (Sim.running sim) - List.length (Sim.sources sim));
+    (List.length (Sim.running sim) - List.length (Sim.held sim));
   Sim.answer sim issues_endpoint issues;
   has "detail" (Sim.html sim) "ENG-1";
   has "user stays" (Sim.html sim) "you are Ada"

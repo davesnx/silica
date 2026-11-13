@@ -70,7 +70,7 @@ let target value =
       None
 
 let shortcut =
-  Source.keys ~prevent:true
+  Host.keys ~prevent:true
     [
       (Key.make ~ctrl:true "k", Open_search);
       (Key.make ~meta:true "k", Open_search);

@@ -33,7 +33,7 @@ let machine =
       | Clean ->
           []
       | Dirty _ | Asking _ ->
-          [ Source.block (fun nav -> Attempt nav) ]
+          [ Host.block (fun nav -> Attempt nav) ]
       )
     (fun state event ->
       match (state, event) with

@@ -127,7 +127,7 @@ the app bundle. A test in [test/budget] checks the bundles for it.
 {2:dev-hot Hot reload}
 
 After a build that changed the client, the page stops the running code (its
-timers, calls, Live sockets, held sources and listeners), keeps the snapshot of
+timers, calls, Live sockets, held resources and listeners), keeps the snapshot of
 each machine instance by its instance path, loads the new bundle, and resumes
 every instance whose snapshot the new code decodes: the new view shows, the
 DOM nodes that did not change stay (so focus and scroll stay), and the timers
@@ -154,10 +154,12 @@ that the release bundles have none of it.
 {2:dev-json Events as JSON}
 
 With [--json], stdout has one JSON object per line. The server output goes to
-stderr. The events:
+stderr; its [listening on] line names the internal port of the server, behind
+[silica dev]: open the [url] of the [dev] event. The events:
 
 - [{"t":"dev","url":"http://127.0.0.1:8080"}]: [silica dev] listens.
-- [{"t":"build","status":"started"}], then [{"t":"build","status":"ok"}] or
+- [{"t":"build","status":"started"}] for each build, the first one too, then
+  [{"t":"build","status":"ok"}] or
   [{"t":"build","status":"failed","errors":[...]}]. Each error has [file]
   (relative to the root), [line], [col] (from 1), [end_line], [end_col],
   [severity] (["error"] or ["warning"]), [message] and [excerpt], a list of
@@ -169,8 +171,9 @@ stderr. The events:
   server stopped. [output] is its last 60 lines. [silica dev] starts it again
   after the next build that succeeds, not before.
 - [{"t":"reload","what":"code","entry":"/static/client_main-HASH.js","css":[...]}]:
-  the page swaps in the new bundle; ["page"] reloads the page; ["css"] swaps
-  the stylesheets only.
+  the page swaps in the new bundle [entry]; each [css] entry has [from] and
+  [to], the old and the new stylesheet. ["page"] reloads the page; ["css"]
+  with [css] swaps the stylesheets only.
 - [{"t":"hot-reload","status":"kept","ms":26,"kept":[...],"restarted":[...]}]:
   the page resumed the new code in [ms]. [kept] lists the instance paths that
   kept their state; each [restarted] entry has [path], [machine] and [reason],
@@ -201,6 +204,12 @@ the client, for [restarted], and after a change to the client for
 SIGINT (Ctrl-C), SIGTERM and SIGHUP stop the server (which saves its state),
 then dune, and free the port; the exit code is 0. The children run in their
 own process groups, so SIGKILL on [silica dev] leaves them running.
+
+[silica dev] needs Unix sockets: dune's RPC socket and the socket of
+[silica inspect] ([_build/silica-dev/inspect.sock]). Where the environment
+forbids them, as some sandboxes do, it stops at start with
+[cannot listen for the inspector: ... Operation not permitted] and says so;
+run it where Unix sockets are allowed.
 
 A second [silica dev] in the same project stops at once with
 [another silica dev runs in this project (pid N)]. A [dune build --watch]
@@ -307,16 +316,16 @@ HTML of the view:
 {@ocaml[
 # let lamp = Doc_lamp.machine;;
 val lamp : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Machine.t = <abstr>
-# let state, _ = Silica.Machine.start lamp ();;
+# let state, _ = Silica.Machine.start lamp;;
 val state : Doc_lamp.state = Doc_lamp.Off
-# let state, _, _ = Silica.Machine.step lamp () state Doc_lamp.Toggle;;
+# let state, _, _ = Silica.Machine.step lamp state Doc_lamp.Toggle;;
 val state : Doc_lamp.state = Doc_lamp.On
 # Silica.Render.to_string (Doc_lamp.view state);;
 - : string = "<div><p>The lamp is on.</p><button>Turn off</button></div>"
 ]}
 
 In the browser, one call of {!Silica_browser.mount} paints it into an element
-of the page. The {{!page-tutorial.browser}tutorial} shows the client file.
+of the page and returns the app, which {!Silica_browser.send} can stop. The {{!page-tutorial.browser}tutorial} shows the client file.
 
 {1:next Next}
 

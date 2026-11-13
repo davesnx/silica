@@ -107,19 +107,30 @@ let ask_before_unload : unit -> unit -> unit =
 let after_task : (unit -> unit) -> unit =
   [%mel.raw {|function (f) { Promise.resolve().then(function () { f() }) }|}]
 
-let announce : string -> unit =
+let create_announcer : node -> node =
   [%mel.raw
-    {|function (text) {
-  var region = document.querySelector("[data-silica-announcer]");
-  if (!region) {
-    region = document.createElement("div");
-    region.setAttribute("data-silica-announcer", "");
-    region.setAttribute("aria-live", "polite");
-    region.setAttribute("aria-atomic", "true");
-    region.setAttribute("style", "position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0");
-    document.body.appendChild(region);
-  }
-  region.textContent = text;
+    {|function (parent) {
+  var region = document.createElement("div");
+  region.setAttribute("data-silica-announcer", "");
+  region.setAttribute("aria-live", "polite");
+  region.setAttribute("aria-atomic", "true");
+  region.setAttribute("style", "position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0");
+  parent.appendChild(region);
+  return region;
+}|}]
+
+external root_node : node -> node = "getRootNode" [@@mel.send]
+
+let active_in : node -> node Js.nullable =
+  [%mel.raw {|function (scope) { return scope.activeElement || null }|}]
+
+let find_by_id_in : node -> string -> node Js.nullable =
+  [%mel.raw
+    {|function (scope, id) {
+  if (typeof scope.getElementById === "function") return scope.getElementById(id);
+  var all = scope.querySelectorAll("[id]");
+  for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+  return null;
 }|}]
 
 let watch_visible : (node -> unit) -> node -> unit =

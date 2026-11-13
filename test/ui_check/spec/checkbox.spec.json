@@ -6,21 +6,21 @@
       "name": "unchecked",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "checked",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "indeterminate",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

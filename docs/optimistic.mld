@@ -10,7 +10,8 @@ checker can compare it.
 
 Give {!Silica.Optimistic.Make} the type of the value, the type of a change,
 and how a change goes on a value. Here the value is a list of tags and a
-change adds or removes one tag:
+change adds or removes one tag. [apply] is idempotent: a change that is
+already on the value changes nothing (see {!section-live}):
 
 {@ocaml[
 # type change = Add of string | Remove of string;;
@@ -19,7 +20,7 @@ type change = Add of string | Remove of string
     type value = string list
     type nonrec change = change
     let apply tags = function
-      | Add tag -> tags @ [ tag ]
+      | Add tag -> if List.mem tag tags then tags else tags @ [ tag ]
       | Remove tag -> List.filter (fun t -> t <> tag) tags
   end);;
 module Tags :
@@ -34,7 +35,7 @@ module Tags :
     val rebase : value -> t -> t
     val value : t -> value
     val confirmed : t -> value
-    val pending : t -> int
+    val pending : t -> (int * change) list
     val is_pending : id:int -> t -> bool
   end
 ]}
@@ -55,6 +56,7 @@ snapshot.
 
 [value] is the confirmed value with the pending changes on it, oldest first.
 The view shows [value]. [confirmed] is the value with no pending change.
+[pending] lists the pending changes with their ids, oldest first.
 
 {@ocaml[
 # let tags = Tags.make [ "bug" ];;
@@ -62,7 +64,8 @@ val tags : Tags.t = <abstr>
 # let tags = tags |> Tags.apply ~id:1 (Add "ui") |> Tags.apply ~id:2 (Remove "bug");;
 val tags : Tags.t = <abstr>
 # Tags.value tags, Tags.confirmed tags, Tags.pending tags;;
-- : Tags.value * Tags.value * int = (["ui"], ["bug"], 2)
+- : Tags.value * Tags.value * (int * change) list =
+(["ui"], ["bug"], [(1, Add "ui"); (2, Remove "bug")])
 ]}
 
 The server confirms change 1, and change 2 fails. The value goes back for
@@ -72,7 +75,7 @@ change 2 only:
 # let tags = tags |> Tags.settle ~id:1 |> Tags.drop ~id:2;;
 val tags : Tags.t = <abstr>
 # Tags.value tags, Tags.pending tags;;
-- : Tags.value * int = (["bug"; "ui"], 0)
+- : Tags.value * (int * change) list = (["bug"; "ui"], [])
 ]}
 
 A newer value from the server keeps the changes that still wait:
@@ -87,9 +90,61 @@ val tags : Tags.t = <abstr>
 {1:machines In a machine}
 
 For a Remote change: [apply] when the call starts, [settle] when the answer
-arrives and [drop] when it fails. For Live data: [apply] when the change is
-sent, [rebase] for each new state of the topic, and [settle] when a state
-arrives that has the change.
+arrives and [drop] when it fails. The calls are the pending changes: [during]
+makes one Remote call for each, so a change stays pending exactly while its
+call runs:
+
+{@ocaml[
+# type event = Answered of int * (unit, string) Silica.Remote.answer;;
+type event = Answered of int * (unit, string) Silica.Remote.answer
+# let change_tags =
+    Silica.Remote.declare ~path:"/api/tags"
+      ~input:
+        (Silica.Codec.make
+           ~encode:(function
+             | Add tag -> Silica.Codec.constructor "Add" [ Silica.Codec.string.encode tag ]
+             | Remove tag -> Silica.Codec.constructor "Remove" [ Silica.Codec.string.encode tag ])
+           ~decode:(fun _ -> Error "not read here"))
+      ~output:Silica.Codec.unit ~rejected:Silica.Codec.string;;
+val change_tags : (change, unit, string) Silica.Remote.endpoint = <abstr>
+# let during tags =
+    List.map
+      (fun (id, change) ->
+        Silica.Remote.call change_tags change (fun answer -> Answered (id, answer)))
+      (Tags.pending tags);;
+val during : Tags.t -> event Silica.Host.t list = <fun>
+]}
+
+{2:live Live data}
+
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
+
+For data on a Live topic, the changes still go to the server by Remote calls:
+[apply], [settle] and [drop] as above, and [rebase] for each state of the
+topic. The server publishes the new state as soon as it has made the change,
+so a state that already holds the change can arrive before the answer to its
+call. The change is then in the confirmed value and still pending, and
+[value] applies it once more. So [apply] must be idempotent: applying a change
+that is already on the value gives the same value. The [Add] of [Tags] checks
+that the tag is not there yet; with [tags @ [ tag ]] alone the tag would show
+twice until the answer arrives:
+
+{@ocaml[
+# let tags = Tags.make [ "bug" ] |> Tags.apply ~id:4 (Add "ui");;
+val tags : Tags.t = <abstr>
+# let tags = Tags.rebase [ "bug"; "ui" ] tags;;
+val tags : Tags.t = <abstr>
+# Tags.value tags, Tags.pending tags;;
+- : Tags.value * (int * change) list = (["bug"; "ui"], [(4, Add "ui")])
+# Tags.value (Tags.settle ~id:4 tags);;
+- : Tags.value = ["bug"; "ui"]
+]}
+
+A change that sets a field to a value is idempotent already. Give the
+checker a property such as "an item never shows twice" and samples where the
+published state holds the change: it finds an [apply] that is not
+idempotent.
 
 Mini Linear edits the fields of an issue in this way. Each change goes to the
 server in its own Remote call, made by a small child component, and a failed

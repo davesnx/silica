@@ -70,12 +70,12 @@ let trigger_attrs parts ~haspopup ~open_ =
     []
 
 let dismiss ?escape ?outside ?focus_out parts =
-  Source.dismiss ?escape ?outside ?focus_out [ parts.trigger; parts.popup ]
+  Host.dismiss ?escape ?outside ?focus_out [ parts.trigger; parts.popup ]
 
 let layer ?escape ?outside ?focus_out ?place parts =
   [
     dismiss ?escape ?outside ?focus_out parts;
-    Source.anchor ?place ~anchor:parts.trigger parts.popup;
+    Host.anchor ?place ~anchor:parts.trigger parts.popup;
   ]
 
 let close ?(focus = true) parts closed : (_, _) Machine.next =

@@ -77,7 +77,7 @@ let sides_left_and_right () =
   check_xy "left of the anchor" (500. -. 4. -. 200., 100.) r
 
 let anchor_place source =
-  match Source.held source with
+  match Host.held source with
   | Some (Action.Anchor { place; _ }) ->
       place
   | _ ->
@@ -95,14 +95,14 @@ let anchor_takes_place_from_the_state () =
       ~states:popup_states
       ~during:(fun (Shown side) ->
         [
-          Source.anchor ~place:(place ~side ()) ~anchor:(Ref.make "trigger")
+          Host.anchor ~place:(place ~side ()) ~anchor:(Ref.make "trigger")
             (Ref.make "popup");
         ]
       )
       (fun _ side -> Machine.Go (Shown side))
   in
   let held state =
-    match Machine.held machine () state with
+    match Machine.held machine state with
     | [ Action.Anchor { place; _ } ] ->
         place
     | _ ->
@@ -112,7 +112,7 @@ let anchor_takes_place_from_the_state () =
     (held (Shown Place.Top)).side;
   Alcotest.check side "left from the state" Place.Left
     (held (Shown Place.Left)).side;
-  let fixed = Source.anchor ~anchor:(Ref.make "trigger") (Ref.make "popup") in
+  let fixed = Host.anchor ~anchor:(Ref.make "trigger") (Ref.make "popup") in
   Alcotest.(check bool) "default place" true (anchor_place fixed = Place.default)
 
 let () =

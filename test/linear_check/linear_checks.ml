@@ -443,7 +443,7 @@ let unsaved_check () =
          )
         );
       Check.always ~name:"the block is held in every state"
-        (Check.holds (fun state _ -> Machine.held machine () state <> []));
+        (Check.holds (fun state _ -> Machine.held machine state <> []));
     ]
   in
   Check.component ~properties Linear_unsaved.component

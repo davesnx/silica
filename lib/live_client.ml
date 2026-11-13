@@ -158,16 +158,12 @@ let rec connect t =
 and lost t =
   finish_socket t;
   if not t.stopped then (
+    let delay = Backoff.delay_ms ~attempt:t.attempt ~jitter:(Random.float 1.) in
+    t.attempt <- t.attempt + 1;
+    t.cancel_timer <- t.io.schedule delay (fun () -> connect t);
     if not t.down then (
       t.down <- true;
       t.on_down ()
-    );
-    if not t.stopped then (
-      let delay =
-        Backoff.delay_ms ~attempt:t.attempt ~jitter:(Random.float 1.)
-      in
-      t.attempt <- t.attempt + 1;
-      t.cancel_timer <- t.io.schedule delay (fun () -> connect t)
     )
   )
 

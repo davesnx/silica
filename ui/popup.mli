@@ -36,9 +36,9 @@ val trigger_attrs :
     [aria-controls] (while open) and [data-popup-open] (while open). *)
 
 val dismiss :
-  ?escape:'e -> ?outside:'e -> ?focus_out:'e -> parts -> 'e Silica.Source.t
+  ?escape:'e -> ?outside:'e -> ?focus_out:'e -> parts -> 'e Silica.Host.t
 (** The dismiss layer of the popup: the trigger and the popup are inside (see
-    {!Silica.Source.dismiss}). *)
+    {!Silica.Host.dismiss}). *)
 
 val layer :
   ?escape:'e ->
@@ -46,9 +46,9 @@ val layer :
   ?focus_out:'e ->
   ?place:Silica.Place.t ->
   parts ->
-  'e Silica.Source.t list
-(** The sources of an open popup next to its trigger: {!dismiss} and
-    {!Silica.Source.anchor} of the popup to the trigger. *)
+  'e Silica.Host.t list
+(** The resources of an open popup next to its trigger: {!dismiss} and
+    {!Silica.Host.anchor} of the popup to the trigger. *)
 
 val close : ?focus:bool -> parts -> 's -> ('s, 'e) Silica.Machine.next
 (** [close parts closed] goes to the closed snapshot and, unless [focus] is

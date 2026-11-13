@@ -6,14 +6,14 @@
       "name": "closed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "open",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": [
         "focus_trap",
         "scroll_lock",

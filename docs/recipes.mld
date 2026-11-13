@@ -147,7 +147,7 @@ The native stanza copies the shared files and uses [silica.jsonkit]:
   (pps jsonkit.ppx silica.ppx)))
 ]}
 
-The Melange stanza copies the same files and uses [silica-jsonkit-melange]:
+The Melange stanza copies the same files and uses [silica.jsonkit-melange]:
 
 {@dune file=../example/app/melange/dune[
 (copy_files ../shared/*.{ml,mlx})
@@ -156,7 +156,7 @@ The Melange stanza copies the same files and uses [silica-jsonkit-melange]:
  (name silica_example_app_melange)
  (wrapped false)
  (modes melange)
- (libraries silica silica-jsonkit-melange jsonkit-melange)
+ (libraries silica silica.jsonkit-melange jsonkit-melange)
  (preprocess
   (pps jsonkit-melange.ppx silica.ppx melange.ppx)))
 ]}

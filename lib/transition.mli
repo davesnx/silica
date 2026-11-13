@@ -21,7 +21,8 @@ type change = Instance.change =
       (** The instance started again at a snapshot it reached before, such as a
           Live island after a server restart: [from] is [""], [target] is the
           state of that snapshot, [actions] are only the starts of what runs
-          during it (see {!Machine.resume}), and the cause is [Start]. *)
+          during it (see {!Machine.resume_with_props}), and the cause is
+          [Start]. *)
   | Unhandled  (** The machine ignored the event: nothing changed. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state, with the same name or another. *)
@@ -47,8 +48,10 @@ type cause =
       element : string;
           (** Where the element is, as {!Accessibility.path} gives it. *)
       value : string option;
-          (** The text of an [input], or the name of the key of a [key_down] or
-              [key_up] (see {!Key.to_string}). *)
+          (** The text of an [input] ({!Secret.mask} for a password field), or
+              the name of the key of a [key_down] or [key_up] (see
+              {!Key.to_string}; {!Secret.mask} for a key that types a character
+              into a password field). *)
     }  (** A handler of an element of the view. *)
   | Timer of { id : string; ms : int }  (** A timer that the state owned. *)
   | Answer of { id : string; path : string; answer : Silica_json.Json.t option }
@@ -57,8 +60,8 @@ type cause =
   | Live of { id : string; topic : string; update : Silica_json.Json.t option }
       (** A state or a change of connection of a Live subscription, by
           {!Topic.update_codec}. [None] when data is not recorded. *)
-  | Held of { id : string; source : string }
-      (** A held source, by its {!Action.source_name}. *)
+  | Held of { id : string; name : string }
+      (** A held resource, by its {!Action.held_name}. *)
   | Action_result of { action : string }
       (** The result of an action, such as {!Action.Measure}. *)
   | Props  (** The parent gave new props. *)
@@ -82,10 +85,10 @@ type t = {
           by ["."], and a key is [#key]. [%], [/], [:], [#] and [.] in a key are
           percent encoded. Example: [app/0.2:router/#inbox:issue-list]. *)
   number : int;
-      (** The number of the instance in its tree, as in timer and source ids. *)
+      (** The number of the instance in its tree, as in resource ids. *)
   entry : int;
       (** The number of the entry of the state after the step, as in timer and
-          source ids. *)
+          resource ids. *)
   machine : string;  (** {!Machine.id}. *)
   from : string;
       (** The state name before; [""] for [Started] and [Resumed]. *)
@@ -126,8 +129,8 @@ val cause_label : cause -> string
     in [press button "Save"] or [key_down Escape textbox "Search"];
     [after 2000ms] for a timer; [ok /api/save], [rejected /api/save] or
     [failed /api/save] for the answer of a call ([answer /api/save] when the
-    answer is not recorded); [live <topic>]; the name of a held source, such as
-    [dismiss]; [result <action>]; [props]; [child <instance>]; [url <url>];
+    answer is not recorded); [live <topic>]; the name of a held resource, such
+    as [dismiss]; [result <action>]; [props]; [child <instance>]; [url <url>];
     [preload <url>]; [message]. The checker labels the events of its steps and
     specs the same way. *)
 
@@ -144,12 +147,12 @@ val strip : t -> t
 val names_only : t list -> t list
 (** The records of one trace with names only, as a recorder without data keeps
     them: each record is {!strip}ped, and also:
-    - Each id of a timer, call, subscription or held source, in causes and in
+    - Each id of a timer, call, subscription or held resource, in causes and in
       actions, becomes ["<number>.<entry>/<machine id>/#<n>"], where [n] counts
       the distinct ids of the list from 1. The same id gets the same [n], so a
       start, its answer and its stop still match, but the id no longer holds the
       state, the path, the encoded input of a call or the key of a subscription
-      (see {!Source.key}).
+      (see {!Host.key}).
     - The accessible [name] of the element of a handler is [""]: it can be text
       that a user typed, such as the title of an issue in a link.
     - A URL keeps its path only, without query and fragment: in [Url] and
@@ -160,9 +163,15 @@ val names_only : t list -> t list
     What stays: the sequence numbers, times, instance paths (with the keys that
     the app gave component nodes), machine ids, state and event names, changes,
     handler names, roles and element paths, timer delays, endpoint paths, topic
-    and source names, and the other actions as {!describe} writes them. *)
+    and resource names, and the other actions as {!describe} writes them. *)
 
 (** {1 Observers} *)
+
+val learn : Secret.t -> Instance.observed -> unit
+(** [learn secrets observed]: when the step types a text into a password field,
+    [secrets] learns it, as {!observer} does. A host that encodes snapshots
+    itself, such as the inspector, scrubs them with the same table (see
+    {!Secret.scrub}). *)
 
 type pending
 (** A record whose element may not be known yet. The role and name of the
@@ -184,8 +193,27 @@ val peek : pending -> t
 val ready : t -> pending
 (** A record that is known. *)
 
-val observer : ?clock:(unit -> float) -> (pending -> unit) -> Instance.observer
-(** [observer ?clock record] numbers the steps from 1, reads the [clock] (no
-    time when it is not given) and gives each record to [record]. The work
-    happens only in the observer: a host with no observer does none, and an app
-    that never calls this function carries none of its code. *)
+val observer :
+  ?clock:(unit -> float) ->
+  ?mask:bool ->
+  ?secrets:Secret.t ->
+  (pending -> unit) ->
+  Instance.observer
+(** [observer ?clock ?secrets record] numbers the steps from 1, reads the
+    [clock] (no time when it is not given) and gives each record to [record].
+
+    Text typed into a password field (see {!Secret}) is masked: the [value] of
+    the [input] cause is {!Secret.mask} (an empty text stays [""]), and the
+    observer learns the text into [secrets] (a new table when it is not given),
+    under the instance path and the element path of the field. In [data],
+    [props] and [snapshot], each string that is the last text typed into a
+    password field is {!Secret.mask}. A key that types a character into a
+    password field (see {!Secret.is_typed_key}) is {!Secret.mask} in the
+    [value], and the record has no [data]. A trace then cannot type that text or
+    that key again: a replay of it stops at that step.
+
+    With [~mask:false] (default [true]) the records keep that text in clear, for
+    a test that replays its own run in the same process (see
+    [Silica_memory.trace_in_clear]). Never write such records to a file. The
+    work happens only in the observer: a host with no observer does none, and an
+    app that never calls this function carries none of its code. *)

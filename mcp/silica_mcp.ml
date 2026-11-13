@@ -394,7 +394,9 @@ let send_event : type p s e.
             (Printf.sprintf "The arguments of %s do not decode: %s" event.name
                reason
             )
-      | Ok value when not (Machine.can machine found.props found.snapshot value)
+      | Ok value
+        when not
+               (Machine.can_with_props machine found.props found.snapshot value)
         ->
           Error
             (Printf.sprintf "%s at %s in the state %s ignores this %s event."

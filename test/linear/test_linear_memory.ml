@@ -71,6 +71,10 @@ let test_user_call_runs_once () =
 let test_create_in_flight_survives () =
   let t = Memory.mount_app ~url:"/" Linear_app.app in
   answer t;
+  Memory.press (Memory.by_id t "issue-row-2");
+  answer t;
+  Memory.press (Memory.by_role ~name:"Mini Linear" t Accessibility.Link);
+  answer t;
   Memory.press (Memory.by_role ~name:"New issue" t Accessibility.Link);
   Alcotest.(check string) "the modal is open" "/?new=true" (Memory.url t);
   let dialog = Memory.by_role ~name:"New issue" t Accessibility.Dialog in
@@ -92,7 +96,15 @@ let test_create_in_flight_survives () =
   in
   Memory.back t;
   answer t;
-  to_detail_and_back t;
+  Memory.back t;
+  answer t;
+  Alcotest.(check string)
+    "the back button reaches the detail behind the open dialog" "/issue/2"
+    (Memory.url t);
+  has "the detail shows" t "Second</h1>";
+  Memory.forward t;
+  answer t;
+  Alcotest.(check string) "forward on the list" "/" (Memory.url t);
   let focused () =
     List.mem (Action.Focus Linear_refs.new_issue) (Memory.actions t)
   in

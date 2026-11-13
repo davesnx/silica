@@ -112,7 +112,7 @@ let machine =
           ( if s.ticked then
               []
             else
-              [ Source.after 5 Tick ]
+              [ Host.after 5 Tick ]
           )
           @
           if s.answered then
@@ -363,7 +363,7 @@ let edit_component =
          | Clean ->
              []
          | Dirty _ | Asking _ ->
-             [ Source.block (fun nav -> Attempt nav) ]
+             [ Host.block (fun nav -> Attempt nav) ]
          )
        (fun state event ->
          match (state, event) with
@@ -551,7 +551,7 @@ let watch_machine =
     ~name:watch_state_name ~states:watch_state_states
     ~during:(function
       | Watching _ ->
-          [ Source.live news "room" (fun update -> Update update) ]
+          [ Topic.subscribe news "room" (fun update -> Update update) ]
       | Away _ ->
           []
       )
@@ -634,7 +634,7 @@ let timer_component =
        ~states:timer_state_states
        ~final:(function Fired | Late -> true | Waiting | Left -> false)
        ~during:(function
-         | Waiting -> [ Source.after 20 Tick_timer ] | Left | Fired | Late -> []
+         | Waiting -> [ Host.after 20 Tick_timer ] | Left | Fired | Late -> []
          )
        (fun state event ->
          match (state, event) with
@@ -752,7 +752,7 @@ let ticker_component =
   Component.make_with_props
     (Machine.make_with_props ~id:"ticker" ~init:(Running 0)
        ~name:ticker_state_name ~states:ticker_state_states
-       ~during:(fun _ (Running _) -> [ Source.after 20 Tick_child ])
+       ~during:(fun _ (Running _) -> [ Host.after 20 Tick_child ])
        (fun _ (Running count) Tick_child -> Reenter (Running (count + 1)))
     )
     (fun label (Running count) ->

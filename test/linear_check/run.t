@@ -38,3 +38,16 @@ and does not compare views:
         Memory.press (Memory.by_role page Accessibility.Link ~name:"New issue");
         Memory.submit (Memory.by_role page Accessibility.Form)
     )
+
+silica replay takes the root machine of the trace, as silica inspect replay
+gives it, for the joint entry whose root it is:
+
+  $ ./joint_traces.exe replay router traces/router_create_issue_create_issue_dialog_no_title_error_new_status_assignee.jsonl | head -1
+  replay router+create-issue+create-issue-dialog: traces/router_create_issue_create_issue_dialog_no_title_error_new_status_assignee.jsonl
+
+A machine that is only a child of an entry is not an entry to replay; the
+error names the entry that checks it:
+
+  $ ./joint_traces.exe replay create-issue-dialog traces/router_create_issue_create_issue_dialog_no_title_error_new_status_assignee.jsonl
+  replay: no entry has the root machine create-issue-dialog; it is a child in router+create-issue+create-issue-dialog. A replay starts at the root of an entry: give the id of an entry and a trace of its root machine
+  [3]

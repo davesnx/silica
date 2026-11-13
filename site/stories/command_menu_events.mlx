@@ -17,7 +17,7 @@ type page = { open_ : bool option; events : string list }
 type event = Open_menu | Changed of bool * Popup.reason | Ran of string
 
 let shortcut =
-  Source.keys ~prevent:true
+  Host.keys ~prevent:true
     [
       (Key.make ~ctrl:true "j", Open_menu); (Key.make ~meta:true "j", Open_menu);
     ]

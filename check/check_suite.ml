@@ -32,7 +32,7 @@ type golden = {
 type result = {
   command : string;
   ran : ran list;
-  trace_files : (string * string list) list;
+  trace_files : (string * (string * (unit, string) Stdlib.result) list) list;
   unchecked : string list option;
   elsewhere : (string * string) list;
   errors : error list;
@@ -208,7 +208,9 @@ let run ?only entries =
   }
 
 let step_line (step : _ Check.step) =
-  Printf.sprintf "  %s -> %s on %s, by %s\n" step.from step.target step.event
+  Printf.sprintf "  %s%s on %s, by %s\n" step.from
+    (match step.target with "" -> "" | target -> " -> " ^ target)
+    step.event
     (Check.describe_cause step.cause)
 
 let indented text =
@@ -692,7 +694,7 @@ let to_json result =
         list
           (fun (Ran { check; report }) ->
             Check_json.report
-              ?trace_files:(List.assoc_opt (Check.id check) result.trace_files)
+              ?traces:(List.assoc_opt (Check.id check) result.trace_files)
               check report
           )
           result.ran
@@ -768,11 +770,19 @@ let pp formatter result =
       (fun (Ran { check; report }) ->
         Format.fprintf formatter "%a@." Check.pp_report report;
         List.iteri
-          (fun index file ->
-            Format.fprintf formatter
-              "trace of violation %d: %s; its test: silica script %s %s > %s@."
-              (index + 1) file (Check.id check) file
-              (Check_json.test_file file)
+          (fun index (file, test) ->
+            match test with
+            | Ok () ->
+                Format.fprintf formatter
+                  "trace of violation %d: %s; its test: silica script %s %s > \
+                   %s@."
+                  (index + 1) file (Check.id check) file
+                  (Check_json.test_file file)
+            | Error reason ->
+                Format.fprintf formatter
+                  "trace of violation %d: %s; no script test: %s; silica \
+                   replay %s %s replays it@."
+                  (index + 1) file reason (Check.id check) file
           )
           (Option.value ~default:[]
              (List.assoc_opt (Check.id check) result.trace_files)
@@ -1058,7 +1068,7 @@ let remove_stale dir trace_files =
   let written =
     List.concat_map
       (fun (id, files) ->
-        List.map (fun file -> (id, Filename.basename file)) files
+        List.map (fun (file, _) -> (id, Filename.basename file)) files
       )
       trace_files
   in
@@ -1075,6 +1085,35 @@ let remove_stale dir trace_files =
        (List.map (fun (id, name) -> id ^ "\t" ^ name ^ "\n") (kept @ written))
     )
 
+let foreign_traces dir =
+  if
+    Sys.file_exists dir
+    && not (Sys.file_exists (Filename.concat dir manifest_name))
+  then
+    match Sys.readdir dir with
+    | [||] ->
+        None
+    | files ->
+        let names = List.sort String.compare (Array.to_list files) in
+        let shown = List.filteri (fun index _ -> index < 3) names in
+        Some
+          (Printf.sprintf
+             "--traces %s: the directory holds files that silica did not write \
+              (%s%s) and no %s list; give a new or empty directory, or the \
+              directory of an earlier --traces run"
+             dir (String.concat ", " shown)
+             ( if List.length names > 3 then
+                 ", ..."
+               else
+                 ""
+             )
+             manifest_name
+          )
+    | exception Sys_error message ->
+        Some ("--traces " ^ dir ^ ": " ^ message)
+  else
+    None
+
 let write_traces dir result =
   match
     if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
@@ -1084,13 +1123,11 @@ let write_traces dir result =
           List.map2
             (fun (violation : (_, _) Check.violation) name ->
               let file = Filename.concat dir (name ^ ".jsonl") in
-              write_file file
-                (Silica.Trace.to_jsonl
-                   (Check.export check ~rule:violation.rule
-                      violation.counterexample
-                   )
-                );
-              file
+              let trace =
+                Check.export check ~rule:violation.rule violation.counterexample
+              in
+              write_file file (Silica.Trace.to_jsonl trace);
+              (file, Result.map ignore (Check.script check trace))
             )
             report.violations
             (trace_names (Check.id check) report.violations)
@@ -1139,18 +1176,95 @@ let rec find id entries =
           )
         entries
 
-let load entries ~id ~file =
+let rec matching predicate entries =
+  match
+    List.filter_map
+      (function
+        | Entry { check; _ } when predicate (Found check) ->
+            Result.to_option
+              (Result.map (fun id -> (id, Found check)) (safe_id check))
+        | Entry _ | Elsewhere _ ->
+            None
+        )
+      entries
+  with
+  | [] ->
+      List.find_map
+        (function
+          | Entry { check; dependents = Some make } -> (
+              match make (Check.run check) with
+              | children -> (
+                  match matching predicate children with
+                  | [] ->
+                      None
+                  | found ->
+                      Some found
+                )
+              | exception _ ->
+                  None
+            )
+          | Entry { dependents = None; _ } | Elsewhere _ ->
+              None
+          )
+        entries
+      |> Option.value ~default:[]
+  | found ->
+      found
+
+let entry_of_trace entries id =
+  let ids found = String.concat ", " (List.map fst found) in
   match find id entries with
-  | None ->
-      Error ("no entry checks the machine " ^ id)
-  | Some found -> (
+  | Some found ->
+      Ok (id, found)
+  | None -> (
+      let has_root (Found check) =
+        match Check.root check with
+        | root ->
+            root = id
+        | exception Check.Invalid_check _ ->
+            false
+      in
+      match matching has_root entries with
+      | [ only ] ->
+          Ok only
+      | [] -> (
+          let checks (Found check) =
+            match safe_id check with
+            | Ok entry ->
+                List.mem id (String.split_on_char '+' entry)
+            | Error _ ->
+                false
+          in
+          match matching checks entries with
+          | [] ->
+              Error ("no entry checks the machine " ^ id)
+          | found ->
+              Error
+                ("no entry has the root machine " ^ id ^ "; it is a child in "
+               ^ ids found
+               ^ ". A replay starts at the root of an entry: give the id of an \
+                  entry and a trace of its root machine"
+                )
+        )
+      | several ->
+          Error
+            ("several entries have the root machine " ^ id ^ ": " ^ ids several
+           ^ "; give one of these ids"
+            )
+    )
+
+let load entries ~id ~file =
+  match entry_of_trace entries id with
+  | Error message ->
+      Error message
+  | Ok (id, found) -> (
       match read_file file with
       | exception Sys_error message ->
           Error message
       | text -> (
           match Silica.Trace.of_jsonl text with
           | Ok trace ->
-              Ok (found, trace)
+              Ok (id, found, trace)
           | Error message ->
               Error (file ^ ": " ^ message)
         )
@@ -1183,8 +1297,8 @@ let replay_text (Found check) ~id ~file replay =
     match replay with
     | Check.Replayed points ->
         (points, None)
-    | Not_enabled { at; steps; enabled } ->
-        (steps, Some (at, enabled))
+    | Not_enabled { at; steps; enabled; reason } ->
+        (steps, Some (at, enabled, reason))
   in
   List.iteri
     (fun index (point : (_, _) Check.replayed_step) ->
@@ -1204,8 +1318,9 @@ let replay_text (Found check) ~id ~file replay =
     )
     points;
   ( match stuck with
-  | Some (at, enabled) ->
-      add "step %d of the trace is not enabled here. The state offers:\n" at;
+  | Some (at, enabled, reason) ->
+      add "step %d of the trace is not enabled here%s. The state offers:\n" at
+        (match reason with Some reason -> ": " ^ reason | None -> "");
       if enabled = [] then add "  nothing\n";
       List.iter (fun step -> add "%s" (step_line step)) enabled
   | None -> (
@@ -1233,19 +1348,19 @@ let replay_command entries ~id ~file ~json =
   match load entries ~id ~file with
   | Error message ->
       setup_error ~json ~command:"replay" message
-  | Ok ((Found check as found), trace) -> (
+  | Ok (id, (Found check as found), trace) -> (
       match Check.replay_trace check trace with
       | Error message ->
           setup_error ~json ~command:"replay" message
       | Ok replay ->
           let code = replay_code replay in
           if json then
-            let points, at, enabled =
+            let points, at, enabled, reason =
               match replay with
               | Replayed points ->
-                  (points, None, [])
-              | Not_enabled { at; steps; enabled } ->
-                  (steps, Some at, enabled)
+                  (points, None, [], None)
+              | Not_enabled { at; steps; enabled; reason } ->
+                  (steps, Some at, enabled, reason)
             in
             print_string
               (Check_json.pretty
@@ -1264,6 +1379,9 @@ let replay_command entries ~id ~file ~json =
                       );
                       ("not_enabled", Check_json.option Check_json.int at);
                       ("enabled", Check_json.steps check ~first:1 enabled);
+                      ( "not_enabled_reason",
+                        Check_json.option Check_json.string reason
+                      );
                     ]
                  )
               )
@@ -1311,7 +1429,7 @@ let script_command entries ~id ~file ~component ~check:expression ~output =
   match load entries ~id ~file with
   | Error message ->
       setup_error ~json:false ~command:"script" message
-  | Ok (Found check, trace) -> (
+  | Ok (id, Found check, trace) -> (
       match Check.script ?component ?check:expression check trace with
       | Ok text ->
           let target = Option.value output ~default:(test_file file) in
@@ -1446,29 +1564,34 @@ let main ?(argv = Sys.argv) entries =
             )
             Check.rules;
         0
-    | Ok (Check { json; only; traces; golden; specs }) ->
-        let only = match only with [] -> None | ids -> Some ids in
-        let result = run ?only entries in
-        let result =
-          match golden with
-          | Some dir ->
-              {
-                (golden_with ~program:argv.(0) ~write:false dir result) with
-                command = "check";
-              }
-          | None ->
-              result
-        in
-        let result =
-          match traces with
-          | Some dir ->
-              write_traces dir result
-          | None ->
-              result
-        in
-        Option.iter (fun dir -> write_specs dir result) specs;
-        print ~json result;
-        exit_code result
+    | Ok (Check { json; only; traces; golden; specs }) -> (
+        match Option.bind traces foreign_traces with
+        | Some message ->
+            setup_error ~json ~command:"check" message
+        | None ->
+            let only = match only with [] -> None | ids -> Some ids in
+            let result = run ?only entries in
+            let result =
+              match golden with
+              | Some dir ->
+                  {
+                    (golden_with ~program:argv.(0) ~write:false dir result) with
+                    command = "check";
+                  }
+              | None ->
+                  result
+            in
+            let result =
+              match traces with
+              | Some dir ->
+                  write_traces dir result
+              | None ->
+                  result
+            in
+            Option.iter (fun dir -> write_specs dir result) specs;
+            print ~json result;
+            exit_code result
+      )
     | Ok (Replay { id; file; json }) ->
         replay_command entries ~id ~file ~json
     | Ok (Script { id; file; component; check; output }) ->

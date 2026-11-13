@@ -1,239 +1,239 @@
 example_check/about
-machine about 128 68
-node about 40,16 72 36 initial
+machine about 179 82
+node about 40,16 123 50 initial
 example_check/counter
-machine counter 135 68
-node counter 40,16 79 36 initial
+machine counter 245 82
+node counter 40,16 189 50 initial
 example_check/edit
-machine edit 635 130
-node clean 40,47 72 36 initial
-node asking 529,35 90 50
-node dirty 289,56 90 50
-edge asking -> clean back 529,49 481,30 427,30 379,29 289,29 241,27 160,27 112,58 label 200,34 leave
-edge asking -> dirty back 529,60 481,59 427,59 379,74 label 454,66 stay
-edge clean -> dirty 112,65 160,65 241,65 289,74 label 200,72 draft
-edge dirty -> asking 379,88 427,97 481,97 529,70 label 454,104 attempt
-edge dirty -> clean back 289,88 241,103 160,103 112,72 label 200,110 draft, save
+machine edit 758 130
+node clean 40,40 103 50 initial
+node asking 580,28 163 64
+node dirty 320,49 110 64
+edge asking -> clean back 580,46 532,30 478,30 430,29 320,29 272,27 191,27 143,55 label 232,34 leave
+edge asking -> dirty back 580,60 532,59 478,59 430,72 label 505,66 stay
+edge clean -> dirty 143,65 191,65 272,65 320,72 label 232,72 draft
+edge dirty -> asking 430,91 478,97 532,97 580,74 label 505,104 attempt
+edge dirty -> clean back 320,91 272,103 191,103 143,76 label 232,110 draft, save
 example_check/home
 machine home 128 68
 node home 40,16 72 36 initial final
 example_check/item
 machine item 474 244
-node loading 40,91 130 62 initial
+node loading 40,90 130 64 initial
 node failed 383,28 72 36
 node loaded 383,104 72 36
 node missing 379,180 79 36
-edge failed -> loading back 383,41 379,41 331,27 218,27 170,103 label 274,34 props
+edge failed -> loading back 383,41 379,41 331,27 218,27 170,102 label 274,34 props
 edge loaded -> loading back 383,117 379,117 331,103 218,103 170,118 label 274,110 props
 edge loading -> failed 170,110 218,65 331,65 379,51 383,51 label 274,72 settled error
 edge loading -> loaded 170,126 218,141 331,141 379,127 383,127 label 274,148 settled ok
 edge loading -> missing 170,134 218,179 331,179 379,193 label 274,186 settled rejected
-edge missing -> loading back 379,203 331,217 218,217 170,141 label 274,224 props
+edge missing -> loading back 379,203 331,217 218,217 170,142 label 274,224 props
 example_check/not_found
 machine not_found 150 68
 node not_found 40,16 94 36 initial final
 example_check/router+about.about
-machine about 128 68
-node about 40,16 72 36 initial
+machine about 179 82
+node about 40,16 123 50 initial
 example_check/router+about.router
-machine router 830 282
-node / 40,100 72 80 initial
-node /* 208,59 72 62
-node /about 376,72 72 44
-node /edit 544,101 72 62
-node /item/:int 712,92 102 80
-edge / -> /* 112,120 160,90 208,81
-edge / -> /about 112,112 160,70 208,41 280,41 328,58 376,83
-edge / -> /edit 112,144 160,150 208,159 280,159 328,158 376,160 448,160 496,162 544,144
-edge / -> /item/:int 112,160 160,190 208,204 280,204 328,218 376,220 448,220 496,222 544,202 616,202 664,182 712,152
-edge /* -> / back 208,99 160,110 112,128
-edge /* -> /about 280,86 328,78 376,90
-edge /* -> /edit 280,79 328,38 376,54 448,54 496,82 544,113
-edge /* -> /item/:int 280,71 328,18 376,20 448,20 496,22 544,42 616,42 664,62 712,104
-edge /about -> / back 376,105 328,118 280,139 208,139 160,130 112,136
-edge /about -> /* back 376,97 328,98 280,94
-edge /about -> /edit 448,97 496,102 544,120
-edge /about -> /item/:int 448,83 496,42 544,62 616,62 664,82 712,112
-edge /edit -> / back 544,151 496,182 448,180 376,180 328,178 280,179 208,179 160,170 112,152
-edge /edit -> /* back 544,136 496,142 448,140 376,140 328,138 280,102
-edge /edit -> /about back 544,128 496,122 448,105
-edge /edit -> /item/:int 616,123 664,122 712,128
-edge /item/:int -> / back 712,160 664,202 616,222 544,222 496,242 448,240 376,240 328,238 280,224 208,224 160,210 112,168
-edge /item/:int -> /* back 712,144 664,162 616,182 544,182 496,202 448,200 376,200 328,198 280,109
-edge /item/:int -> /about back 712,120 664,102 616,82 544,82 496,62 448,90
-edge /item/:int -> /edit back 712,136 664,142 616,141
+machine router 1187 282
+node / 40,100 149 80 initial
+node /* 285,59 149 62
+node /about 531,70 149 50
+node /edit 776,101 149 62
+node /item/:int 1022,92 149 80
+edge / -> /* 189,120 237,90 285,81
+edge / -> /about 189,112 237,70 285,41 435,41 483,58 531,83
+edge / -> /edit 189,144 237,150 285,159 435,159 483,158 531,160 680,160 728,162 776,143
+edge / -> /item/:int 189,160 237,190 285,204 435,204 483,218 531,220 680,220 728,222 776,202 926,202 974,182 1022,152
+edge /* -> / back 285,99 237,110 189,128
+edge /* -> /about 435,86 483,78 531,91
+edge /* -> /edit 435,78 483,38 531,52 680,52 728,82 776,113
+edge /* -> /item/:int 435,71 483,18 531,20 680,20 728,22 776,42 926,42 974,62 1022,104
+edge /about -> / back 531,108 483,118 435,139 285,139 237,130 189,136
+edge /about -> /* back 531,99 483,98 435,94
+edge /about -> /edit 680,99 728,102 776,120
+edge /about -> /item/:int 680,83 728,42 776,62 926,62 974,82 1022,112
+edge /edit -> / back 776,151 728,182 680,180 531,180 483,178 435,179 285,179 237,170 189,152
+edge /edit -> /* back 776,136 728,142 680,140 531,140 483,138 435,102
+edge /edit -> /about back 776,128 728,122 680,108
+edge /edit -> /item/:int 926,123 974,122 1022,128
+edge /item/:int -> / back 1022,160 974,202 926,222 776,222 728,242 680,240 531,240 483,238 435,224 285,224 237,210 189,168
+edge /item/:int -> /* back 1022,144 974,162 926,182 776,182 728,202 680,200 531,200 483,198 435,109
+edge /item/:int -> /about back 1022,120 974,102 926,82 776,82 728,62 680,91
+edge /item/:int -> /edit back 1022,136 974,142 926,141
 note 96,266 every edge: url changed
 example_check/router+edit.edit
-machine edit 635 130
-node clean 40,47 72 36 initial
-node asking 529,35 90 50
-node dirty 289,56 90 50
-edge asking -> clean back 529,49 481,30 427,30 379,29 289,29 241,27 160,27 112,58 label 200,34 leave
-edge asking -> dirty back 529,60 481,59 427,59 379,74 label 454,66 stay
-edge clean -> dirty 112,65 160,65 241,65 289,74 label 200,72 draft
-edge dirty -> asking 379,88 427,97 481,97 529,70 label 454,104 attempt
-edge dirty -> clean back 289,88 241,103 160,103 112,72 label 200,110 draft, save
+machine edit 758 130
+node clean 40,40 103 50 initial
+node asking 580,28 163 64
+node dirty 320,49 110 64
+edge asking -> clean back 580,46 532,30 478,30 430,29 320,29 272,27 191,27 143,55 label 232,34 leave
+edge asking -> dirty back 580,60 532,59 478,59 430,72 label 505,66 stay
+edge clean -> dirty 143,65 191,65 272,65 320,72 label 232,72 draft
+edge dirty -> asking 430,91 478,97 532,97 580,74 label 505,104 attempt
+edge dirty -> clean back 320,91 272,103 191,103 143,76 label 232,110 draft, save
 example_check/router+edit.router
-machine router 830 282
-node / 40,100 72 80 initial
-node /* 208,59 72 62
-node /about 376,72 72 44
-node /edit 544,101 72 62
-node /item/:int 712,92 102 80
-edge / -> /* 112,120 160,90 208,81
-edge / -> /about 112,112 160,70 208,41 280,41 328,58 376,83
-edge / -> /edit 112,144 160,150 208,159 280,159 328,158 376,160 448,160 496,162 544,144
-edge / -> /item/:int 112,160 160,190 208,204 280,204 328,218 376,220 448,220 496,222 544,202 616,202 664,182 712,152
-edge /* -> / back 208,99 160,110 112,128
-edge /* -> /about 280,86 328,78 376,90
-edge /* -> /edit 280,79 328,38 376,54 448,54 496,82 544,113
-edge /* -> /item/:int 280,71 328,18 376,20 448,20 496,22 544,42 616,42 664,62 712,104
-edge /about -> / back 376,105 328,118 280,139 208,139 160,130 112,136
-edge /about -> /* back 376,97 328,98 280,94
-edge /about -> /edit 448,97 496,102 544,120
-edge /about -> /item/:int 448,83 496,42 544,62 616,62 664,82 712,112
-edge /edit -> / back 544,151 496,182 448,180 376,180 328,178 280,179 208,179 160,170 112,152
-edge /edit -> /* back 544,136 496,142 448,140 376,140 328,138 280,102
-edge /edit -> /about back 544,128 496,122 448,105
-edge /edit -> /item/:int 616,123 664,122 712,128
-edge /item/:int -> / back 712,160 664,202 616,222 544,222 496,242 448,240 376,240 328,238 280,224 208,224 160,210 112,168
-edge /item/:int -> /* back 712,144 664,162 616,182 544,182 496,202 448,200 376,200 328,198 280,109
-edge /item/:int -> /about back 712,120 664,102 616,82 544,82 496,62 448,90
-edge /item/:int -> /edit back 712,136 664,142 616,141
+machine router 1187 282
+node / 40,100 149 80 initial
+node /* 285,59 149 62
+node /about 531,70 149 50
+node /edit 776,101 149 62
+node /item/:int 1022,92 149 80
+edge / -> /* 189,120 237,90 285,81
+edge / -> /about 189,112 237,70 285,41 435,41 483,58 531,83
+edge / -> /edit 189,144 237,150 285,159 435,159 483,158 531,160 680,160 728,162 776,143
+edge / -> /item/:int 189,160 237,190 285,204 435,204 483,218 531,220 680,220 728,222 776,202 926,202 974,182 1022,152
+edge /* -> / back 285,99 237,110 189,128
+edge /* -> /about 435,86 483,78 531,91
+edge /* -> /edit 435,78 483,38 531,52 680,52 728,82 776,113
+edge /* -> /item/:int 435,71 483,18 531,20 680,20 728,22 776,42 926,42 974,62 1022,104
+edge /about -> / back 531,108 483,118 435,139 285,139 237,130 189,136
+edge /about -> /* back 531,99 483,98 435,94
+edge /about -> /edit 680,99 728,102 776,120
+edge /about -> /item/:int 680,83 728,42 776,62 926,62 974,82 1022,112
+edge /edit -> / back 776,151 728,182 680,180 531,180 483,178 435,179 285,179 237,170 189,152
+edge /edit -> /* back 776,136 728,142 680,140 531,140 483,138 435,102
+edge /edit -> /about back 776,128 728,122 680,108
+edge /edit -> /item/:int 926,123 974,122 1022,128
+edge /item/:int -> / back 1022,160 974,202 926,222 776,222 728,242 680,240 531,240 483,238 435,224 285,224 237,210 189,168
+edge /item/:int -> /* back 1022,144 974,162 926,182 776,182 728,202 680,200 531,200 483,198 435,109
+edge /item/:int -> /about back 1022,120 974,102 926,82 776,82 728,62 680,91
+edge /item/:int -> /edit back 1022,136 974,142 926,141
 note 96,266 every edge: url changed
 example_check/router+home.home
 machine home 128 68
 node home 40,16 72 36 initial final
 example_check/router+home.router
-machine router 830 282
-node / 40,100 72 80 initial
-node /* 208,59 72 62
-node /about 376,72 72 44
-node /edit 544,101 72 62
-node /item/:int 712,92 102 80
-edge / -> /* 112,120 160,90 208,81
-edge / -> /about 112,112 160,70 208,41 280,41 328,58 376,83
-edge / -> /edit 112,144 160,150 208,159 280,159 328,158 376,160 448,160 496,162 544,144
-edge / -> /item/:int 112,160 160,190 208,204 280,204 328,218 376,220 448,220 496,222 544,202 616,202 664,182 712,152
-edge /* -> / back 208,99 160,110 112,128
-edge /* -> /about 280,86 328,78 376,90
-edge /* -> /edit 280,79 328,38 376,54 448,54 496,82 544,113
-edge /* -> /item/:int 280,71 328,18 376,20 448,20 496,22 544,42 616,42 664,62 712,104
-edge /about -> / back 376,105 328,118 280,139 208,139 160,130 112,136
-edge /about -> /* back 376,97 328,98 280,94
-edge /about -> /edit 448,97 496,102 544,120
-edge /about -> /item/:int 448,83 496,42 544,62 616,62 664,82 712,112
-edge /edit -> / back 544,151 496,182 448,180 376,180 328,178 280,179 208,179 160,170 112,152
-edge /edit -> /* back 544,136 496,142 448,140 376,140 328,138 280,102
-edge /edit -> /about back 544,128 496,122 448,105
-edge /edit -> /item/:int 616,123 664,122 712,128
-edge /item/:int -> / back 712,160 664,202 616,222 544,222 496,242 448,240 376,240 328,238 280,224 208,224 160,210 112,168
-edge /item/:int -> /* back 712,144 664,162 616,182 544,182 496,202 448,200 376,200 328,198 280,109
-edge /item/:int -> /about back 712,120 664,102 616,82 544,82 496,62 448,90
-edge /item/:int -> /edit back 712,136 664,142 616,141
+machine router 1187 282
+node / 40,100 149 80 initial
+node /* 285,59 149 62
+node /about 531,70 149 50
+node /edit 776,101 149 62
+node /item/:int 1022,92 149 80
+edge / -> /* 189,120 237,90 285,81
+edge / -> /about 189,112 237,70 285,41 435,41 483,58 531,83
+edge / -> /edit 189,144 237,150 285,159 435,159 483,158 531,160 680,160 728,162 776,143
+edge / -> /item/:int 189,160 237,190 285,204 435,204 483,218 531,220 680,220 728,222 776,202 926,202 974,182 1022,152
+edge /* -> / back 285,99 237,110 189,128
+edge /* -> /about 435,86 483,78 531,91
+edge /* -> /edit 435,78 483,38 531,52 680,52 728,82 776,113
+edge /* -> /item/:int 435,71 483,18 531,20 680,20 728,22 776,42 926,42 974,62 1022,104
+edge /about -> / back 531,108 483,118 435,139 285,139 237,130 189,136
+edge /about -> /* back 531,99 483,98 435,94
+edge /about -> /edit 680,99 728,102 776,120
+edge /about -> /item/:int 680,83 728,42 776,62 926,62 974,82 1022,112
+edge /edit -> / back 776,151 728,182 680,180 531,180 483,178 435,179 285,179 237,170 189,152
+edge /edit -> /* back 776,136 728,142 680,140 531,140 483,138 435,102
+edge /edit -> /about back 776,128 728,122 680,108
+edge /edit -> /item/:int 926,123 974,122 1022,128
+edge /item/:int -> / back 1022,160 974,202 926,222 776,222 728,242 680,240 531,240 483,238 435,224 285,224 237,210 189,168
+edge /item/:int -> /* back 1022,144 974,162 926,182 776,182 728,202 680,200 531,200 483,198 435,109
+edge /item/:int -> /about back 1022,120 974,102 926,82 776,82 728,62 680,91
+edge /item/:int -> /edit back 1022,136 974,142 926,141
 note 96,266 every edge: url changed
 example_check/router+item.item
 machine item 474 244
-node loading 40,91 130 62 initial
+node loading 40,90 130 64 initial
 node failed 383,28 72 36
 node loaded 383,104 72 36
 node missing 379,180 79 36
-edge failed -> loading back 383,41 379,41 331,27 218,27 170,103 label 274,34 props
+edge failed -> loading back 383,41 379,41 331,27 218,27 170,102 label 274,34 props
 edge loaded -> loading back 383,117 379,117 331,103 218,103 170,118 label 274,110 props
 edge loading -> failed 170,110 218,65 331,65 379,51 383,51 label 274,72 settled error
 edge loading -> loaded 170,126 218,141 331,141 379,127 383,127 label 274,148 settled ok
 edge loading -> missing 170,134 218,179 331,179 379,193 label 274,186 settled rejected
-edge missing -> loading back 379,203 331,217 218,217 170,141 label 274,224 props
+edge missing -> loading back 379,203 331,217 218,217 170,142 label 274,224 props
 example_check/router+item.router
-machine router 830 282
-node / 40,100 72 80 initial
-node /* 208,59 72 62
-node /about 376,72 72 44
-node /edit 544,101 72 62
-node /item/:int 712,92 102 80
-edge / -> /* 112,120 160,90 208,81
-edge / -> /about 112,112 160,70 208,41 280,41 328,58 376,83
-edge / -> /edit 112,144 160,150 208,159 280,159 328,158 376,160 448,160 496,162 544,144
-edge / -> /item/:int 112,160 160,190 208,204 280,204 328,218 376,220 448,220 496,222 544,202 616,202 664,182 712,152
-edge /* -> / back 208,99 160,110 112,128
-edge /* -> /about 280,86 328,78 376,90
-edge /* -> /edit 280,79 328,38 376,54 448,54 496,82 544,113
-edge /* -> /item/:int 280,71 328,18 376,20 448,20 496,22 544,42 616,42 664,62 712,104
-edge /about -> / back 376,105 328,118 280,139 208,139 160,130 112,136
-edge /about -> /* back 376,97 328,98 280,94
-edge /about -> /edit 448,97 496,102 544,120
-edge /about -> /item/:int 448,83 496,42 544,62 616,62 664,82 712,112
-edge /edit -> / back 544,151 496,182 448,180 376,180 328,178 280,179 208,179 160,170 112,152
-edge /edit -> /* back 544,136 496,142 448,140 376,140 328,138 280,102
-edge /edit -> /about back 544,128 496,122 448,105
-edge /edit -> /item/:int 616,123 664,122 712,128
-edge /item/:int -> / back 712,160 664,202 616,222 544,222 496,242 448,240 376,240 328,238 280,224 208,224 160,210 112,168
-edge /item/:int -> /* back 712,144 664,162 616,182 544,182 496,202 448,200 376,200 328,198 280,109
-edge /item/:int -> /about back 712,120 664,102 616,82 544,82 496,62 448,90
-edge /item/:int -> /edit back 712,136 664,142 616,141
+machine router 1187 282
+node / 40,100 149 80 initial
+node /* 285,59 149 62
+node /about 531,70 149 50
+node /edit 776,101 149 62
+node /item/:int 1022,92 149 80
+edge / -> /* 189,120 237,90 285,81
+edge / -> /about 189,112 237,70 285,41 435,41 483,58 531,83
+edge / -> /edit 189,144 237,150 285,159 435,159 483,158 531,160 680,160 728,162 776,143
+edge / -> /item/:int 189,160 237,190 285,204 435,204 483,218 531,220 680,220 728,222 776,202 926,202 974,182 1022,152
+edge /* -> / back 285,99 237,110 189,128
+edge /* -> /about 435,86 483,78 531,91
+edge /* -> /edit 435,78 483,38 531,52 680,52 728,82 776,113
+edge /* -> /item/:int 435,71 483,18 531,20 680,20 728,22 776,42 926,42 974,62 1022,104
+edge /about -> / back 531,108 483,118 435,139 285,139 237,130 189,136
+edge /about -> /* back 531,99 483,98 435,94
+edge /about -> /edit 680,99 728,102 776,120
+edge /about -> /item/:int 680,83 728,42 776,62 926,62 974,82 1022,112
+edge /edit -> / back 776,151 728,182 680,180 531,180 483,178 435,179 285,179 237,170 189,152
+edge /edit -> /* back 776,136 728,142 680,140 531,140 483,138 435,102
+edge /edit -> /about back 776,128 728,122 680,108
+edge /edit -> /item/:int 926,123 974,122 1022,128
+edge /item/:int -> / back 1022,160 974,202 926,222 776,222 728,242 680,240 531,240 483,238 435,224 285,224 237,210 189,168
+edge /item/:int -> /* back 1022,144 974,162 926,182 776,182 728,202 680,200 531,200 483,198 435,109
+edge /item/:int -> /about back 1022,120 974,102 926,82 776,82 728,62 680,91
+edge /item/:int -> /edit back 1022,136 974,142 926,141
 note 96,266 every edge: url changed
 example_check/router+not_found.not_found
 machine not_found 150 68
 node not_found 40,16 94 36 initial final
 example_check/router+not_found.router
-machine router 830 282
-node / 40,100 72 80 initial
-node /* 208,59 72 62
-node /about 376,72 72 44
-node /edit 544,101 72 62
-node /item/:int 712,92 102 80
-edge / -> /* 112,120 160,90 208,81
-edge / -> /about 112,112 160,70 208,41 280,41 328,58 376,83
-edge / -> /edit 112,144 160,150 208,159 280,159 328,158 376,160 448,160 496,162 544,144
-edge / -> /item/:int 112,160 160,190 208,204 280,204 328,218 376,220 448,220 496,222 544,202 616,202 664,182 712,152
-edge /* -> / back 208,99 160,110 112,128
-edge /* -> /about 280,86 328,78 376,90
-edge /* -> /edit 280,79 328,38 376,54 448,54 496,82 544,113
-edge /* -> /item/:int 280,71 328,18 376,20 448,20 496,22 544,42 616,42 664,62 712,104
-edge /about -> / back 376,105 328,118 280,139 208,139 160,130 112,136
-edge /about -> /* back 376,97 328,98 280,94
-edge /about -> /edit 448,97 496,102 544,120
-edge /about -> /item/:int 448,83 496,42 544,62 616,62 664,82 712,112
-edge /edit -> / back 544,151 496,182 448,180 376,180 328,178 280,179 208,179 160,170 112,152
-edge /edit -> /* back 544,136 496,142 448,140 376,140 328,138 280,102
-edge /edit -> /about back 544,128 496,122 448,105
-edge /edit -> /item/:int 616,123 664,122 712,128
-edge /item/:int -> / back 712,160 664,202 616,222 544,222 496,242 448,240 376,240 328,238 280,224 208,224 160,210 112,168
-edge /item/:int -> /* back 712,144 664,162 616,182 544,182 496,202 448,200 376,200 328,198 280,109
-edge /item/:int -> /about back 712,120 664,102 616,82 544,82 496,62 448,90
-edge /item/:int -> /edit back 712,136 664,142 616,141
+machine router 1187 282
+node / 40,100 149 80 initial
+node /* 285,59 149 62
+node /about 531,70 149 50
+node /edit 776,101 149 62
+node /item/:int 1022,92 149 80
+edge / -> /* 189,120 237,90 285,81
+edge / -> /about 189,112 237,70 285,41 435,41 483,58 531,83
+edge / -> /edit 189,144 237,150 285,159 435,159 483,158 531,160 680,160 728,162 776,143
+edge / -> /item/:int 189,160 237,190 285,204 435,204 483,218 531,220 680,220 728,222 776,202 926,202 974,182 1022,152
+edge /* -> / back 285,99 237,110 189,128
+edge /* -> /about 435,86 483,78 531,91
+edge /* -> /edit 435,78 483,38 531,52 680,52 728,82 776,113
+edge /* -> /item/:int 435,71 483,18 531,20 680,20 728,22 776,42 926,42 974,62 1022,104
+edge /about -> / back 531,108 483,118 435,139 285,139 237,130 189,136
+edge /about -> /* back 531,99 483,98 435,94
+edge /about -> /edit 680,99 728,102 776,120
+edge /about -> /item/:int 680,83 728,42 776,62 926,62 974,82 1022,112
+edge /edit -> / back 776,151 728,182 680,180 531,180 483,178 435,179 285,179 237,170 189,152
+edge /edit -> /* back 776,136 728,142 680,140 531,140 483,138 435,102
+edge /edit -> /about back 776,128 728,122 680,108
+edge /edit -> /item/:int 926,123 974,122 1022,128
+edge /item/:int -> / back 1022,160 974,202 926,222 776,222 728,242 680,240 531,240 483,238 435,224 285,224 237,210 189,168
+edge /item/:int -> /* back 1022,144 974,162 926,182 776,182 728,202 680,200 531,200 483,198 435,109
+edge /item/:int -> /about back 1022,120 974,102 926,82 776,82 728,62 680,91
+edge /item/:int -> /edit back 1022,136 974,142 926,141
 note 96,266 every edge: url changed
 example_check/router
-machine router 830 282
-node / 40,100 72 80 initial
-node /* 208,59 72 62
-node /about 376,72 72 44
-node /edit 544,101 72 62
-node /item/:int 712,92 102 80
-edge / -> /* 112,120 160,90 208,81
-edge / -> /about 112,112 160,70 208,41 280,41 328,58 376,83
-edge / -> /edit 112,144 160,150 208,159 280,159 328,158 376,160 448,160 496,162 544,144
-edge / -> /item/:int 112,160 160,190 208,204 280,204 328,218 376,220 448,220 496,222 544,202 616,202 664,182 712,152
-edge /* -> / back 208,99 160,110 112,128
-edge /* -> /about 280,86 328,78 376,90
-edge /* -> /edit 280,79 328,38 376,54 448,54 496,82 544,113
-edge /* -> /item/:int 280,71 328,18 376,20 448,20 496,22 544,42 616,42 664,62 712,104
-edge /about -> / back 376,105 328,118 280,139 208,139 160,130 112,136
-edge /about -> /* back 376,97 328,98 280,94
-edge /about -> /edit 448,97 496,102 544,120
-edge /about -> /item/:int 448,83 496,42 544,62 616,62 664,82 712,112
-edge /edit -> / back 544,151 496,182 448,180 376,180 328,178 280,179 208,179 160,170 112,152
-edge /edit -> /* back 544,136 496,142 448,140 376,140 328,138 280,102
-edge /edit -> /about back 544,128 496,122 448,105
-edge /edit -> /item/:int 616,123 664,122 712,128
-edge /item/:int -> / back 712,160 664,202 616,222 544,222 496,242 448,240 376,240 328,238 280,224 208,224 160,210 112,168
-edge /item/:int -> /* back 712,144 664,162 616,182 544,182 496,202 448,200 376,200 328,198 280,109
-edge /item/:int -> /about back 712,120 664,102 616,82 544,82 496,62 448,90
-edge /item/:int -> /edit back 712,136 664,142 616,141
+machine router 1187 282
+node / 40,100 149 80 initial
+node /* 285,59 149 62
+node /about 531,70 149 50
+node /edit 776,101 149 62
+node /item/:int 1022,92 149 80
+edge / -> /* 189,120 237,90 285,81
+edge / -> /about 189,112 237,70 285,41 435,41 483,58 531,83
+edge / -> /edit 189,144 237,150 285,159 435,159 483,158 531,160 680,160 728,162 776,143
+edge / -> /item/:int 189,160 237,190 285,204 435,204 483,218 531,220 680,220 728,222 776,202 926,202 974,182 1022,152
+edge /* -> / back 285,99 237,110 189,128
+edge /* -> /about 435,86 483,78 531,91
+edge /* -> /edit 435,78 483,38 531,52 680,52 728,82 776,113
+edge /* -> /item/:int 435,71 483,18 531,20 680,20 728,22 776,42 926,42 974,62 1022,104
+edge /about -> / back 531,108 483,118 435,139 285,139 237,130 189,136
+edge /about -> /* back 531,99 483,98 435,94
+edge /about -> /edit 680,99 728,102 776,120
+edge /about -> /item/:int 680,83 728,42 776,62 926,62 974,82 1022,112
+edge /edit -> / back 776,151 728,182 680,180 531,180 483,178 435,179 285,179 237,170 189,152
+edge /edit -> /* back 776,136 728,142 680,140 531,140 483,138 435,102
+edge /edit -> /about back 776,128 728,122 680,108
+edge /edit -> /item/:int 926,123 974,122 1022,128
+edge /item/:int -> / back 1022,160 974,202 926,222 776,222 728,242 680,240 531,240 483,238 435,224 285,224 237,210 189,168
+edge /item/:int -> /* back 1022,144 974,162 926,182 776,182 728,202 680,200 531,200 483,198 435,109
+edge /item/:int -> /about back 1022,120 974,102 926,82 776,82 728,62 680,91
+edge /item/:int -> /edit back 1022,136 974,142 926,141
 note 96,266 every edge: url changed
 example_check/todo
-machine todo 128 68
-node todo 40,16 72 36 initial
+machine todo 258 96
+node todo 40,16 202 64 initial
 example_check/vote
 machine vote 684 244
 node idle 40,104 72 36 initial
@@ -250,141 +250,141 @@ edge loading -> rejected 372,134 420,179 534,179 582,193 label 477,186 settled r
 edge ready -> loading back 589,127 582,127 534,141 420,141 372,126 label 477,148 load
 edge rejected -> loading back 582,203 534,217 420,217 372,141 label 477,224 load, retry
 example_check/votes
-machine votes 192 128
-node watching 40,62 136 50 initial
+machine votes 192 142
+node watching 40,62 136 64 initial
 edge watching -> watching 94,62 78,32 138,32 122,62 label 108,30 reconnect
 linear_check/comment-composer
-machine comment-composer 1098 156
-node empty 40,62 72 44 initial
-node drafting 341,29 86 36
-node failed 1010,57 72 44
-node sending 657,56 182 50
-edge drafting -> empty back 341,42 293,27 160,27 112,73 label 227,34 clear, props, typed
-edge drafting -> sending 428,51 476,67 609,67 657,74 label 543,74 send
-edge empty -> drafting 112,80 160,65 293,65 341,51 label 227,72 typed
-edge failed -> drafting back 1010,68 962,31 888,31 840,30 657,30 609,29 476,29 428,42 label 543,36 typed
-edge failed -> empty back 1010,89 962,127 888,127 840,128 657,128 609,129 476,129 428,130 341,130 293,132 160,132 112,95 label 543,136 clear, props, typed
-edge failed -> sending back 1010,75 962,60 888,60 840,74 label 925,67 send
-edge sending -> empty back 657,88 609,96 476,96 428,99 341,99 293,103 160,103 112,88 label 227,110 props, sent ok
-edge sending -> failed 840,88 888,98 962,98 1010,82 label 925,105 sent error
+machine comment-composer 1251 156
+node empty 40,59 202 50 initial
+node drafting 472,22 110 50
+node failed 1163,57 72 44
+node sending 811,56 182 50
+edge drafting -> empty back 472,40 424,27 290,27 242,71 label 357,34 clear, props, typed
+edge drafting -> sending 581,54 629,67 763,67 811,74 label 696,74 send
+edge empty -> drafting 242,80 290,65 424,65 472,54 label 357,72 typed
+edge failed -> drafting back 1163,68 1115,31 1041,31 993,30 811,30 763,29 629,29 581,40 label 696,36 typed
+edge failed -> empty back 1163,89 1115,127 1041,127 993,128 811,128 763,129 629,129 581,130 472,130 424,132 290,132 242,97 label 696,136 clear, props, typed
+edge failed -> sending back 1163,75 1115,60 1041,60 993,74 label 1078,67 send
+edge sending -> empty back 811,88 763,96 629,96 581,99 472,99 424,103 290,103 242,88 label 357,110 props, sent ok
+edge sending -> failed 993,88 1041,98 1115,98 1163,82 label 1078,105 sent error
 linear_check/comment
-machine comment 997 188
+machine comment 1068 188
 node viewing 40,78 79 44 initial
-node edited 909,61 72 36
-node editing 308,85 79 36
-node saving 564,99 189 50
-edge edited -> editing back 909,79 861,77 801,77 753,72 564,72 516,65 435,65 387,96 label 475,72 edit
-edge edited -> viewing back 909,72 861,57 801,57 753,43 564,43 516,27 435,27 387,40 308,40 260,52 167,52 119,90 label 475,34 props
-edge editing -> saving 387,103 435,103 516,103 564,114 label 475,110 save
-edge editing -> viewing back 308,98 260,81 167,81 119,97 label 214,88 cancel, props
-edge saving -> edited 753,124 801,106 861,106 909,86 label 831,113 saved ok
-edge saving -> editing back 564,124 516,141 435,141 387,110 label 475,148 saved error
-edge saving -> viewing back 564,135 516,170 435,170 387,164 308,164 260,157 167,157 119,111 label 214,164 props
-edge viewing -> editing 119,104 167,119 260,119 308,108 label 214,126 edit
+node edited 980,61 72 36
+node editing 308,78 149 50
+node saving 634,99 189 50
+edge edited -> editing back 980,79 932,77 871,77 823,72 634,72 586,65 506,65 458,93 label 546,72 edit
+edge edited -> viewing back 980,72 932,57 871,57 823,43 634,43 586,27 506,27 458,40 308,40 260,52 167,52 119,90 label 546,34 props
+edge editing -> saving 458,103 506,103 586,103 634,114 label 546,110 save
+edge editing -> viewing back 308,96 260,81 167,81 119,97 label 214,88 cancel, props
+edge saving -> edited 823,124 871,106 932,106 980,86 label 902,113 saved ok
+edge saving -> editing back 634,124 586,141 506,141 458,114 label 546,148 saved error
+edge saving -> viewing back 634,135 586,170 506,170 458,164 308,164 260,157 167,157 119,111 label 214,164 props
+edge viewing -> editing 119,104 167,119 260,119 308,110 label 214,126 edit
 linear_check/comments+comment+comment-composer.comment-composer
-machine comment-composer 926 156
-node empty 40,62 72 44 initial
-node drafting 262,29 86 36
-node failed 838,57 72 44
-node sending 486,56 182 50
-edge drafting -> empty back 262,42 214,27 160,27 112,73 label 187,34 clear
-edge drafting -> sending 349,51 397,67 438,67 486,74 label 417,74 send
-edge empty -> drafting 112,80 160,65 214,65 262,51 label 187,72 typed
-edge failed -> drafting back 838,68 790,31 716,31 668,30 486,30 438,29 397,29 349,42 label 417,36 typed
-edge failed -> empty back 838,89 790,127 716,127 668,128 486,128 438,129 397,129 349,130 262,130 214,132 160,132 112,95 label 417,136 clear
-edge failed -> sending back 838,75 790,60 716,60 668,74 label 753,67 send
-edge sending -> empty back 486,88 438,96 397,96 349,99 262,99 214,103 160,103 112,88 label 187,110 sent ok
-edge sending -> failed 668,88 716,98 790,98 838,82 label 753,105 sent error
+machine comment-composer 987 156
+node empty 40,59 110 50 initial
+node drafting 300,22 110 50
+node failed 899,57 72 44
+node sending 547,56 182 50
+edge drafting -> empty back 300,40 252,27 198,27 150,71 label 225,34 clear
+edge drafting -> sending 410,54 458,67 499,67 547,74 label 478,74 send
+edge empty -> drafting 150,80 198,65 252,65 300,54 label 225,72 typed
+edge failed -> drafting back 899,68 851,31 777,31 729,30 547,30 499,29 458,29 410,40 label 478,36 typed
+edge failed -> empty back 899,89 851,127 777,127 729,128 547,128 499,129 458,129 410,130 300,130 252,132 198,132 150,97 label 478,136 clear
+edge failed -> sending back 899,75 851,60 777,60 729,74 label 814,67 send
+edge sending -> empty back 547,88 499,96 458,96 410,99 300,99 252,103 198,103 150,88 label 225,110 sent ok
+edge sending -> failed 729,88 777,98 851,98 899,82 label 814,105 sent error
 linear_check/comments+comment+comment-composer.comment
-machine comment 951 130
+machine comment 982 130
 node viewing 40,50 79 36 initial
-node edited 863,42 72 36
-node editing 262,47 79 36
-node saving 517,51 189 50
-edge edited -> editing back 863,56 815,44 754,44 706,33 517,33 469,27 389,27 341,58 label 429,34 edit
-edge editing -> saving 341,65 389,65 469,65 517,69 label 429,72 save
-edge editing -> viewing back 262,60 214,49 167,49 119,63 label 190,56 cancel
-edge saving -> edited 706,76 754,73 815,73 863,65 label 785,80 saved ok
-edge saving -> editing back 517,83 469,103 389,103 341,72 label 429,110 saved error
-edge viewing -> editing 119,73 167,87 214,87 262,70 label 190,94 edit
+node edited 894,42 72 36
+node editing 262,40 110 50
+node saving 549,51 189 50
+edge edited -> editing back 894,56 846,44 786,44 738,33 549,33 501,27 420,27 372,55 label 460,34 edit
+edge editing -> saving 372,65 420,65 501,65 549,69 label 460,72 save
+edge editing -> viewing back 262,58 214,49 167,49 119,63 label 190,56 cancel
+edge saving -> edited 738,76 786,73 846,73 894,65 label 816,80 saved ok
+edge saving -> editing back 549,83 501,103 420,103 372,76 label 460,110 saved error
+edge viewing -> editing 119,73 167,87 214,87 262,72 label 190,94 edit
 linear_check/comments+comment+comment-composer.comments
-machine comments 551 145
+machine comments 551 156
 node loading 40,40 156 50 initial
-node failed 421,27 72 36
-node ready 379,79 156 50
-edge failed -> loading back 421,40 379,40 331,27 244,27 196,55 label 288,34 retry
-edge loading -> failed 196,65 244,65 331,65 379,50 421,50 label 288,72 loaded error
-edge loading -> ready 196,76 244,103 331,103 379,104 label 288,110 loaded ok
+node failed 421,24 72 36
+node ready 379,76 156 64
+edge failed -> loading back 421,37 379,37 331,27 244,27 196,55 label 288,34 retry
+edge loading -> failed 196,65 244,65 331,65 379,47 421,47 label 288,72 loaded error
+edge loading -> ready 196,76 244,103 331,103 379,108 label 288,110 loaded ok
 linear_check/comments
-machine comments 551 171
+machine comments 551 173
 node loading 40,62 156 50 initial
 node failed 421,31 72 36
-node ready 379,100 156 50
+node ready 379,93 156 64
 edge failed -> loading back 421,44 379,44 331,30 244,30 196,74 label 288,37 props, retry
 edge loading -> failed 196,83 244,68 331,68 379,54 421,54 label 288,75 loaded error
 edge loading -> loading 104,62 88,32 148,32 132,62 label 118,30 props
-edge loading -> ready 196,91 244,106 331,106 379,118 label 288,113 loaded ok
-edge ready -> loading back 379,132 331,144 244,144 196,100 label 288,151 props
+edge loading -> ready 196,91 244,106 331,106 379,116 label 288,113 loaded ok
+edge ready -> loading back 379,134 331,144 244,144 196,100 label 288,151 props
 linear_check/create-issue+create-issue-dialog.create-issue-dialog
-machine create-issue-dialog 546 122
-node closed 40,37 72 36 initial
-node open 401,16 130 78
-edge closed -> open 112,50 160,29 353,29 401,43 label 256,36 props
-edge open -> closed back 401,67 353,81 160,81 112,60 label 256,102 close_request escape-key, | close_request outside-press, | props
+machine create-issue-dialog 639 180
+node closed 40,72 72 36 initial
+node open 401,16 222 148
+edge closed -> open 112,85 160,64 353,64 401,67 label 256,71 props
+edge open -> closed back 401,113 353,116 160,116 112,95 label 256,137 close_request escape-key, | close_request outside-press, | props
 linear_check/create-issue+create-issue-dialog.create-issue
-machine create-issue 1083 178
-node closed 40,83 72 44 initial
-node editing 302,48 79 36
-node failed 995,79 72 44
-node submitting 616,81 189 50
-edge closed -> editing 112,94 160,48 254,48 302,61 label 207,55 props
-edge editing -> closed back 302,71 254,86 160,86 112,101 label 207,93 cancel, props
-edge editing -> submitting 380,71 428,93 568,93 616,99 label 498,100 submit
-edge failed -> closed back 995,111 947,149 853,149 805,150 616,150 568,151 428,151 380,151 302,151 254,153 160,153 112,115 label 498,158 cancel, props
-edge failed -> editing back 995,90 947,53 853,53 805,47 616,47 568,41 428,41 380,61 label 498,62 description, | priority_picked, | status_picked, title
-edge failed -> submitting back 995,97 947,82 853,82 805,99 label 900,89 submit
-edge submitting -> closed back 616,113 568,122 428,122 380,122 302,122 254,124 160,124 112,108 label 207,131 created ok
-edge submitting -> failed 805,113 853,120 947,120 995,104 label 900,127 created error
+machine create-issue 1187 178
+node closed 40,82 72 44 initial
+node editing 302,16 182 92
+node failed 1099,80 72 44
+node submitting 720,82 189 50
+edge closed -> editing 112,94 160,47 254,47 302,48 label 207,54 props
+edge editing -> closed back 302,76 254,85 160,85 112,101 label 207,92 cancel, props
+edge editing -> submitting 484,76 532,93 672,93 720,100 label 602,100 submit
+edge failed -> closed back 1099,113 1051,151 957,151 909,151 720,151 672,151 532,151 484,152 302,152 254,152 160,152 112,115 label 602,158 cancel, props
+edge failed -> editing back 1099,91 1051,55 957,55 909,48 720,48 672,41 532,41 484,48 label 602,62 description, | priority_picked, | status_picked, title
+edge failed -> submitting back 1099,99 1051,84 957,84 909,100 label 1004,91 submit
+edge submitting -> closed back 720,114 672,122 532,122 484,126 302,126 254,123 160,123 112,108 label 207,130 created ok
+edge submitting -> failed 909,114 957,122 1051,122 1099,106 label 1004,129 created error
 linear_check/create-issue-dialog
-machine create-issue-dialog 546 122
-node closed 40,37 72 36 initial
-node open 401,16 130 78
-edge closed -> open 112,50 160,29 353,29 401,43 label 256,36 props
-edge open -> closed back 401,67 353,81 160,81 112,60 label 256,102 close_request escape-key, | close_request outside-press, | props
+machine create-issue-dialog 639 166
+node closed 40,65 72 36 initial
+node open 401,16 222 134
+edge closed -> open 112,78 160,57 353,57 401,62 label 256,64 props
+edge open -> closed back 401,104 353,109 160,109 112,88 label 256,130 close_request escape-key, | close_request outside-press, | props
 linear_check/create-issue
-machine create-issue 1083 178
-node closed 40,83 72 44 initial
-node editing 302,48 79 36
-node failed 995,79 72 44
-node submitting 616,81 189 50
-edge closed -> editing 112,94 160,48 254,48 302,61 label 207,55 props
-edge editing -> closed back 302,71 254,86 160,86 112,101 label 207,93 cancel, props
-edge editing -> submitting 380,71 428,93 568,93 616,99 label 498,100 submit
-edge failed -> closed back 995,111 947,149 853,149 805,150 616,150 568,151 428,151 380,151 302,151 254,153 160,153 112,115 label 498,158 cancel, props
-edge failed -> editing back 995,90 947,53 853,53 805,47 616,47 568,41 428,41 380,61 label 498,62 description, | priority_picked, | status_picked, title
-edge failed -> submitting back 995,97 947,82 853,82 805,99 label 900,89 submit
-edge submitting -> closed back 616,113 568,122 428,122 380,122 302,122 254,124 160,124 112,108 label 207,131 created ok
-edge submitting -> failed 805,113 853,120 947,120 995,104 label 900,127 created error
+machine create-issue 1187 178
+node closed 40,82 72 44 initial
+node editing 302,16 182 92
+node failed 1099,80 72 44
+node submitting 720,82 189 50
+edge closed -> editing 112,94 160,47 254,47 302,48 label 207,54 props
+edge editing -> closed back 302,76 254,85 160,85 112,101 label 207,92 cancel, props
+edge editing -> submitting 484,76 532,93 672,93 720,100 label 602,100 submit
+edge failed -> closed back 1099,113 1051,151 957,151 909,151 720,151 672,151 532,151 484,152 302,152 254,152 160,152 112,115 label 602,158 cancel, props
+edge failed -> editing back 1099,91 1051,55 957,55 909,48 720,48 672,41 532,41 484,48 label 602,62 description, | priority_picked, | status_picked, title
+edge failed -> submitting back 1099,99 1051,84 957,84 909,100 label 1004,91 submit
+edge submitting -> closed back 720,114 672,122 532,122 484,126 302,126 254,123 160,123 112,108 label 207,130 created ok
+edge submitting -> failed 909,114 957,122 1051,122 1099,106 label 1004,129 created error
 linear_check/issue-detail
-machine issue-detail 571 253
-node loading 40,77 143 53 initial
-node failed 425,29 72 36
-node not_found 413,93 94 36
-node ready 366,145 189 92
-edge failed -> loading back 425,42 366,42 318,27 231,27 183,88 label 274,34 props, retry
-edge loading -> failed 183,96 231,65 318,65 366,51 425,51 label 274,72 loaded error
-edge loading -> loading 97,77 81,47 141,47 125,77 label 111,45 props
-edge loading -> not_found 183,103 231,103 318,103 366,107 413,107 label 274,110 loaded ok
-edge loading -> ready 183,118 231,179 318,179 366,191 label 274,186 loaded ok
-edge not_found -> loading back 413,116 366,116 318,141 231,141 183,111 label 274,148 props
+machine issue-detail 597 396
+node loading 40,80 143 53 initial
+node failed 438,16 72 36
+node not_found 427,68 94 36
+node ready 366,120 215 260
+edge failed -> loading back 438,29 366,29 318,30 231,30 183,91 label 274,37 props, retry
+edge loading -> failed 183,99 231,68 318,68 366,39 438,39 label 274,75 loaded error
+edge loading -> loading 97,80 81,50 141,50 125,80 label 111,48 props
+edge loading -> not_found 183,106 231,106 318,106 366,81 427,81 label 274,113 loaded ok
+edge loading -> ready 183,121 231,182 318,182 366,250 label 274,189 loaded ok
+edge not_found -> loading back 427,91 366,91 318,144 231,144 183,114 label 274,151 props
 linear_check/issue-list
-machine issue-list 571 178
-node loading 40,40 143 50 initial
-node failed 425,18 72 36
-node ready 366,70 189 92
-edge failed -> loading back 425,31 366,31 318,27 231,27 183,55 label 274,34 retry
-edge loading -> failed 183,65 231,65 318,65 366,40 425,40 label 274,72 loaded error
-edge loading -> ready 183,76 231,103 318,103 366,116 label 274,110 loaded ok
+machine issue-list 591 400
+node loading 40,66 143 50 initial
+node failed 434,16 72 36
+node ready 366,68 209 316
+edge failed -> loading back 434,29 366,29 318,53 231,53 183,81 label 274,60 retry
+edge loading -> failed 183,91 231,91 318,91 366,39 434,39 label 274,98 loaded error
+edge loading -> ready 183,102 231,168 318,168 366,226 label 274,175 loaded ok
 linear_check/me
 machine me 428 120
 node loading 40,35 116 50 initial
@@ -393,99 +393,99 @@ node ready 340,68 72 36 final
 edge loading -> failed 156,53 204,41 292,41 340,34 label 248,48 loaded error
 edge loading -> ready 156,67 204,79 292,79 340,86 label 248,86 loaded ok
 linear_check/router+create-issue+create-issue-dialog.create-issue-dialog
-machine create-issue-dialog 546 122
-node closed 40,37 72 36 initial
-node open 401,16 130 78
-edge closed -> open 112,50 160,29 353,29 401,43 label 256,36 props
-edge open -> closed back 401,67 353,81 160,81 112,60 label 256,102 close_request escape-key, | close_request outside-press, | props
+machine create-issue-dialog 639 180
+node closed 40,72 72 36 initial
+node open 401,16 222 148
+edge closed -> open 112,85 160,64 353,64 401,67 label 256,71 props
+edge open -> closed back 401,113 353,116 160,116 112,95 label 256,137 close_request escape-key, | close_request outside-press, | props
 linear_check/router+create-issue+create-issue-dialog.create-issue
-machine create-issue 1070 156
-node closed 40,62 72 44 initial
-node editing 302,29 79 36
-node failed 982,57 72 44
-node submitting 603,56 189 50
-edge closed -> editing 112,73 160,27 254,27 302,42 label 207,34 props
-edge editing -> closed back 302,51 254,65 160,65 112,80 label 207,72 cancel, props
-edge editing -> submitting 380,51 428,67 555,67 603,74 label 492,74 submit
-edge failed -> closed back 982,89 934,127 840,127 792,128 603,128 555,129 428,129 380,130 302,130 254,132 160,132 112,95 label 492,136 cancel, props
-edge failed -> editing back 982,68 934,31 840,31 792,30 603,30 555,29 428,29 380,42 label 492,36 description, title
-edge failed -> submitting back 982,75 934,60 840,60 792,74 label 887,67 submit
-edge submitting -> closed back 603,88 555,96 428,96 380,99 302,99 254,103 160,103 112,88 label 207,110 created ok
-edge submitting -> failed 792,88 840,98 934,98 982,82 label 887,105 created error
+machine create-issue 1200 157
+node closed 40,63 72 44 initial
+node editing 302,16 209 64
+node failed 1112,58 72 44
+node submitting 733,57 189 50
+edge closed -> editing 112,75 160,28 254,28 302,39 label 207,35 props
+edge editing -> closed back 302,57 254,66 160,66 112,82 label 207,73 cancel, props
+edge editing -> submitting 511,57 559,68 685,68 733,75 label 622,75 submit
+edge failed -> closed back 1112,91 1064,128 970,128 922,129 733,129 685,130 559,130 511,131 302,131 254,133 160,133 112,96 label 622,137 cancel, props
+edge failed -> editing back 1112,69 1064,32 970,32 922,31 733,31 685,30 559,30 511,39 label 622,37 description, title
+edge failed -> submitting back 1112,76 1064,61 970,61 922,75 label 1017,68 submit
+edge submitting -> closed back 733,89 685,97 559,97 511,101 302,101 254,104 160,104 112,89 label 207,111 created ok
+edge submitting -> failed 922,89 970,99 1064,99 1112,84 label 1017,106 created error
 linear_check/router+create-issue+create-issue-dialog.router
-machine router 454 68
-node /?new&status&assignee&priority&label&group&order 40,16 398 36 initial
+machine router 454 82
+node /?new&status&assignee&priority&label&group&order 40,16 398 50 initial
 linear_check/router+issue-detail.issue-detail
-machine issue-detail 571 253
-node loading 40,77 143 53 initial
-node failed 425,29 72 36
-node not_found 413,93 94 36
-node ready 366,145 189 92
-edge failed -> loading back 425,42 366,42 318,27 231,27 183,88 label 274,34 props, retry
-edge loading -> failed 183,96 231,65 318,65 366,51 425,51 label 274,72 loaded error
-edge loading -> loading 97,77 81,47 141,47 125,77 label 111,45 props
-edge loading -> not_found 183,103 231,103 318,103 366,107 413,107 label 274,110 loaded ok
-edge loading -> ready 183,118 231,179 318,179 366,191 label 274,186 loaded ok
-edge not_found -> loading back 413,116 366,116 318,141 231,141 183,111 label 274,148 props
+machine issue-detail 617 309
+node loading 40,76 143 53 initial
+node failed 448,27 72 36
+node not_found 437,79 94 36
+node ready 366,131 235 162
+edge failed -> loading back 448,40 366,40 318,27 231,27 183,88 label 274,34 props, retry
+edge loading -> failed 183,95 231,65 318,65 366,49 448,49 label 274,72 loaded error
+edge loading -> loading 97,76 81,46 141,46 125,76 label 111,44 props
+edge loading -> not_found 183,103 231,103 318,103 366,92 437,92 label 274,110 loaded ok
+edge loading -> ready 183,118 231,179 318,179 366,212 label 274,186 loaded ok
+edge not_found -> loading back 437,101 366,101 318,141 231,141 183,110 label 274,148 props
 linear_check/router+issue-detail.router
-machine router 741 92
-node /?new&status&assignee&priority&label&group&order 40,28 398 36 initial
-node /issue/:int 615,28 110 36
-edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,41 486,27 567,27 615,41 label 527,34 url changed
-edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 615,51 567,65 486,65 438,51 label 527,72 url changed
+machine router 780 92
+node /?new&status&assignee&priority&label&group&order 40,21 398 50 initial
+node /issue/:int 615,21 149 50
+edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,39 486,27 567,27 615,39 label 527,34 url changed
+edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 615,53 567,65 486,65 438,53 label 527,72 url changed
 linear_check/router+issue-list.issue-list
-machine issue-list 525 167
-node loading 40,40 143 50 initial
-node failed 401,21 72 36
-node ready 366,73 143 78
-edge failed -> loading back 401,34 366,34 318,27 231,27 183,55 label 274,34 retry
-edge loading -> failed 183,65 231,65 318,65 366,44 401,44 label 274,72 loaded error
-edge loading -> ready 183,76 231,103 318,103 366,112 label 274,110 loaded ok
+machine issue-list 617 260
+node loading 40,55 143 50 initial
+node failed 448,16 72 36
+node ready 366,68 235 176
+edge failed -> loading back 448,29 366,29 318,42 231,42 183,69 label 274,49 retry
+edge loading -> failed 183,80 231,80 318,80 366,39 448,39 label 274,87 loaded error
+edge loading -> ready 183,90 231,122 318,122 366,156 label 274,129 loaded ok
 linear_check/router+issue-list.router
-machine router 741 92
-node /?new&status&assignee&priority&label&group&order 40,28 398 36 initial
-node /issue/:int 615,28 110 36
-edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,41 486,27 567,27 615,41 label 527,34 url changed
-edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 615,51 567,65 486,65 438,51 label 527,72 url changed
+machine router 780 92
+node /?new&status&assignee&priority&label&group&order 40,21 398 50 initial
+node /issue/:int 615,21 149 50
+edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,39 486,27 567,27 615,39 label 527,34 url changed
+edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 615,53 567,65 486,65 438,53 label 527,72 url changed
 linear_check/router
-machine router 828 130
-node /?new&status&assignee&priority&label&group&order 40,36 398 44 initial
-node /* 534,16 72 36
-node /issue/:int 702,36 110 44
-edge /* -> /?new&status&assignee&priority&label&group&order back 534,29 486,28 438,47
-edge /* -> /issue/:int 606,29 654,28 702,47
-edge /?new&status&assignee&priority&label&group&order -> /* 438,54 486,48 534,39
-edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,61 486,68 534,70 606,70 654,68 702,62
-edge /issue/:int -> /* back 702,55 654,48 606,39
-edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 702,69 654,88 606,90 534,90 486,88 438,69
-note 96,114 every edge: url changed
+machine router 945 144
+node /?new&status&assignee&priority&label&group&order 40,44 398 50 initial
+node /* 534,16 149 50
+node /issue/:int 780,45 149 50
+edge /* -> /?new&status&assignee&priority&label&group&order back 534,34 486,39 438,57
+edge /* -> /issue/:int 684,34 732,39 780,57
+edge /?new&status&assignee&priority&label&group&order -> /* 438,65 486,59 534,48
+edge /?new&status&assignee&priority&label&group&order -> /issue/:int 438,73 486,79 534,84 684,84 732,79 780,74
+edge /issue/:int -> /* back 780,66 732,59 684,48
+edge /issue/:int -> /?new&status&assignee&priority&label&group&order back 780,83 732,99 684,104 534,104 486,99 438,82
+note 96,128 every edge: url changed
 linear_check/unsaved
-machine unsaved 446 106
-node held 40,25 90 50 initial
-node asking 340,25 90 50
-edge asking -> held back 340,43 292,27 178,27 130,43 label 235,34 discard, keep
-edge held -> asking 130,57 178,72 292,72 340,57 label 235,86 attempt push, | attempt traverse
+machine unsaved 518 112
+node held 40,30 90 50 initial
+node asking 340,16 163 78
+edge asking -> held back 340,43 292,33 178,33 130,48 label 235,40 discard, keep
+edge held -> asking 130,62 178,78 292,78 340,67 label 235,92 attempt push, | attempt traverse
 ui_check/checkbox
-machine checkbox 734 154
-node unchecked 40,62 94 44 initial
-node checked 324,30 79 36
-node indeterminate 592,61 125 44
-edge checked -> indeterminate 403,43 451,31 544,31 592,72 label 498,38 props
-edge checked -> unchecked back 324,43 276,27 182,27 134,73 label 229,34 props, toggle
-edge indeterminate -> checked back 592,79 544,69 451,69 403,52 label 498,76 props, toggle
-edge indeterminate -> unchecked back 592,87 544,98 451,98 403,100 324,100 276,103 182,103 134,88 label 229,110 props
-edge unchecked -> checked 134,80 182,65 276,65 324,52 label 229,72 props, toggle
-edge unchecked -> indeterminate 134,95 182,132 276,132 324,129 403,129 451,127 544,127 592,94 label 498,134 props
+machine checkbox 873 154
+node unchecked 40,59 156 50 initial
+node checked 386,23 156 50
+node indeterminate 732,58 125 50
+edge checked -> indeterminate 542,41 590,31 684,31 732,70 label 637,38 props
+edge checked -> unchecked back 386,41 338,27 244,27 196,71 label 291,34 props, toggle
+edge indeterminate -> checked back 732,79 684,69 590,69 542,55 label 637,76 props, toggle
+edge indeterminate -> unchecked back 732,87 684,98 590,98 542,100 386,100 338,103 244,103 196,88 label 291,110 props
+edge unchecked -> checked 196,80 244,65 338,65 386,55 label 291,72 props, toggle
+edge unchecked -> indeterminate 196,97 244,132 338,132 386,129 542,129 590,127 684,127 732,96 label 637,134 props
 ui_check/combobox
-machine combobox 709 206
-node closed 40,65 72 44 initial
-node inline 621,84 72 36
-node open 381,71 103 64
-edge closed -> inline 112,76 160,18 333,18 381,41 484,41 532,65 573,65 621,95 label 553,72 props
-edge closed -> open 112,83 160,54 333,54 381,94 label 247,68 move next, move previous, | show, typed
-edge inline -> closed back 621,109 573,132 532,132 484,155 381,155 333,179 160,179 112,98 label 247,186 props
-edge open -> closed back 381,112 333,120 160,120 112,91 label 247,148 choose, | choose_highlighted, | escape, focus_out, | outside_press
-edge open -> inline 484,103 532,103 573,103 621,102 label 553,110 props
+machine combobox 1049 206
+node closed 40,62 163 50 initial
+node inline 831,38 202 120
+node open 472,38 222 120
+edge closed -> inline 203,74 251,18 424,18 472,20 694,20 742,59 783,59 831,70 label 762,66 props
+edge closed -> open 203,83 251,54 424,54 472,80 label 337,68 move next, move previous, | show, typed
+edge inline -> closed back 831,126 783,137 742,137 694,176 472,176 424,179 251,179 203,100 label 337,186 props
+edge open -> closed back 472,117 424,120 251,120 203,91 label 337,148 choose, | choose_highlighted, | escape, focus_out, | outside_press
+edge open -> inline 694,98 742,98 783,98 831,98 label 762,105 props
 ui_check/command-menu
 machine command-menu 546 122
 node closed 40,37 72 36 initial
@@ -493,74 +493,74 @@ node open 401,16 130 78
 edge closed -> open 112,50 160,29 353,29 401,43 label 256,36 props
 edge open -> closed back 401,67 353,81 160,81 112,60 label 256,102 close_request escape-key, | close_request outside-press, | props, run
 ui_check/filter-popover
-machine filter-popover 520 196
-node closed 40,76 72 36 initial
-node open 401,62 103 64
-edge closed -> open 112,89 160,54 353,54 401,85 label 256,68 open_request trigger-press, | props
-edge open -> closed back 401,103 353,134 160,134 112,99 label 256,176 apply, | close_request close-press, | close_request escape-key, | close_request outside-press, | close_request trigger-press, | props
-edge open -> open 438,62 422,32 482,32 466,62 label 452,30 props
+machine filter-popover 527 203
+node closed 40,83 72 36 initial
+node open 401,62 110 78
+edge closed -> open 112,96 160,61 353,61 401,89 label 256,75 open_request trigger-press, | props
+edge open -> closed back 401,113 353,141 160,141 112,106 label 256,183 apply, | close_request close-press, | close_request escape-key, | close_request outside-press, | close_request trigger-press, | props
+edge open -> open 442,62 426,32 486,32 470,62 label 456,30 props
 ui_check/menu
-machine menu 540 176
+machine menu 659 176
 node closed 40,70 72 36 initial
-node open 421,56 103 64
-edge closed -> open 112,83 160,48 373,48 421,79 label 266,76 open_key first list-navigation, | open_key first trigger-press, | open_key last list-navigation, | props, trigger_press
-edge open -> closed back 421,97 373,128 160,128 112,93 label 266,156 choose, close escape-key, | close focus-out, | close outside-press, | props, trigger_press
+node open 421,35 222 106
+edge closed -> open 112,83 160,48 373,48 421,72 label 266,76 open_key first list-navigation, | open_key first trigger-press, | open_key last list-navigation, | props, trigger_press
+edge open -> closed back 421,104 373,128 160,128 112,93 label 266,156 choose, close escape-key, | close focus-out, | close outside-press, | props, trigger_press
 ui_check/note-dialog
-machine note-dialog 546 148
-node closed 40,49 72 36 initial
-node open 401,28 130 78
-edge closed -> open 112,62 160,34 353,34 401,55 label 256,48 open_request trigger-press, | props
-edge open -> closed back 401,79 353,100 160,100 112,72 label 256,128 close_request close-press, | close_request escape-key, | close_request outside-press, | props, save
+machine note-dialog 659 157
+node closed 40,58 72 36 initial
+node open 401,16 242 120
+edge closed -> open 112,71 160,43 353,43 401,57 label 256,57 open_request trigger-press, | props
+edge open -> closed back 401,95 353,109 160,109 112,81 label 256,137 close_request close-press, | close_request escape-key, | close_request outside-press, | props, save
 ui_check/select
-machine select 500 204
-node closed 40,70 72 36 initial
-node open 381,56 103 64
-edge closed -> open 112,83 160,41 333,41 381,79 label 247,62 open_key list-navigation, | open_key trigger-press, | trigger_press
-edge open -> closed back 381,97 333,135 160,135 112,93 label 247,184 close escape-key, | close focus-out, | close item-press, | close outside-press, | select focus-out, | select item-press, | trigger_press
+machine select 657 204
+node closed 40,63 110 50 initial
+node open 419,28 222 120
+edge closed -> open 150,81 198,41 371,41 419,69 label 284,62 open_key list-navigation, | open_key trigger-press, | trigger_press
+edge open -> closed back 419,107 371,135 198,135 150,95 label 284,184 close escape-key, | close focus-out, | close item-press, | close outside-press, | select focus-out, | select item-press, | trigger_press
 ui_check/switch
-machine switch 419 92
-node unchecked 40,28 94 36 initial
-node checked 324,28 79 36
-edge checked -> unchecked back 324,41 276,27 182,27 134,41 label 229,34 props, toggle
-edge unchecked -> checked 134,51 182,65 276,65 324,51 label 229,72 props, toggle
+machine switch 465 92
+node unchecked 40,21 110 50 initial
+node checked 340,21 110 50
+edge checked -> unchecked back 340,39 292,27 198,27 150,39 label 245,34 props, toggle
+edge unchecked -> checked 150,53 198,65 292,65 340,53 label 245,72 props, toggle
 ui_check/tabs
-machine tabs 128 68
-node ready 40,16 72 36 initial
+machine tabs 278 124
+node ready 40,16 222 92 initial
 ui_check/theme
-machine theme 461 106
-node system 40,25 90 50 initial
-node fixed 373,32 72 36
-edge fixed -> system back 373,45 325,27 178,27 130,43 label 251,34 choose system, props
-edge system -> fixed 130,57 178,72 325,72 373,54 label 251,86 choose high-contrast, | choose light, props
+machine theme 729 124
+node system 40,16 215 92 initial
+node fixed 498,30 215 64
+edge fixed -> system back 498,53 450,40 303,40 255,48 label 377,47 choose system, props
+edge system -> fixed 255,76 303,85 450,85 498,71 label 377,99 choose high-contrast, | choose light, props
 ui_check/toast
-machine toast 912 240
-node empty 40,102 72 53 initial
-node expired 817,96 79 44
-node paused 249,92 72 36
-node running 583,106 97 50
-edge empty -> paused 112,121 160,90 201,90 249,105 label 181,97 props
-edge empty -> running 112,113 160,61 201,61 249,62 321,62 369,65 535,65 583,118 label 452,72 props
-edge expired -> empty back 817,129 769,168 728,168 680,190 583,190 535,213 369,213 321,203 249,203 201,195 160,195 112,143 label 452,220 props
-edge expired -> paused back 817,108 769,72 728,72 680,42 583,42 535,27 369,27 321,103 label 452,34 props
-edge expired -> running back 817,115 769,101 728,101 680,124 label 749,108 props
-edge paused -> empty back 249,115 201,128 160,128 112,128 label 181,135 props
-edge paused -> running 321,110 369,110 535,110 583,126 label 452,124 close a, close b, | focus false, hover false
-edge running -> empty back 583,143 535,184 369,184 321,174 249,174 201,166 160,166 112,136 label 181,173 props
-edge running -> expired 680,138 728,139 769,139 817,122 label 749,146 tick
-edge running -> paused back 583,135 535,155 369,155 321,117 label 452,162 focus true, hover true
-edge running -> running 618,106 602,76 662,76 646,106 label 632,74 props, tick
+machine toast 1414 240
+node empty 40,94 235 64 initial
+node expired 1203,75 196 78
+node paused 412,68 196 92
+node running 870,95 196 78
+edge empty -> paused 275,116 323,88 364,88 412,100 label 344,95 props
+edge empty -> running 275,107 323,59 364,59 412,50 608,50 656,65 822,65 870,113 label 739,72 props
+edge expired -> empty back 1203,135 1155,165 1114,165 1066,191 870,191 822,213 656,213 608,201 412,201 364,193 323,193 275,144 label 739,220 props
+edge expired -> paused back 1203,93 1155,69 1114,69 1066,31 870,31 822,27 656,27 608,93 label 739,34 props
+edge expired -> running back 1203,107 1155,98 1114,98 1066,122 label 1134,105 props
+edge paused -> empty back 412,128 364,126 323,126 275,126 label 344,133 props
+edge paused -> running 608,114 656,110 822,110 870,127 label 739,124 close a, close b, | focus false, hover false
+edge running -> empty back 870,155 822,184 656,184 608,178 412,178 364,164 323,164 275,135 label 344,171 props
+edge running -> expired 1066,146 1114,136 1155,136 1203,121 label 1134,143 tick
+edge running -> paused back 870,141 822,155 656,155 608,135 label 739,162 focus true, hover true
+edge running -> running 954,95 938,65 998,65 982,95 label 968,63 props, tick
 ui_check/tooltip
-machine tooltip 1060 239
+machine tooltip 1080 239
 node closed 40,67 72 53 initial
-node closing 941,67 103 92
-node open 694,113 103 64
-node opening 348,101 97 64
-edge closed -> open 112,86 160,65 300,65 348,83 445,83 493,107 646,107 694,131 label 569,114 focus, hover
-edge closed -> opening 112,94 160,94 300,94 348,124 label 230,101 hover
-edge closing -> closed back 941,92 893,84 845,84 797,66 694,66 646,48 493,48 445,46 348,46 300,45 160,45 112,79 label 569,76 close escape-key, | close trigger-focus, | close trigger-press, | elapsed 0, elapsed 300
-edge closing -> open back 941,113 893,113 845,113 797,136 label 869,120 resume
-edge open -> closed back 694,159 646,174 493,174 445,183 348,183 300,191 160,191 112,109 label 230,219 close escape-key, | close trigger-focus, | close trigger-press, | leave
-edge open -> closing 797,154 845,151 893,151 941,134 label 869,158 leave
-edge opening -> closed back 348,143 300,132 160,132 112,101 label 230,139 cancel
-edge opening -> open 445,133 493,145 646,145 694,145 label 569,152 elapsed 0, elapsed 600
+node closing 954,60 110 106
+node open 707,113 103 64
+node opening 348,94 110 78
+edge closed -> open 112,86 160,65 300,65 348,76 458,76 506,107 659,107 707,131 label 582,114 focus, hover
+edge closed -> opening 112,94 160,94 300,94 348,122 label 230,101 hover
+edge closing -> closed back 954,88 906,84 858,84 810,66 707,66 659,48 506,48 458,46 348,46 300,45 160,45 112,79 label 582,76 close escape-key, | close trigger-focus, | close trigger-press, | elapsed 0, elapsed 300
+edge closing -> open back 954,113 906,113 858,113 810,136 label 882,120 resume
+edge open -> closed back 707,159 659,174 506,174 458,190 348,190 300,191 160,191 112,109 label 230,219 close escape-key, | close trigger-focus, | close trigger-press, | leave
+edge open -> closing 810,154 858,151 906,151 954,137 label 882,158 leave
+edge opening -> closed back 348,145 300,132 160,132 112,101 label 230,139 cancel
+edge opening -> open 458,133 506,145 659,145 707,145 label 582,152 elapsed 0, elapsed 600
 

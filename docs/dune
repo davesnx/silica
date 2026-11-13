@@ -64,7 +64,7 @@
   %{project_root}/site/server/main.ml
   %{project_root}/dune-project
   %{project_root}/docs/examples/native/dune
-  %{project_root}/example/server/main.ml
+  %{project_root}/example/server/example_server.ml
   %{project_root}/example/app/shared/example_counter.mlx
   %{project_root}/example/app/shared/example_home.mlx
   %{project_root}/example/client/client_main.ml

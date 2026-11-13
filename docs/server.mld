@@ -260,6 +260,9 @@ server knows; otherwise the server closes the socket with a code of
 - [max_message]: a larger message from the client is dropped, and the client
   gets an error message (default 64 KiB).
 
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
+
 {2:islands Islands}
 
 An island is a Live component ({!Silica.Live.t}) whose machine runs on the
@@ -276,7 +279,7 @@ yet. A handler publishes the new full state of a key with [Server.publish];
 each subscriber gets it with a sequence number one higher than the last. The
 example app publishes the votes after each vote:
 
-From [example/server/main.ml]:
+From [example/server/example_server.ml]:
 {@ocaml skip[
   let vote _ () =
     let n = Atomic.fetch_and_add votes 1 + 1 in
@@ -288,7 +291,7 @@ From [example/server/main.ml]:
   in
 ]}
 
-From [example/server/main.ml]:
+From [example/server/example_server.ml]:
 {@ocaml skip[
       ~topics:
         [

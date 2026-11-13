@@ -20,7 +20,7 @@ module Ticker = struct
       ~name ~states
       ~during:(fun _label (Running data) ->
         [
-          Source.after 10 Tick;
+          Host.after 10 Tick;
           Remote.call echo data.bumps (function
             | Remote.Ok n ->
                 Settled n
@@ -359,7 +359,7 @@ let test_unmount_orders_children_before_parent () =
 
     let machine =
       Machine.make ~id:"owner" ~init:Owner ~name ~states
-        ~during:(fun Owner -> [ Source.after 5 Tick ])
+        ~during:(fun Owner -> [ Host.after 5 Tick ])
         (fun Owner Tick -> Machine.Stay [])
 
     let view Owner : event Node.t =
@@ -615,7 +615,7 @@ module Same_id_int = struct
 
   let machine =
     Machine.make ~id:"same" ~init:(Number 0) ~name ~states
-      ~during:(fun _ -> [ Source.after 1 `Up ])
+      ~during:(fun _ -> [ Host.after 1 `Up ])
       (fun (Number n) `Up -> Machine.Go (Number (n + 1)))
 
   let component =
@@ -635,7 +635,7 @@ module Same_id_text = struct
 
   let machine =
     Machine.make ~id:"same" ~init:(Text "") ~name ~states
-      ~during:(fun _ -> [ Source.after 1 `Up ])
+      ~during:(fun _ -> [ Host.after 1 `Up ])
       (fun (Text s) `Up -> Machine.Go (Text (s ^ "!")))
 
   let component =
@@ -653,7 +653,7 @@ module Other_id = struct
 
   let machine =
     Machine.make ~id:"other" ~init:(Number 0) ~name ~states
-      ~during:(fun _ -> [ Source.after 1 `Up ])
+      ~during:(fun _ -> [ Host.after 1 `Up ])
       (fun (Number n) `Up -> Machine.Go (Number (n + 1)))
 
   let component =

@@ -86,11 +86,14 @@ val main : ?argv:string array -> entry list -> unit
     as a trace file [DIR/<id>_<rule>_<state>.jsonl] ({!Check.export}; the state
     is cut to 20 characters, and a second violation with the same name gets
     [_2], and so on), and the JSON gives its path in [trace_file] and the name
-    of its [script] test in [test_file] ([test/<id>_<rule>_<state>_replay.ml]).
-    It keeps the list of the files it wrote, by check id, in
+    of its [script] test in [test_file] ([test/<id>_<rule>_<state>_replay.ml]),
+    or, when [script] cannot write that test, [null] there and the reason in
+    [test_error]. It keeps the list of the files it wrote, by check id, in
     [DIR/.silica-traces], and removes the files of a check that ran that this
     run does not write again, so a stale trace cannot be replayed by mistake; it
-    leaves every other file alone. With [--specs DIR], it also writes the
+    leaves every other file alone. A [DIR] that holds files and no
+    [.silica-traces] list was not made by silica: the run refuses it before it
+    checks, as a setup error (exit [3]). With [--specs DIR], it also writes the
     [<id>.spec.json] golden file ({!Silica.Spec.to_json}) of each spec into
     [DIR], unless there is a setup error. [golden DIR] runs every entry and
     compares the golden files in [DIR] (see {!golden}). [replay ID TRACE_FILE]

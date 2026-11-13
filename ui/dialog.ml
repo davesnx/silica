@@ -77,8 +77,8 @@ let machine ~id ~closes ?event_name:content_name () =
       | Open ->
           let parts = parts props in
           [
-            Source.focus_trap parts.popup;
-            Source.scroll_lock;
+            Host.focus_trap parts.popup;
+            Host.scroll_lock;
             Popup.dismiss ~escape:(Close_request Popup.Escape_key)
               ~outside:(Close_request Popup.Outside_press) parts;
           ]

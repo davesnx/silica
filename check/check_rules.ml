@@ -116,8 +116,8 @@ let rules =
          {element}, but the state holds no focus trap on it or on an element \
          around it.";
       hint =
-        "Own Source.focus_trap with the ref of the {role} at {element} in \
-         state {state}, or use Silica_ui.Dialog.";
+        "Own Host.focus_trap with the ref of the {role} at {element} in state \
+         {state}, or use Silica_ui.Dialog.";
       applies_to = "state";
     };
     {
@@ -187,8 +187,8 @@ let rules =
       id = "dead-end";
       message =
         "State {state} is not final, and nothing can happen in it: the view \
-         offers no handler, and no timer, call, subscription, source or input \
-         gives an event.";
+         offers no handler, and no timer, call, subscription, held resource or \
+         input gives an event.";
       hint =
         "Add a button, a timer or an input that leaves {state}, or mark \
          {state} final with ~final when the machine is done there.";
@@ -239,13 +239,13 @@ let rules =
       applies_to = "machine";
     };
     {
-      id = "live-uses-client-source";
+      id = "live-uses-client-resource";
       message =
-        "In state {state}, the Live component runs the client-only source \
-         {source}, but a Live machine runs on the server.";
+        "In state {state}, the Live component runs the client-only held \
+         resource {resource}, but a Live machine runs on the server.";
       hint =
-        "Move the {source} source into a client component, or remove it from \
-         during of {state}.";
+        "Move the held resource {resource} into a client component, or remove \
+         it from during of {state}.";
       applies_to = "state";
     };
     {
@@ -307,6 +307,19 @@ let rules =
 
 let property_message =
   "The property \"{property}\" does not hold in state {state}."
+
+let empty_label_texts =
+  ( "In state {state}, the {role} field at {element} has no label: the <label> \
+     around it at {label} has no text.",
+    "Give the <label> at {label} the text that names the field at {element}, \
+     or give the field an aria-label or an aria-labelledby."
+  )
+
+let property_start_message =
+  "The property \"{property}\" does not hold at a start, in state {state}: it \
+   reads the step (Check.event, Check.transition, Check.entered), and a start \
+   has no step, so those conditions are false there. Guard the step part: not_ \
+   (Check.event test) ||| ..., or test the start with a point condition."
 
 let property_hint =
   "Change the update or the view so that \"{property}\" holds in state \
@@ -472,7 +485,7 @@ let rec attr_handlers ~keys ~texts = function
       List.filter_map
         (fun (key : Key.t) ->
           Option.map
-            (fun event -> ("key_down " ^ key.key, event))
+            (fun event -> ("key_down " ^ Key.to_string key, event))
             (handler.run key)
         )
         keys
@@ -480,7 +493,7 @@ let rec attr_handlers ~keys ~texts = function
       List.filter_map
         (fun (key : Key.t) ->
           Option.map
-            (fun event -> ("key_up " ^ key.key, event))
+            (fun event -> ("key_up " ^ Key.to_string key, event))
             (handler.run key)
         )
         keys
@@ -517,58 +530,101 @@ let blocks tag attrs =
   || has_attribute attrs "inert"
   || (List.mem tag natively_disabled && has_attribute attrs "disabled")
 
-let rec iter_reachable f ~blocked node =
-  let shape = Node.view node in
-  match shape with
-  | Node.Element (tag, attrs, children) ->
-      let blocked = blocked || blocks tag attrs in
-      if not blocked then f shape;
-      List.iter (iter_reachable f ~blocked) children
-  | Node.List children ->
-      List.iter (iter_reachable f ~blocked) children
-  | Node.Keyed (_, child) ->
-      iter_reachable f ~blocked child
-  | Node.Portal (_, children) ->
-      List.iter (iter_reachable f ~blocked:false) children
-  | Node.Boundary { body; _ } ->
-      iter_reachable f ~blocked body
-  | Node.Chunk chunk ->
-      iter_reachable f ~blocked (Node.chunk_view chunk)
-  | Node.Text _ | Node.Component _ ->
-      ()
+let has_value attrs name value =
+  List.exists
+    (function
+      | Node.String (other, text) -> other = name && text = value | _ -> false
+      )
+    attrs
+
+let open_modals node =
+  let opened = Hashtbl.create 4 and holding = Hashtbl.create 4 in
+  let count = ref 0 in
+  let rec scan ~hidden node =
+    match Node.view node with
+    | Node.Element (_, attrs, children) ->
+        let index = !count in
+        incr count;
+        let hidden =
+          hidden
+          || has_attribute attrs "hidden"
+          || has_attribute attrs "inert"
+          || has_value attrs "aria-hidden" "true"
+        in
+        let below, held = scan_all ~hidden children in
+        let shown = has_value attrs "aria-modal" "true" && not hidden in
+        let open_ = shown && not below in
+        if open_ then Hashtbl.replace opened index ();
+        if open_ || held then Hashtbl.replace holding index ();
+        (shown || below, open_ || held)
+    | Node.List children ->
+        scan_all ~hidden children
+    | Node.Keyed (_, child) ->
+        scan ~hidden child
+    | Node.Portal (_, children) ->
+        (fst (scan_all ~hidden:false children), false)
+    | Node.Boundary { body; _ } ->
+        scan ~hidden body
+    | Node.Chunk chunk ->
+        scan ~hidden (Node.chunk_view chunk)
+    | Node.Text _ | Node.Component _ ->
+        (false, false)
+  and scan_all ~hidden children =
+    List.fold_left
+      (fun (shown, held) child ->
+        let shown_below, held_below = scan ~hidden child in
+        (shown || shown_below, held || held_below)
+      )
+      (false, false) children
+  in
+  ignore (scan ~hidden:false node);
+  (opened, holding)
+
+let iter_reachable f node =
+  let opened, holding = open_modals node in
+  let page_is_inert = Hashtbl.length opened > 0 in
+  let count = ref 0 in
+  let rec walk ~blocked ~inside node =
+    let shape = Node.view node in
+    match shape with
+    | Node.Element (tag, attrs, children) ->
+        let index = !count in
+        incr count;
+        let blocked = blocked || blocks tag attrs in
+        let inside = inside || Hashtbl.mem opened index in
+        if
+          (not blocked)
+          && ((not page_is_inert) || inside || Hashtbl.mem holding index)
+        then
+          f shape;
+        List.iter (walk ~blocked ~inside) children
+    | Node.List children ->
+        List.iter (walk ~blocked ~inside) children
+    | Node.Keyed (_, child) ->
+        walk ~blocked ~inside child
+    | Node.Portal (_, children) ->
+        List.iter (walk ~blocked:false ~inside) children
+    | Node.Boundary { body; _ } ->
+        walk ~blocked ~inside body
+    | Node.Chunk chunk ->
+        walk ~blocked ~inside (Node.chunk_view chunk)
+    | Node.Text _ | Node.Component _ ->
+        ()
+  in
+  walk ~blocked:false ~inside:false node
 
 let collect_reachable f node =
   let acc = ref [] in
-  iter_reachable
-    (fun shape -> acc := List.rev_append (f shape) !acc)
-    ~blocked:false node;
+  iter_reachable (fun shape -> acc := List.rev_append (f shape) !acc) node;
   List.rev !acc
 
-let blocked_paths view =
-  let paths = Hashtbl.create 16 in
-  let rec walk ~blocked ~portal items =
-    List.iter
-      (function
-        | Accessibility.Element element ->
-            let path = Accessibility.path element in
-            let inside = String.starts_with ~prefix:"portal > " path in
-            let blocked =
-              (blocked && (portal || not inside))
-              || blocks
-                   (Accessibility.tag element)
-                   (Accessibility.attributes element)
-            in
-            if blocked then Hashtbl.replace paths path ();
-            walk ~blocked ~portal:inside (Accessibility.children element)
-        | Accessibility.Text _
-        | Accessibility.Component _
-        | Accessibility.Loading ->
-            ()
-        )
-      items
-  in
-  walk ~blocked:false ~portal:false (Accessibility.items view);
-  paths
+let blocked element =
+  Accessibility.behind_modal element <> None
+  || List.exists
+       (fun element ->
+         blocks (Accessibility.tag element) (Accessibility.attributes element)
+       )
+       (element :: Accessibility.ancestors element)
 
 let rec attr_texts ~texts = function
   | Node.On_input input ->
@@ -636,11 +692,10 @@ type located = {
 }
 
 let locate ~keys ~texts view matches =
-  let blocked = blocked_paths view in
   List.find_map
     (fun element ->
       let attrs = Accessibility.attributes element in
-      if Hashtbl.mem blocked (Accessibility.path element) then
+      if blocked element then
         None
       else
         List.find_map
@@ -702,11 +757,10 @@ let reachable_links node =
     node
 
 let locate_link view href =
-  let blocked = blocked_paths view in
   List.find_map
     (fun element ->
       if
-        (not (Hashtbl.mem blocked (Accessibility.path element)))
+        (not (blocked element))
         && Accessibility.tag element = "a"
         && is_link (Accessibility.attributes element)
         && Accessibility.attribute element "href" = Some href

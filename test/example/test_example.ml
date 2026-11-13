@@ -298,7 +298,7 @@ let test_accessible_names () =
 
 let test_counter () =
   let send count event =
-    let count, _, _ = Machine.step Example_counter.machine () count event in
+    let count, _, _ = Machine.step Example_counter.machine count event in
     count
   in
   let open Example_model.Counter_event in
@@ -308,10 +308,10 @@ let test_counter () =
   Alcotest.(check int) "reset" 0 (send 5 Reset);
   Alcotest.(check bool)
     "decr at zero is ignored" false
-    (Machine.can Example_counter.machine () 0 Decr);
+    (Machine.can Example_counter.machine 0 Decr);
   Alcotest.(check bool)
     "decr at one is handled" true
-    (Machine.can Example_counter.machine () 1 Decr);
+    (Machine.can Example_counter.machine 1 Decr);
   has "disabled at 0"
     (Render.to_string (Example_counter.view 0))
     "<button disabled>Decrement</button>";

@@ -410,7 +410,7 @@ let machine =
     ~during:(fun _ -> function
       | System_scheme _ ->
           [
-            Source.media "(prefers-color-scheme: dark)" (fun dark ->
+            Host.media "(prefers-color-scheme: dark)" (fun dark ->
                 System_dark dark
             );
           ]

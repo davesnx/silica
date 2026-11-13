@@ -6,7 +6,7 @@
       "name": "counter",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

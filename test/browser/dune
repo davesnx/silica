@@ -25,6 +25,7 @@
   ui.test.mjs
   devtools.test.mjs
   hot.test.mjs
+  mount.test.mjs
   hot_a.mjs
   hot_b.mjs
   %{project_root}/devtools/dist/silica-dev.js
@@ -38,7 +39,8 @@
    host.test.mjs
    ui.test.mjs
    devtools.test.mjs
-   hot.test.mjs)))
+   hot.test.mjs
+   mount.test.mjs)))
 
 (rule
  (targets hot_a.mjs hot_b.mjs)

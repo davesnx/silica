@@ -1,7 +1,10 @@
-(** One live subscription over a WebSocket, as Live protocol v1 describes it
+(** One live subscription over a WebSocket, as the Live protocol describes it
     ({!Protocol}). The client sends the hello, keeps the heartbeat, drops old
     states, and connects again after a loss. It reaches the platform only
-    through {!Platform.type-io}. *)
+    through {!Platform.type-io}.
+
+    Experimental: Live updates can change. The checker and the runtime do not
+    agree yet on the order of the first update of a subscription. *)
 
 type config = { ping_ms : int; pong_ms : int }
 (** [ping_ms] is the wait before each ping. [pong_ms] is the wait for the pong
@@ -31,12 +34,13 @@ val start :
   unit ->
   t
 (** Connect with [io.connect] and keep the connection. [on_state] runs for each
-    state with a [seq] higher than the last one of the same socket. [on_down]
-    runs once when a socket that had no loss before is lost; the client then
-    connects again, and the next state runs [on_state]. [on_fatal] runs once,
-    and the client does not connect again. After a close with
-    {!Protocol.close_session}, [io.session_gone] runs first. After {!stop}, no
-    callback runs. *)
+    state with a [seq] higher than the last one of the same socket. After a
+    loss, the client first schedules the next connect with [io.schedule] (the
+    {!Backoff} delay), so that connect is the first task that the loss
+    schedules; then [on_down] runs, once for a socket that had no loss before.
+    The next state runs [on_state]. [on_fatal] runs once, and the client does
+    not connect again. After a close with {!Protocol.close_session},
+    [io.session_gone] runs first. After {!stop}, no callback runs. *)
 
 val send_event : t -> 'e Codec.t -> 'e -> unit
 (** Send the event with the next event id. Before the first state of the socket

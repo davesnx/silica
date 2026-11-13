@@ -212,8 +212,8 @@ let cause_text : Transition.cause -> string = function
     )
   | Live { topic; _ } ->
       "live " ^ topic
-  | Held { source; _ } ->
-      "held " ^ source
+  | Held { name; _ } ->
+      "held " ^ name
   | Action_result { action } ->
       "result of " ^ action
   | Props ->
@@ -332,8 +332,8 @@ module Recorder = struct
 
   let record recorder transition = keep recorder (Transition.ready transition)
 
-  let create ?(capacity = 1000) ?(data = false) ?clock ?(platform = "browser")
-      ~build () =
+  let create ?(capacity = 1000) ?(data = false) ?mask ?clock
+      ?(platform = "browser") ~build () =
     if capacity < 1 then
       invalid_arg "Silica.Trace.Recorder.create: capacity below 1";
     let recorder =
@@ -348,7 +348,7 @@ module Recorder = struct
         observer = None;
       }
     in
-    recorder.observer <- Some (Transition.observer ?clock (keep recorder));
+    recorder.observer <- Some (Transition.observer ?clock ?mask (keep recorder));
     recorder
 
   let observer recorder =

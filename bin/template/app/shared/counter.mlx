@@ -79,7 +79,7 @@ let message = function
       "The save failed. Try again."
 
 let view state =
-  let disabled event = not (Machine.can machine () state event) in
+  let disabled event = not (Machine.can machine state event) in
   <main>
     <h1>"Counter"</h1>
     <output>(Node.text (string_of_int (count state)))</output>

@@ -21,12 +21,6 @@ type request = {
   mutable answer : ((Platform.reply, string) result -> unit) option;
 }
 
-type socket = {
-  events : Platform.socket_events;
-  mutable sent : string list;
-  mutable closed : int option;
-}
-
 type change = Pushed | Replaced of Url.t | Traversed of int
 
 type memory = {
@@ -39,7 +33,7 @@ type memory = {
   mutable entries : Url.t list;
   mutable index : int;
   mutable actions : message Action.t list;
-  mutable sources : (string * message Action.source * (message -> unit)) list;
+  mutable sources : (string * message Action.held * (message -> unit)) list;
   mutable title : string;
   mutable document : (string * string) list;
   mutable cookies : (string * string) list;
@@ -60,7 +54,18 @@ type memory = {
   mutable announced : string list;
   limiters : (int * int list * string, Rate.t * (message -> unit)) Hashtbl.t;
   mutable recorder : Trace.Recorder.t option;
+  mutable clear_recorder : Trace.Recorder.t option;
   start_url : string;
+}
+
+and socket = {
+  events : Platform.socket_events;
+  mutable sent : string list;
+  mutable closed : int option;
+  mutable opened : bool;
+  mutable served : bool;
+  mutable reconnect : task option;
+  memory : memory;
 }
 
 and element = { owner : memory; root : int; path : int list }
@@ -132,18 +137,205 @@ let network_error r message = answer r (Error message)
 let sockets t = List.rev t.sockets
 let sent s = List.rev s.sent
 let closed s = s.closed
-let socket_open s = s.events.on_open ()
+let socket_open s =
+  s.opened <- true;
+  s.events.on_open ()
+
 let socket_message s data = s.events.on_message data
-let socket_close s code = s.events.on_close code
-let socket_error s = s.events.on_error ()
+
+let losing s lose =
+  let before = s.memory.order in
+  lose ();
+  s.reconnect <-
+    List.find_opt (fun (task : task) -> task.order = before + 1) s.memory.tasks
+
+let socket_close s code =
+  if
+    List.mem code
+      Protocol.[ close_version; close_csrf; close_unknown; close_session ]
+  then
+    s.events.on_close code
+  else
+    losing s (fun () -> s.events.on_close code)
+let socket_error s = losing s (fun () -> s.events.on_error ())
 
 let connect t (events : Platform.socket_events) : Platform.socket =
-  let s = { events; sent = []; closed = None } in
+  let s =
+    {
+      events;
+      sent = [];
+      closed = None;
+      opened = false;
+      served = false;
+      reconnect = None;
+      memory = t;
+    }
+  in
   t.sockets <- s :: t.sockets;
   {
-    send = (fun m -> s.sent <- m :: s.sent);
+    send =
+      (fun message ->
+        s.sent <- message :: s.sent;
+        match Protocol.decode_client message with
+        | Ok Protocol.Ping when s.served ->
+            let (_ : Platform.cancel) =
+              schedule t 0 (fun () ->
+                  if s.closed = None then
+                    s.events.on_message (Protocol.encode_server Protocol.Pong)
+              )
+            in
+            ()
+        | Ok _ | Error _ ->
+            ()
+      );
     close = (fun code -> s.closed <- Some code);
   }
+
+let socket_topic s =
+  List.find_map
+    (fun message ->
+      match Protocol.decode_client message with
+      | Ok (Protocol.Hello { sub = Protocol.Topic { name; _ }; _ }) ->
+          Some name
+      | Ok _ | Error _ ->
+          None
+    )
+    s.sent
+
+let live_socket t topic =
+  let current () =
+    List.find_opt
+      (fun s -> s.closed = None && socket_topic s = Some topic)
+      t.sockets
+  in
+  let reconnected () =
+    match
+      List.find_opt
+        (fun s ->
+          socket_topic s = Some topic
+          && match s.reconnect with Some task -> task.live | None -> false
+        )
+        t.sockets
+    with
+    | Some { reconnect = Some task; _ } ->
+        task.live <- false;
+        task.run ();
+        true
+    | Some { reconnect = None; _ } | None ->
+        false
+  in
+  let open_waiting () =
+    List.iter
+      (fun s -> if s.closed = None && not s.opened then socket_open s)
+      t.sockets
+  in
+  match current () with
+  | Some s ->
+      Some s
+  | None -> (
+      open_waiting ();
+      match current () with
+      | Some s ->
+          Some s
+      | None ->
+          if reconnected () then (
+            open_waiting ();
+            current ()
+          ) else
+            None
+    )
+
+let serve s =
+  if not s.served then (
+    s.served <- true;
+    socket_message s
+      (Protocol.encode_server (Protocol.Hello_ok { v = Protocol.version }))
+  )
+
+let live_update t ~topic text =
+  let fail reason =
+    invalid_arg
+      (Printf.sprintf "Silica_memory.live_update %s %s: %s" topic text reason)
+  in
+  let field name json =
+    match Silica_json.Json.classify json with
+    | `Assoc fields ->
+        List.assoc_opt name fields
+    | _ ->
+        None
+  in
+  let socket () =
+    match live_socket t topic with
+    | Some s ->
+        s
+    | None ->
+        fail "no subscription to the topic is open or waits to connect again"
+  in
+  match Silica_json.Json.of_string text with
+  | Error error ->
+      fail error
+  | Ok update -> (
+      match
+        ( Option.bind (field "seq" update) (fun seq ->
+              match Silica_json.Json.classify seq with
+              | `Int seq ->
+                  Some seq
+              | _ ->
+                  None
+          ),
+          Option.map Codec.constructor_of (field "status" update)
+        )
+      with
+      | Some _, Some (Ok (("Idle" | "Loading"), _)) ->
+          ()
+      | Some seq, Some (Ok ("Ready", [ ready ])) -> (
+          match (field "data" ready, field "stale" ready) with
+          | Some state, Some stale
+            when Silica_json.Json.classify stale = `Bool false ->
+              let s = socket () in
+              serve s;
+              socket_message s
+                (Protocol.encode_server
+                   (Protocol.State { seq; ack = 0; state; actions = [] })
+                )
+          | Some _, Some _ ->
+              socket_close (socket ()) 1006
+          | _ ->
+              fail "the Ready status has no data or no stale"
+        )
+      | Some _, Some (Ok ("Failed", [ failed ])) -> (
+          let close code = socket_close (socket ()) code in
+          match Option.map Codec.constructor_of (field "error" failed) with
+          | Some (Ok ("Network", [ code ])) -> (
+              match Silica_json.Json.classify code with
+              | `String code ->
+                  socket_message (socket ())
+                    (Protocol.encode_server (Protocol.Error { code }))
+              | _ ->
+                  fail "the Network error has no text"
+            )
+          | Some (Ok ("Http", [ status ])) -> (
+              match Silica_json.Json.classify status with
+              | `Int 401 ->
+                  close Protocol.close_session
+              | `Int 403 ->
+                  close Protocol.close_csrf
+              | `Int 404 ->
+                  close Protocol.close_unknown
+              | `Int 426 ->
+                  close Protocol.close_version
+              | _ ->
+                  fail
+                    "a Live subscription fails only with the Http status 401, \
+                     403, 404 or 426"
+            )
+          | _ ->
+              fail
+                "a server and a network give only a Network or an Http failure"
+        )
+      | _ ->
+          fail "it is not an update as Silica.Topic.update_codec writes it"
+    )
 
 let normalize (node : message Node.t) =
   let portals = ref [] in
@@ -654,8 +846,7 @@ type unreachable = Disabled | Hidden | Inert
 
 exception Not_reachable of { reason : unreachable; message : string }
 
-let describe_element (element : element) =
-  let item = accessible_element element in
+let describe_item item =
   let name = Accessibility.name item in
   Printf.sprintf "%s%s at %s"
     ( match Accessibility.role item with
@@ -670,6 +861,9 @@ let describe_element (element : element) =
         Printf.sprintf " %S" name
     )
     (Accessibility.path item)
+
+let describe_element (element : element) =
+  describe_item (accessible_element element)
 
 let natively_disabled (found : found) =
   List.mem found.tag
@@ -723,6 +917,12 @@ let reachable action (element : element) =
                "that is hidden"
            )
         )
+  | None ->
+      ()
+  );
+  ( match Accessibility.behind_modal (accessible_element element) with
+  | Some modal ->
+      refuse Inert ("is behind the modal " ^ describe_item modal)
   | None ->
       ()
   );
@@ -1002,11 +1202,11 @@ let paint t node =
 let media_matches t query =
   Option.value (List.assoc_opt query t.media) ~default:false
 
-let stop_source t ~id =
+let stop_held t ~id =
   t.sources <- List.filter (fun (other, _, _) -> other <> id) t.sources
 
-let start_source t ~id (source : message Action.source) =
-  stop_source t ~id;
+let start_held t ~id (source : message Action.held) =
+  stop_held t ~id;
   let deliver =
     match source with
     | Action.Global_keys { rate = Some rate; _ } ->
@@ -1030,8 +1230,9 @@ let platform t : message Platform.t =
         {
           Renderer.paint = paint t;
           run = run t;
-          start_source = start_source t;
-          stop_source = stop_source t;
+          start_held = start_held t;
+          stop_held = stop_held t;
+          release = (fun () -> t.sources <- []);
         }
       );
     location = (fun () -> current_url t);
@@ -1083,48 +1284,66 @@ let make ~csrf ~url ~media =
     announced = [];
     limiters = Hashtbl.create 8;
     recorder = None;
+    clear_recorder = None;
     start_url = url;
   }
 
 let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
     ?(url = "/") ?(media = []) ~(on_route : (Router.event -> e) option)
+    ~(props : p)
     ~(create :
        memory ->
        dev:bool ->
        on_error:_ ->
        observe:Instance.observer ->
+       p ->
        (p, s, e) Instance.t
        ) () =
   let t = make ~csrf ~url ~media in
-  let recorder =
-    Trace.Recorder.create ~capacity:max_int ~data:true
+  let recorder ~mask =
+    Trace.Recorder.create ~capacity:max_int ~data:true ~mask
       ~clock:(fun () -> float_of_int t.now)
       ~platform:"memory" ~build:"memory" ()
   in
-  t.recorder <- Some recorder;
-  Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
-    ~platform:(platform t)
-    ~create:(fun ~dev ~on_error ->
-      let tree =
-        create t ~dev ~on_error ~observe:(Trace.Recorder.observer recorder)
-      in
-      t.running <- (fun () -> Instance.running tree);
-      tree
-    )
-    ();
-  t
+  let masked = recorder ~mask:true and clear = recorder ~mask:false in
+  t.recorder <- Some masked;
+  t.clear_recorder <- Some clear;
+  let observe =
+    let masked = Trace.Recorder.observer masked
+    and clear = Trace.Recorder.observer clear in
+    {
+      masked with
+      Instance.observe =
+        (fun observed ->
+          masked.observe observed;
+          clear.observe observed
+        );
+    }
+  in
+  let runtime =
+    Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
+      ~platform:(platform t) ~props
+      ~create:(fun ~dev ~on_error props ->
+        let tree = create t ~dev ~on_error ~observe props in
+        t.running <- (fun () -> Instance.running tree);
+        tree
+      )
+      ()
+  in
+  (t, runtime)
 
 let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
   start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
-    ~create:(fun _ ~dev ~on_error ~observe ->
+    ~props:()
+    ~create:(fun _ ~dev ~on_error ~observe () ->
       Instance.mount ~dev ?on_error ~observe component
     )
     ()
 
 let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
   start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
-    ~on_route:(Some Fun.id)
-    ~create:(fun t ~dev ~on_error ~observe ->
+    ~on_route:(Some Fun.id) ~props:()
+    ~create:(fun t ~dev ~on_error ~observe () ->
       Instance.mount ~dev ?on_error ~observe (app (current_url t))
     )
     ()
@@ -1136,7 +1355,7 @@ let url t = Url.to_string (current_url t)
 let history t = List.map Url.to_string t.entries
 let history_index t = t.index
 let actions t = List.rev t.actions
-let sources t = List.map (fun (id, source, _) -> (id, source)) t.sources
+let held t = List.map (fun (id, source, _) -> (id, source)) t.sources
 let title t = t.title
 let document_attribute t name = List.assoc_opt name t.document
 let cookies t = t.cookies
@@ -1341,60 +1560,44 @@ let view_text memory = View_text.to_string memory.view
 
 type 'p t = {
   memory : memory;
-  props : 'p -> unit;
+  runtime : 'p Runtime.t;
   props_of_json : Silica_json.Json.t -> ('p, string) result;
 }
 
 let no_props _ = Ok ()
 
 let mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component =
-  {
-    memory =
-      mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component;
-    props = ignore;
-    props_of_json = no_props;
-  }
+  let memory, runtime =
+    mount ?dev ?on_error ?answers ?live_config ?csrf ?url ?media component
+  in
+  { memory; runtime; props_of_json = no_props }
 
 let mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app =
-  {
-    memory =
-      mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app;
-    props = ignore;
-    props_of_json = no_props;
-  }
+  let memory, runtime =
+    mount_app ?dev ?on_error ?answers ?live_config ?csrf ?url ?media app
+  in
+  { memory; runtime; props_of_json = no_props }
 
 let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
     ~props component =
-  let current = ref props in
-  let tree = ref None in
-  let memory =
+  let memory, runtime =
     start ?dev ?on_error ?answers ?live_config ?csrf ?url ?media ~on_route:None
-      ~create:(fun _ ~dev ~on_error ~observe ->
-        let created =
-          Instance.mount_with_props ~dev ?on_error ~observe ~props:!current
-            component
-        in
-        tree := Some created;
-        created
+      ~props
+      ~create:(fun _ ~dev ~on_error ~observe props ->
+        Instance.mount_with_props ~dev ?on_error ~observe ~props component
       )
       ()
-  in
-  let props next =
-    memory.dispatch
-      (Instance.callback (fun () ->
-           current := next;
-           Option.iter (fun created -> Instance.set_props created next) !tree
-       )
-      )
   in
   let props_of_json json =
     Result.bind (Machine.props_codec component.Component.machine)
       (fun (codec : _ Codec.t) -> codec.decode json
     )
   in
-  { memory; props; props_of_json }
+  { memory; runtime; props_of_json }
 
-let set_props handle props = handle.props props
+let set_props handle props = Runtime.send handle.runtime (Props props)
+let stop handle = Runtime.send handle.runtime Stop
+let lifecycle handle = Runtime.state handle.runtime
 let running handle = handle.memory.running ()
 let send handle message = handle.memory.dispatch message
 let view handle = view handle.memory
@@ -1429,6 +1632,13 @@ let trace handle =
       Trace.Recorder.trace recorder ~url:(Some handle.memory.start_url)
   | None ->
       invalid_arg "Silica_memory.trace: the runtime has not started"
+
+let trace_in_clear handle =
+  match handle.memory.clear_recorder with
+  | Some recorder ->
+      Trace.Recorder.trace recorder ~url:(Some handle.memory.start_url)
+  | None ->
+      invalid_arg "Silica_memory.trace_in_clear: the runtime has not started"
 let advance handle ms = advance handle.memory ms
 let timers handle = timers handle.memory
 let requests handle = requests handle.memory
@@ -1455,11 +1665,12 @@ let pending_request handle path =
            )
         )
 let sockets handle = sockets handle.memory
+let live_update handle ~topic text = live_update handle.memory ~topic text
 let url handle = url handle.memory
 let history handle = history handle.memory
 let history_index handle = history_index handle.memory
 let actions handle = actions handle.memory
-let sources handle = sources handle.memory
+let held handle = held handle.memory
 let title handle = title handle.memory
 let document_attribute handle name = document_attribute handle.memory name
 let cookies handle = cookies handle.memory
@@ -1644,14 +1855,19 @@ let drive handle (record : Transition.t) =
               Ok (leave found)
           | "pointer_enter", _ ->
               Ok (hover found)
+          | ("input" | "key_down" | "key_up"), Some text when text = Secret.mask
+            ->
+              not_realisable
+                "the text typed into this password field is masked in the \
+                 trace (see Silica.Secret), so it cannot be typed again"
           | "input", Some text ->
               Ok (input found text)
           | "key_down", Some key_name ->
               if not (has_focus handle found) then focus found;
-              Ok (key handle (Key.make key_name))
+              Ok (key handle (Key.of_string key_name))
           | "key_up", Some key_name ->
               if not (has_focus handle found) then focus found;
-              Ok (key_up handle (Key.make key_name))
+              Ok (key_up handle (Key.of_string key_name))
           | _ ->
               not_realisable
                 ("the handler " ^ handler ^ " has no input in Silica_memory")
@@ -1754,7 +1970,7 @@ let drive handle (record : Transition.t) =
       | Some json -> (
           match handle.props_of_json json with
           | Ok props ->
-              Ok (handle.props props)
+              Ok (set_props handle props)
           | Error error ->
               not_realisable ("the props do not decode: " ^ error)
         )
@@ -1773,15 +1989,19 @@ let drive handle (record : Transition.t) =
         | [] ->
             Ok (open_url handle url)
     )
-  | Live { topic; _ } ->
+  | Live { update = None; topic; _ } ->
+      not_realisable ("the trace has no data for the update of " ^ topic)
+  | Live { update = Some update; topic; _ } -> (
+      match live_update handle ~topic (Silica_json.Json.to_string update) with
+      | () ->
+          Ok ()
+      | exception Invalid_argument error ->
+          Error (Not_found { seq = record.seq; error })
+    )
+  | Held { name; _ } ->
       not_realisable
-        ("an update of the Live topic " ^ topic
-       ^ ": Silica_memory does not replay Live updates"
-        )
-  | Held { source; _ } ->
-      not_realisable
-        ("the held source " ^ source
-       ^ ": Silica_memory does not replay held sources"
+        ("the held resource " ^ name
+       ^ ": Silica_memory does not replay held resources"
         )
   | Action_result { action } ->
       not_realisable
@@ -1796,12 +2016,32 @@ let drive handle (record : Transition.t) =
   | Start | Child _ | Ended ->
       Ok ()
 
+let connecting (record : Transition.t) =
+  match record.cause with
+  | Live { update = Some update; _ } -> (
+      match Silica_json.Json.classify update with
+      | `Assoc fields -> (
+          match
+            Option.map Codec.constructor_of (List.assoc_opt "status" fields)
+          with
+          | Some (Ok (("Idle" | "Loading"), _)) ->
+              true
+          | _ ->
+              false
+        )
+      | _ ->
+          false
+    )
+  | _ ->
+      false
+
 let is_input (record : Transition.t) ~root =
   match record.cause with
+  | Live _ ->
+      not (connecting record)
   | Element _
   | Timer _
   | Answer _
-  | Live _
   | Held _
   | Action_result _
   | Url _
@@ -1881,6 +2121,7 @@ let replay handle (expected : Trace.t) =
                         List.filter
                           (fun (record : Transition.t) ->
                             record.instance = wanted.instance
+                            && not (connecting record)
                           )
                           added
                       in

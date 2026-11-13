@@ -9,7 +9,7 @@
  (libraries
   silica
   silica-ui
-  silica-jsonkit-melange
+  silica.jsonkit-melange
   silica.browser
   jsonkit-melange
   silica_docs_examples_melange)

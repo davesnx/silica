@@ -3,16 +3,16 @@ open Silica
 type t = {
   wrap :
     'p 's 'e.
-    Instance.message Platform.t ->
     (dev:bool ->
     on_error:(exn -> Node.error -> unit) option ->
+    'p ->
     ('p, 's, 'e) Instance.t
     ) ->
-    Instance.message Platform.t
-    * (dev:bool ->
-      on_error:(exn -> Node.error -> unit) option ->
-      ('p, 's, 'e) Instance.t
-      );
+    dev:bool ->
+    on_error:(exn -> Node.error -> unit) option ->
+    'p ->
+    ('p, 's, 'e) Instance.t;
+  started : (unit -> unit) -> unit;
   observe : Instance.observer option -> Instance.observer option;
 }
 
@@ -27,4 +27,4 @@ let take () =
   pending := None;
   resume
 
-let sessions : (Dom.node * (unit -> unit)) list ref = ref []
+let sessions : (Dom_bindings.node * (unit -> unit)) list ref = ref []

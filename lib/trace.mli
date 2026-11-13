@@ -27,8 +27,8 @@
 
     A trace with names only (see {!names_only}) holds no event data, props,
     snapshots, answers, Live updates, input text, accessible names, URL queries
-    or page titles, and its ids of timers, calls and sources are numbers: the id
-    of a call no longer holds its encoded input (see {!Source.key}). *)
+    or page titles, and its ids of timers, calls and resources are numbers: the
+    id of a call no longer holds its encoded input (see {!Host.key}). *)
 
 type origin =
   | Checker of { rule : string; start : int; choices : int list }
@@ -86,6 +86,7 @@ module Recorder : sig
   val create :
     ?capacity:int ->
     ?data:bool ->
+    ?mask:bool ->
     ?clock:(unit -> float) ->
     ?platform:string ->
     build:string ->
@@ -94,9 +95,11 @@ module Recorder : sig
   (** [capacity] (default 1000) is the number of transitions kept; older ones
       are dropped and counted. With [data] (default [false]) the records keep
       event data, props, snapshots, answers, Live updates and input text;
-      without it they keep names only (see {!names_only}). [clock] gives the
-      time of each record in milliseconds; with no clock records have no time.
-      [platform] (default ["browser"]) goes in the header. *)
+      without it they keep names only (see {!names_only}). Text typed into a
+      password field is masked unless [~mask:false] (see
+      {!Transition.observer}). [clock] gives the time of each record in
+      milliseconds; with no clock records have no time. [platform] (default
+      ["browser"]) goes in the header. *)
 
   val observer : t -> Instance.observer
   (** The observer to give a host, such as {!Instance.mount},

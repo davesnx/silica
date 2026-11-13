@@ -6,28 +6,28 @@
       "name": "empty",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "drafting",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "failed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "sending",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/comments/add"
       ],
       "held": []

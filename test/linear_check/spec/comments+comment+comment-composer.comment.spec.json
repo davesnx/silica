@@ -6,28 +6,28 @@
       "name": "viewing",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "edited",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "editing",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "saving",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/comments/edit"
       ],
       "held": []

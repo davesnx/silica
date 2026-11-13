@@ -6,7 +6,7 @@
       "name": "loading",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/comments"
       ],
       "held": []
@@ -15,14 +15,14 @@
       "name": "failed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "ready",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "live:comments"
       ],
       "held": []

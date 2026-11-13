@@ -569,7 +569,7 @@ module Make (Io : IO) = struct
       | Action.Stop id ->
           pending := List.filter (fun slot -> slot.id <> id) !pending
       | Action.Start_timer _
-      | Action.Start_source _
+      | Action.Start_held _
       | Action.Start_live _
       | Action.Run _ ->
           ()
@@ -803,7 +803,7 @@ module Make (Io : IO) = struct
       Io.return ()
     and step ?finished ~cause event () =
       let from = !state in
-      let s, actions, how = Machine.step ?finished machine () !state event in
+      let s, actions, how = Machine.step ?finished machine !state event in
       state := s;
       let change =
         match how with
@@ -856,7 +856,7 @@ module Make (Io : IO) = struct
             timeout_ms
       | Action.Stop id ->
           Hashtbl.remove owned id
-      | Action.Start_source _ | Action.Start_live _ | Action.Run _ ->
+      | Action.Start_held _ | Action.Start_live _ | Action.Run _ ->
           ()
     and start id =
       incr next_token;
@@ -876,12 +876,12 @@ module Make (Io : IO) = struct
               state := snapshot;
               entry := resumed_entry;
               last_id := ack;
-              let actions = Machine.resume machine () snapshot in
+              let actions = Machine.resume machine snapshot in
               observed ~from:None ~event:None Instance.Resumed actions
                 Instance.Start;
               publish actions
           | None ->
-              let s, actions = Machine.start machine () in
+              let s, actions = Machine.start machine in
               state := s;
               observed ~from:None ~event:None Instance.Started actions
                 Instance.Start;

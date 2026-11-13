@@ -48,12 +48,12 @@ For coding agents:
 
 Concepts:
 
-- {!page-machines}: states, the update, the next step, owned sources and
+- {!page-machines}: states, the update, the next step, owned resources and
   props.
 - {!page-components}: views in JSX, child components, props and output.
 - {!page-data}: Local, Remote and Live data, and [Status].
 - {!page-optimistic}: show a change before the server confirms it.
-- {!page-actions}: what a machine asks the host to do, and the sources that
+- {!page-actions}: what a machine asks the host to do, and the resources that
   run during a state.
 - {!page-platform}: the runtime, the platform and the three renderers.
 - {!page-router}: routes, links, guards, blocks, preload and titles.
@@ -103,7 +103,7 @@ Package [silica]:
   ([silica.adapter], native only).
 - {!Check}: the model checker ([silica.check]).
 - {!Silica_jsonkit}: codecs from [jsonkit] ([silica.jsonkit], native only).
-  The package [silica-jsonkit-melange] has the same module for Melange.
+  The library [silica.jsonkit-melange] has the same module for Melange.
 - {!Silica_json}: the JSON value that the codecs use ([silica.json]).
 
 Package [silica-ui]: headless components after Base UI, such as dialog, menu,

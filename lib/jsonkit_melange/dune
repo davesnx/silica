@@ -2,7 +2,11 @@
 
 (library
  (name silica_jsonkit_melange)
- (public_name silica-jsonkit-melange)
+ (public_name silica.jsonkit-melange)
+ ; dune fails @doc when two libraries of one package have the same top
+ ; module, so `make docs` builds with the doc profile.
+ (enabled_if
+  (<> %{profile} doc))
  (wrapped false)
  (modes melange)
  (libraries silica jsonkit-melange))

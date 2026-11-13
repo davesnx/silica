@@ -1,4 +1,4 @@
-(** The types of {!Remote}, in a module below {!Source} and {!Action}. Use them
+(** The types of {!Remote}, in a module below {!Host} and {!Action}. Use them
     through {!Remote}. *)
 
 type ('i, 'o, 'x) t

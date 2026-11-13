@@ -25,7 +25,7 @@ let timers sim = List.filter (fun id -> contains id "/after") (Sim.running sim)
 let raises f = match f () with exception Failure _ -> true | () -> false
 
 let shown sim = Sim.exists sim ~id:"save-popup"
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 
 let ends_with suffix s =
   let n = String.length suffix and l = String.length s in
@@ -48,7 +48,7 @@ let closed_at_start () =
     (Sim.attribute sim ~id:"save-trigger" "aria-describedby");
   Alcotest.(check bool) "no popup" false (shown sim);
   Alcotest.check strings "no timers" [] (timers sim);
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let hover_waits_for_the_delay () =
   let sim = Sim.mount (page ()) in
@@ -71,7 +71,7 @@ let hover_waits_for_the_delay () =
   Alcotest.check opt "data-popup-open" (Some "")
     (Sim.attribute sim ~id:"save-trigger" "data-popup-open");
   Alcotest.check strings "dismiss and anchor" [ "dismiss"; "anchor" ]
-    (source_names sim);
+    (held_names sim);
   Alcotest.check strings "no timers while open" [] (timers sim);
   Alcotest.(check bool)
     "focus does not move" false

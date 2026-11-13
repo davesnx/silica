@@ -12,10 +12,12 @@ view
   heading "Comments" level=2
   list
     listitem
-      text "Ada on 1970-01-01 Mine"
+      text "Ada on 1970-01-01"
+      text "Mine"
       button "Edit" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -32,7 +34,8 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -44,10 +47,12 @@ view
   heading "Comments" level=2
   list
     listitem
-      text "Ada on 1970-01-01 Mine"
+      text "Ada on 1970-01-01"
+      text "Mine"
       button "Edit" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="x" [input, key_down]
   button "Comment" [press]
 
@@ -60,12 +65,15 @@ view
   heading "Comments" level=2
   list
     listitem
-      text "Ada on 1970-01-01 Mine"
+      text "Ada on 1970-01-01"
+      text "Mine"
       button "Edit" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
     listitem
-      text "Ada on 1970-01-01 New"
+      text "Ada on 1970-01-01"
+      text "New"
       button "Edit" [press]
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
@@ -84,7 +92,8 @@ view
       button "Saving..." disabled [press]
       button "Cancel" disabled [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -102,7 +111,8 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -120,7 +130,8 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="x" [input, key_down]
   button "Comment" [press]
 
@@ -133,10 +144,12 @@ view
   heading "Comments" level=2
   list
     listitem
-      text "Ada on 1970-01-01 Mine"
+      text "Ada on 1970-01-01"
+      text "Mine"
       button "Edit" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="x" disabled [input, key_down]
   button "Sending..." disabled [press]
 
@@ -155,9 +168,11 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
     listitem
-      text "Ada on 1970-01-01 New"
+      text "Ada on 1970-01-01"
+      text "New"
       button "Edit" [press]
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
@@ -172,12 +187,15 @@ view
   heading "Comments" level=2
   list
     listitem
-      text "Ada on 1970-01-01 Mine"
+      text "Ada on 1970-01-01"
+      text "Mine"
       button "Edit" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
     listitem
-      text "Ada on 1970-01-01 New"
+      text "Ada on 1970-01-01"
+      text "New"
       button "Edit" [press]
   textbox "Comment" value="x" [input, key_down]
   button "Comment" [press]
@@ -192,10 +210,12 @@ view
   heading "Comments" level=2
   list
     listitem
-      text "Ada on 1970-01-01 (edited) x"
+      text "Ada on 1970-01-01 (edited)"
+      text "x"
       button "Edit" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -216,7 +236,8 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -237,7 +258,8 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -256,7 +278,8 @@ view
       button "Saving..." disabled [press]
       button "Cancel" disabled [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="x" [input, key_down]
   button "Comment" [press]
 
@@ -275,7 +298,8 @@ view
       button "Saving..." disabled [press]
       button "Cancel" disabled [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="" [input, key_down]
   button "Comment" disabled [press]
 
@@ -294,7 +318,8 @@ view
       button "Save" [press]
       button "Cancel" [press]
     listitem
-      text "Ben on 1970-01-01 Ben's"
+      text "Ben on 1970-01-01"
+      text "Ben's"
   textbox "Comment" value="x" [input, key_down]
   button "Comment" [press]
 

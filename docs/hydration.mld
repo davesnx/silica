@@ -59,7 +59,7 @@ val table : Silica.Answers.t = <abstr>
 - : string option = Some "\"Hello, Ada\""
 ]}
 
-The server renders with no clock: timers, sources and Live subscriptions do
+The server renders with no clock: timers, resources and Live subscriptions do
 not run there. A call that fails, has no handler or takes longer than
 [settle_timeout_ms] (1 second for the whole step) is left out, and the page
 shows the state at that moment.
@@ -97,6 +97,9 @@ on both sides before the mount: {!Silica_server.cookie} and
 
 {1:islands Islands}
 
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
+
 An island is a place in a view where a Live component runs. Its machine runs
 on the server, one instance for each connection. The client sends events and
 gets each new state. Declare the component in shared code with its channel and
@@ -121,7 +124,8 @@ The browser entry lists the Live components of the page:
 
 From [example/client/client_main.ml]:
 {@ocaml skip[
-  mount_app ~root:"silica-root"
+let app =
+  mount_app ~root:(by_id "silica-root")
     ~lives:[ Live Example_counter.live ]
     Example_app.app
 ]}
@@ -144,6 +148,6 @@ And the server lists them in [islands] (see {!page-server.islands}). Then:
 element, with no app around it.
 
 A Live machine runs on the server, where there is no page. So it must not own
-sources of the page (such as a focus trap or a key table) or use actions that
+resources of the page (such as a focus trap or a key table) or use actions that
 need an answer of the page (such as [Copy]). {!Check.live} reports both (see
 {!page-checker}).

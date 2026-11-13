@@ -7,24 +7,25 @@
     - the last painted view, as a {!Silica.Node.t} and as HTML;
     - a manual clock: nothing scheduled runs until {!advance};
     - the HTTP requests of Remote calls, which the test answers one at a time;
-    - the Live sockets, which the test opens, sends messages into and closes;
+    - the Live sockets, which the test opens, sends messages into and closes, or
+      which {!live_update} drives as a server does;
     - a history of URLs with an index, which the navigation actions, link
       presses, {!back} and {!forward} change;
-    - the actions that the renderer ran, the running sources, the title, the log
-      lines and the number of times the session was gone.
+    - the actions that the renderer ran, the running resources, the title, the
+      log lines and the number of times the session was gone.
 
     Input follows the browser renderer: a handler on the nearest ancestor of the
     element answers, as with event delegation; a press on an element inside an
     [a] with [data-silica-link] (and no [target] or [download]) pushes (or, with
     [data-silica-replace], replaces) the history entry and reports the URL to
     the root as {!Silica.Router.event.Url_changed}; a key goes to the key
-    handlers of the focused element, then to the [Global_keys] sources and the
+    handlers of the focused element, then to the [Global_keys] resources and the
     Escape of the newest dismiss layer; rated handlers use
     {!Silica.Rate.limiter} with the memory clock.
 
-    Navigation follows the browser renderer too: while a [Block] source runs, a
-    link press, [Navigate], [Replace], {!back} and {!forward} change nothing and
-    raise its [on_attempt] (the newest block gets it); [Resume] does the
+    Navigation follows the browser renderer too: while a [Block] resource runs,
+    a link press, [Navigate], [Replace], {!back} and {!forward} change nothing
+    and raise its [on_attempt] (the newest block gets it); [Resume] does the
     navigation past every block; [Revert_navigation] undoes the last reported
     change without a report. After a push or a back or forward to another path,
     a task on the clock with delay 0 moves focus to the first element with
@@ -34,8 +35,8 @@
     Out of scope: islands ([data-silica-live]) are painted as empty elements and
     never connect; [Focus_trap] (other than as a dismiss layer), [Scroll_lock],
     [Resize], [Intersection], [Anchor], [Scroll], [Visibility] and [Online]
-    sources are kept in {!sources} but do nothing; a [Media] source answers from
-    {!set_media}; [Scroll_into_view], [Scroll_to] and [Reload] are only
+    resources are kept in {!held} but do nothing; a [Media] resource answers
+    from {!set_media}; [Scroll_into_view], [Scroll_to] and [Reload] are only
     recorded; [Measure] answers {!Silica.Rect.zero} when the ref is painted and
     [None] when it is not; [Copy] and [Load_script] answer [true]; a portal is
     searchable but its target is ignored; [Set_status] is only recorded; links
@@ -97,7 +98,14 @@ val mount_with_props :
 val set_props : 'p t -> 'p -> unit
 (** Give the root new props, as a parent does: the [on_props] of the machine
     runs, and the view paints again. Props equal to the current ones do nothing.
-*)
+    It sends {!Silica.Runtime.event.Props} to the runtime. *)
+
+val stop : _ t -> unit
+(** Stop the runtime ({!Silica.Runtime.event.Stop}): the view is empty, no
+    resource is held, and no timer, call or subscription delivers again. *)
+
+val lifecycle : _ t -> Runtime.state
+(** The state of the runtime: running, showing the error page, or stopped. *)
 
 (** {1 Instances} *)
 
@@ -228,8 +236,10 @@ val expanded : element -> bool option
     {!focus} reach only an element that a user can reach: they raise
     {!Not_reachable} when the element, or an element around it, is a disabled
     [button], [input], [select], [textarea], [option], [optgroup] or [fieldset],
-    or has [hidden] or [inert]. [aria-disabled] and [aria-hidden] do not stop
-    input, as in a browser. *)
+    or has [hidden] or [inert], or is behind an open modal
+    ({!Silica.Accessibility.behind_modal}: the browser renderer makes that page
+    [inert]). [aria-disabled] and [aria-hidden] do not stop input, as in a
+    browser. *)
 
 (** Why an input cannot reach an element. *)
 type unreachable =
@@ -237,7 +247,9 @@ type unreachable =
       (** The element, or a [fieldset] around it, is a disabled native control.
       *)
   | Hidden  (** The element or an element around it has [hidden]. *)
-  | Inert  (** The element or an element around it has [inert]. *)
+  | Inert
+      (** The element or an element around it has [inert], or it is behind an
+          open modal. *)
 
 exception Not_reachable of { reason : unreachable; message : string }
 (** The input cannot reach the element. [message] names the element by role,
@@ -254,7 +266,7 @@ exception Not_reachable of { reason : unreachable; message : string }
     ]} *)
 
 val press : element -> unit
-(** A press: the outside-press sources and dismiss layers see the press start,
+(** A press: the outside-press resources and dismiss layers see the press start,
     then a link is followed or the nearest press handler runs. Then, as in a
     browser, a press on a submit button (a [button] with no [type] or
     [type="submit"], or an [input] of type [submit] or [image]) that is still in
@@ -282,8 +294,8 @@ val focused : _ t -> element option
 val key : _ t -> Key.t -> unit
 (** A key goes down on the focused element (or the page when none has focus).
     Element key handlers run first; Enter and Space press an element that is not
-    a native control; then the [Global_keys] sources and the dismiss layers get
-    the key, unless a handler prevented it. *)
+    a native control; then the [Global_keys] resources and the dismiss layers
+    get the key, unless a handler prevented it. *)
 
 val key_up : _ t -> Key.t -> unit
 (** A key goes up on the focused element: only element handlers see it. *)
@@ -309,7 +321,7 @@ val forward : _ t -> unit
 val open_url : _ t -> string -> unit
 (** The user opens the URL, as in the address bar: a new history entry, which
     the root gets as {!Silica.Router.event.Url_changed}, unless a
-    {!Silica.Action.Block} source holds it. The page does not load again: this
+    {!Silica.Action.Block} resource holds it. The page does not load again: this
     is the push of a single-page app. *)
 
 (** {1 Clock} *)
@@ -333,12 +345,19 @@ val trace : _ t -> Trace.t
     {!Silica.Instance.mount} and {!Silica.Trace}). Each record has the time of
     the memory clock. Event data, props and snapshots are there for the machines
     that registered their codecs ({!Silica.Machine.register_codecs}); answers,
-    Live updates and input text are always there. The header has the first URL,
-    the build ["memory"] and the platform ["memory"]. Read it with
-    {!Silica.Trace.to_text} or write it with {!Silica.Trace.to_jsonl}.
+    Live updates and input text are always there, except text typed into a
+    password field, which is masked (see {!Silica.Transition.observer}). The
+    header has the first URL, the build ["memory"] and the platform ["memory"].
+    Read it with {!Silica.Trace.to_text} or write it with
+    {!Silica.Trace.to_jsonl}.
 
     After an error page, "Try again" starts a new tree: its records follow, with
     their numbers going on and instance numbers starting again at 1. *)
+
+val trace_in_clear : _ t -> Trace.t
+(** {!trace} with the text typed into password fields in clear, for a replay of
+    the run in the same process, as [Check_expect.holds] does. Never write it to
+    a file. *)
 
 (** {1 HTTP} *)
 
@@ -398,6 +417,30 @@ val socket_close : socket -> int -> unit
 val socket_error : socket -> unit
 (** The socket reports an error. *)
 
+val live_update : _ t -> topic:string -> string -> unit
+(** [live_update t ~topic update] gives the subscription to [topic] the update
+    that a Live step of a trace holds: [update] is written as
+    {!Silica.Topic.update_codec} writes it, such as
+    [{"seq":1,"status":["Ready",{"data":[],"stale":false}]}]. It acts as the
+    server and the network that give that update:
+    - [Idle] or [Loading]: nothing; the subscription gives it when it starts.
+    - [Ready] with [stale = false]: the server sends the state with its [seq].
+      First, when that has not happened, the socket opens and the server answers
+      the hello; after a loss, the client connects again at once, without the
+      wait of {!Silica.Backoff}, and the clock does not move.
+    - [Ready] with [stale = true]: the socket is lost (close code 1006), and the
+      client keeps the last state.
+    - [Failed] with [Network code]: the server sends the error [code]; with
+      [Http 401], [403], [404] or [426], it closes the socket with
+      {!Silica.Protocol.close_session}, [close_csrf], [close_unknown] or
+      [close_version].
+
+    The server answers each ping on a socket that it answered the hello of, so
+    the heartbeat never drops the socket while the clock moves. Opening a socket
+    opens every socket that waits to open. Raises [Invalid_argument] when no
+    subscription to [topic] is open or waits to connect again, or when [update]
+    is none of these. *)
+
 (** {1 Records} *)
 
 val url : _ t -> string
@@ -412,8 +455,8 @@ val history_index : _ t -> int
 val actions : _ t -> Instance.message Action.t list
 (** The actions that the renderer ran, oldest first. *)
 
-val sources : _ t -> (string * Instance.message Action.source) list
-(** The running sources with their ids, in the order they started. *)
+val held : _ t -> (string * Instance.message Action.held) list
+(** The running held resources with their ids, in the order they started. *)
 
 val title : _ t -> string
 (** The document title (default [""]). *)
@@ -428,14 +471,14 @@ val cookies : _ t -> (string * string) list
 
 val set_media : _ t -> string -> bool -> unit
 (** The media query now matches, or not: each running {!Silica.Action.Media}
-    source of that query raises its event at once. *)
+    resource of that query raises its event at once. *)
 
 val logs : _ t -> string list
 (** The log lines of the runtime, oldest first. *)
 
 val leave_asks : _ t -> bool
-(** [true] while a {!Silica.Action.Block} source runs: closing or reloading the
-    page would ask the user first. *)
+(** [true] while a {!Silica.Action.Block} resource runs: closing or reloading
+    the page would ask the user first. *)
 
 val announcements : _ t -> string list
 (** The titles that the live region announced after navigations, oldest first.
@@ -454,9 +497,10 @@ type replay_result =
       (** The runtime reached another state, or no transition. *)
   | Not_realisable of { seq : int; reason : string }
       (** The step has no input in this platform: a timer that real time does
-          not fire first, a Live update, a held source, the result of an action,
-          an event of the host or of the inputs of a check, a preload, or a step
-          whose data the trace does not hold. *)
+          not fire first, a held resource, the result of an action, an event of
+          the host or of the inputs of a check, a preload, a step whose data the
+          trace does not hold, or text typed into a password field, which a
+          trace masks (see {!Silica.Secret}). *)
   | Not_found of { seq : int; error : string }
       (** The element or the pending request of the step is not there. *)
 
@@ -475,6 +519,8 @@ val replay : _ t -> Trace.t -> replay_result
       {!network_error};
     - props: {!set_props} with the props decoded by the props codec of the
       machine;
+    - a Live update: {!live_update} with the update; the subscription gives the
+      first update ([Loading]) when it starts, so that step is not an input;
     - a URL: {!back}, {!forward}, or a press on the link to it.
 
     Steps caused by other steps (the start of a child, its output, its end) are

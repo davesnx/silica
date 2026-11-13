@@ -1,4 +1,4 @@
-(** One navigation, as a {!Source.block} sees it. *)
+(** One navigation, as a {!Host.block} sees it. *)
 
 type t =
   | Push of Url.t

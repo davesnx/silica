@@ -158,7 +158,23 @@ let field_label placed =
   if placed.hidden || (not (is_field_like placed)) || name placed <> "" then
     []
   else
-    [ finding "field-label" placed ]
+    match
+      List.find_opt
+        (fun ancestor -> Accessibility.tag ancestor = "label")
+        placed.ancestors
+    with
+    | Some label ->
+        [
+          {
+            (finding "field-label" placed
+               ~values:[ ("label", Accessibility.path label) ]
+            )
+            with
+            custom = Some Check_rules.empty_label_texts;
+          };
+        ]
+    | None ->
+        [ finding "field-label" placed ]
 
 let img_alt placed =
   if

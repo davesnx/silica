@@ -32,14 +32,6 @@
   (mdx :with-test)))
 
 (package
- (name silica-jsonkit-melange)
- (synopsis "Silica codecs from jsonkit-melange, for Melange code")
- (depends
-  (silica (= :version))
-  (melange (>= 7.0))
-  jsonkit-melange))
-
-(package
  (name silica-ui)
  (synopsis "Headless components for Silica, after Base UI")
  (depends

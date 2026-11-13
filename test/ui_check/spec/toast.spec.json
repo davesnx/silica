@@ -6,21 +6,21 @@
       "name": "empty",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "expired",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "paused",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
@@ -29,7 +29,7 @@
       "timers": [
         100
       ],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

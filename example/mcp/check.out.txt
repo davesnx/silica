@@ -1,0 +1,87 @@
+-> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"silica-check","version":"0.0.0"}}}
+example_mcp: server and session 0.3 ms, mount 0.0 ms
+<- {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"silica-example","version":"0.0.0"}}}
+   (1.8 ms)
+PASS: initialize gives 2025-11-25 and tools.listChanged
+-> {"jsonrpc":"2.0","method":"notifications/initialized"}
+-> {"jsonrpc":"2.0","id":2,"method":"ping"}
+<- {"jsonrpc":"2.0","id":2,"result":{}}
+   (0.2 ms)
+-> {"jsonrpc":"2.0","id":3,"method":"tools/list"}
+<- {"jsonrpc":"2.0","id":3,"result":{"tools":[{"name":"navigate","description":"Open a URL of the app, as in the address bar. Published routes:\n/ - the home page, with the vote button\n/item/:int - one item, by number, such as /item/1\n/about - the about page\n/edit - a draft that asks before it is dropped","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"A path with its query, such as /"}},"required":["url"]}},{"name":"read","description":"The current URL, the published instances with their state names, and the text of the page.","inputSchema":{"type":"object","additionalProperties":false}},{"name":"vote.cast","description":"Cast one vote.","inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false}}]}}
+   (0.3 ms)
+PASS: the home page offers navigate, read and vote.cast, and no edit tool
+-> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"edit.draft","arguments":{"text":"Too early"}}}
+<- {"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"The tool edit.draft is not available now: no instance of edit runs, and the tool is published only in the states clean, dirty, asking."}],"isError":true}}
+   (0.1 ms)
+PASS: an edit tool on the home page is refused
+-> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"navigate","arguments":{"url":"/nowhere/at/all"}}}
+<- {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"The URL /nowhere/at/all is the route /*, which is not published."}],"isError":true}}
+   (0.1 ms)
+PASS: navigate to the Not_found route is refused
+-> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"navigate","arguments":{"url":"/locked"}}}
+<- {"jsonrpc":"2.0","id":6,"result":{"content":[{"type":"text","text":"The URL /locked is the route /locked, which is not published."}],"isError":true}}
+   (0.2 ms)
+PASS: navigate to the Locked route is refused
+-> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"vote.cast","arguments":{}}}
+<- {"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"Before:\n  vote at router/:home/4:vote: idle\nAfter:\n  vote at router/:home/4:vote: ready\nURL: /\n\nPage:\nheading \"Silica example\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\nheading \"Todos\" level=2\ntext \"Press a todo to toggle it, double press to delete it.\"\nform [submit]\n  textbox \"New todo\" value=\"\" [input]\n  button \"Add\"\nlist\nheading \"Votes\" level=2\ntext \"Votes: ...\"\nbutton \"Vote\" [press]\nheading \"Live counter\" level=2\nisland counter\n"}],"isError":false}}
+<- {"jsonrpc":"2.0","method":"notifications/tools/list_changed"}
+   (0.3 ms)
+PASS: vote.cast gets the answer of the real vote handler: vote is ready
+-> {"jsonrpc":"2.0","id":8,"method":"tools/list"}
+<- {"jsonrpc":"2.0","id":8,"result":{"tools":[{"name":"navigate","description":"Open a URL of the app, as in the address bar. Published routes:\n/ - the home page, with the vote button\n/item/:int - one item, by number, such as /item/1\n/about - the about page\n/edit - a draft that asks before it is dropped","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"A path with its query, such as /"}},"required":["url"]}},{"name":"read","description":"The current URL, the published instances with their state names, and the text of the page.","inputSchema":{"type":"object","additionalProperties":false}}]}}
+   (0.1 ms)
+PASS: the server says the tool list changed after the vote
+PASS: vote.cast left the list
+-> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"vote.cast","arguments":{}}}
+<- {"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"The tool vote.cast is not available now: vote at router/:home/4:vote is in the state ready, and the tool is published only in the states idle."}],"isError":true}}
+   (0.1 ms)
+PASS: vote.cast in the state ready is refused
+-> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"navigate","arguments":{"url":"/edit"}}}
+<- {"jsonrpc":"2.0","id":10,"result":{"content":[{"type":"text","text":"Before:\n  vote at router/:home/4:vote: ready\nAfter:\n  edit at router/:edit: clean\nURL: /edit\n\nPage:\nheading \"Edit\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\ntextbox \"Draft\" value=\"\" [input]\nbutton \"Save\" [press]\n"}],"isError":false}}
+<- {"jsonrpc":"2.0","method":"notifications/tools/list_changed"}
+   (0.1 ms)
+PASS: navigate opens the edit page: edit is clean
+-> {"jsonrpc":"2.0","id":11,"method":"tools/list"}
+<- {"jsonrpc":"2.0","id":11,"result":{"tools":[{"name":"navigate","description":"Open a URL of the app, as in the address bar. Published routes:\n/ - the home page, with the vote button\n/item/:int - one item, by number, such as /item/1\n/about - the about page\n/edit - a draft that asks before it is dropped","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"A path with its query, such as /"}},"required":["url"]}},{"name":"read","description":"The current URL, the published instances with their state names, and the text of the page.","inputSchema":{"type":"object","additionalProperties":false}},{"name":"edit.draft","description":"Set the whole draft.","inputSchema":{"type":"object","properties":{"text":{"type":"string","description":"The whole draft."}},"required":["text"],"additionalProperties":false}},{"name":"edit.save","description":"Save the draft.","inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false}},{"name":"edit.leave","description":"Leave the page and drop the draft.","inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false}},{"name":"edit.stay","description":"Stay on the page and keep the draft.","inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false}}]}}
+   (0.0 ms)
+PASS: the server says the tool list changed
+PASS: the edit page offers every edit tool
+-> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"edit.draft","arguments":{"text":5}}}
+<- {"jsonrpc":"2.0","id":12,"result":{"content":[{"type":"text","text":"The arguments of edit.draft do not decode: text must be a string"}],"isError":true}}
+   (0.0 ms)
+PASS: a draft that is not a string does not decode
+-> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"edit.leave","arguments":{}}}
+<- {"jsonrpc":"2.0","id":13,"result":{"content":[{"type":"text","text":"edit at router/:edit in the state clean ignores this edit.leave event."}],"isError":true}}
+   (0.0 ms)
+PASS: edit.leave in the state clean is refused
+-> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"edit.draft","arguments":{"text":"Made by an agent"}}}
+<- {"jsonrpc":"2.0","id":14,"result":{"content":[{"type":"text","text":"Before:\n  edit at router/:edit: clean\nAfter:\n  edit at router/:edit: dirty\nURL: /edit\n\nPage:\nheading \"Edit\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\ntextbox \"Draft\" value=\"Made by an agent\" [input]\nbutton \"Save\" [press]\n"}],"isError":false}}
+   (0.1 ms)
+PASS: the draft shows in the field: edit is dirty
+-> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"navigate","arguments":{"url":"/about"}}}
+<- {"jsonrpc":"2.0","id":15,"result":{"content":[{"type":"text","text":"Before:\n  edit at router/:edit: dirty\nAfter:\n  edit at router/:edit: asking\nURL: /edit\n\nPage:\nheading \"Edit\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\ntextbox \"Draft\" value=\"Made by an agent\" [input]\nbutton \"Save\" [press]\nalertdialog \"Unsaved draft\"\n  text \"Leave this page? The draft is not saved.\"\n  button \"Leave\" [press]\n  button \"Stay\" [press]\n"}],"isError":false}}
+   (0.1 ms)
+PASS: navigate away from the draft is held: edit is asking and the URL stays /edit
+-> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"edit.leave","arguments":{}}}
+<- {"jsonrpc":"2.0","id":16,"result":{"content":[{"type":"text","text":"Before:\n  edit at router/:edit: asking\nAfter:\n\nURL: /about\n\nPage:\nheading \"About\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\ntext \"Silica is a view framework where all behaviour is statecharts.\"\nbutton \"Back\" [press]\nheading \"Release notes\" level=2\ntext \"Release note 1.\"\ntext \"Release note 2.\"\ntext \"Release note 3.\"\ntext \"Release note 4.\"\ntext \"Release note 5.\"\ntext \"Release note 6.\"\ntext \"Release note 7.\"\ntext \"Release note 8.\"\ntext \"Release note 9.\"\ntext \"Release note 10.\"\ntext \"Release note 11.\"\ntext \"Release note 12.\"\ntext \"Release note 13.\"\ntext \"Release note 14.\"\ntext \"Release note 15.\"\ntext \"Release note 16.\"\ntext \"Release note 17.\"\ntext \"Release note 18.\"\ntext \"Release note 19.\"\ntext \"Release note 20.\"\ntext \"Release note 21.\"\ntext \"Release note 22.\"\ntext \"Release note 23.\"\ntext \"Release note 24.\"\ntext \"Release note 25.\"\ntext \"Release note 26.\"\ntext \"Release note 27.\"\ntext \"Release note 28.\"\ntext \"Release note 29.\"\ntext \"Release note 30.\"\ntext \"Release note 31.\"\ntext \"Release note 32.\"\ntext \"Release note 33.\"\ntext \"Release note 34.\"\ntext \"Release note 35.\"\ntext \"Release note 36.\"\ntext \"Release note 37.\"\ntext \"Release note 38.\"\ntext \"Release note 39.\"\ntext \"Release note 40.\"\nheading \"Credits\" level=2\ntext \"Made with OCaml.\"\n"}],"isError":false}}
+<- {"jsonrpc":"2.0","method":"notifications/tools/list_changed"}
+   (0.2 ms)
+PASS: edit.leave drops the draft and opens /about
+-> {"jsonrpc":"2.0","id":17,"method":"tools/list"}
+<- {"jsonrpc":"2.0","id":17,"result":{"tools":[{"name":"navigate","description":"Open a URL of the app, as in the address bar. Published routes:\n/ - the home page, with the vote button\n/item/:int - one item, by number, such as /item/1\n/about - the about page\n/edit - a draft that asks before it is dropped","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"A path with its query, such as /"}},"required":["url"]}},{"name":"read","description":"The current URL, the published instances with their state names, and the text of the page.","inputSchema":{"type":"object","additionalProperties":false}}]}}
+   (0.0 ms)
+PASS: the edit tools left the list
+-> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"navigate","arguments":{"url":"/item/3"}}}
+<- {"jsonrpc":"2.0","id":18,"result":{"content":[{"type":"text","text":"Before:\n\nAfter:\n  item at router/:item: loaded\nURL: /item/3\n\nPage:\nheading \"Item\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\nheading \"Item 3\" level=2\ntext \"$4.00\"\nlist\n  listitem\n    text \"demo\"\n"}],"isError":false}}
+   (0.1 ms)
+PASS: navigate to /item/3 gets the answer of the real item handler: Item 3 at $4.00
+-> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"read","arguments":{}}}
+<- {"jsonrpc":"2.0","id":19,"result":{"content":[{"type":"text","text":"Instances:\n  item at router/:item: loaded\nURL: /item/3\n\nPage:\nheading \"Item\" level=1\nnavigation\n  link \"Home\" href=\"/\"\n  link \"Item 1\" href=\"/item/1\"\n  link \"Item 2\" href=\"/item/2\"\n  link \"About\" href=\"/about\"\n  link \"Edit\" href=\"/edit\"\n  link \"Credits\" href=\"/about#credits\"\nheading \"Item 3\" level=2\ntext \"$4.00\"\nlist\n  listitem\n    text \"demo\"\n"}],"isError":false}}
+   (0.0 ms)
+PASS: read gives the URL
+-> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"edit.save","arguments":{}}}
+<- {"jsonrpc":"2.0","id":20,"result":{"content":[{"type":"text","text":"The tool edit.save is not available now: no instance of edit runs, and the tool is published only in the states clean, dirty, asking."}],"isError":true}}
+   (0.0 ms)
+PASS: edit.save on the item page is refused
+ALL PASSED

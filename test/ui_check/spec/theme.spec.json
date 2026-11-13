@@ -6,7 +6,7 @@
       "name": "system",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": [
         "media"
       ]
@@ -15,7 +15,7 @@
       "name": "fixed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

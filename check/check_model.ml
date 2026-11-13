@@ -2,6 +2,22 @@ open Silica
 
 exception Invalid_check of string
 
+type kind = Own | Reaction of { sender : string } | New_props | Start | End
+
+type ('s, 'ev) part = {
+  instance : string;
+  machine : string;
+  from : string;
+  target : string;
+  how : Machine.how;
+  kind : kind;
+  event : 'ev option;
+  root : 's option;
+  props : Silica_json.Json.t option;
+  snapshot : Silica_json.Json.t option;
+  actions : string list;
+}
+
 type sample =
   | Answers : {
       endpoint : ('i, 'o, 'x) Remote.endpoint;
@@ -78,7 +94,7 @@ type cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string }
   | Live of { id : string; topic : string }
-  | Held of { id : string; source : string }
+  | Held of { id : string; name : string }
   | Action_result of string
   | Props
   | Child of { instance : string; machine : string }
@@ -157,7 +173,7 @@ type 'e host = {
   samples : sample list;
   arrivals : int;
   answer_lists : ('e * Silica_json.Json.t) list table;
-  feed_table : 'e feed table;
+  feed_table : ('e feed * Silica_json.Json.t feed) table;
 }
 
 let host ~samples ~arrivals =
@@ -282,13 +298,16 @@ let host_action host world = function
             world.calls;
       }
   | Action.Start_live { id; topic; on_update; _ } ->
+      let update_json = (Topic.update_codec (Topic.state topic)).encode in
       {
         world with
         subs = put id fresh world.subs;
         feeds =
           put id
             (intern host.feed_table
-               (feed_for ~arrivals:host.arrivals host.samples topic on_update)
+               ( feed_for ~arrivals:host.arrivals host.samples topic on_update,
+                 feed_for ~arrivals:host.arrivals host.samples topic update_json
+               )
             )
             world.feeds;
       }
@@ -337,11 +356,13 @@ let host_action host world = function
         world
       else
         { world with results = List.sort compare (results @ world.results) }
-  | Action.Start_source _ ->
+  | Action.Start_held _ ->
       world
 
 let live_moves host world id sub =
-  let feed = Dynarray.get host.feed_table.values (List.assoc id world.feeds) in
+  let feed, _ =
+    Dynarray.get host.feed_table.values (List.assoc id world.feeds)
+  in
   let move event sub = { event; via = By_feed (id, sub) } in
   match sub.phase with
   | Connecting ->
@@ -399,13 +420,32 @@ let resource_moves host world =
       (fun index (event, _) -> { event; via = By_result index })
       world.results
 
+let feed_entry feed sub =
+  match (sub.phase, sub.last) with
+  | Ended, Some index ->
+      feed.failed_last.(index)
+  | Ended, None ->
+      feed.failed_empty
+  | Down, Some index ->
+      feed.stale.(index)
+  | Up, Some index ->
+      feed.ready.(index).(sub.arrivals - 1)
+  | Connecting, _ | (Down | Up), None ->
+      feed.loading
+
 let answer_json host world via event =
   match via with
   | By_answer id ->
       Option.bind (List.assoc_opt id world.calls) (fun answers ->
           List.assoc_opt event (Dynarray.get host.answer_lists.values answers)
       )
-  | By_view | By_typing | By_input | By_timer _ | By_feed _ | By_result _ ->
+  | By_feed (id, sub) ->
+      Option.map
+        (fun index ->
+          feed_entry (snd (Dynarray.get host.feed_table.values index)) sub
+        )
+        (List.assoc_opt id world.feeds)
+  | By_view | By_typing | By_input | By_timer _ | By_result _ ->
       None
 
 let consume world = function
@@ -429,7 +469,7 @@ let finished = function
   | By_view | By_typing | By_input | By_feed _ | By_result _ ->
       None
 
-let source_events (sources : _ Action.source list) =
+let source_events (sources : _ Action.held list) =
   List.concat_map
     (function
       | Action.Global_keys { bindings; _ } ->
@@ -460,7 +500,7 @@ let source_events (sources : _ Action.source list) =
     sources
 
 let resource_cause machine world via event =
-  let active () = Machine.active machine world.props world.s in
+  let active () = Machine.active_with_props machine world.props world.s in
   match via with
   | By_timer id ->
       Timer
@@ -520,7 +560,7 @@ let resource_cause machine world via event =
             ""
         )
   | By_input -> (
-      let held = Machine.held machine world.props world.s in
+      let held = Machine.held_with_props machine world.props world.s in
       let ids =
         List.filter_map
           (function Machine.Held { id; name } -> Some (id, name) | _ -> None)
@@ -530,7 +570,7 @@ let resource_cause machine world via event =
         match (sources, ids) with
         | source :: sources, (id, name) :: ids ->
             if List.mem event (source_events [ source ]) then
-              Some (Held { id; source = name })
+              Some (Held { id; name })
             else
               find sources ids
         | _ ->
@@ -564,7 +604,7 @@ let started recorder machine state =
 
 let see recorder machine props state =
   let name = Machine.name machine state in
-  let active = Machine.active machine props state in
+  let active = Machine.active_with_props machine props state in
   let pick f = List.filter_map f active in
   let found =
     {
@@ -577,7 +617,7 @@ let see recorder machine props state =
           | Machine.Call _ | Machine.Subscription _ | Machine.Held _ ->
               None
           );
-      sources =
+      network =
         pick (function
           | Machine.Call { path; _ } ->
               Some path
@@ -606,7 +646,7 @@ let see recorder machine props state =
         {
           known with
           timers = union known.timers found.timers;
-          sources = union known.sources found.sources;
+          network = union known.network found.network;
           held = union known.held found.held;
         }
       in
@@ -621,7 +661,8 @@ let record recorder machine ~from ~props state label (how : Machine.how) =
           Spec.from = Machine.name machine from;
           target = Machine.name machine state;
           event = label ();
-          kept = how = Kept;
+          kept =
+            how = Kept && Machine.name machine from = Machine.name machine state;
         }
         ()
   | Unhandled ->
@@ -629,7 +670,7 @@ let record recorder machine ~from ~props state label (how : Machine.how) =
 
 let send ?finished ~label recorder machine world event =
   let state, actions, how =
-    Machine.step ?finished machine world.props world.s event
+    Machine.step_with_props ?finished machine world.props world.s event
   in
   record recorder machine ~from:world.s ~props:world.props state
     (fun () ->
@@ -688,9 +729,12 @@ let unreached_in recorder names =
 let unreached_of recorder machine =
   unreached_in recorder (Option.value ~default:[] (Machine.states machine))
 
+type running_state = { instance : string; machine : string; state : string }
+
 type ('n, 'ev, 'e) tree = {
   actor : 'ev -> (string * string) option;
-  state_of : 'n -> string -> string option;
+  states : 'n -> running_state list;
+  owner : 'n -> string -> running_state option;
   rules : 'n -> 'e Node.t -> 'ev option -> Check_rules.finding list;
   inside : 'n -> bool;
   not_run : unit -> string list;
@@ -703,7 +747,8 @@ type ('n, 'ev, 'e) tree = {
 let flat () =
   {
     actor = (fun _ -> None);
-    state_of = (fun _ _ -> None);
+    states = (fun _ -> []);
+    owner = (fun _ _ -> None);
     rules = (fun _ _ _ -> []);
     inside = (fun _ -> true);
     not_run = (fun () -> []);
@@ -712,6 +757,16 @@ let flat () =
     attempt = (fun _ _ -> None);
     attempt_action = (fun _ _ -> None);
   }
+
+let state_of tree node instance =
+  List.find_map
+    (fun running ->
+      if running.instance = instance then
+        Some running.state
+      else
+        None
+    )
+    (tree.states node)
 
 let newest_block sources =
   List.fold_left
@@ -733,6 +788,9 @@ type ('n, 's, 'ev, 'e) model = {
   snapshot : 'n -> 's;
   event_name : 'ev -> string option;
   event_of : 'ev -> 'e option;
+  delivered : 'n -> 'ev move -> 'ev list;
+  parts : 'n -> 'ev move -> ('s, 'ev) part list;
+  start_parts : unit -> ('s, 'ev) part list list;
   cause : 'n -> 'e Node.t -> 'ev move -> cause;
   state_rules : 'n -> 'e Node.t -> Check_rules.finding list;
   action_rules :
@@ -783,7 +841,7 @@ let owner_rules machine world =
         | Machine.Held _ ->
             None
         )
-      (Machine.active machine world.props world.s)
+      (Machine.active_with_props machine world.props world.s)
   in
   List.filter_map
     (fun (id, _) ->
@@ -855,8 +913,8 @@ let describe_cause = function
       Printf.sprintf "the answer of the call %s to %s" id path
   | Live { id; topic } ->
       Printf.sprintf "an update of the subscription %s to %s" id topic
-  | Held { id; source } ->
-      Printf.sprintf "the source %s (%s)" source id
+  | Held { id; name } ->
+      Printf.sprintf "the held resource %s (%s)" name id
   | Action_result action ->
       Printf.sprintf "the result of the action %s" action
   | Props ->
@@ -890,9 +948,9 @@ let transition_cause ~answer ~url : cause -> Transition.cause = function
   | Answer { id; path } ->
       Answer { id; path; answer }
   | Live { id; topic } ->
-      Live { id; topic; update = None }
-  | Held { id; source } ->
-      Held { id; source }
+      Live { id; topic; update = answer }
+  | Held { id; name } ->
+      Held { id; name }
   | Action_result action ->
       Action_result { action }
   | Props ->
@@ -932,7 +990,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
   let start () =
     List.map
       (fun props ->
-        let s, actions = Machine.start machine props in
+        let s, actions = Machine.start_with_props machine props in
         started recorder machine s;
         see recorder machine props s;
         (exec (empty_world props s) actions, actions)
@@ -961,7 +1019,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
           (Check_rules.typed ~texts view)
       @ List.map
           (fun event -> { event = (Event event : (_, _) input); via = By_input })
-          (source_events (Machine.held machine world.props world.s)
+          (source_events (Machine.held_with_props machine world.props world.s)
           @ inputs world.s
           )
       @ List.filter_map
@@ -1037,23 +1095,26 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
       );
     event_of =
       (function Event event -> Some event | Props _ | In_child _ -> None);
+    delivered = (fun _ _ -> []);
+    parts = (fun _ _ -> []);
+    start_parts = (fun () -> []);
     cause;
     state_rules =
       (fun world view ->
         owner_rules machine world
         @ Check_accessibility.dialog_focus
-            ~held:(Machine.held machine world.props world.s)
+            ~held:(Machine.held_with_props machine world.props world.s)
             view
         @
         if client_only then
           List.map
-            (fun source ->
-              Check_rules.finding "live-uses-client-source"
-                ~values:[ ("source", source) ]
+            (fun name ->
+              Check_rules.finding "live-uses-client-resource"
+                ~values:[ ("resource", name) ]
             )
             (List.filter_map
                (function Machine.Held { name; _ } -> Some name | _ -> None)
-               (Machine.active machine world.props world.s)
+               (Machine.active_with_props machine world.props world.s)
             )
         else
           []
@@ -1228,7 +1289,8 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
                 (host_action host world action, acc)
             | Some navigation -> (
                 match
-                  newest_block (Machine.held machine world.props world.s)
+                  newest_block
+                    (Machine.held_with_props machine world.props world.s)
                 with
                 | Some on_attempt ->
                     let s, more, _ =
@@ -1259,7 +1321,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
   in
   let user event = { event; via = By_view } in
   let start () =
-    let s0, actions0 = Machine.start machine () in
+    let s0, actions0 = Machine.start machine in
     started recorder machine s0;
     see recorder machine () s0;
     [
@@ -1276,7 +1338,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
           (Check_rules.typed ~texts view)
       @ List.map
           (fun event -> { event = Event event; via = By_input })
-          (source_events (Machine.held machine world.props world.s)
+          (source_events (Machine.held_with_props machine world.props world.s)
           @ inputs (to_state world)
           )
       @ List.map
@@ -1411,12 +1473,15 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
           not_in_child ()
       );
     event_of = (function Event event -> Some event | _ -> None);
+    delivered = (fun _ _ -> []);
+    parts = (fun _ _ -> []);
+    start_parts = (fun () -> []);
     cause;
     state_rules =
       (fun world view ->
         owner_rules machine world
         @ Check_accessibility.dialog_focus
-            ~held:(Machine.held machine world.props world.s)
+            ~held:(Machine.held_with_props machine world.props world.s)
             view
         @ route_findings world @ link_findings view
       );

@@ -65,7 +65,7 @@ state, and the update ignores it there.
                   "text": "the view offers press on button \"Save\" at form > button[2]"
                 },
                 "target": "saved",
-                "root_moved": null
+                "moved": []
               },
               {
                 "index": 2,
@@ -85,12 +85,13 @@ state, and the update ignores it there.
                   "text": "the view offers press on button \"Save\" at div > button"
                 },
                 "target": "saved",
-                "root_moved": null
+                "moved": []
               }
             ],
             "loop": null,
             "trace_file": null,
-            "test_file": null
+            "test_file": null,
+            "test_error": null
           }
         ],
         "unreached": [],
@@ -377,6 +378,25 @@ A step that the check no longer offers is a mismatch: exit 1.
     nothing
   the trace does not replay (exit 1)
 
+A recorded run that types a text the check does not type is not enabled:
+the message names the text and the texts of the check, and each offered step
+shows the state it reaches.
+
+  $ cat > note.jsonl <<'EOF'
+  > {"root":"note","build":"dev","origin":{"type":"runtime","platform":"browser"},"dropped":0}
+  > {"seq":1,"instance":"note","number":1,"entry":0,"machine":"note","from":"","to":"empty","change":"started","event":"","snapshot":"","cause":{"type":"start"}}
+  > {"seq":2,"instance":"note","number":1,"entry":1,"machine":"note","from":"empty","to":"written","change":"entered","event":"typed","data":"b","snapshot":"b","cause":{"type":"element","handler":"input","role":"textbox","name":"Note","element":"input","value":"b"}}
+  > EOF
+  $ FIXTURE=note ./fixtures.exe replay note note.jsonl
+  replay note: note.jsonl
+  start: empty
+  step 1 of the trace is not enabled here: the trace types "b" into textbox "Note" at input, and the check types only its texts there: "a". Add "b" to the ~texts of the check (of Check.child for a child) to replay it. The state offers:
+    empty -> written on typed, by the view offers input "a" on textbox "Note" at input
+  the trace does not replay (exit 1)
+  [1]
+  $ FIXTURE=note ./fixtures.exe replay note note.jsonl --json | grep not_enabled_reason
+    "not_enabled_reason": "the trace types \"b\" into textbox \"Note\" at input, and the check types only its texts there: \"a\". Add \"b\" to the ~texts of the check (of Check.child for a child) to replay it"
+
 script prints a Silica_memory test of the counterexample.
 
   $ FIXTURE=bug ./fixtures.exe script save traces/save_ignored_event_saved.jsonl --component Fixtures.save | grep -c Memory.press
@@ -405,11 +425,21 @@ rule and the state, and the text names the test file of each:
   trace of violation 2: traces/twice_ignored_event_second.jsonl; its test: silica script twice traces/twice_ignored_event_second.jsonl > test/twice_ignored_event_second_replay.ml
   $ FIXTURE=twice ./fixtures.exe --json --traces traces | grep -E '"(trace|test)_file"'
             "trace_file": "traces/twice_ignored_event_first.jsonl",
-            "test_file": "test/twice_ignored_event_first_replay.ml"
+            "test_file": "test/twice_ignored_event_first_replay.ml",
             "trace_file": "traces/twice_ignored_event_second.jsonl",
-            "test_file": "test/twice_ignored_event_second_replay.ml"
+            "test_file": "test/twice_ignored_event_second_replay.ml",
   $ FIXTURE=twice ./fixtures.exe script twice traces/twice_ignored_event_second.jsonl > /dev/null
   script: the test of the violation ignored-event of twice, from traces/twice_ignored_event_second.jsonl. Save it as test/twice_ignored_event_second_replay.ml (or give --output test/twice_ignored_event_second_replay.ml), and add twice_ignored_event_second_replay to the names of the tests in test/dune.
+
+When silica script cannot write the test of a violation, the report names no
+test file and says why:
+
+  $ FIXTURE=pinged ./fixtures.exe --traces traces | grep trace
+  trace of violation 1: traces/pinged_never_pinged_waiting.jsonl; no script test: step 1 is the event ping from ~inputs of the check; no element of the view gives it, so Silica_memory cannot replay it. When it is text typed into a field, give the text with ~texts instead, and the checker types it into the field; silica replay pinged traces/pinged_never_pinged_waiting.jsonl replays it
+  $ FIXTURE=pinged ./fixtures.exe --json --traces traces | grep -E '"(trace_file|test_file|test_error)"'
+            "trace_file": "traces/pinged_never_pinged_waiting.jsonl",
+            "test_file": null,
+            "test_error": "step 1 is the event ping from ~inputs of the check; no element of the view gives it, so Silica_memory cannot replay it. When it is text typed into a field, give the text with ~texts instead, and the checker types it into the field"
 
 conform takes a trace that the checker wrote, and says that it is a
 counterexample, not a recorded run: replay says whether it still breaks the
@@ -422,6 +452,55 @@ rule.
     note: this trace is a counterexample of the checker for ignored-event, not a recorded run: conform compares its steps with the specs and the code, and says nothing about the rule; run replay to see whether it still breaks ignored-event
     by names: transitions checked against the golden specs: 3
     by data: steps run again in the code: 3; snapshots checked by the properties: 3
+  every trace conforms (exit 0)
+
+A recorded trace with data, checked by a suite that registers no codecs for
+its machine: the hint says so, and names the codec module to call.
+
+  $ FIXTURE=pass ./fixtures.exe golden doorspec --write > /dev/null
+  $ cat > door.jsonl <<'EOF'
+  > {"root":"door","build":"dev","origin":{"type":"runtime","platform":"browser"},"dropped":0}
+  > {"seq":1,"instance":"door","number":1,"entry":0,"machine":"door","from":"","to":"closed","change":"started","event":"","cause":{"type":"start"},"snapshot":["Closed"]}
+  > EOF
+  $ FIXTURE=pass ./fixtures.exe conform --spec doorspec door.jsonl
+  conform door.jsonl: root door, build dev, 1 transitions
+    by names: transitions checked against the golden specs: 1
+    by data: steps run again in the code: 1; snapshots checked by the properties: 0
+  deviation 1 (not-decodable): transition 1, machine door, instance door
+    step: start in closed
+    difference: the data does not decode: the snapshot: the machine "door" has no registered codecs: call Machine.register_codecs on it in the codec module of the app (Codecs.register in app/shared/codecs.ml of an app that silica new made), and call it before asking for a codec, such as at the start of check/main.ml
+    hint: This check suite registers no codecs for the machine door, so it cannot decode the data of the trace. Register them in the codec module of the app (Codecs.register in app/shared/codecs.ml) with Machine.register_codecs, and call that module at the start of check/main.ml, before Check_suite.main.
+  a trace does not conform (exit 1)
+  [1]
+
+A property of a joint check reads the view of the parent with the view of
+each listed child in it, as the checker does: conform evaluates it once the
+props of the step reached the children, with the snapshots of the children
+in the trace.
+
+  $ FIXTURE=joint ./fixtures.exe golden jointspec --write > /dev/null
+  $ cat > picked.jsonl <<'EOF'
+  > {"root":"picker","build":"dev","origin":{"type":"runtime","platform":"browser"},"dropped":0}
+  > {"seq":1,"instance":"picker","number":1,"entry":0,"machine":"picker","from":"","to":"picking","change":"started","event":"","snapshot":"","cause":{"type":"start"}}
+  > {"seq":2,"instance":"picker/1:label","number":2,"entry":0,"machine":"label","from":"","to":"shown","change":"started","event":"","props":"","snapshot":"","cause":{"type":"start"}}
+  > {"seq":3,"instance":"picker","number":1,"entry":1,"machine":"picker","from":"picking","to":"picking","change":"kept","event":"pick","data":"a","snapshot":"a","cause":{"type":"element","handler":"press","role":"button","name":"Pick a","element":"main > button"}}
+  > {"seq":4,"instance":"picker/1:label","number":2,"entry":1,"machine":"label","from":"shown","to":"shown","change":"kept","event":"","props":"a","snapshot":"a","cause":{"type":"props"}}
+  > EOF
+  $ FIXTURE=joint ./fixtures.exe conform --spec jointspec picked.jsonl
+  conform picked.jsonl: root picker, build dev, 4 transitions
+    by names: transitions checked against the golden specs: 4
+    by data: steps run again in the code: 4; snapshots checked by the properties: 4
+  every trace conforms (exit 0)
+
+A child with no snapshot in the trace leaves the view of its parent
+incomplete: conform does not evaluate a property that reads it, and says so.
+
+  $ grep -v '"label"' picked.jsonl > cut.jsonl
+  $ FIXTURE=joint ./fixtures.exe conform --spec jointspec cut.jsonl
+  conform cut.jsonl: root picker, build dev, 2 transitions
+    by names: transitions checked against the golden specs: 2
+    by data: steps run again in the code: 2; snapshots checked by the properties: 0
+    property not checked by conform: "the label follows the pick" (the trace has no snapshot of the child picker/1:label)
   every trace conforms (exit 0)
 
 A new run removes the trace files of a check that ran and that it no longer
@@ -438,6 +517,24 @@ its traces:
   .silica-traces
   notes.txt
   save_extra_ignored_event_closed.jsonl
+
+A directory that holds files and no .silica-traces list was not made by
+silica, so --traces refuses it before it runs a check; an empty directory is
+taken:
+
+  $ mkdir foreign empty
+  $ touch foreign/notes.txt foreign/c.cmi
+  $ FIXTURE=bug ./fixtures.exe --traces foreign
+  check: --traces foreign: the directory holds files that silica did not write (c.cmi, notes.txt) and no .silica-traces list; give a new or empty directory, or the directory of an earlier --traces run
+  [3]
+  $ ls -A foreign
+  c.cmi
+  notes.txt
+  $ FIXTURE=bug ./fixtures.exe --traces empty > /dev/null
+  [1]
+  $ ls -A empty
+  .silica-traces
+  save_ignored_event_saved.jsonl
 
 A trace that cannot be replayed faithfully is a setup error, never a pass,
 such as one recorded with names only (no event data and no choices of the

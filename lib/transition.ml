@@ -20,7 +20,7 @@ type cause =
   | Timer of { id : string; ms : int }
   | Answer of { id : string; path : string; answer : Json.t option }
   | Live of { id : string; topic : string; update : Json.t option }
-  | Held of { id : string; source : string }
+  | Held of { id : string; name : string }
   | Action_result of { action : string }
   | Props
   | Child of { instance : string }
@@ -110,8 +110,8 @@ let encode_cause cause =
         ([ ("id", string id); ("topic", string topic) ]
         @ optional "update" Fun.id update
         )
-  | Held { id; source } ->
-      typed "held" [ ("id", string id); ("source", string source) ]
+  | Held { id; name } ->
+      typed "held" [ ("id", string id); ("name", string name) ]
   | Action_result { action } ->
       typed "action_result" [ ("action", string action) ]
   | Props ->
@@ -265,8 +265,8 @@ let decode_cause json =
       Ok (Live { id; topic; update })
   | "held" ->
       let* id = text "id" in
-      let* source = text "source" in
-      Ok (Held { id; source })
+      let* name = text "name" in
+      Ok (Held { id; name })
   | "action_result" ->
       let* action = text "action" in
       Ok (Action_result { action })
@@ -379,8 +379,8 @@ let describe_action : type m. m Action.t -> string = function
 let describe : type m. m Action.host -> string = function
   | Action.Run action ->
       describe_action action
-  | Action.Start_source { id; source } ->
-      "start source " ^ id ^ " " ^ Action.source_name source
+  | Action.Start_held { id; held } ->
+      "start held " ^ id ^ " " ^ Action.held_name held
   | Action.Start_timer { id; ms; _ } ->
       "start timer " ^ id ^ " " ^ string_of_int ms ^ "ms"
   | Action.Start_call { id; endpoint; _ } ->
@@ -426,8 +426,8 @@ let cause_label = function
       outcome ^ " " ^ path
   | Live { topic; _ } ->
       "live " ^ topic
-  | Held { source; _ } ->
-      source
+  | Held { name; _ } ->
+      name
   | Action_result { action } ->
       "result " ^ action
   | Props ->
@@ -666,52 +666,61 @@ let element_details found element ~value =
   in
   (handler, Accessibility.role element, Accessibility.name element, value)
 
-let locate : type m.
-    (m Node.attr -> bool) ->
-    m Node.t option ->
-    string option ->
-    (unit -> cause) option =
- fun found view value ->
-  match view with
-  | None ->
-      None
-  | Some view -> (
-      match search found [ view ] false view with
-      | None ->
-          None
-      | Some located ->
-          let path = element_path located in
-          let source =
-            if needs_document located then
-              view
-            else
-              pruned located
-          in
-          Some
-            (fun () ->
-              match
-                List.find_opt
-                  (fun element ->
-                    List.exists found (Accessibility.attributes element)
-                  )
-                  (Accessibility.elements source)
-              with
-              | Some element ->
-                  let handler, role, name, value =
-                    element_details found element ~value
-                  in
-                  Element
-                    {
-                      handler;
-                      role = Option.map Accessibility.role_to_string role;
-                      name;
-                      element = path;
-                      value;
-                    }
-              | None ->
-                  Message
-            )
+let find_in : type m. (m Node.attr -> bool) -> m Node.t -> m located option =
+ fun found view -> search found [ view ] false view
+
+let password located =
+  match located.chain with
+  | target :: _ -> (
+      match[@warning "-4"] Node.view target with
+      | Node.Element (tag, attrs, _) ->
+          Secret.is_password ~tag ~kind:(attribute attrs "type")
+      | _ ->
+          false
     )
+  | [] ->
+      false
+
+let deferred : type m.
+    (m Node.attr -> bool) ->
+    m Node.t ->
+    m located ->
+    string option ->
+    unit ->
+    cause =
+ fun found view located value ->
+  let path = element_path located in
+  let source =
+    if needs_document located then
+      view
+    else
+      pruned located
+  in
+  fun () ->
+    match
+      List.find_opt
+        (fun element -> List.exists found (Accessibility.attributes element))
+        (Accessibility.elements source)
+    with
+    | Some element ->
+        let handler, role, name, value = element_details found element ~value in
+        Element
+          {
+            handler;
+            role = Option.map Accessibility.role_to_string role;
+            name;
+            element = path;
+            value;
+          }
+    | None ->
+        Message
+
+let locate found view value =
+  Option.bind view (fun view ->
+      Option.map
+        (fun located -> deferred found view located value)
+        (find_in found view)
+  )
 
 let rec delivers : type m. m -> m Node.attr -> bool =
  fun message -> function
@@ -749,17 +758,44 @@ let resolve pending =
   );
   pending.record
 
-let make_cause ~view ~message (cause : Instance.cause) =
+let make_cause ~mask ~view ~message (cause : Instance.cause) =
   match cause with
   | Start ->
-      (Start, None)
+      (Start, None, None)
   | Element (attr, input, key) ->
+      let found other = other == attr in
+      let located = Option.bind view (fun view -> find_in found view) in
+      let password_field =
+        match located with
+        | Some located ->
+            mask && password located
+        | None ->
+            false
+      in
+      let secret =
+        match (input, located) with
+        | Some text, Some located when password_field ->
+            Some (element_path located, text)
+        | _ ->
+            None
+      in
       let value =
         match (input, key) with
         | Some input, _ ->
-            Some input
+            Some
+              ( if secret = None then
+                  input
+                else
+                  Secret.hide input
+              )
         | None, Some key ->
-            Some (Key.to_string key)
+            let printed = Key.to_string key in
+            Some
+              ( if password_field && Secret.is_typed_key printed then
+                  Secret.hide printed
+                else
+                  printed
+              )
         | None, None ->
             None
       in
@@ -771,10 +807,16 @@ let make_cause ~view ~message (cause : Instance.cause) =
             element = "";
             value;
           },
-        locate (fun other -> other == attr) view value
+        ( match (view, located) with
+        | Some view, Some located ->
+            Some (deferred found view located value)
+        | _ ->
+            None
+        ),
+        secret
       )
   | Timer (id, ms) ->
-      (Timer { id; ms }, None)
+      (Timer { id; ms }, None, None)
   | Answer (id, endpoint, answer) ->
       ( Answer
           {
@@ -789,6 +831,7 @@ let make_cause ~view ~message (cause : Instance.cause) =
                    answer
                 );
           },
+        None,
         None
       )
   | Live (id, topic, update) ->
@@ -799,31 +842,32 @@ let make_cause ~view ~message (cause : Instance.cause) =
             update =
               Some ((Topic.update_codec (Topic.state topic)).encode update);
           },
+        None,
         None
       )
-  | Source (id, source) ->
-      (Held { id; source = Action.source_name source }, None)
+  | Held (id, held) ->
+      (Held { id; name = Action.held_name held }, None, None)
   | Result action ->
-      (Action_result { action = describe_action action }, None)
+      (Action_result { action = describe_action action }, None, None)
   | Props ->
-      (Props, None)
+      (Props, None, None)
   | Child cell ->
-      (Child { instance = Instance.cell_path cell }, None)
+      (Child { instance = Instance.cell_path cell }, None, None)
   | Route (Router.Url_changed url) ->
-      (Url (Url.to_string url), None)
+      (Url (Url.to_string url), None, None)
   | Route (Router.Preload url) ->
-      (Preload (Url.to_string url), None)
+      (Preload (Url.to_string url), None, None)
   | Handler -> (
       match message with
       | Some message ->
-          (Message, locate (delivers message) view None)
+          (Message, locate (delivers message) view None, None)
       | None ->
-          (Message, None)
+          (Message, None, None)
     )
   | Message ->
-      (Message, None)
+      (Message, None, None)
   | End ->
-      (Ended, None)
+      (Ended, None, None)
 
 let encoded codec value =
   match codec with
@@ -832,7 +876,7 @@ let encoded codec value =
   | Error _ ->
       None
 
-let make ~seq ~time_ms observed =
+let make ~secrets ~seq ~time_ms observed =
   let (Instance.Inspected
          {
            instance;
@@ -852,7 +896,21 @@ let make ~seq ~time_ms observed =
         ) =
     Instance.inspect observed
   in
-  let cause, element = make_cause ~view ~message cause in
+  let cause, element, secret =
+    make_cause ~mask:(secrets <> None) ~view ~message cause
+  in
+  let encoded codec value =
+    match secrets with
+    | Some secrets ->
+        Option.iter
+          (fun (path, text) ->
+            Secret.learn secrets ~field:(instance ^ " " ^ path) text
+          )
+          secret;
+        Option.map (Secret.scrub secrets) (encoded codec value)
+    | None ->
+        encoded codec value
+  in
   let with_props =
     match[@warning "-4"] (change, cause) with
     | (Started | Resumed), _ | _, Props ->
@@ -881,10 +939,15 @@ let make ~seq ~time_ms observed =
               ""
           );
         data =
-          ( match event with
-          | Some event ->
+          ( match[@warning "-4"] (event, cause) with
+          | ( _,
+              Element { handler = "key_down" | "key_up"; value = Some value; _ }
+            )
+            when value = Secret.mask ->
+              None
+          | Some event, _ ->
               encoded (Machine.event_codec machine) event
-          | None ->
+          | None, _ ->
               None
           );
         props = with_props;
@@ -894,6 +957,23 @@ let make ~seq ~time_ms observed =
       };
     element;
   }
+
+let learn secrets observed =
+  let (Instance.Inspected { instance; cause; view; _ }) =
+    Instance.inspect observed
+  in
+  match[@warning "-4"] (cause, view) with
+  | Element (attr, Some text, _), Some view -> (
+      match find_in (fun other -> other == attr) view with
+      | Some located when password located ->
+          Secret.learn secrets
+            ~field:(instance ^ " " ^ element_path located)
+            text
+      | Some _ | None ->
+          ()
+    )
+  | _ ->
+      ()
 
 let element_message (make : Instance.cause -> 'e -> Instance.message) self input
     key event =
@@ -959,14 +1039,20 @@ let handler make =
         self := resolved;
         resolved
 
-let observer ?clock record =
+let observer ?clock ?(mask = true) ?(secrets = Secret.create ()) record =
+  let secrets =
+    if mask then
+      Some secrets
+    else
+      None
+  in
   let seq = ref 0 in
   {
     Instance.observe =
       (fun observed ->
         incr seq;
         record
-          (make ~seq:!seq
+          (make ~secrets ~seq:!seq
              ~time_ms:(Option.map (fun clock -> clock ()) clock)
              observed
           )
@@ -1078,7 +1164,7 @@ let names_only_action rename action =
         ("stop ", fun id -> "stop " ^ rename id);
         ("start timer ", with_last "start timer");
         ("start call ", with_last "start call");
-        ("start source ", with_last "start source");
+        ("start held ", with_last "start held");
         ( "start live ",
           fun rest ->
             match live_id rest with

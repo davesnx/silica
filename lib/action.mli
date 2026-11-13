@@ -6,14 +6,14 @@
 type 'e t =
   | Focus of Ref.t
       (** Move keyboard focus to the element. The browser does not scroll to an
-          element inside a portal: an anchor source places a popup. *)
+          element inside a portal: an anchor resource places a popup. *)
   | Blur of Ref.t
   | Scroll_into_view of Ref.t
       (** Scroll the element into view by the smallest distance, as
           [scrollIntoView({ block: "nearest" })]. The browser does it after the
-          other actions and the sources of the same step, so an {!Anchor} places
-          a new popup first and the page does not scroll to where the popup was
-          before. *)
+          other actions and the resources of the same step, so an {!Anchor}
+          places a new popup first and the page does not scroll to where the
+          popup was before. *)
   | Scroll_to of { target : Ref.t option; left : int; top : int }
       (** Scroll the element with the ref [target], or the window when [target]
           is [None], so that the point ([left], [top]) of its content is at its
@@ -37,8 +37,8 @@ type 'e t =
   | Forward
   | Reload
   | Resume of Nav.t
-      (** Do this navigation past every {!Source.block}: the answer of a page
-          that stopped a navigation with a block and then lets it happen. *)
+      (** Do this navigation past every {!Host.block}: the answer of a page that
+          stopped a navigation with a block and then lets it happen. *)
   | Revert_navigation
       (** Undo the last URL change that the renderer reported: back one entry
           after a push, the old URL after a replace, the other way after a back
@@ -78,9 +78,9 @@ type 'e t =
 
 (** A held resource that runs during a state: it starts when the state is
     entered and stops when the state is left. Build them with the constructors
-    in {!Source}. A renderer carries them out. [rate] limits how often the
+    in {!Host}. A renderer carries them out. [rate] limits how often the
     renderer delivers the event (see {!Rate}). *)
-type 'e source =
+type 'e held =
   | Focus_trap of { container : Ref.t; return_focus : bool }
       (** Keep keyboard focus inside the element with the ref [container]: focus
           moves into it, Tab and Shift+Tab wrap, and focus that leaves it comes
@@ -162,28 +162,28 @@ val check : 'e t -> unit
     with a name or value outside the rules of those actions. Hosts call it
     before they run either. *)
 
-val source_name : 'e source -> string
+val held_name : 'e held -> string
 (** ["focus_trap"], ["scroll_lock"], ["outside_press"], ["keys"], ["resize"],
     ["intersection"], ["dismiss"], ["anchor"], ["scroll"], ["visibility"],
     ["online"], ["media"] or ["block"]. *)
 
-val map_source : ('a -> 'b) -> 'a source -> 'b source
-(** Change the events that a source sends. *)
+val map_held : ('a -> 'b) -> 'a held -> 'b held
+(** Change the events that a resource sends. *)
 
-val map_refs : (Ref.t -> Ref.t) -> 'e source -> 'e source
-(** The same source with each ref replaced. *)
+val map_refs : (Ref.t -> Ref.t) -> 'e held -> 'e held
+(** The same resource with each ref replaced. *)
 
 (** What a machine gives to its host. Only {!Machine} and {!Instance} build
     [Start_timer], [Start_call] and [Stop], so no timer or call lives outside
     the state that it runs during. *)
 type 'e host =
   | Run of 'e t
-  | Start_source of { id : string; source : 'e source }
+  | Start_held of { id : string; held : 'e held }
       (** Start the held resource. A [Stop] with the same id ends it. Raised
-          when a state starts to own that source. *)
+          when a state starts to own that resource. *)
   | Start_timer of { id : string; ms : int; event : 'e }
       (** Raise [event] after [ms] milliseconds, unless stopped first. Raised
-          when a state starts to own a {!Source.after} timer. *)
+          when a state starts to own a {!Host.after} timer. *)
   | Start_call : {
       id : string;
       endpoint : ('i, 'o, 'x) Endpoint.t;
@@ -198,14 +198,14 @@ type 'e host =
           [on_result (Failed (Network "timeout"))] and drops the answer. *)
   | Start_live : {
       id : string;
-      topic : 's Topic.t;
+      topic : 's Live_topic.t;
       key : string;
-      on_update : 's Topic.update -> 'e;
+      on_update : 's Live_topic.update -> 'e;
     }
       -> 'e host
       (** Subscribe to the topic under the key and raise [on_update] for each
           state, and for each change of the connection (see {!Topic.update}),
-          unless stopped first. Raised when a state with a {!Source.live} is
+          unless stopped first. Raised when a state with a {!Topic.subscribe} is
           entered. A [Stop] with the same id ends the subscription. *)
   | Stop of string
       (** Stop the timer, call or subscription with this id. A stopped timer

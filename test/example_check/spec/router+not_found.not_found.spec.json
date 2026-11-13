@@ -6,7 +6,7 @@
       "name": "not_found",
       "final": true,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     }
   ],

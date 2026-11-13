@@ -6,28 +6,28 @@
       "name": "closed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "editing",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "failed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
       "name": "submitting",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/issues/create"
       ],
       "held": []

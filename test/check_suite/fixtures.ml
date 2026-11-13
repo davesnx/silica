@@ -216,6 +216,109 @@ let twice =
           button "Wait" Wait
       )
 
+type ping_event = Ping
+
+let pinged =
+  Component.make
+    (Machine.make ~id:"pinged" ~init:false
+       ~name:(fun _ -> "waiting")
+       ~states:[ "waiting" ]
+       ~event_name:(fun Ping -> "ping")
+       (fun _ Ping -> Machine.Go true)
+    )
+    (fun _ -> Node.element "p" [] [ Node.text "Waiting" ])
+
+type label_event = Relabel
+
+let label =
+  let machine =
+    Machine.make_with_props ~id:"label" ~init:""
+      ~name:(fun _ -> "shown")
+      ~states:[ "shown" ]
+      ~event_name:(fun Relabel -> "relabel")
+      ~on_props:(fun _ props _ -> Machine.Go props)
+      (fun _ _ Relabel -> Machine.Stay [])
+  in
+  Machine.register_codecs machine ~props:Codec.string ~state:Codec.string ();
+  Component.make_with_props machine (fun _ shown ->
+      Node.element "p" []
+        [ Node.text ("shows " ^ shown); button "Again" Relabel ]
+  )
+
+type picker_event = Pick of string
+
+let picker =
+  let machine =
+    Machine.make ~id:"picker" ~init:""
+      ~name:(fun _ -> "picking")
+      ~states:[ "picking" ]
+      ~event_name:(fun (Pick _) -> "pick")
+      (fun _ (Pick text) -> Machine.Go text)
+  in
+  Machine.register_codecs machine ~state:Codec.string
+    ~event:
+      (Codec.make
+         ~encode:(fun (Pick text) -> Codec.string.encode text)
+         ~decode:(fun json ->
+           Result.map (fun text -> Pick text) (Codec.string.decode json)
+         )
+      )
+    ();
+  Component.make machine (fun picked ->
+      Node.element "main" []
+        [
+          button "Pick a" (Pick "a");
+          Component.node_with_props label ~props:picked;
+        ]
+  )
+
+let picked =
+  Check.component
+    ~children:[ Check.child label ]
+    ~properties:
+      [
+        Check.always ~name:"the label follows the pick"
+          (Check.holds (fun picked view ->
+               Check.view_shows view ("shows " ^ picked)
+           )
+          );
+      ]
+    picker
+
+type note_event = Typed of string
+
+let note =
+  let machine =
+    Machine.make ~id:"note" ~init:""
+      ~name:(fun text ->
+        if text = "" then
+          "empty"
+        else
+          "written"
+      )
+      ~states:[ "empty"; "written" ]
+      ~event_name:(fun (Typed _) -> "typed")
+      (fun _ (Typed text) -> Machine.Go text)
+  in
+  Machine.register_codecs machine ~state:Codec.string
+    ~event:
+      (Codec.make
+         ~encode:(fun (Typed text) -> Codec.string.encode text)
+         ~decode:(fun json ->
+           Result.map (fun text -> Typed text) (Codec.string.decode json)
+         )
+      )
+    ();
+  Component.make machine (fun text ->
+      Node.element "input"
+        [
+          Attr.string "aria-label" "Note";
+          Attr.string "value" text;
+          Attr.on_input (fun text -> Typed text);
+        ]
+        []
+  )
+
 let broken =
   Check.app ~routes:[]
     ~parse:(fun _ -> Showing)
@@ -229,6 +332,18 @@ let sets =
     ("changed", [ Check_suite.entry (Check.component (door ~unlock_to:Opened)) ]);
     ("bug", [ Check_suite.entry (Check.component save) ]);
     ("twice", [ Check_suite.entry (Check.component twice) ]);
+    ( "pinged",
+      [
+        Check_suite.entry
+          (Check.component
+             ~inputs:(fun _ -> [ Ping ])
+             ~properties:[ Check.always ~name:"never pinged" (Check.state not) ]
+             pinged
+          );
+      ]
+    );
+    ("joint", [ Check_suite.entry picked ]);
+    ("note", [ Check_suite.entry (Check.component ~texts:[ "a" ] note) ]);
     ( "fixed",
       [
         Check_suite.entry

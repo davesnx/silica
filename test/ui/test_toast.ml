@@ -21,7 +21,7 @@ let has_log sim line =
 
 let timers sim =
   List.filter
-    (fun id -> not (List.mem_assoc id (Sim.sources sim)))
+    (fun id -> not (List.mem_assoc id (Sim.held sim)))
     (Sim.running sim)
 
 let tick sim =

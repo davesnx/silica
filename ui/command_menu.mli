@@ -3,7 +3,7 @@
     component; this is the composition that its documentation suggests.
 
     The parent opens it with [open_] (for example from a global shortcut such as
-    Ctrl+K, with {!Silica.Source.keys}) and follows [on_open_change]. When it
+    Ctrl+K, with {!Silica.Host.keys}) and follows [on_open_change]. When it
     opens, focus goes to the search input, with empty text. Enter or a press on
     an option runs the option: the menu reports its value and closes. Escape
     (with empty text; with text, the first Escape clears it) and a press outside

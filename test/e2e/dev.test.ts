@@ -51,7 +51,7 @@ class Dev {
       for (const listener of this.listeners) listener();
     });
     this.child.stderr?.on("data", (data: Buffer) => (this.stderr += data.toString()));
-    this.exited = new Promise((ok) => this.child.on("exit", (code) => ok(code)));
+    this.exited = new Promise((ok) => this.child.on("close", (code) => ok(code)));
   }
 
   waitFor(predicate: (event: Event) => boolean, from: number, timeout = 120000): Promise<Event> {
@@ -129,7 +129,7 @@ let start = { count = 0; text = "" }
 
 let machine =
   Machine.make ~id:"hot" ~init:(Idle start) ~name ~states ~event_name
-    ~during:(function Waiting _ -> [ Source.after 2500 Done ] | _ -> [])
+    ~during:(function Waiting _ -> [ Host.after 2500 Done ] | _ -> [])
     (fun state event ->
       match (state, event) with
       | Idle model, Bump ->
@@ -177,7 +177,7 @@ const hotCodec = `let register () =
 
 const makeProject = (): string => {
   const project = mkdtempSync(join(tmpdir(), "silica-dev-"));
-  for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam", "silica-jsonkit-melange.opam"])
+  for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam"])
     copyFileSync(join(root, file), join(project, file));
   for (const directory of ["lib", "browser", "server", "ppx"]) symlinkSync(join(root, directory), join(project, directory));
   cpSync(join(root, "example"), join(project, "example"), { recursive: true, verbatimSymlinks: true });

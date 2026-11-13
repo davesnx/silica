@@ -113,7 +113,7 @@ describe("hot reload on mini Linear", () => {
   test("an open title editor keeps its draft after a view edit, and the new text shows", async () => {
     const project = mkdtempSync(join(tmpdir(), "silica-dev-linear-"));
     projects.push(project);
-    for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam", "silica-jsonkit-melange.opam"])
+    for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam"])
       copyFileSync(join(root, file), join(project, file));
     for (const directory of ["lib", "browser", "server", "ppx", "ui"]) symlinkSync(join(root, directory), join(project, directory));
     cpSync(join(root, "linear"), join(project, "linear"), { recursive: true, verbatimSymlinks: true });

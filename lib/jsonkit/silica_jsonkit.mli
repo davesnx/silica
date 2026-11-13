@@ -1,6 +1,6 @@
 (** Codecs from a [Jsonkit] encoder and decoder, for app code that derives them
     with [[@@deriving json]]. Two libraries have this module, with the same
-    name: [silica.jsonkit] for native code and [silica-jsonkit-melange] for
+    name: [silica.jsonkit] for native code and [silica.jsonkit-melange] for
     Melange. Shared app code links the one that its stanza needs. *)
 
 val codec :

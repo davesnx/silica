@@ -220,7 +220,7 @@ page".
 
 {1:block Unsaved changes}
 
-A page that holds a draft holds the block: {!Silica.Source.block} in the
+A page that holds a draft holds the block: {!Silica.Host.block} in the
 [during] list of the snapshot that holds the draft. While the list holds it,
 every navigation (a link press, a navigation action, back and forward) stops
 before the URL changes, and reaches the page as a {!Silica.Nav.t}. The page
@@ -301,7 +301,7 @@ What happens:
 - On the server the chunk is ready: the HTML has the page.
 - In the browser, the first paint waits until the chunks of the first view are
   loaded, so hydration adopts the server HTML with the code of its page. Timers,
-  calls and sources start at once. Give the page's shared chunks to the server
+  calls and resources start at once. Give the page's shared chunks to the server
   as [preload] (see {!page-server.render}) so they load with the entry.
 - After the first paint, a route whose code is not loaded shows [loading] until
   it is. A link to a [chunked] route loads the code on intent, like the calls

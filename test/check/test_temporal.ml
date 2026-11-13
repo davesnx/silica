@@ -56,7 +56,7 @@ let replays machine (stem : _ Check.step list) (cycle : _ Check.step list) =
   let play state (step : (unit, _) Check.input Check.step) =
     match step.input with
     | Check.Event event ->
-        let next, _, _ = Machine.step machine () state event in
+        let next, _, _ = Machine.step machine state event in
         Alcotest.(check string)
           ("the step " ^ step.event ^ " reaches its target")
           step.target
@@ -65,7 +65,7 @@ let replays machine (stem : _ Check.step list) (cycle : _ Check.step list) =
     | Check.Props _ | Check.In_child _ ->
         Alcotest.fail "no props or children in these fixtures"
   in
-  let start, _ = Machine.start machine () in
+  let start, _ = Machine.start machine in
   let entry = List.fold_left play start stem in
   let back = List.fold_left play entry cycle in
   Alcotest.(check bool)
@@ -105,7 +105,7 @@ let debounce =
     ~event_name:search_event_name
     ~during:(function
       | Typing _ ->
-          [ Source.after 300 Fire ]
+          [ Host.after 300 Fire ]
       | Searching ->
           [ Remote.call search_endpoint () (fun answer -> Found answer) ]
       | Idle | Results _ | Error ->
@@ -346,7 +346,7 @@ let lister ~stale =
       | Refresh ->
           "refresh"
       )
-    ~during:(fun _ -> [ Source.after 1000 Refresh ])
+    ~during:(fun _ -> [ Host.after 1000 Refresh ])
     (fun (Items numbers) -> function
       | Delete number ->
           Go (Items (List.filter (( <> ) number) numbers))
@@ -419,7 +419,7 @@ let heartbeat =
     ~final:(function Expired -> true | Connected -> false)
     ~during:(function
       | Connected ->
-          [ Source.after 1000 Beat; Source.after 5000 Timeout ]
+          [ Host.after 1000 Beat; Host.after 5000 Timeout ]
       | Expired ->
           []
       )
@@ -462,7 +462,7 @@ let counter =
     ~states:counting_states
     ~event_name:(fun Tick -> "tick")
     ~final:(function Done -> true | Counting _ -> false)
-    ~during:(function Counting _ -> [ Source.after 100 Tick ] | Done -> [])
+    ~during:(function Counting _ -> [ Host.after 100 Tick ] | Done -> [])
     (fun state Tick ->
       match state with
       | Counting count when count >= 10 ->

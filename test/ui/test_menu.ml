@@ -16,7 +16,7 @@ let has_log sim line =
   if not (contains (page_log sim) line) then
     Alcotest.failf "page log has no %S in %s" line (page_log sim)
 
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 let item i = Silica_ui.Menu.item_id "actions" i
 let key name = Key.make name
 
@@ -67,7 +67,7 @@ let closed_at_start () =
   Alcotest.check opt "no controls" None
     (Sim.attribute sim ~id:"actions-trigger" "aria-controls");
   Alcotest.(check bool) "no popup" false (Sim.exists sim ~id:"actions-popup");
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let press_opens () =
   let sim = Sim.mount page in
@@ -81,7 +81,7 @@ let press_opens () =
   Alcotest.check opt "controls" (Some "actions-popup")
     (Sim.attribute sim ~id:"actions-trigger" "aria-controls");
   Alcotest.check strings "dismiss and anchor" [ "dismiss"; "anchor" ]
-    (source_names sim);
+    (held_names sim);
   Alcotest.(check (list int)) "nothing highlighted" [] (highlighted sim);
   Alcotest.check strings "no item in the tab order" [ "-1"; "-1"; "-1"; "-1" ]
     (tabindexes sim);
@@ -159,7 +159,7 @@ let enter_chooses () =
   has_log sim "actions select archive; actions open false item-press";
   Alcotest.check opt "focus on the trigger" (Some "actions-trigger")
     (last_focus sim);
-  Alcotest.check strings "sources stopped" [] (source_names sim);
+  Alcotest.check strings "held resources stopped" [] (held_names sim);
   let sim = open_with_enter () in
   down sim " ";
   has_log sim "actions select edit; actions open false item-press"

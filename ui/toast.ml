@@ -80,7 +80,7 @@ let machine =
     ~name ~states ~event_name
     ~during:(fun _ -> function
       | Running _ ->
-          [ Source.after tick_ms Tick ]
+          [ Host.after tick_ms Tick ]
       | Empty _ | Paused _ | Expired _ ->
           []
       )

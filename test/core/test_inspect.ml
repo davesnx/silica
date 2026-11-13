@@ -153,6 +153,17 @@ let goldens : (Inspect.message * string) list =
     ( Trace_file { id = Some 5; target = "tab-3f2a"; trace = "{}\n" },
       {|{"t":"trace","id":5,"target":"tab-3f2a","trace":"{}\n"}|}
     );
+    ( Request { id = Some 8; request = Seen "saver" },
+      {|{"t":"seen","id":8,"machine":"saver"}|}
+    );
+    ( Seen_steps
+        {
+          id = Some 8;
+          machine = "saver";
+          steps = [ Transition.strip step_record ];
+        },
+      {|{"t":"seen","id":8,"machine":"saver","steps":[{"seq":2,"time_ms":1731300000456.5,"instance":"app/0:saver","number":2,"entry":1,"machine":"saver","from":"idle","to":"saving","change":"entered","event":"save","actions":["start timer 2.1/saver/saving/after 2000ms 2000ms"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"button"}}]}|}
+    );
     (Gone "tab-3f2a", {|{"t":"gone","target":"tab-3f2a"}|});
     ( Failure { id = Some 6; message = "time travel is not available yet" },
       {|{"t":"error","id":6,"message":"time travel is not available yet"}|}
@@ -256,7 +267,7 @@ module Saver = struct
 
   let machine =
     Machine.make ~id:"saver" ~init:Idle ~name ~states ~event_name
-      ~during:(function Idle -> [] | Saving -> [ Source.after 2000 Done ])
+      ~during:(function Idle -> [] | Saving -> [ Host.after 2000 Done ])
       (fun state event ->
         match (state, event) with
         | Idle, Save ->
@@ -360,6 +371,66 @@ let test_target () =
        (Inspect.Target.tree target)
     )
 
+let rec typing node text =
+  match Node.view node with
+  | Node.Element (_, attrs, children) -> (
+      match
+        List.find_map
+          (function Node.On_input input -> Some (input text) | _ -> None)
+          attrs
+      with
+      | Some message ->
+          Some message
+      | None ->
+          List.find_map (fun child -> typing child text) children
+    )
+  | Node.List nodes ->
+      List.find_map (fun child -> typing child text) nodes
+  | Node.Keyed (_, node) ->
+      typing node text
+  | Node.Boundary { body; _ } ->
+      typing body text
+  | Node.Text _ | Node.Portal _ | Node.Component _ | Node.Chunk _ ->
+      None
+
+let contains text part =
+  let length = String.length part in
+  let rec go index =
+    index + length <= String.length text
+    && (String.sub text index length = part || go (index + 1))
+  in
+  go 0
+
+let test_password_masked () =
+  Silica_test_support.Password_form.register ();
+  let sent = ref [] in
+  let target =
+    Inspect.Target.create ~target:"tab"
+      ~clock:(fun () -> 0.)
+      ~send:(fun event -> sent := event :: !sent)
+      ()
+  in
+  let tree =
+    Instance.mount
+      ~observe:(Inspect.Target.observer target)
+      Silica_test_support.Password_form.component
+  in
+  let node, _ = Instance.update tree None in
+  ignore (Instance.update tree (typing node "hunter2"));
+  let text event =
+    Inspect.to_string (Event { id = None; target = "tab"; event })
+  in
+  let lines =
+    List.map text (List.rev !sent)
+    @ [ text (Tree (Inspect.Target.tree target)) ]
+  in
+  Alcotest.(check (list string))
+    "no step, mount or tree holds the typed password" []
+    (List.filter (fun line -> contains line "hunter2") lines);
+  Alcotest.(check bool)
+    "the tree shows the mask" true
+    (contains (text (Tree (Inspect.Target.tree target))) "••••••••")
+
 let test_resumed () =
   let sent = ref [] in
   let target =
@@ -462,6 +533,40 @@ let test_combine () =
     [ ("app", 1); ("inspector", 1) ]
     (List.rev !seen)
 
+module Labelled = struct
+  type state = Shown
+
+  let machine =
+    Machine.make_with_props ~id:"labelled" ~init:Shown
+      ~name:(fun Shown -> "shown")
+      (fun _ Shown () -> Machine.Ignore)
+
+  let component =
+    Component.make_with_props machine (fun label Shown -> Node.text label)
+end
+
+let test_ignored_props () =
+  Machine.register_codecs Labelled.machine ~props:Codec.string ();
+  let target =
+    Inspect.Target.create ~target:"tab" ~clock:(fun () -> 0.) ~send:ignore ()
+  in
+  let tree =
+    Instance.mount_with_props
+      ~observe:(Inspect.Target.observer target)
+      ~props:"first" Labelled.component
+  in
+  ignore (Instance.update tree None);
+  Instance.set_props tree "second";
+  ignore (Instance.update tree None);
+  check_strings "the tree has the props that the machine ignored"
+    [ {|"second"|} ]
+    (List.filter_map
+       (fun (instance : Inspect.instance) ->
+         Option.map Silica_json.Json.to_string instance.props
+       )
+       (Inspect.Target.tree target)
+    )
+
 let tests =
   let test name run = Alcotest.test_case name `Quick run in
   [
@@ -473,6 +578,8 @@ let tests =
     test "a target gives island paths" test_island_paths;
     test "a hot reload start is resumed" test_resumed;
     test "an app observer and the inspector both observe" test_combine;
+    test "a typed password is masked in steps and the tree" test_password_masked;
+    test "a target keeps the props that the machine ignored" test_ignored_props;
   ]
 
 let () = Alcotest.run "inspect" [ ("protocol", tests) ]

@@ -6,16 +6,16 @@ let describe state =
     (Counter.count state)
 
 let step state event =
-  let state, _actions, _how = Machine.step Counter.machine () state event in
+  let state, _actions, _how = Machine.step Counter.machine state event in
   state
 
 let calls state =
   List.filter_map
     (function Machine.Call { path; _ } -> Some path | _ -> None)
-    (Machine.active Counter.machine () state)
+    (Machine.active Counter.machine state)
 
 let () =
-  let state, _actions = Machine.start Counter.machine () in
+  let state, _actions = Machine.start Counter.machine in
   Expect.string "start" "counting 0" (describe state);
   let state = step state Counter.Increment in
   Expect.string "increment" "counting 1" (describe state);

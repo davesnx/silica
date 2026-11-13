@@ -1,8 +1,9 @@
 type 'e t = {
   paint : 'e Node.t -> unit;
   run : 'e Action.t -> unit;
-  start_source : id:string -> 'e Action.source -> unit;
-  stop_source : id:string -> unit;
+  start_held : id:string -> 'e Action.held -> unit;
+  stop_held : id:string -> unit;
+  release : unit -> unit;
 }
 
 type 'e make = dispatch:('e -> unit) -> 'e t

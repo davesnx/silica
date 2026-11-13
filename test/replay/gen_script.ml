@@ -20,6 +20,7 @@ let checks =
     ("changing", Check (Rows.changing_check, "Rows.changing_check"));
     ("numbered", Check (Rows.numbered_check, "Rows.numbered_check"));
     ("titled", Check (Rows.titled_check, "Rows.titled_check"));
+    ("feed", Check (Feed.check, "Feed.check"));
   ]
 
 let () =

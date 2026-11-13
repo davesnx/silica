@@ -14,7 +14,7 @@ let has_log sim line =
   if not (contains (Sim.html sim) line) then
     Alcotest.failf "log has no %S in %s" line (Sim.html sim)
 
-let source_names sim = List.map snd (Sim.sources sim)
+let held_names sim = List.map snd (Sim.held sim)
 let focused sim id = List.mem ("focus " ^ id) (Sim.log sim)
 let popup_shown sim = Sim.exists sim ~id:"filter-popup"
 
@@ -29,7 +29,7 @@ let closed_at_start () =
   Alcotest.check opt "no data-popup-open" None
     (Sim.attribute sim ~id:"filter-trigger" "data-popup-open");
   Alcotest.(check bool) "no popup" false (popup_shown sim);
-  Alcotest.check strings "no sources" [] (source_names sim)
+  Alcotest.check strings "no held resources" [] (held_names sim)
 
 let trigger_opens () =
   let sim = Sim.mount page in
@@ -55,7 +55,7 @@ let trigger_opens () =
   Alcotest.check opt "data-popup-open" (Some "")
     (Sim.attribute sim ~id:"filter-trigger" "data-popup-open");
   Alcotest.check strings "dismiss and anchor; no trap, no scroll lock"
-    [ "dismiss"; "anchor" ] (source_names sim);
+    [ "dismiss"; "anchor" ] (held_names sim);
   Alcotest.(check bool)
     "focus moves into the popup" true
     (focused sim "filter-popup");
@@ -66,7 +66,7 @@ let trigger_closes () =
   Sim.press_id sim ~id:"filter-trigger";
   Sim.press_id sim ~id:"filter-trigger";
   Alcotest.(check bool) "closed" false (popup_shown sim);
-  Alcotest.check strings "sources stopped" [] (source_names sim);
+  Alcotest.check strings "held resources stopped" [] (held_names sim);
   has_log sim "open true trigger-press; open false trigger-press"
 
 let escape_closes () =
@@ -136,7 +136,9 @@ let anchor_uses_props () =
         | _ ->
             None
         )
-      (Machine.held filter_popover.component.machine props (Sim.snapshot sim))
+      (Machine.held_with_props filter_popover.component.machine props
+         (Sim.snapshot sim)
+      )
   in
   Alcotest.(check bool)
     "the popup is anchored to the trigger, on the side from the props" true

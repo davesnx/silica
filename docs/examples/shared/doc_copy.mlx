@@ -16,7 +16,7 @@ let text = "Hello from Silica"
 let machine =
   Machine.make ~id:"copy" ~init:Ready ~name
     ~during:(function
-      | Shown _ -> [ Source.after 2000 Back ] | Ready | Copying -> []
+      | Shown _ -> [ Host.after 2000 Back ] | Ready | Copying -> []
       )
     (fun state event ->
       match (state, event) with

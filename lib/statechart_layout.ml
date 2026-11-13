@@ -169,7 +169,7 @@ let layout ?(observed = []) (spec : Spec.t) =
       (spec.states
       @ List.map
           (fun name ->
-            { Spec.name; final = false; timers = []; sources = []; held = [] }
+            { Spec.name; final = false; timers = []; network = []; held = [] }
           )
           unknown
       )
@@ -201,6 +201,37 @@ let layout ?(observed = []) (spec : Spec.t) =
          )
          spec.edges
       )
+  in
+  let details state =
+    let name = states.(state).name in
+    let kept =
+      List.filter
+        (fun (label : Spec.label) -> label.kept && label.from = name)
+        spec.edges
+    in
+    let stays =
+      match
+        wrap
+          (List.sort_uniq compare
+             (List.filter_map
+                (fun (label : Spec.label) ->
+                  if label.event = "" then
+                    None
+                  else
+                    Some label.event
+                )
+                kept
+             )
+          )
+      with
+      | [] when kept = [] ->
+          []
+      | [] ->
+          [ "stay" ]
+      | first :: rest ->
+          ("stay on " ^ first) :: List.map (fun line -> "  " ^ line) rest
+    in
+    Spec.details states.(state) @ stays
   in
   let arrows = Spec.arrows spec in
   let drifted =
@@ -341,7 +372,7 @@ let layout ?(observed = []) (spec : Spec.t) =
     List.exists (fun (_, source, _, _) -> source = state) loops
   in
   let node_size state =
-    let details = Spec.details states.(state) in
+    let details = details state in
     let width =
       Float.max minimum_width
         (Float.max
@@ -853,7 +884,7 @@ let layout ?(observed = []) (spec : Spec.t) =
           height;
           final = source.final;
           initial = source.name = spec.init;
-          details = Spec.details source;
+          details = details state;
           drift = state >= checked;
         }
     )

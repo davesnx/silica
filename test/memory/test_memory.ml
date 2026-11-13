@@ -1200,6 +1200,56 @@ let try_again_uses_the_last_props () =
   string "the root starts again with the last props" "-2 -2 1"
     (text memory "props")
 
+module Holding = struct
+  let component =
+    Component.make
+      (Machine.make ~id:"holding" ~init:0
+         ~name:(fun _ -> "only")
+         ~during:(fun _ -> [ Host.scroll_lock; Host.after 20 1 ])
+         (fun count step -> Machine.Go (count + step))
+      )
+      (fun count ->
+        Node.element "p"
+          [ Attr.string "id" "count" ]
+          [ Node.text (string_of_int count) ]
+      )
+end
+
+let stop_releases_the_page () =
+  let memory = Memory.mount Holding.component in
+  int "one held resource" 1 (List.length (Memory.held memory));
+  int "one timer" 1 (List.length (Memory.timers memory));
+  Memory.stop memory;
+  bool "stopped" true (Memory.lifecycle memory = Runtime.Stopped);
+  string "the view is empty" "" (Memory.html memory);
+  int "no held resource" 0 (List.length (Memory.held memory));
+  int "no timer" 0 (List.length (Memory.timers memory));
+  Memory.advance memory 40;
+  string "still empty" "" (Memory.html memory)
+
+let stop_drops_a_late_answer () =
+  let memory = basic () in
+  press memory "ask";
+  let request = only (Memory.pending memory) in
+  Memory.stop memory;
+  Memory.reply request "42";
+  Memory.advance memory 100;
+  string "the view stays empty" "" (Memory.html memory);
+  Memory.stop memory;
+  Memory.set_props memory ();
+  bool "still stopped" true (Memory.lifecycle memory = Runtime.Stopped)
+
+let props_on_the_error_page_wait_for_try_again () =
+  let memory = Memory.mount_with_props ~props:(-1) With_props.component in
+  Memory.press (Memory.by_role ~name:"Step" memory Accessibility.Button);
+  bool "failed" true (Memory.lifecycle memory = Runtime.Failed);
+  Memory.set_props memory 3;
+  bool "still failed" true (Memory.lifecycle memory = Runtime.Failed);
+  Memory.press (Memory.by_text memory "Try again");
+  bool "running" true (Memory.lifecycle memory = Runtime.Running);
+  string "the new tree has the props given on the error page" "3 3 1"
+    (text memory "props")
+
 module Form_submit = struct
   let component =
     Component.make
@@ -1334,6 +1384,67 @@ let unreachable_elements_refuse_input () =
   Memory.press (Memory.by_role memory Accessibility.Button ~name:"Aria");
   string "aria-disabled does not stop a press" "1" (text memory "count")
 
+module Modal = struct
+  let component =
+    Component.make
+      (Test_apps.simple ~id:"modal" ~init:false (fun _ inner -> Some (inner, []))
+      )
+      (fun inner ->
+        let button label event =
+          Node.element "button" [ Attr.on_press event ] [ Node.text label ]
+        in
+        let dialog label children =
+          Node.portal
+            [
+              Node.element "div"
+                [
+                  Attr.string "role" "dialog";
+                  Attr.string "aria-modal" "true";
+                  Attr.string "aria-label" label;
+                ]
+                children;
+            ]
+        in
+        Node.element "main" []
+          [
+            button "Behind" false;
+            dialog "Edit"
+              (button "Open inner" true
+              ::
+              ( if inner then
+                  [ dialog "Confirm" [ button "Back" false ] ]
+                else
+                  []
+              )
+              );
+          ]
+      )
+end
+
+let page_behind_a_modal_refuses_input () =
+  let memory = Memory.mount Modal.component in
+  let refusal label =
+    match Memory.press (Memory.by_text memory label) with
+    | () ->
+        "delivered"
+    | exception Memory.Not_reachable { reason = Inert; message } ->
+        message
+    | exception Memory.Not_reachable _ ->
+        "another reason"
+  in
+  string "a button behind the open modal"
+    "Silica_memory: the button \"Behind\" at main > button is behind the modal \
+     dialog \"Edit\" at portal > div, so a browser does not deliver a press to \
+     it."
+    (refusal "Behind");
+  string "a button inside the open modal" "delivered" (refusal "Open inner");
+  string "a button of the outer modal, behind the inner one"
+    "Silica_memory: the button \"Open inner\" at portal > div > button is \
+     behind the modal dialog \"Confirm\" at portal > div, so a browser does \
+     not deliver a press to it."
+    (refusal "Open inner");
+  string "a button inside the inner modal" "delivered" (refusal "Back")
+
 let visible_text () =
   let memory = Memory.mount Reach.component in
   bool "text in a paragraph with no role" true (Memory.shows memory "0");
@@ -1369,6 +1480,114 @@ let element_states () =
     "expanded" (Some false)
     (Memory.expanded (Memory.by_text memory "Menu"))
 
+let contains text part =
+  let length = String.length part in
+  let rec go index =
+    index + length <= String.length text
+    && (String.sub text index length = part || go (index + 1))
+  in
+  go 0
+
+let password_is_masked () =
+  Silica_test_support.Password_form.register ();
+  let memory = Memory.mount Silica_test_support.Password_form.component in
+  Alcotest.(check bool)
+    "an empty password field prints an empty value" true
+    (contains (Memory.view_text memory) {|input "Password" value="" [input]|});
+  Memory.input (Memory.by_id memory "password") "hunter2";
+  let view = Memory.view_text memory in
+  Alcotest.(check bool)
+    "the view prints the mask" true
+    (contains view {|input "Password" value="••••••••" [input]|});
+  Alcotest.(check bool) "the view has no secret" false (contains view "hunter2");
+  let trace = Memory.trace memory in
+  let text = Trace.to_text trace and json = Trace.to_jsonl trace in
+  Alcotest.(check bool)
+    "the trace text has no secret" false (contains text "hunter2");
+  Alcotest.(check bool)
+    "the trace data and snapshots have no secret" false (contains json "hunter2");
+  Alcotest.(check bool)
+    "the trace keeps the mask in the snapshot" true
+    (contains json "••••••••");
+  Memory.press (Memory.by_text memory "Send");
+  Alcotest.(check bool)
+    "a later snapshot has no secret" false
+    (contains (Trace.to_jsonl (Memory.trace memory)) "hunter2");
+  match
+    Memory.replay
+      (Memory.mount Silica_test_support.Password_form.component)
+      (Memory.trace memory)
+  with
+  | Not_realisable { reason; _ } ->
+      Alcotest.(check bool)
+        "a replay stops at the masked text" true (contains reason "masked")
+  | Replayed | Different _ | Not_found _ ->
+      Alcotest.fail "a replay typed the mask as the password"
+
+let password_keys_are_masked () =
+  Silica_test_support.Password_keys.register ();
+  let memory = Memory.mount Silica_test_support.Password_keys.component in
+  Memory.focus (Memory.by_id memory "password");
+  Memory.key memory (Key.make "h");
+  Memory.key_up memory (Key.make "h");
+  Memory.key memory Key.escape;
+  let keys =
+    List.filter_map
+      (fun (record : Transition.t) ->
+        match[@warning "-4"] record.cause with
+        | Element { handler = ("key_down" | "key_up") as handler; value; _ } ->
+            Some
+              ( handler,
+                Option.value value ~default:"",
+                Transition.cause_label record.cause,
+                Option.fold ~none:"" ~some:Silica_json.Json.to_string
+                  record.data
+              )
+        | _ ->
+            None
+      )
+      (Memory.trace memory).transitions
+  in
+  Alcotest.(check (list (pair string string)))
+    "a key that types a character is masked; Escape is not"
+    [ ("key_down", "••••••••"); ("key_up", "••••••••"); ("key_down", "Escape") ]
+    (List.map (fun (handler, value, _, _) -> (handler, value)) keys);
+  Alcotest.(check (list string))
+    "the labels show the mask in place of the key"
+    [
+      {|key_down •••••••• "Password"|};
+      {|key_up •••••••• "Password"|};
+      {|key_down Escape "Password"|};
+    ]
+    (List.map (fun (_, _, label, _) -> label) keys);
+  Alcotest.(check (list bool))
+    "the event data holds Escape and not the typed key" [ false; false; true ]
+    (List.map
+       (fun (_, _, _, data) -> contains data {|"h"|} || contains data "Escape")
+       keys
+    );
+  ( match
+      Memory.replay
+        (Memory.mount Silica_test_support.Password_keys.component)
+        (Memory.trace memory)
+    with
+  | Not_realisable { reason; _ } ->
+      Alcotest.(check bool)
+        "a replay stops at the masked key" true (contains reason "masked")
+  | Replayed | Different _ | Not_found _ ->
+      Alcotest.fail "a replay pressed the mask or the typed key"
+  );
+  let both = Memory.mount Silica_test_support.Password_keys.component in
+  let field = Memory.by_id both "password" in
+  Memory.input field "hunter2";
+  Memory.focus field;
+  Memory.key both (Key.make "x");
+  let json = Trace.to_jsonl (Memory.trace both) in
+  Alcotest.(check bool)
+    "after a key, the trace still has no typed text" false
+    (contains json "hunter2");
+  Alcotest.(check bool) "and no typed key" false (contains json {|"x"|})
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "memory"
@@ -1379,6 +1598,10 @@ let () =
           case "a press on a submit button submits its form"
             press_on_a_submit_button_submits_the_form;
           case "input delivers the value" input_delivers_the_value;
+          case "a password is masked in the view, the trace and a replay"
+            password_is_masked;
+          case "a key typed into a password field is masked in the trace"
+            password_keys_are_masked;
           case "After fires later" after_fires_later;
           case "Call delivers success and sends the wire request" call_success;
           case "Call maps non-200, bad JSON and fetch failure" call_errors;
@@ -1471,6 +1694,8 @@ let () =
           case "view_text" view_text_of_the_page;
           case "a disabled, inert or hidden element refuses input"
             unreachable_elements_refuse_input;
+          case "the page behind an open modal refuses input"
+            page_behind_a_modal_refuses_input;
           case "the states of an element" element_states;
           case "the visible text of a page" visible_text;
         ]
@@ -1480,6 +1705,17 @@ let () =
           case "set_props reaches the root" set_props_reaches_the_root;
           case "Try again starts the root with the last props"
             try_again_uses_the_last_props;
+        ]
+      );
+      ( "lifecycle",
+        [
+          case "a stop empties the view and releases held resources and timers"
+            stop_releases_the_page;
+          case
+            "a stop drops a late answer, and a stopped runtime takes no event"
+            stop_drops_a_late_answer;
+          case "props given on the error page reach the tree of Try again"
+            props_on_the_error_page_wait_for_try_again;
         ]
       );
       ( "host",

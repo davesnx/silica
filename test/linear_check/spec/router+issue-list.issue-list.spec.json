@@ -6,7 +6,7 @@
       "name": "loading",
       "final": false,
       "timers": [],
-      "sources": [
+      "network": [
         "/api/issues"
       ],
       "held": []
@@ -15,7 +15,7 @@
       "name": "failed",
       "final": false,
       "timers": [],
-      "sources": [],
+      "network": [],
       "held": []
     },
     {
@@ -24,7 +24,7 @@
       "timers": [
         0
       ],
-      "sources": [
+      "network": [
         "live:issues"
       ],
       "held": [

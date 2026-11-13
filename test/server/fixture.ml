@@ -166,7 +166,7 @@ let machine =
       | Resting _ ->
           []
       | Mixing n ->
-          [ Source.after 10 Inc; Remote.call double n settle ]
+          [ Host.after 10 Inc; Remote.call double n settle ]
       | Doubling n ->
           [ Remote.call double n settle ]
       | Booming n ->
@@ -174,7 +174,7 @@ let machine =
       | Ghosting n ->
           [ Remote.call ghost n settle ]
       | Waiting _ ->
-          [ Source.after 50 Inc ]
+          [ Host.after 50 Inc ]
       | Slowing n ->
           [ Remote.call ~timeout_ms:20 double n settle ]
       )

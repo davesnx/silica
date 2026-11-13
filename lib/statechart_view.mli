@@ -11,6 +11,10 @@
     [data-target]; [chart-start] on the start mark; [chart-note] on the
     {!Statechart_layout.t.note}.
 
+    Each state box shows the name, then the {!Statechart_layout.node.details}:
+    the timers, the resources and the kept steps ([stay on ...]), which have no
+    arrow.
+
     The label of an edge between two states is drawn on a box of the surface
     color, so the line stops at the label and goes on after it. Drift nodes and
     edges ({!Statechart_layout.layout} with [observed]) are dashed, in the

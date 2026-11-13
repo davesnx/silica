@@ -78,7 +78,13 @@ let preloads (io : Platform.io) =
     | None ->
         io.post ~path ~body answer
   in
-  (start, post)
+  let stop () =
+    Hashtbl.iter
+      (fun _ entry -> Option.iter (fun (_, cancel) -> cancel ()) entry.kept)
+      table;
+    Hashtbl.reset table
+  in
+  (start, post, stop)
 
 let stop (running : running) id =
   match Hashtbl.find_opt running id with
@@ -149,12 +155,20 @@ let live_actions actions =
     )
     [] actions
 
+type state = Running | Failed | Stopped
+type 'p event = Props of 'p | Stop | Suspend
+type 'p t = { send : 'p event -> unit; state : unit -> state }
+
+let send runtime event = runtime.send event
+let state runtime = runtime.state ()
+
 let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
     ?live_config ?(on_route : (Router.event -> e) option)
-    ~(platform : Instance.message Platform.t)
+    ~(platform : Instance.message Platform.t) ~(props : p)
     ~(create :
        dev:bool ->
        on_error:(exn -> Node.error -> unit) option ->
+       p ->
        (p, s, e) Instance.t
        ) () =
   let hook exn (error : Node.error) =
@@ -169,18 +183,21 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
       );
     Option.iter (fun f -> f exn error) on_error
   in
-  let tree = ref (create ~dev ~on_error:(Some hook)) in
+  let props = ref props in
+  let tree = ref (create ~dev ~on_error:(Some hook) !props) in
   let running : running = Hashtbl.create 8 in
   let queue = Queue.create () in
   let busy = ref false in
-  let failed = ref false in
+  let lifecycle = ref Running in
   let first_paint_done = ref false in
   let answers = ref answers in
-  let preload, post = preloads platform.io in
+  let preload, post, stop_preloads = preloads platform.io in
   let calls = { platform.io with post } in
   let rec send message =
-    Queue.add message queue;
-    if not !busy then drain ()
+    if !lifecycle <> Stopped then (
+      Queue.add message queue;
+      if not !busy then drain ()
+    )
   and renderer_value =
     lazy
       (platform.renderer
@@ -194,6 +211,8 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
   and exec_one (action : Instance.message Action.host) =
     let r = Lazy.force renderer_value in
     match[@warning "-4"] action with
+    | _ when !lifecycle = Stopped ->
+        ()
     | Action.Run (Action.Preload (Remote.Request (endpoint, input))) ->
         preload ~path:(Remote.path endpoint)
           ~body:(Codec.to_string (Remote.input endpoint) input)
@@ -201,8 +220,8 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
         Chunk.load chunk (fun () -> Option.iter send on_ready)
     | Action.Run action ->
         r.run action
-    | Action.Start_source { id; source } ->
-        r.start_source ~id source
+    | Action.Start_held { id; held } ->
+        r.start_held ~id held
     | Action.Start_timer { id; ms; event } ->
         stop running id;
         let cancel =
@@ -256,9 +275,10 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
         )
     | Action.Stop id ->
         stop running id;
-        r.stop_source ~id
+        r.stop_held ~id
   and exec actions = List.iter exec_one actions
-  and paint node = (Lazy.force renderer_value).paint node
+  and paint node =
+    if !lifecycle <> Stopped then (Lazy.force renderer_value).paint node
   and step message =
     let node, actions = Instance.update !tree message in
     paint_unless_waiting node;
@@ -271,30 +291,35 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
   and fail exn =
     Queue.clear queue;
     let error = Instance.report !tree exn in
-    Hashtbl.iter (fun _ cancel -> cancel ()) running;
-    Hashtbl.reset running;
-    failed := true;
+    cancel_running ();
+    lifecycle := Failed;
     let retry = Instance.callback (fun () -> restart ()) in
     let reload =
       Instance.callback (fun () -> (Lazy.force renderer_value).run Action.Reload)
     in
     paint (error_view error ~retry ~reload)
+  and cancel_running () =
+    Hashtbl.iter (fun _ cancel -> cancel ()) running;
+    Hashtbl.reset running
   and guarded f = try f () with exn -> fail exn
   and restart () =
     Queue.clear queue;
     ignore (Instance.unmount !tree);
-    tree := create ~dev ~on_error:(Some hook);
-    failed := false;
+    tree := create ~dev ~on_error:(Some hook) !props;
+    lifecycle := Running;
     guarded (fun () -> step None)
   and drain () =
     busy := true;
     match
       while not (Queue.is_empty queue) do
         let message = Queue.pop queue in
-        if !failed then
-          Instance.perform message
-        else
-          guarded (fun () -> step (Some message))
+        match !lifecycle with
+        | Failed ->
+            Instance.perform message
+        | Running ->
+            guarded (fun () -> step (Some message))
+        | Stopped ->
+            ()
       done
     with
     | () ->
@@ -346,4 +371,32 @@ let start (type p s e) ?(dev = false) ?on_error ?(answers = Answers.empty)
       raise error
   );
   drain ();
-  match !first_failure with Some exn when dev -> raise exn | _ -> ()
+  (match !first_failure with Some exn when dev -> raise exn | _ -> ());
+  let halt () =
+    lifecycle := Stopped;
+    Queue.clear queue;
+    stop_preloads ();
+    cancel_running ()
+  in
+  let receive = function
+    | Props next -> (
+        props := next;
+        match !lifecycle with
+        | Running ->
+            send (Instance.callback (fun () -> Instance.set_props !tree next))
+        | Failed | Stopped ->
+            ()
+      )
+    | Stop when !lifecycle <> Stopped ->
+        halt ();
+        let renderer = Lazy.force renderer_value in
+        renderer.paint (Node.list []);
+        renderer.release ();
+        ignore (Instance.unmount !tree)
+    | Suspend when !lifecycle <> Stopped ->
+        halt ();
+        (Lazy.force renderer_value).release ()
+    | Stop | Suspend ->
+        ()
+  in
+  { send = receive; state = (fun () -> !lifecycle) }

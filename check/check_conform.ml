@@ -20,6 +20,7 @@ type checked = {
   steps : int;
   snapshots : int;
   not_checked : (string * string) list;
+  unchecked : (string * string) list;
   findings : finding list;
 }
 
@@ -88,9 +89,9 @@ let step_of (record : Transition.t) =
       "end in " ^ token record.target
   | Unhandled ->
       token record.from ^ " ignores" ^ on
-  | Kept ->
+  | Kept when record.from = record.target ->
       "stay " ^ token record.from ^ on
-  | Entered ->
+  | Kept | Entered ->
       token record.from ^ " -> " ^ token record.target ^ on
 
 let offered specs (record : Transition.t) =
@@ -158,6 +159,13 @@ let not_decodable_hint ~build =
    the trace is from another build (" ^ token build
   ^ "). Check it with that build, or record a new trace."
 
+let no_codecs_hint machine =
+  "This check suite registers no codecs for the machine " ^ machine
+  ^ ", so it cannot decode the data of the trace. Register them in the codec \
+     module of the app (Codecs.register in app/shared/codecs.ml) with \
+     Machine.register_codecs, and call that module at the start of \
+     check/main.ml, before Check_suite.main."
+
 let no_spec_hint machine =
   "No check of this suite covers the machine " ^ machine
   ^ ": add a Check_suite entry for it, or list it with Check.child in a joint \
@@ -166,8 +174,9 @@ let no_spec_hint machine =
 
 let property_hint ~property ~hint =
   "The app reached a snapshot that breaks \"" ^ property
-  ^ "\" and that the check did not reach: add samples, inputs or props that \
-     reach it, so the check finds it too, then fix it. " ^ hint
+  ^ "\". When silica check does not report it too, the check does not reach \
+     this snapshot: add samples, inputs or props that reach it. Then fix it. "
+  ^ hint
 
 let conform_trace ~specs ~only ~subjects ~elsewhere file (trace : Trace.t) =
   let build = trace.header.build in
@@ -222,6 +231,7 @@ let conform_trace ~specs ~only ~subjects ~elsewhere file (trace : Trace.t) =
   in
   let steps = union (fun conformance -> conformance.steps) in
   let snapshots = union (fun conformance -> conformance.snapshots) in
+  let unchecked = union (fun conformance -> conformance.unchecked) in
   let stepped (record : Transition.t) = List.mem record.seq steps in
   let not_checked = ref [] in
   let skip machine reason =
@@ -310,7 +320,13 @@ let conform_trace ~specs ~only ~subjects ~elsewhere file (trace : Trace.t) =
           | Different_step _ ->
               ("different-step", other_build_hint ~build)
           | Not_decodable _ ->
-              ("not-decodable", not_decodable_hint ~build)
+              ( "not-decodable",
+                if List.mem deviation.machine (Machine.registered_codecs ())
+                then
+                  not_decodable_hint ~build
+                else
+                  no_codecs_hint deviation.machine
+              )
           | Property_fails { property; hint; _ } ->
               ("property-fails", property_hint ~property ~hint)
         in
@@ -340,6 +356,7 @@ let conform_trace ~specs ~only ~subjects ~elsewhere file (trace : Trace.t) =
     steps = List.length steps;
     snapshots = List.length snapshots;
     not_checked = List.rev !not_checked;
+    unchecked;
     findings =
       List.stable_sort
         (fun first second -> compare first.seq second.seq)
@@ -383,6 +400,11 @@ let text checked =
   List.iter
     (fun (machine, reason) -> add "  not checked here: %s (%s)\n" machine reason)
     checked.not_checked;
+  List.iter
+    (fun (property, reason) ->
+      add "  property not checked by conform: %s (%s)\n" (token property) reason
+    )
+    checked.unchecked;
   List.iteri
     (fun index finding ->
       add
@@ -425,6 +447,17 @@ let json_of checked =
               ]
           )
           checked.not_checked
+      );
+      ( "unchecked_properties",
+        Check_json.list
+          (fun (property, reason) ->
+            Check_json.record
+              [
+                ("property", Check_json.string property);
+                ("reason", Check_json.string reason);
+              ]
+          )
+          checked.unchecked
       );
       ( "deviations",
         Check_json.list

@@ -75,7 +75,7 @@ let samples : Transition.t list =
          }
       );
     record 8 (Live { id = "x"; topic = "issues"; update = None });
-    record 9 (Held { id = "2.3/child/busy/keys"; source = "keys" });
+    record 9 (Held { id = "2.3/child/busy/keys"; name = "keys" });
     record 10 (Action_result { action = "measure title" });
     record ~props:(json {|"b"|}) 11 Props;
     record 12 (Child { instance = "app/0.1:child/#a%2Fb:grandchild" });

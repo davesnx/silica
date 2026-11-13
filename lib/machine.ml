@@ -32,7 +32,7 @@ type ('p, 's, 'e) t = {
   states : string list option;
   event_name : ('e -> string) option;
   final : 's -> bool;
-  during : 'p -> 's -> 'e Source.t list;
+  during : 'p -> 's -> 'e Host.t list;
   entry : 'p -> 's -> 'e Action.t list;
   exit : 'p -> 's -> 'e Action.t list;
   first : 'e Action.t list;
@@ -100,8 +100,9 @@ let codec machine what = function
       Error
         ("the machine \"" ^ machine.id
        ^ "\" has no registered codecs: call Machine.register_codecs on it in \
-          the codec module of the app (for example Linear_codecs.register), \
-          and call that module before asking for a codec"
+          the codec module of the app (Codecs.register in app/shared/codecs.ml \
+          of an app that silica new made), and call it before asking for a \
+          codec, such as at the start of check/main.ml"
         )
 
 let props_codec machine =
@@ -122,12 +123,20 @@ let default_props machine = machine.default_props
 let type_id machine = machine.type_id
 let run actions = List.map (fun action -> Action.Run action) actions
 
+let owner machine state =
+  let name = name machine state in
+  match String.index_opt name '.' with
+  | Some dot ->
+      String.sub name 0 dot
+  | None ->
+      name
+
 let owned machine props state =
-  let prefix = machine.id ^ "/" ^ name machine state ^ "/" in
+  let prefix = machine.id ^ "/" ^ owner machine state ^ "/" in
   let counts = Hashtbl.create 8 in
   List.map
     (fun source ->
-      let key = Source.key source in
+      let key = Host.key source in
       let count = 1 + Option.value ~default:0 (Hashtbl.find_opt counts key) in
       Hashtbl.replace counts key count;
       let unique =
@@ -140,41 +149,42 @@ let owned machine props state =
     )
     (machine.during props state)
 
-let active machine props state =
+let active_with_props machine props state =
   List.map
     (fun (id, source) ->
-      match (Source.delay source, Source.topic source) with
+      match (Host.delay source, Host.topic source) with
       | Some ms, _ ->
           Timer { id; ms }
       | None, Some topic ->
           Subscription { id; topic }
-      | None, None when Source.is_held source ->
-          Held { id; name = Source.name source }
+      | None, None when Host.is_held source ->
+          Held { id; name = Host.name source }
       | None, None ->
-          Call { id; path = Source.name source }
+          Call { id; path = Host.name source }
     )
     (owned machine props state)
 
-let held machine props state =
-  List.filter_map Source.held (machine.during props state)
+let held_with_props machine props state =
+  List.filter_map Host.held (machine.during props state)
 
-let starts sources =
-  List.map (fun (id, source) -> Source.start id source) sources
+let starts sources = List.map (fun (id, source) -> Host.start id source) sources
 let stops sources = List.map (fun (id, _) -> Action.Stop id) sources
 
 let enter machine props state =
   run (machine.entry props state) @ starts (owned machine props state)
 
-let exit machine props state =
+let exit_with_props machine props state =
   run (machine.exit props state) @ stops (owned machine props state)
 
 let without others sources =
   List.filter (fun (id, _) -> not (List.mem_assoc id others)) sources
 
 let move ?finished machine ~from_props ~to_props state next ~reenter actions =
-  if reenter || name machine next <> name machine state then
+  if reenter || owner machine next <> owner machine state then
     ( next,
-      exit machine from_props state @ run actions @ enter machine to_props next,
+      exit_with_props machine from_props state
+      @ run actions
+      @ enter machine to_props next,
       Entered
     )
   else
@@ -188,7 +198,7 @@ let move ?finished machine ~from_props ~to_props state next ~reenter actions =
         (fun (id, source) ->
           match List.assoc_opt id before with
           | Some old ->
-              not (Source.same old source)
+              not (Host.same old source)
           | None ->
               false
         )
@@ -215,7 +225,7 @@ let apply ?finished machine ~from_props ~to_props state = function
   | Reenter next ->
       move machine ~from_props ~to_props state next ~reenter:true []
 
-let step ?finished machine props state event =
+let step_with_props ?finished machine props state event =
   if machine.final state then
     (state, [], Unhandled)
   else
@@ -225,7 +235,7 @@ let step ?finished machine props state event =
     | (Stay _ | Go _ | Go_with _ | Reenter _) as next ->
         apply ?finished machine ~from_props:props ~to_props:props state next
 
-let can machine props state event =
+let can_with_props machine props state event =
   (not (machine.final state))
   &&
   match machine.update props state event with
@@ -251,15 +261,26 @@ let props_step machine ~previous props state =
   | (Ignore | Stay _ | Go _ | Go_with _ | Reenter _), _ ->
       (state, actions, how)
 
-let start machine props =
+let start_with_props machine props =
   let state = machine.init in
   let state, actions, _ = props_step machine ~previous:None props state in
   (state, run machine.first @ enter machine props machine.init @ actions)
 
-let resume machine props state = starts (owned machine props state)
+let resume_with_props machine props state = starts (owned machine props state)
 
 let set_props machine ~previous props state =
   props_step machine ~previous:(Some previous) props state
+
+let start machine = start_with_props machine ()
+let resume machine state = resume_with_props machine () state
+
+let step ?finished machine state event =
+  step_with_props ?finished machine () state event
+
+let exit machine state = exit_with_props machine () state
+let active machine state = active_with_props machine () state
+let held machine state = held_with_props machine () state
+let can machine state event = can_with_props machine () state event
 
 let no_actions _ _ = []
 let during_nothing _ _ = []

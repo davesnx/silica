@@ -392,7 +392,7 @@ test("global keys: bound keys reach the machine and are prevented, others are no
   const w = setup("");
   App.mount_dialog("keys", "root");
   const idle = keydown(w, document.body, { key: "Escape" });
-  assert.ok(!idle.defaultPrevented, "no source while closed");
+  assert.ok(!idle.defaultPrevented, "no resource while closed");
   click(w, $("opener"));
   const other = keydown(w, document.body, { key: "x" });
   assert.ok(!other.defaultPrevented, "an unbound key is not prevented");
@@ -614,14 +614,14 @@ test("load_script loads a src once per page", () => {
   assert.equal(scripts("/b.js").length, 1, "a later action tries again");
 });
 
-test("scroll, visibility and online sources report and stop", () => {
+test("scroll, visibility and online resources report and stop", () => {
   const w = setup("");
   App.mount_gadgets("root");
   const box = $("gadget-box");
   for (const [k, v] of Object.entries({ scrollWidth: 300, scrollHeight: 400, clientWidth: 100, clientHeight: 50 }))
     Object.defineProperty(box, k, { configurable: true, value: v });
   click(w, $("watch"));
-  assert.equal(gadgetLog(), "page:0,0,0,0,0,0|box:0,0,300,400,100,50|visible:true|online:true", "each source reports at the start");
+  assert.equal(gadgetLog(), "page:0,0,0,0,0,0|box:0,0,300,400,100,50|visible:true|online:true", "each resource reports at the start");
   box.scrollTop = 20;
   box.scrollLeft = 10;
   box.dispatchEvent(new w.Event("scroll"));
@@ -685,7 +685,7 @@ test("document attribute and cookie actions, cookie reader", () => {
   assert.deepEqual(root.getAttributeNames(), [], "and sets nothing");
 });
 
-test("media source reports at the start, follows changes and stops", () => {
+test("media resource reports at the start, follows changes and stops", () => {
   const w = setup("");
   const media = stubMedia(w, true);
   App.mount_document("root");
@@ -871,7 +871,7 @@ test("the runtime runs with another renderer and no DOM", () => {
   log = App.fake_log();
   assert.equal(log.length, 3);
   assert.match(log[1], /^paint <main>.*<div id="dialog"/, "the new view is painted");
-  assert.equal(log[2], "start 1.1/dialog-trap/opened/focus_trap dialog focus_trap", "then the source starts, after the paint");
+  assert.equal(log[2], "start 1.1/dialog-trap/opened/focus_trap dialog focus_trap", "then the resource starts, after the paint");
   assert.equal(document.getElementById("root").children.length, 0, "the DOM was not used");
 });
 

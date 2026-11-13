@@ -13,6 +13,7 @@ type action =
   | Key_up of target * string
   | Advance of int
   | Reply of { path : string; answer : Silica_json.Json.t }
+  | Live_update of { topic : string; update : Silica_json.Json.t }
   | Set_props of int
   | Back
   | Forward
@@ -120,6 +121,12 @@ let reply path answer =
   | _ ->
       Printf.sprintf "Memory.reply %s %s" call (text answer)
 
+let key_value key =
+  if (Silica.Key.of_string key).key = key then
+    Printf.sprintf "Key.make %S" key
+  else
+    Printf.sprintf "Key.of_string %S" key
+
 let action_lines = function
   | Press target ->
       [ Printf.sprintf "Memory.press (%s)" (element target) ]
@@ -142,17 +149,22 @@ let action_lines = function
   | Key_down (target, key) ->
       [
         Printf.sprintf "Memory.focus (%s)" (element target);
-        Printf.sprintf "Memory.key page (Key.make %S)" key;
+        Printf.sprintf "Memory.key page (%s)" (key_value key);
       ]
   | Key_up (target, key) ->
       [
         Printf.sprintf "Memory.focus (%s)" (element target);
-        Printf.sprintf "Memory.key_up page (Key.make %S)" key;
+        Printf.sprintf "Memory.key_up page (%s)" (key_value key);
       ]
   | Advance ms ->
       [ Printf.sprintf "Memory.advance page %d" ms ]
   | Reply { path; answer } ->
       [ reply path answer ]
+  | Live_update { topic; update } ->
+      [
+        Printf.sprintf "Memory.live_update page ~topic:%s %s" (quoted topic)
+          (quoted (Silica_json.Json.to_string update));
+      ]
   | Set_props index ->
       [ Printf.sprintf "Memory.set_props page (props %d)" index ]
   | Back ->
@@ -174,7 +186,13 @@ let target_of = function
   | Key_down (target, _)
   | Key_up (target, _) ->
       Some target
-  | Advance _ | Reply _ | Set_props _ | Back | Forward | Open_url _ ->
+  | Advance _
+  | Reply _
+  | Live_update _
+  | Set_props _
+  | Back
+  | Forward
+  | Open_url _ ->
       None
 
 let input_of = function
@@ -204,20 +222,26 @@ let input_of = function
         (Printf.sprintf
            "(fun element ->\n\
            \      Memory.focus element;\n\
-           \      Memory.key page (Key.make %S)\n\
+           \      Memory.key page (%s)\n\
            \    )"
-           key
+           (key_value key)
         )
   | Key_up (_, key) ->
       Some
         (Printf.sprintf
            "(fun element ->\n\
            \      Memory.focus element;\n\
-           \      Memory.key_up page (Key.make %S)\n\
+           \      Memory.key_up page (%s)\n\
            \    )"
-           key
+           (key_value key)
         )
-  | Advance _ | Reply _ | Set_props _ | Back | Forward | Open_url _ ->
+  | Advance _
+  | Reply _
+  | Live_update _
+  | Set_props _
+  | Back
+  | Forward
+  | Open_url _ ->
       None
 
 let literal text =

@@ -4,4 +4,4 @@
  (modes melange)
  (preprocess
   (pps melange.ppx))
- (libraries silica silica.json-melange))
+ (libraries silica silica.json-melange melange.dom))

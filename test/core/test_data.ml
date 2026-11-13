@@ -57,8 +57,20 @@ module Int_list = Optimistic.Make (struct
   let apply xs x = xs @ [ x ]
 end)
 
+module Int_set = Optimistic.Make (struct
+  type value = int list
+  type change = int
+
+  let apply xs x =
+    if List.mem x xs then
+      xs
+    else
+      xs @ [ x ]
+end)
+
 let add_list = Int_list.make []
 let ints = Alcotest.(list int)
+let changes = Alcotest.(list (pair int int))
 
 let optimistic_tests =
   let open Int_list in
@@ -68,7 +80,9 @@ let optimistic_tests =
         let t = add_list |> apply ~id:1 10 |> apply ~id:2 20 in
         Alcotest.check ints "value" [ 10; 20 ] (value t);
         Alcotest.check ints "confirmed" [] (confirmed t);
-        Alcotest.(check int) "pending" 2 (pending t)
+        Alcotest.check changes "pending, oldest first"
+          [ (1, 10); (2, 20) ]
+          (pending t)
     );
     Alcotest.test_case "settle without a value folds the change in" `Quick
       (fun () ->
@@ -76,7 +90,7 @@ let optimistic_tests =
         let t = settle ~id:1 t in
         Alcotest.check ints "value unchanged" [ 10; 20 ] (value t);
         Alcotest.check ints "confirmed has 10" [ 10 ] (confirmed t);
-        Alcotest.(check int) "one pending" 1 (pending t)
+        Alcotest.check changes "one pending" [ (2, 20) ] (pending t)
     );
     Alcotest.test_case "settle with a confirmed value puts the rest on top"
       `Quick (fun () ->
@@ -84,7 +98,7 @@ let optimistic_tests =
         let t = settle ~confirmed:[ 99; 10 ] ~id:1 t in
         Alcotest.check ints "value" [ 99; 10; 20 ] (value t);
         Alcotest.check ints "confirmed" [ 99; 10 ] (confirmed t);
-        Alcotest.(check int) "pending" 1 (pending t)
+        Alcotest.check changes "pending" [ (2, 20) ] (pending t)
     );
     Alcotest.test_case "drop removes the change and the value goes back" `Quick
       (fun () ->
@@ -97,12 +111,14 @@ let optimistic_tests =
         let t = add_list |> apply ~id:1 10 in
         Alcotest.check ints "settle" [ 10 ] (value (settle ~id:7 t));
         Alcotest.check ints "drop" [ 10 ] (value (drop ~id:7 t));
-        Alcotest.(check int) "pending after settle" 1 (pending (settle ~id:7 t))
+        Alcotest.check changes "pending after settle"
+          [ (1, 10) ]
+          (pending (settle ~id:7 t))
     );
     Alcotest.test_case "same id replaces the pending change" `Quick (fun () ->
         let t = add_list |> apply ~id:1 10 |> apply ~id:1 11 in
         Alcotest.check ints "value" [ 11 ] (value t);
-        Alcotest.(check int) "pending" 1 (pending t)
+        Alcotest.check changes "pending" [ (1, 11) ] (pending t)
     );
     Alcotest.test_case "a value is first-order: snapshots compare it" `Quick
       (fun () ->
@@ -126,7 +142,18 @@ let optimistic_tests =
         in
         Alcotest.check ints "value" [ 2; 1; 3 ] (value t);
         Alcotest.check ints "confirmed" [ 2 ] (confirmed t);
-        Alcotest.(check int) "pending" 2 (pending t)
+        Alcotest.check changes "pending" [ (1, 1); (3, 3) ] (pending t)
+    );
+    Alcotest.test_case
+      "an idempotent apply shows a change once when a Live state has it" `Quick
+      (fun () ->
+        let open Int_set in
+        let t = make [] |> apply ~id:1 10 in
+        let t = rebase [ 10 ] t in
+        Alcotest.check ints "the state holds the change, still pending" [ 10 ]
+          (value t);
+        Alcotest.check ints "settled after the answer" [ 10 ]
+          (value (settle ~id:1 t))
     );
   ]
 
@@ -187,7 +214,7 @@ module Watch = struct
         | Idle ->
             []
         | Watching (key, _) ->
-            [ Source.live topic key (fun update -> Update update) ]
+            [ Topic.subscribe topic key (fun update -> Update update) ]
         )
       (fun state event ->
         match (state, event) with
@@ -303,14 +330,14 @@ let source_tests =
     Alcotest.test_case "the source and the active resources name the topic"
       `Quick (fun () ->
         let source =
-          Source.live Watch.topic "k" (fun update -> Watch.Update update)
+          Topic.subscribe Watch.topic "k" (fun update -> Watch.Update update)
         in
-        Alcotest.(check string) "name" "live:counts" (Source.name source);
-        Alcotest.(check string) "key" "live:counts k" (Source.key source);
+        Alcotest.(check string) "name" "live:counts" (Host.name source);
+        Alcotest.(check string) "key" "live:counts k" (Host.key source);
         Alcotest.(check (option string))
-          "topic" (Some "counts") (Source.topic source);
+          "topic" (Some "counts") (Host.topic source);
         match
-          Machine.active Watch.machine () (Watch.Watching ("k", Status.Idle))
+          Machine.active Watch.machine (Watch.Watching ("k", Status.Idle))
         with
         | [ Machine.Subscription { topic = "counts"; id } ] ->
             Alcotest.(check string) "id" "watch/watching/live:counts k" id

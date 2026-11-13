@@ -23,7 +23,7 @@
             | Saving ->
                 [ Remote.call save "draft" (fun answer -> Answer answer) ]
             | Saved _ ->
-                [ Source.after 2000 Reset ]
+                [ Host.after 2000 Reset ]
             | Idle | Failed _ ->
                 []
             )
@@ -39,11 +39,17 @@
     ]}
 
     The machine enters a state when its [name] changes. A step to a state with
-    the same name keeps its timers and sources running, except those whose
-    {!Source.key} changed; {!Reenter} stops and starts them all again. Hosts
-    carry this out through the actions {!Action.host}: [Start_timer],
-    [Start_call], [Start_live], [Start_source] and [Stop]; a host drops a timer
-    or answer whose id was stopped.
+    the same name keeps its resources running, except those whose {!Host.key}
+    changed; {!Reenter} stops and starts them all again. A name with a dot names
+    a sub-state: the part before the first dot is the state that owns the
+    resources, so a step from ["list.live"] to ["list.offline"] runs no [exit]
+    and no [entry] and keeps each resource whose key did not change, as a step
+    that keeps the name does, while the spec, the traces and the golden views
+    still show two states. Use it for the phases of a state that owns a
+    subscription or calls, such as the connection of a Live topic. Hosts carry
+    this out through the actions {!Action.host}: [Start_timer], [Start_call],
+    [Start_live], [Start_held] and [Stop]; a host drops a timer or answer whose
+    id was stopped.
 
     A component with props uses {!make_with_props}: the update, [during],
     [entry] and [exit] get the props, and the props are not an event. *)
@@ -53,15 +59,16 @@ type ('s, 'e) next =
   | Stay of 'e Action.t list
       (** Handled: keep the snapshot and run the actions. *)
   | Go of 's
-      (** Go to the snapshot. When its name is the name of the current one, only
-          the data changes: no exit, no entry, and the timers and sources whose
-          key did not change keep running. *)
+      (** Go to the snapshot. When its name is the name of the current one, or a
+          sub-state of the same state (the same part before the first dot), no
+          exit, no entry, and the resources whose key did not change keep
+          running. *)
   | Go_with of 's * 'e Action.t list
       (** Like [Go], and run the actions between the exit and the entry. *)
   | Reenter of 's
       (** Like [Go], but exit and enter also when the name does not change: all
-          timers and sources start again. A debounce is [Reenter] on a state
-          with a timer in [during]. *)
+          resources start again. A debounce is [Reenter] on a state with a timer
+          in [during]. *)
 
 val map_next : ('a -> 'b) -> ('a, 'e) next -> ('b, 'e) next
 (** Change the snapshot of a [Go], [Go_with] or [Reenter]. A helper that decides
@@ -77,7 +84,7 @@ val make :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?during:('s -> 'e Source.t list) ->
+  ?during:('s -> 'e Host.t list) ->
   ?entry:('s -> 'e Action.t list) ->
   ?exit:('s -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -87,9 +94,10 @@ val make :
 (** [make ~id ~init ~name update] is a machine with no props, for example
     [Machine.make ~id:"save" ~init:Idle ~name ~during update].
 
-    [id] names the machine in the spec, in the checker and in the ids of timers
-    and sources. [name] names the state of a snapshot: two snapshots with one
-    name are one state, which the machine enters once.
+    [id] names the machine in the spec, in the checker and in the ids of its
+    resources. [name] names the state of a snapshot: two snapshots with one name
+    are one state, which the machine enters once. A dot makes sub-states of one
+    state, such as ["list.live"] and ["list.offline"] (see above).
 
     [states] lists every name that [name] gives, so that the checker can report
     the states that no run reached; with no [states], the checker says that it
@@ -100,8 +108,8 @@ val make :
     tools label an event by its cause, such as [press button "Save"],
     [after 2000ms] or [ok /api/save] (see {!Transition.cause_label}).
 
-    [during] lists the timers ({!Source.after}), calls ({!Remote.call}) and
-    sources that run during a snapshot (see {!Source.key}). [entry] and [exit]
+    [during] lists the timers ({!Host.after}), calls ({!Remote.call}) and
+    resources that run during a snapshot (see {!Host.key}). [entry] and [exit]
     give the actions of entering and leaving a state. A [final] snapshot handles
     no event. [start] are actions that run once, before the entry of [init].
 
@@ -114,7 +122,7 @@ val make_with_props :
   name:('s -> string) ->
   ?states:string list ->
   ?event_name:('e -> string) ->
-  ?during:('p -> 's -> 'e Source.t list) ->
+  ?during:('p -> 's -> 'e Host.t list) ->
   ?entry:('p -> 's -> 'e Action.t list) ->
   ?exit:('p -> 's -> 'e Action.t list) ->
   ?final:('s -> bool) ->
@@ -126,9 +134,9 @@ val make_with_props :
     {!Component.node}, and the update, [during], [entry] and [exit] get the
     props of the moment. [on_props previous props state] runs when the component
     starts ([previous = None]) and when the parent gives other props; it
-    defaults to [Ignore]. After it, the sources are compared by key, as after a
-    step, so a source that depends on the props starts again when they change.
-*)
+    defaults to [Ignore]. After it, the resources are compared by key, as after
+    a step, so a resource that depends on the props starts again when they
+    change. *)
 
 val id : ('p, 's, 'e) t -> string
 (** The id of the machine, as given to {!make}. *)
@@ -196,39 +204,59 @@ val type_id : ('p, 's, 'e) t -> ('p * 's * 'e) Type.Id.t
 (** A type id made by {!make}, one for each machine. Hosts use it to know that
     two machines with the same id have the same types. *)
 
+(** {1 Running a machine}
+
+    Each function that runs a machine has two forms. The plain form, such as
+    {!step}, is for a machine made by {!make} and takes no props. The form with
+    [_with_props], such as {!step_with_props}, takes the props after the
+    machine: use it for a machine made by {!make_with_props}, and in a host that
+    runs machines with any props. *)
+
 type resource =
   | Timer of { id : string; ms : int }
   | Call of { id : string; path : string }
   | Subscription of { id : string; topic : string }
   | Held of { id : string; name : string }
-      (** A timer, call, subscription or held source that runs during a
+      (** A timer, call, subscription or held resource that runs during a
           snapshot. [id] is the id used by the actions [Start_timer],
-          [Start_call], [Start_source], [Start_live] and [Stop] of
-          {!Action.host}. *)
+          [Start_call], [Start_held], [Start_live] and [Stop] of {!Action.host}.
+      *)
 
-val active : ('p, 's, 'e) t -> 'p -> 's -> resource list
-(** The timers and sources that run during the snapshot. After [start], [step]
-    or [set_props], the actions and this list agree: a resource is running if
-    and only if its id was started and not stopped. *)
+val active : (unit, 's, 'e) t -> 's -> resource list
+(** The resources that run during the snapshot. After [start], [step] or
+    [set_props], the actions and this list agree: a resource is running if and
+    only if its id was started and not stopped. *)
 
-val held : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
-(** The held sources (see {!Source.focus_trap}) that run during the snapshot.
+val active_with_props : ('p, 's, 'e) t -> 'p -> 's -> resource list
+(** {!active} with the props. *)
+
+val held : (unit, 's, 'e) t -> 's -> 'e Action.held list
+(** The held resources (see {!Host.focus_trap}) that run during the snapshot.
     The checker reads them to know which presses can happen. *)
 
-val can : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
+val held_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.held list
+(** {!held} with the props. *)
+
+val can : (unit, 's, 'e) t -> 's -> 'e -> bool
 (** The machine handles the event in this snapshot: it is not final and the
     update does not give [Ignore]. A view can disable a button with it. *)
 
+val can_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
+(** {!can} with the props. *)
+
 type how = Unhandled | Kept | Entered
 
-val start : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
-(** The initial snapshot after the [start] actions of the machine, the actions
-    of entering it, and [on_props None props]. *)
+val start : (unit, 's, 'e) t -> 's * 'e Action.host list
+(** The initial snapshot after the [start] actions of the machine and the
+    actions of entering it. *)
 
-val resume : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
-(** [resume machine props snapshot] gives the actions that run the machine again
-    at a snapshot it reached before, in another process or bundle: the starts of
-    the timers, calls, subscriptions and held sources that run during the
+val start_with_props : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
+(** {!start} with the props, followed by [on_props None props]. *)
+
+val resume : (unit, 's, 'e) t -> 's -> 'e Action.host list
+(** [resume machine snapshot] gives the actions that run the machine again at a
+    snapshot it reached before, in another process or bundle: the starts of the
+    timers, calls, subscriptions and held resources that run during the
     snapshot, in the order of [during], with the ids of {!active}. A timer
     starts with its full delay and a call is sent again.
 
@@ -237,33 +265,48 @@ val resume : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
     title, a navigation, a call made by an action) must not happen twice. After
     it, the actions and {!active} agree, as after {!start}. *)
 
+val resume_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+(** {!resume} with the props. *)
+
 val step :
   ?finished:string ->
-  ('p, 's, 'e) t ->
-  'p ->
+  (unit, 's, 'e) t ->
   's ->
   'e ->
   's * 'e Action.host list * how
 (** Run the update. A final state handles nothing; [Ignore] leaves the snapshot
     unchanged ([Unhandled]). On a change of state the actions are: [exit] and
     stops of the old state, the actions of the step, [entry] and starts of the
-    new state ([Entered]). A step that keeps the name stops the sources whose
-    key went away, runs the actions and starts the new sources ([Kept]).
-    [Reenter] is [Entered] even when the name stays. Hosts use [Entered] to give
-    each entry of a state its own instance (see {!Instance}).
+    new state ([Entered]). A step that keeps the name, or moves to another
+    sub-state of the same state, stops the resources whose key went away, runs
+    the actions and starts the new resources ([Kept]). [Reenter] is [Entered]
+    even when the name stays. Hosts use [Entered] to give each entry of a state
+    its own instance (see {!Instance}).
 
     [finished] is the id of the timer or call that raised the event: it ended
-    when it delivered. A handled step that keeps the name and still has a source
-    with that id in [during] starts it again, so a state whose [during] gives
-    [Source.after 1000 Tick] and handles [Tick] with [Go] ticks every second.
-    Hosts give it for timers and calls; subscriptions and held sources do not
-    end when they deliver. *)
+    when it delivered. A handled step that keeps the name and still has a
+    resource with that id in [during] starts it again, so a state whose [during]
+    gives [Host.after 1000 Tick] and handles [Tick] with [Go] ticks every
+    second. Hosts give it for timers and calls; subscriptions and held resources
+    do not end when they deliver. *)
+
+val step_with_props :
+  ?finished:string ->
+  ('p, 's, 'e) t ->
+  'p ->
+  's ->
+  'e ->
+  's * 'e Action.host list * how
+(** {!step} with the props. *)
 
 val set_props :
   ('p, 's, 'e) t -> previous:'p -> 'p -> 's -> 's * 'e Action.host list * how
 (** The parent gave new props: run [on_props (Some previous) props], then
-    compare the sources by key. [Unhandled] when nothing changed. *)
+    compare the resources by key. [Unhandled] when nothing changed. *)
 
-val exit : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
-(** The actions of leaving the snapshot: [exit], then the stops of its timers
-    and sources. *)
+val exit : (unit, 's, 'e) t -> 's -> 'e Action.host list
+(** The actions of leaving the snapshot: [exit], then the stops of its
+    resources. *)
+
+val exit_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+(** {!exit} with the props. *)

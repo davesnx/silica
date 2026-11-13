@@ -1,15 +1,15 @@
-{0 Actions and sources}
+{0 Actions and resources}
 
 A machine does not touch the page, the network or the clock. It asks its host.
 There are two forms of request:
 
 - An {e action} ({!Silica.Action.t}) is done once, at a step: focus an element,
   push a URL, copy a text.
-- A {e source} belongs to a state. It starts when the machine enters the state
+- A {e resource} belongs to a state. It starts when the machine enters the state
   and stops when the machine leaves it: a timer, a Remote call, a Live
   subscription, a key binding, a focus trap.
 
-Because a source belongs to a state, it cannot run after its state is left.
+Because a resource belongs to a state, it cannot run after its state is left.
 The checker uses this rule: every running timer, call and subscription must
 belong to the current state.
 
@@ -65,7 +65,7 @@ let text = "Hello from Silica"
 let machine =
   Machine.make ~id:"copy" ~init:Ready ~name
     ~during:(function
-      | Shown _ -> [ Source.after 2000 Back ] | Ready | Copying -> []
+      | Shown _ -> [ Host.after 2000 Back ] | Ready | Copying -> []
       )
     (fun state event ->
       match (state, event) with
@@ -101,47 +101,47 @@ let component = Component.make machine view
 The step gives the action to the host as [Run]:
 
 {@ocaml[
-# let state, _ = Silica.Machine.start Doc_copy.machine ();;
+# let state, _ = Silica.Machine.start Doc_copy.machine;;
 val state : Doc_copy.state = Doc_copy.Ready
-# let _, actions, _ = Silica.Machine.step Doc_copy.machine () state Doc_copy.Copy;;
+# let _, actions, _ = Silica.Machine.step Doc_copy.machine state Doc_copy.Copy;;
 val actions : Doc_copy.event Silica.Action.host list =
   [Silica.Action.Run
     (Silica.Action.Copy
       {Silica.Action.text = "Hello from Silica"; on_result = Some <fun>})]
 ]}
 
-{1:sources Sources}
+{1:resources Resources}
 
-The [during] function of the machine gives the timers and sources of each
+The [during] function of the machine gives the resources of each
 snapshot:
 
 {t
-| Source | What it does while the state is active |
+| Resource | What it does while the state is active |
 |--------|----------------------------------------|
-| {!Silica.Source.after} | raise an event after a number of milliseconds |
+| {!Silica.Host.after} | raise an event after a number of milliseconds |
 | {!Silica.Remote.call} | one Remote call; the answer is an event (see {!page-data.remote}) |
-| {!Silica.Source.live} | follow one key of a topic (see {!page-data.topics}) |
-| {!Silica.Source.keys} | a table of keys for the whole page; keys typed in a text field do not count, except with Ctrl or Meta, and Escape |
-| {!Silica.Source.dismiss} | a dismiss layer: Escape, a press outside or focus that leaves raise events; the newest layer gets them first |
-| {!Silica.Source.focus_trap} | keep focus inside an element, and give it back at the end |
-| {!Silica.Source.scroll_lock} | the page does not scroll |
-| {!Silica.Source.outside_press} | a press outside an element raises an event |
-| {!Silica.Source.anchor} | keep a popup next to another element |
-| {!Silica.Source.resize}, {!Silica.Source.intersection}, {!Silica.Source.scroll} | an element changes size, enters or leaves the viewport, or scrolls |
-| {!Silica.Source.visibility}, {!Silica.Source.online}, {!Silica.Source.media} | the document is visible, the browser is online, a media query matches |
-| {!Silica.Source.block} | stop every navigation and raise an event instead (see {!page-router.block}) |
+| {!Silica.Topic.subscribe} | follow one key of a topic (see {!page-data.topics}) |
+| {!Silica.Host.keys} | a table of keys for the whole page; keys typed in a text field do not count, except with Ctrl or Meta, and Escape |
+| {!Silica.Host.dismiss} | a dismiss layer: Escape, a press outside or focus that leaves raise events; the newest layer gets them first |
+| {!Silica.Host.focus_trap} | keep focus inside an element, and give it back at the end |
+| {!Silica.Host.scroll_lock} | the page does not scroll |
+| {!Silica.Host.outside_press} | a press outside an element raises an event |
+| {!Silica.Host.anchor} | keep a popup next to another element |
+| {!Silica.Host.resize}, {!Silica.Host.intersection}, {!Silica.Host.scroll} | an element changes size, enters or leaves the viewport, or scrolls |
+| {!Silica.Host.visibility}, {!Silica.Host.online}, {!Silica.Host.media} | the document is visible, the browser is online, a media query matches |
+| {!Silica.Host.block} | stop every navigation and raise an event instead (see {!page-router.block}) |
 }
 
-The sources that give a value, such as [media] and [online], raise it once at
+The resources that give a value, such as [media] and [online], raise it once at
 the start, so the machine knows the value when it enters the state.
 
-The machine compares the sources of the old and the new snapshot by their key
-({!Silica.Source.key}) after each step: a source whose key did not change keeps
+The machine compares the resources of the old and the new snapshot by their key
+({!Silica.Host.key}) after each step: a resource whose key did not change keeps
 running (see {!page-machines.during}).
 
 A component that can show more than once in a page gives each instance its own
 refs, for example made from an id in its props. [during] gets the props, so it
-can make the refs there. {!Silica.Source.map_refs} changes the refs of a source.
+can make the refs there. {!Silica.Host.map_refs} changes the refs of a resource.
 
 {1:rate Rate limits}
 
@@ -149,7 +149,7 @@ can make the refs there. {!Silica.Source.map_refs} changes the refs of a source.
 lets the first value through and then the last value of each window.
 [Debounce ms] waits for a pause and gives the last value. Rate limits go on
 event attributes ([on_input_rate], see {!page-components.jsx}) and on the
-sources [keys], [resize], [intersection] and [scroll]. A debounce that is part
+resources [keys], [resize], [intersection] and [scroll]. A debounce that is part
 of the behaviour, such as "search after the user stops", is better as a state
-with a {!Silica.Source.after} timer in [during] (see {!page-machines.steps}):
+with a {!Silica.Host.after} timer in [during] (see {!page-machines.steps}):
 then the checker sees it.

@@ -5,7 +5,7 @@ view
 
 state asking
 path
-  held -> asking on attempt push, by the source block (unsaved/held/block)
+  held -> asking on attempt push, by the held resource block (unsaved/held/block)
 view
   alertdialog "You have unsaved changes. Leave this page?"
     text "You have unsaved changes. Leave this page?"

@@ -1,28 +1,29 @@
 (** The shape of a machine as a checker run found it: the states it reached, the
-    steps it took with the names of their events, and the timers and sources of
-    each state. [Check.run] gives one in the [specs] of its report. The timers
-    and sources of a state are those of every snapshot of it that the run
-    reached: a timer that runs only for some data of the state is listed. *)
+    steps it took with the names of their events, and the resources of each
+    state. [Check.run] gives one in the [specs] of its report. The resources of
+    a state are those of every snapshot of it that the run reached: a timer that
+    runs only for some data of the state is listed. *)
 
 type state = {
   name : string;
   final : bool;
-  timers : int list;
-      (** Delays in milliseconds of the {!Source.after} timers. *)
-  sources : string list;
+  timers : int list;  (** Delays in milliseconds of the {!Host.after} timers. *)
+  network : string list;
       (** Endpoint paths of the calls and ["live:" ^ topic] of the
           subscriptions. *)
   held : string list;
-      (** Names of the other sources, such as ["focus_trap"]: they are resources
-          of a client renderer. *)
+      (** Names of the held resources, such as ["focus_trap"]: they are
+          resources of a client renderer. *)
 }
 
 type label = { from : string; target : string; event : string; kept : bool }
 (** A step that a checker run took, with the name of the event that took it.
     [event] is [""] when the machine gives no event names. [kept] is [true] for
     a step that kept the state ([Go] to a state with the same name, or [Stay]:
-    the data may change, the timers and sources keep running); then
-    [target = from]. *)
+    the data may change, the resources keep running); then [target = from]. A
+    step between two sub-states of one state, such as ["list.live"] to
+    ["list.offline"] (see {!Machine.make}), keeps the timers and resources but
+    changes the name, so it has [kept = false]. *)
 
 type t = {
   id : string;
@@ -30,8 +31,9 @@ type t = {
   states : state list;
   edges : label list;
       (** Sorted, without duplicates: the steps of the run. A step that entered
-          a state, from another state or from the same one ([Reenter]), has
-          [kept = false]; a step that kept the state has [kept = true]. *)
+          a state, from another state or from the same one ([Reenter]), or that
+          moved to another sub-state, has [kept = false]; a step that kept the
+          state has [kept = true]. *)
 }
 
 val arrows : t -> (string * string) list
@@ -50,18 +52,18 @@ val issue_to_string : issue -> string
 (** ["machine.state: unreachable"] or ["machine.state: non-final dead end"]. *)
 
 val details : state -> string list
-(** The timers and sources of a state as lines: ["after 300ms"],
-    ["invoke /api/save"], ["hold focus_trap"]. *)
+(** The resources of a state as lines: ["after 300ms"], ["invoke /api/save"],
+    ["hold focus_trap"]. *)
 
 val to_dot : t -> string
-(** A Graphviz digraph. Timers and sources are listed in the state label; final
-    states are double circles. An arrow shows the events of its edges; kept
-    steps are not shown. *)
+(** A Graphviz digraph. Timers and resources are listed in the state label;
+    final states are double circles. An arrow shows the events of its edges;
+    kept steps are not shown. *)
 
 val to_quint : t -> string
 (** A Quint module named after the machine id, with ['-'] as ['_']. Variables:
-    [state] (one constructor for each state), [running] (the timers and sources
-    that run, as strings ["state/after 300ms"], ["state/invoke /api/path"] and
+    [state] (one constructor for each state), [running] (the resources that run,
+    as strings ["state/after 300ms"], ["state/invoke /api/path"] and
     ["state/hold name"]) and [last] (the event of the last step: [Start] at
     init, the event of the edge, or [Any] for an edge with no event name). One
     transition for each arrow and event, and one for each kept step; each
@@ -107,7 +109,7 @@ val to_mermaid : t -> string
 
 val to_json : t -> Silica_json.Json.t
 (** An object with the fields ["id"], ["init"], ["states"] (objects with
-    ["name"], ["final"], ["timers"], ["sources"], ["held"]) and ["edges"]
+    ["name"], ["final"], ["timers"], ["network"], ["held"]) and ["edges"]
     (objects with ["from"], ["target"], ["event"], ["kept"]). *)
 
 val of_json : Silica_json.Json.t -> (t, string) result
@@ -119,7 +121,7 @@ type change =
   | State_added of state
   | State_removed of state
   | State_changed of { before : state; after : state }
-      (** The same name, with another [final], timers or sources. *)
+      (** The same name, with another [final], timers or resources. *)
   | Edge_added of label
   | Edge_removed of label
 

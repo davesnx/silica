@@ -18,13 +18,13 @@ let machine ~pauses =
     ~states:[ "badge" ] ~event_name
     ~during:(fun (Badge { fresh; confirming }) ->
       ( if fresh && not (pauses && confirming) then
-          [ Source.after 3000 Aged ]
+          [ Host.after 3000 Aged ]
         else
           []
       )
       @
       if confirming then
-        [ Source.after 5000 Cancel ]
+        [ Host.after 5000 Cancel ]
       else
         []
     )

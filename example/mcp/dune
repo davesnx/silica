@@ -1,5 +1,5 @@
 (executable
- (name linear_mcp)
+ (name example_mcp)
  (modes native)
  (libraries
   silica
@@ -8,6 +8,6 @@
   silica.server
   silica.adapter
   silica_mcp
-  silica_linear_app_native
-  silica_linear_server
+  silica_example_app_native
+  silica_example_server
   unix))

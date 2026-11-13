@@ -5,8 +5,8 @@ let goldens =
     (fun (name, text) -> (name, text, Statechart_goldens.Layouts.read text))
     Statechart_goldens.Golden_specs.all
 
-let state ?(final = false) ?(timers = []) ?(sources = []) ?(held = []) name =
-  { Spec.name; final; timers; sources; held }
+let state ?(final = false) ?(timers = []) ?(network = []) ?(held = []) name =
+  { Spec.name; final; timers; network; held }
 
 let odd_spec : Spec.t =
   {
@@ -14,7 +14,7 @@ let odd_spec : Spec.t =
     init = "a b";
     states =
       [
-        state "a b" ~timers:[ 300 ] ~sources:[ "/api/save"; "live:x y" ];
+        state "a b" ~timers:[ 300 ] ~network:[ "/api/save"; "live:x y" ];
         state "quote\"" ~held:[ "focus trap" ];
         state "back\\slash";
         state "line\nbreak";
@@ -695,13 +695,35 @@ let view () =
     (occurrences "class=\"chart-note\"" router
     * occurrences ">every edge: url changed<" router
     );
-  Alcotest.(check int) "no edge label" 1 (occurrences "url changed" router);
+  Alcotest.(check int) "no edge label" 0 (occurrences ">url changed<" router);
   Alcotest.(check int) "details" 1 (occurrences ">after 100ms<" plain);
   Alcotest.(check int)
     "accessible name" 1
     (occurrences
        "aria-label=\"Statechart of the machine toast. Current state: running\""
        marked
+    )
+
+let kept_steps () =
+  let _, _, spec =
+    List.find (fun (name, _, _) -> name = "ui_check/note-dialog") goldens
+  in
+  let layout = Statechart_layout.layout spec in
+  Alcotest.(check (list string))
+    "the open node lists its kept steps"
+    [
+      "hold focus_trap";
+      "hold scroll_lock";
+      "hold dismiss";
+      "stay on close_request escape-key,";
+      "  close_request outside-press,";
+      "  edit";
+    ]
+    (find_node layout "open").details;
+  Alcotest.(check int)
+    "the drawing shows that Escape keeps the dialog open" 1
+    (occurrences ">stay on close_request escape-key,<"
+       (Render.to_string (Statechart_view.view layout))
     )
 
 let () =
@@ -733,5 +755,10 @@ let () =
           Alcotest.test_case "deterministic" `Quick deterministic;
         ]
       );
-      ("view", [ Alcotest.test_case "marks" `Quick view ]);
+      ( "view",
+        [
+          Alcotest.test_case "marks" `Quick view;
+          Alcotest.test_case "kept steps" `Quick kept_steps;
+        ]
+      );
     ]

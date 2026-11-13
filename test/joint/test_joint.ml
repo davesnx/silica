@@ -170,8 +170,10 @@ let memory_equals_checker () =
           | Check.Event Board.Toggle_job
             when List.exists
                    (fun (entry : Check_tree.running) ->
-                     model.tree.state_of node entry.instance = Some "running"
-                     && model.tree.state_of next entry.instance = None
+                     Check_model.state_of model.tree node entry.instance
+                     = Some "running"
+                     && Check_model.state_of model.tree next entry.instance
+                        = None
                    )
                    node.running ->
               incr unmounted_calls
@@ -214,7 +216,10 @@ let joint_check_passes () =
   Alcotest.(check (list string))
     "specs" [ "board"; "row"; "job" ]
     (List.map (fun (spec : Spec.t) -> spec.id) report.specs);
-  Alcotest.(check (list string)) "nothing left out" [] report.not_explored
+  Alcotest.(check (list string)) "nothing left out" [] report.not_explored;
+  Alcotest.(check string)
+    "the text report starts with the entry id" "board+row+job: "
+    (String.sub (Format.asprintf "%a" Check.pp_report report) 0 15)
 
 let unlisted_child_is_not_explored () =
   let report =
@@ -336,10 +341,19 @@ let a_child_step_names_the_move_of_the_root () =
   match report.violations with
   | violation :: _ ->
       let steps = Check.steps violation.counterexample in
-      Alcotest.(check (list (option (pair string string))))
+      Alcotest.(check (list (list (pair string (pair string string)))))
         "the press in the child moves the root"
-        [ Some ("waiting", "complete") ]
-        (List.map (fun (step : _ Check.step) -> step.root_moved) steps);
+        [ [ ("0", ("waiting", "complete")) ] ]
+        (List.map
+           (fun (step : _ Check.step) ->
+             List.map
+               (fun (move : Check.move) ->
+                 (move.instance, (move.from, move.target))
+               )
+               step.moved
+           )
+           steps
+        );
       Alcotest.(check bool)
         "the line names the move of the root" true
         (List.for_all
@@ -352,6 +366,94 @@ let a_child_step_names_the_move_of_the_root () =
         )
   | [] ->
       Alcotest.fail "no violation"
+
+let a_child_step_shows_the_root_event_of_its_output () =
+  let report =
+    Check.run
+      (Check.component
+         ~children:[ Check.child Finisher.component ]
+         ~properties:
+           [
+             Check.always ~name:"complete only after finished"
+               Check.(
+                 not_ (entered "complete")
+                 ||| event (fun Waiter.Finished -> true)
+               );
+             Check.always ~name:"finished completes"
+               Check.(
+                 not_ (entered "complete")
+                 ||| transition (fun before Waiter.Finished after ->
+                     (not before) && after
+                 )
+               );
+           ]
+         Waiter.component
+      )
+  in
+  if not (Check.passed report) then Alcotest.failf "%a" Check.pp_report report
+
+module Unlabelled = struct
+  type event = Typed of string
+
+  let component =
+    Component.make
+      (Machine.make ~id:"unlabelled" ~init:()
+         ~name:(fun () -> "open")
+         ~states:[ "open" ]
+         ~event_name:(fun (Typed _) -> "typed")
+         (fun () (Typed _) -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "label" []
+          [ Node.element "input" [ Attr.on_input (fun text -> Typed text) ] [] ]
+      )
+end
+
+module Unlabelled_page = struct
+  type event = Never
+
+  let component =
+    Component.make
+      (Machine.make ~id:"unlabelled-page" ~init:()
+         ~name:(fun () -> "editing")
+         ~states:[ "editing" ]
+         ~event_name:(fun Never -> "never")
+         (fun () Never -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "main" []
+          [
+            Node.element "h1" [] [ Node.text "Profile" ];
+            Node.element "button" [ Attr.on_press Never ] [ Node.text "Save" ];
+            Component.node Unlabelled.component;
+          ]
+      )
+end
+
+let a_view_rule_names_the_child_that_renders_the_element () =
+  let report =
+    Check.run
+      (Check.component
+         ~children:[ Check.child Unlabelled.component ]
+         Unlabelled_page.component
+      )
+  in
+  match
+    List.find_opt
+      (fun (violation : (_, _) Check.violation) ->
+        violation.rule = "field-label"
+      )
+      report.violations
+  with
+  | Some violation ->
+      Alcotest.(check string)
+        "the child and its state"
+        "In the child unlabelled at instance unlabelled-page/2:unlabelled: In \
+         state open, the textbox field at main > label > input has no label: \
+         the <label> around it at main > label has no text."
+        violation.message
+  | None ->
+      Alcotest.failf "no field-label violation:@.%a" Check.pp_report report
 
 let text_of view = View_text.to_string view
 
@@ -443,10 +545,19 @@ let temporal_violation_replays () =
           (Check.export Joint_cases.bumped ~rule violation.counterexample)
       in
       Alcotest.(check (list string))
-        "the trace names the machine of each step"
-        ("board" :: List.map (fun (step : _ Check.step) -> step.machine) steps)
+        "the trace has a record for each move of each instance"
+        [
+          "board started";
+          "board/6.#1:row started";
+          "board/7:job started";
+          "board/6.#1:row kept";
+          "board kept";
+        ]
         (List.map
-           (fun (record : Transition.t) -> record.machine)
+           (fun (record : Transition.t) ->
+             Printf.sprintf "%s %s" record.instance
+               (Transition.change_to_string record.change)
+           )
            trace.transitions
         );
       ( match Check.replay_trace Joint_cases.bumped trace with
@@ -476,6 +587,303 @@ let temporal_violation_replays () =
   | violations ->
       Alcotest.failf "expected one violation, got %d:@.%a"
         (List.length violations) Check.pp_report report
+
+let word_codec name words =
+  Codec.make
+    ~encode:(fun value -> Codec.string.encode (List.assoc value words))
+    ~decode:(fun json ->
+      Result.bind (Codec.string.decode json) (fun text ->
+          match List.find_opt (fun (_, word) -> word = text) words with
+          | Some (value, _) ->
+              Ok value
+          | None ->
+              Error ("not an event of " ^ name)
+      )
+    )
+
+module Bulb = struct
+  type event = Flicker
+
+  let machine =
+    Machine.make ~id:"bulb" ~init:0
+      ~name:(fun _ -> "lit")
+      ~states:[ "lit" ]
+      ~event_name:(fun Flicker -> "flicker")
+      (fun count Flicker -> Machine.Go (count + 1))
+
+  let () =
+    Machine.register_codecs machine ~state:Codec.int
+      ~event:(word_codec "bulb" [ (Flicker, "flicker") ])
+      ()
+
+  let component =
+    Component.make machine (fun _ -> Node.element "p" [] [ Node.text "lit" ])
+end
+
+module Lamp = struct
+  type event = Toggle | Dim
+
+  let machine =
+    Machine.make_with_props ~id:"lamp" ~init:(false, 0)
+      ~name:(fun (on, _) ->
+        if on then
+          "on"
+        else
+          "off"
+      )
+      ~states:[ "off"; "on" ]
+      ~event_name:(function Toggle -> "toggle" | Dim -> "dim")
+      ~during:(fun _ (on, _) ->
+        if on then
+          [ Host.after 1000 Dim ]
+        else
+          []
+      )
+      ~on_props:(fun _ label (on, _) -> Machine.Go (on, label))
+      (fun _ (on, seen) event ->
+        match event with
+        | Toggle ->
+            Machine.Go (not on, seen)
+        | Dim ->
+            Machine.Go (on, seen)
+      )
+
+  let () =
+    Machine.register_codecs machine ~props:Codec.int
+      ~state:(Codec.pair Codec.bool Codec.int)
+      ~event:(word_codec "lamp" [ (Toggle, "toggle"); (Dim, "dim") ])
+      ()
+
+  let component =
+    Component.make_with_props machine (fun label (on, seen) ->
+        Node.element "div" []
+          [
+            Node.element "p" []
+              [
+                Node.text
+                  (Printf.sprintf "lamp %s label %d seen %d"
+                     ( if on then
+                         "on"
+                       else
+                         "off"
+                     )
+                     label seen
+                  );
+              ];
+            Node.element "button"
+              [ Attr.on_press Toggle ]
+              [ Node.text "toggle" ];
+            ( if on then
+                Component.node Bulb.component
+              else
+                Node.list []
+            );
+          ]
+    )
+end
+
+module Shelf = struct
+  type state = { shown : bool; label : int; toggled : int }
+  type event = Show | Hide | Relabel | Toggled
+
+  let machine =
+    Machine.make ~id:"shelf"
+      ~init:{ shown = true; label = 0; toggled = 0 }
+      ~name:(fun state ->
+        if state.shown then
+          "shown"
+        else
+          "hidden"
+      )
+      ~states:[ "shown"; "hidden" ]
+      ~event_name:(function
+        | Show ->
+            "show"
+        | Hide ->
+            "hide"
+        | Relabel ->
+            "relabel"
+        | Toggled ->
+            "toggled"
+        )
+      (fun state event ->
+        match event with
+        | Show ->
+            Machine.Go { state with shown = true }
+        | Hide ->
+            Machine.Go { state with shown = false }
+        | Relabel ->
+            Machine.Go { state with label = state.toggled + 1 }
+        | Toggled ->
+            Machine.Go { state with toggled = min 2 (state.toggled + 1) }
+      )
+
+  let state_codec =
+    Codec.make
+      ~encode:(fun state ->
+        Codec.constructor "Shelf"
+          [
+            Codec.bool.encode state.shown;
+            Codec.int.encode state.label;
+            Codec.int.encode state.toggled;
+          ]
+      )
+      ~decode:(fun json ->
+        match Codec.constructor_of json with
+        | Ok ("Shelf", [ shown; label; toggled ]) ->
+            Result.bind (Codec.bool.decode shown) (fun shown ->
+                Result.bind (Codec.int.decode label) (fun label ->
+                    Result.map
+                      (fun toggled -> { shown; label; toggled })
+                      (Codec.int.decode toggled)
+                )
+            )
+        | _ ->
+            Error "not a state of shelf"
+      )
+
+  let () =
+    Machine.register_codecs machine ~state:state_codec
+      ~event:
+        (word_codec "shelf"
+           [
+             (Show, "show");
+             (Hide, "hide");
+             (Relabel, "relabel");
+             (Toggled, "toggled");
+           ]
+        )
+      ()
+
+  let button label event =
+    Node.element "button" [ Attr.on_press event ] [ Node.text label ]
+
+  let component =
+    Component.make machine (fun state ->
+        Node.element "main" []
+          ( if state.shown then
+              [
+                button "hide" Hide;
+                button "relabel" Relabel;
+                Component.node_with_props ~props:state.label
+                  ~output:(fun event _ ->
+                    match event with
+                    | Lamp.Toggle ->
+                        [ Toggled ]
+                    | Lamp.Dim ->
+                        []
+                  )
+                  Lamp.component;
+              ]
+            else
+              [ button "show" Show ]
+          )
+    )
+end
+
+let shelf_children = [ Check.child Lamp.component; Check.child Bulb.component ]
+
+let names_the_lamp =
+  Check.always ~name:"no broken lamp"
+    (Check.view (fun view -> not (contains (View_text.to_string view) "broken")))
+
+let shelf =
+  Check.component ~children:shelf_children ~properties:[ names_the_lamp ]
+    Shelf.component
+
+let seeded_shelf =
+  Check.component ~children:shelf_children
+    ~properties:
+      [
+        names_the_lamp;
+        Check.always ~name:"seeded"
+          (Check.state (fun (state : Shelf.state) ->
+               state.label < 2 || state.shown
+           )
+          );
+      ]
+    Shelf.component
+
+let shelf_trace () =
+  let report = Check.run seeded_shelf in
+  match
+    List.filter
+      (fun (violation : (_, _) Check.violation) -> violation.rule = "seeded")
+      report.violations
+  with
+  | [ violation ] ->
+      round_trip
+        (Check.export seeded_shelf ~rule:"seeded" violation.counterexample)
+  | violations ->
+      Alcotest.failf "expected one seeded violation, got %d:@.%a"
+        (List.length violations) Check.pp_report report
+
+let an_exported_joint_trace_conforms () =
+  let trace = shelf_trace () in
+  let conformance = Check.conforms shelf trace in
+  Alcotest.(check (triple (list string) (list string) (list string)))
+    "no deviation, no unchecked property, and the specs allow every record"
+    ([], [], [])
+    ( List.map
+        (fun (deviation : Check.deviation) ->
+          Printf.sprintf "%d %s: %s" deviation.seq deviation.instance
+            (Check.difference_to_string deviation.difference)
+        )
+        conformance.deviations,
+      List.map
+        (fun (property, reason) -> property ^ ": " ^ reason)
+        conformance.unchecked,
+      List.map Spec.deviation_to_string
+        (Spec.conforms (Check.run shelf).specs trace)
+    )
+
+let without_prefix word =
+  match String.index_opt word '/' with
+  | Some slash
+    when slash > 0
+         && String.for_all
+              (fun character ->
+                character = '.' || ('0' <= character && character <= '9')
+              )
+              (String.sub word 0 slash) ->
+      String.sub word (slash + 1) (String.length word - slash - 1)
+  | Some _ | None ->
+      word
+
+let promised (record : Transition.t) =
+  Codec.to_string Transition.codec
+    {
+      record with
+      time_ms = None;
+      number = 0;
+      entry = 0;
+      actions =
+        List.map
+          (fun action ->
+            String.concat " "
+              (List.map without_prefix (String.split_on_char ' ' action))
+          )
+          record.actions;
+    }
+
+let the_runtime_records_the_exported_trace () =
+  let trace = shelf_trace () in
+  let page = Memory.mount Shelf.component in
+  ( match Memory.replay page trace with
+  | Memory.Replayed ->
+      ()
+  | Different { seq; expected; got } ->
+      Alcotest.failf "memory differs at %d: expected %s, got %s" seq expected
+        got
+  | Not_realisable { seq; reason } ->
+      Alcotest.failf "not realisable at %d: %s" seq reason
+  | Not_found { seq; error } ->
+      Alcotest.failf "not found at %d: %s" seq error
+  );
+  Alcotest.(check (list string))
+    "the records of the runtime"
+    (List.map promised (Memory.trace page).transitions)
+    (List.map promised trace.transitions)
 
 let temporal_child_property_is_rejected () =
   match
@@ -544,6 +952,81 @@ module Reach = struct
     )
 end
 
+module Modal_child = struct
+  type event = Close
+
+  let component =
+    Component.make
+      (Machine.make ~id:"modal-child" ~init:true
+         ~name:(fun shown ->
+           if shown then
+             "open"
+           else
+             "closed"
+         )
+         ~states:[ "open"; "closed" ]
+         ~event_name:(fun Close -> "close")
+         (fun _ Close -> Machine.Go false)
+      )
+      (fun shown ->
+        if shown then
+          Node.portal
+            [
+              Node.element "div"
+                [
+                  Attr.string "role" "dialog";
+                  Attr.string "aria-modal" "true";
+                  Attr.string "aria-label" "Edit";
+                ]
+                [
+                  Node.element "button"
+                    [ Attr.on_press Close ]
+                    [ Node.text "Close" ];
+                ];
+            ]
+        else
+          Node.list []
+      )
+end
+
+module Modal_page = struct
+  type event = Tab
+
+  let component =
+    Component.make
+      (Machine.make ~id:"modal-page" ~init:()
+         ~name:(fun () -> "page")
+         ~states:[ "page" ]
+         ~event_name:(fun Tab -> "tab")
+         (fun () Tab -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "main" []
+          [
+            Node.element "button" [ Attr.on_press Tab ] [ Node.text "Tab" ];
+            Component.node Modal_child.component;
+          ]
+      )
+end
+
+let the_page_behind_a_child_modal_is_inert () =
+  let check =
+    Check.component
+      ~children:[ Check.child Modal_child.component ]
+      Modal_page.component
+  in
+  match Check.replay check [ Check.Event Modal_page.Tab ] with
+  | Replayed _ ->
+      Alcotest.fail "the tab behind the open modal of the child took a press"
+  | Not_enabled { enabled; _ } ->
+      Alcotest.(check (list string))
+        "only the button of the modal is offered"
+        [
+          "[modal-child at modal-page/1:modal-child] open -> closed: close, by \
+           the view offers press on button \"Close\" at portal > div > button";
+        ]
+        (List.map (Check.describe_step ~root:"modal-page") enabled)
+
 let checker_offers_what_a_browser_delivers () =
   let report = Check.run (Check.component Reach.component) in
   Alcotest.(check (list string))
@@ -582,6 +1065,10 @@ let () =
         [
           Alcotest.test_case "memory renders what the checker sees" `Quick
             memory_equals_checker;
+          Alcotest.test_case "a child step shows the root event of its output"
+            `Quick a_child_step_shows_the_root_event_of_its_output;
+          Alcotest.test_case "a view rule names the child that renders it"
+            `Quick a_view_rule_names_the_child_that_renders_the_element;
           Alcotest.test_case "a joint check passes" `Quick joint_check_passes;
           Alcotest.test_case "a step of a child names the move of the root"
             `Quick a_child_step_names_the_move_of_the_root;
@@ -595,6 +1082,12 @@ let () =
             temporal_properties_hold_on_the_parent;
           Alcotest.test_case "a temporal violation in a child replays" `Quick
             temporal_violation_replays;
+          Alcotest.test_case "an exported joint trace conforms" `Quick
+            an_exported_joint_trace_conforms;
+          Alcotest.test_case "the runtime records the exported trace" `Quick
+            the_runtime_records_the_exported_trace;
+          Alcotest.test_case "the page behind a child modal is inert" `Quick
+            the_page_behind_a_child_modal_is_inert;
           Alcotest.test_case "the checker offers what a browser delivers" `Quick
             checker_offers_what_a_browser_delivers;
           Alcotest.test_case "a temporal child property is rejected" `Quick

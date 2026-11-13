@@ -9,15 +9,22 @@
     - the accessible name in quotes, when it is not empty;
     - the states that are set, in this order: [level=2], [value="..."],
       [checked] or [checked=false], [selected], [expanded] or [expanded=false],
-      [disabled], [current=page], [href="..."], [modal];
+      [disabled], [current=page], [href="..."], [modal]. The value of an
+      [<input type="password">] prints as [value="••••••••"] whatever its length
+      (see {!Secret}); an empty value prints as [value=""];
     - the handlers in brackets, such as [[press, key_down]].
 
     Other elements are left out and their children move up. The text that is not
     in such a line prints as [text "..."]: the text of the elements left out
     side by side is joined into one line, with a space where an element starts
-    or ends and white space collapsed. Text inside an element whose role takes
-    its name from its content (see {!Accessibility.name_from_content}) is its
-    name and does not print again.
+    or ends and white space collapsed. As in a browser, a block element ends
+    that line: the text before it, in it and after it print on separate lines.
+    The block elements are those that a browser shows as a block by default:
+    [p], [div], [li], [section], [main], [form], [fieldset], the headings, lists
+    and table parts, [br], [hr] and the others of the HTML rendering rules.
+    [label], [span], [a], [strong] and the other inline elements do not end the
+    line. Text inside an element whose role takes its name from its content (see
+    {!Accessibility.name_from_content}) is its name and does not print again.
 
     A component node prints as [component <id>], an island as
     [island <channel>], a chunk that loads as [loading]. Hidden elements (see

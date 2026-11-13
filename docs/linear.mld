@@ -130,7 +130,7 @@ node shows, and stops when the node goes away.
 - [linear_comments.mlx], [linear_comment.mlx] and [linear_composer.mlx]: the
   comments of one issue, one comment, and the field that adds a comment.
 - [linear_unsaved.mlx]: shown by the detail while a title or description draft
-  differs from the saved text. It holds a {!Silica.Source.block}: a navigation
+  differs from the saved text. It holds a {!Silica.Host.block}: a navigation
   becomes a question (Discard or Keep editing), and Discard resumes it.
 
 A parent talks to a child with props: a value that the parent gives with the
@@ -155,10 +155,13 @@ runs two times.
 {1 The Live topic}
 
 The topic [issues] holds the full list of issues under one key. In [Ready], the
-list runs a subscription: [Source.live issues_topic]. Each time the server
+list runs a subscription: [Topic.subscribe issues_topic]. Each time the server
 publishes a new list, every subscriber gets it as an event. When the socket
 goes down, the data stays and its {!Silica.Status.t} is stale. When the socket
 comes back, the server sends the full state again.
+
+Experimental: Live updates can change. The checker and the runtime do not
+agree yet on the order of the first update of a subscription.
 
 The server publishes the list after each change, for example after a create
 call. So all open pages show the new issue, also the pages of other visitors.

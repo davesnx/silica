@@ -612,6 +612,33 @@ let view_text () =
 |}
     (View_text.to_string view)
 
+let block_elements_end_text () =
+  let element = Node.element and text = Node.text in
+  let view : unit Node.t =
+    element "main" []
+      [
+        element "p" [] [ text "Connecting." ];
+        element "label" [] [ text "New todo"; element "input" [] [] ];
+        element "div" []
+          [
+            text "Created";
+            element "span" [] [ text "today" ];
+            element "br" [] [];
+            text "by Ada";
+          ];
+      ]
+  in
+  Alcotest.(check string)
+    "a block element ends the text line; an inline one does not"
+    {|main
+  text "Connecting."
+  text "New todo"
+  textbox "New todo"
+  text "Created today"
+  text "by Ada"
+|}
+    (View_text.to_string view)
+
 let () =
   Alcotest.run "silica accessibility"
     [
@@ -642,5 +669,11 @@ let () =
           Alcotest.test_case "items" `Quick items;
         ]
       );
-      ("view text", [ Alcotest.test_case "one view" `Quick view_text ]);
+      ( "view text",
+        [
+          Alcotest.test_case "one view" `Quick view_text;
+          Alcotest.test_case "a block element ends the text" `Quick
+            block_elements_end_text;
+        ]
+      );
     ]
