@@ -19,7 +19,6 @@
   (source_tree node_modules)
   door.qnt
   dead_end.qnt
-  (glob_files ../linear_check/spec/*.qnt)
   (glob_files ../example_check/spec/*.qnt)
   (glob_files ../ui_check/spec/*.qnt))
  (action
@@ -28,7 +27,6 @@
    --experimental-strip-types
    check.ts
    door.qnt
-   ../linear_check/spec
    ../example_check/spec
    ../ui_check/spec
    --fail

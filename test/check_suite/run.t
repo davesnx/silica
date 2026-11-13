@@ -503,6 +503,50 @@ incomplete: conform does not evaluate a property that reads it, and says so.
     property not checked by conform: "the label follows the pick" (the trace has no snapshot of the child picker/1:label)
   every trace conforms (exit 0)
 
+replay takes the root machine of the trace for the joint entry whose root it
+is. A machine that is only a child of an entry is not an entry to replay; the
+error names the entry that checks it:
+
+  $ FIXTURE=joint ./fixtures.exe replay picker picked.jsonl
+  replay picker+label: picked.jsonl
+  start: picking
+  1. picking -> picking: pick, by the view offers press on button "Pick a" at main > button
+  state: picking
+  view:
+    main
+      button "Pick a" [press]
+      text "shows a"
+      button "Again" [press]
+  no rule fails (exit 0)
+  $ FIXTURE=joint ./fixtures.exe replay label picked.jsonl
+  replay: no entry has the root machine label; it is a child in picker+label. A replay starts at the root of an entry: give the id of an entry and a trace of its root machine
+  [3]
+
+A joint check writes its counterexample with --traces: the press in the
+parent gives the child new props, and the property reads the view of both.
+The checker replays the trace, and so does Silica_memory:
+
+  $ FIXTURE=joint-bug ./fixtures.exe --traces jtraces > /dev/null
+  [1]
+  $ ls jtraces
+  picker_label_the_label_stays_empty_picking.jsonl
+  $ FIXTURE=joint-bug ./fixtures.exe replay picker jtraces/picker_label_the_label_stays_empty_picking.jsonl
+  replay picker+label: jtraces/picker_label_the_label_stays_empty_picking.jsonl
+  start: picking
+  1. picking -> picking: pick, by the view offers press on button "Pick a" at main > button
+    fails the label stays empty: The property "the label stays empty" does not hold in state picking.
+      hint: Change the update or the view so that "the label stays empty" holds in state picking, or correct the property.
+  state: picking
+  view:
+    main
+      button "Pick a" [press]
+      text "shows a"
+      button "Again" [press]
+  the last step breaks a rule (exit 1)
+  [1]
+  $ ./fixtures.exe memory jtraces/picker_label_the_label_stays_empty_picking.jsonl
+  memory: replayed
+
 A new run removes the trace files of a check that ran and that it no longer
 writes, so a stale trace cannot be replayed by mistake. It knows its own files
 from the list it keeps in .silica-traces, so it keeps the files of other

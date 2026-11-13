@@ -285,6 +285,16 @@ let picked =
       ]
     picker
 
+let label_stays_empty =
+  Check.component
+    ~children:[ Check.child label ]
+    ~properties:
+      [
+        Check.always ~name:"the label stays empty"
+          (Check.view (fun view -> not (Check.view_shows view "shows a")));
+      ]
+    picker
+
 type note_event = Typed of string
 
 let note =
@@ -343,6 +353,7 @@ let sets =
       ]
     );
     ("joint", [ Check_suite.entry picked ]);
+    ("joint-bug", [ Check_suite.entry label_stays_empty ]);
     ("note", [ Check_suite.entry (Check.component ~texts:[ "a" ] note) ]);
     ( "fixed",
       [
@@ -383,13 +394,37 @@ let sets =
     );
   ]
 
+let memory_replay file =
+  match Trace.of_jsonl (In_channel.with_open_bin file In_channel.input_all) with
+  | Error message ->
+      print_endline ("memory: " ^ message)
+  | Ok trace -> (
+      match Silica_memory.replay (Silica_memory.mount picker) trace with
+      | Replayed ->
+          print_endline "memory: replayed"
+      | Different { seq; expected; got } ->
+          Printf.printf "memory: different at %d: expected %s, got %s\n" seq
+            expected got
+      | Not_realisable { seq; reason } ->
+          Printf.printf "memory: not realisable at %d: %s\n" seq reason
+      | Not_found { seq; error } ->
+          Printf.printf "memory: not found at %d: %s\n" seq error
+    )
+
 let () =
-  match
-    Option.bind (Sys.getenv_opt "FIXTURE") (fun set -> List.assoc_opt set sets)
-  with
-  | Some entries ->
-      Check_suite.main entries
-  | None ->
-      prerr_endline
-        ("set FIXTURE to one of: " ^ String.concat ", " (List.map fst sets));
-      exit 3
+  match Sys.argv with
+  | [| _; "memory"; file |] ->
+      memory_replay file
+  | _ -> (
+      match
+        Option.bind (Sys.getenv_opt "FIXTURE") (fun set ->
+            List.assoc_opt set sets
+        )
+      with
+      | Some entries ->
+          Check_suite.main entries
+      | None ->
+          prerr_endline
+            ("set FIXTURE to one of: " ^ String.concat ", " (List.map fst sets));
+          exit 3
+    )

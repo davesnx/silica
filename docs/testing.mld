@@ -228,11 +228,11 @@ number in one trace. It holds no event data, props, snapshots, answers, Live
 updates, input text, accessible names, URL queries or fragments, page titles
 or document attribute values, and no encoded input of a call (which the id of a
 call holds with data). Key component nodes by ids, not by text that users type:
-keys stay in the instance paths. A test in [test/conform] types an issue title
-and a comment in mini Linear and checks that the names-only trace holds
-neither. Names are enough to compare a trace with the golden specs; to run the
-code and the properties again on it, the app opts in to data, for example in
-development or staging (see {!page-checker.conform}).
+keys stay in the instance paths. A test in [test/conform] types two todos in
+the example app and checks that the names-only trace holds neither. Names are
+enough to compare a trace with the golden specs; to run the code and the
+properties again on it, the app opts in to data, for example in development or
+staging (see {!page-checker.conform}).
 
 [mount ~answers] answers calls before the first paint, as a server render
 does. {!Silica_memory.mount_app} runs a router app with a history: see
@@ -260,9 +260,9 @@ The repository has two sets of browser tests:
 - [test/browser/]: Node tests over jsdom. They mount components with
   {!Silica_browser} and check the DOM, the hydration and the events. Run them
   with [dune build @test/browser/browser-test].
-- [test/e2e/]: Playwright tests in Chromium, against the example server, mini
-  Linear and the Silica site. They test what jsdom cannot: layout, focus, scroll,
-  the history and the first paint with and without JavaScript. Run them with
+- [test/e2e/]: Playwright tests in Chromium, against the example server and the
+  Silica site. They test what jsdom cannot: layout, focus, scroll, the history
+  and the first paint with and without JavaScript. Run them with
   [npm --prefix test/e2e test].
 
 A browser test waits for the attribute [data-silica-ready] on the root before

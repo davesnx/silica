@@ -26,7 +26,6 @@
   ui.mld
   stories.mld
   testing.mld
-  linear.mld
   recipes.mld
   theming.mld
   verification.mld)
@@ -47,7 +46,6 @@
   hydration.mld
   checker.mld
   stories.mld
-  linear.mld
   recipes.mld
   theming.mld
   deploy.mld
@@ -55,6 +53,11 @@
   verification.mld
   %{project_root}/test/agents/loop.t
   %{project_root}/site/client/dune
+  %{project_root}/site/client/themes.ml
+  %{project_root}/site/client/input.css
+  %{project_root}/site/client/client_main.ml
+  %{project_root}/site/app/shared/site_theme.ml
+  %{project_root}/site/server/site_server.ml
   %{project_root}/site/app/native/site_lazy.ml
   %{project_root}/site/app/melange/site_lazy.ml
   %{project_root}/site/app/shared/site_app.mlx
@@ -75,15 +78,7 @@
   %{project_root}/test/new/run.t
   %{project_root}/bin/template/check/main.ml
   %{project_root}/bin/template/check/checks.ml
-  %{project_root}/test/quint/check.ts
-  %{project_root}/linear/app/shared/linear_model.ml
-  %{project_root}/linear/app/shared/linear_theme.ml
-  %{project_root}/linear/app/shared/linear_app.mlx
-  %{project_root}/linear/server/linear_server.ml
-  %{project_root}/linear/client/client_main.ml
-  %{project_root}/linear/client/themes.ml
-  %{project_root}/linear/client/input.css
-  %{project_root}/linear/client/dune)
+  %{project_root}/test/quint/check.ts)
  (action
   (run
    gen/excerpt_check.exe
@@ -93,7 +88,6 @@
    hydration.mld
    checker.mld
    stories.mld
-   linear.mld
    recipes.mld
    theming.mld
    deploy.mld

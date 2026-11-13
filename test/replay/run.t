@@ -5,7 +5,7 @@ step kind                      script                       tested below by
 press                          Memory.press                 save, upload
 double press                   Memory.double_press          gestures
 input (typed text of ~texts)   Memory.input                 typing
-submit                         Memory.submit                linear_check run.t
+submit                         Memory.submit                gestures
 key down (each key of ~keys)   Memory.focus, Memory.key     search
 key up                         Memory.focus, Memory.key_up  gestures
 focus                          Memory.focus                 gestures
@@ -404,9 +404,9 @@ the bug (a result offers no retry) and green on the fix:
 
 Each gesture of an element becomes its input in Silica_memory: a double press,
 focus, blur (after focus), a key up (after focus), the pointer entering and
-leaving. Red on the bug, green on the fix:
+leaving, a submit. Red on the bug, green on the fix:
 
-  $ grep -h -E 'Memory.(double_press|focus|blur|key_up|hover|leave)' gestures_*_script.ml | sort -u
+  $ grep -h -E 'Memory.(double_press|focus|blur|key_up|hover|leave|submit)' gestures_*_script.ml | sort -u
         Memory.blur page
         Memory.double_press (Memory.by_role page Accessibility.Button ~name:"Twice")
         Memory.focus (Memory.by_role page Accessibility.Textbox ~name:"Field")
@@ -414,6 +414,7 @@ leaving. Red on the bug, green on the fix:
         Memory.hover (Memory.by_role page Accessibility.Button ~name:"Area")
         Memory.key_up page (Key.make "Enter")
         Memory.leave (Memory.by_role page Accessibility.Button ~name:"Area")
+        Memory.submit (Memory.by_role page Accessibility.Form)
   $ ./gestures_double_press_script.exe > /dev/null 2>&1
   [1]
   $ ./gestures_double_press_fixed_script.exe
@@ -432,6 +433,9 @@ leaving. Red on the bug, green on the fix:
   $ ./gestures_pointer_leave_script.exe > /dev/null 2>&1
   [1]
   $ ./gestures_pointer_leave_fixed_script.exe
+  $ ./gestures_submit_script.exe > /dev/null 2>&1
+  [1]
+  $ ./gestures_submit_fixed_script.exe
 
 A URL that the user opens (~urls of Check.app), then the back and the forward
 buttons of the browser:

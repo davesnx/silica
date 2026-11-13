@@ -6,7 +6,6 @@ connections=${CONNECTIONS:-32}
 duration=${DURATION:-10s}
 build=${BUILD:-_build/default}
 site_port=${SITE_PORT:-18080}
-linear_port=${LINEAR_PORT:-18081}
 
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT
@@ -14,20 +13,14 @@ trap 'kill "${pids[@]}" 2>/dev/null || true' EXIT
 "$build/site/server/main.exe" --port "$site_port" \
   --static "$build/site/client/dist" --metafile "$build/site/client/meta.json" >/dev/null &
 pids+=($!)
-"$build/linear/server/main.exe" --port "$linear_port" --issues 1000 \
-  --static "$build/linear/client/dist" --metafile "$build/linear/client/meta.json" >/dev/null &
-pids+=($!)
 
-for port in "$site_port" "$linear_port"; do
-  until curl -sf "http://127.0.0.1:$port/_silica/health" >/dev/null; do sleep 0.1; done
-done
+until curl -sf "http://127.0.0.1:$site_port/_silica/health" >/dev/null; do sleep 0.1; done
 
 cookie() {
   curl -s -o /dev/null -D - "$1" | tr -d '\r' | sed -n 's/^set-cookie: \([^;]*\).*/\1/ip' | head -1
 }
 
 site_cookie=$(cookie "http://127.0.0.1:$site_port/")
-linear_cookie=$(cookie "http://127.0.0.1:$linear_port/")
 doc=${DOC:-glossary}
 asset=$(curl -s "http://127.0.0.1:$site_port/" | grep -o '/static/client_main-[A-Z0-9]*\.js' | head -1)
 
@@ -47,7 +40,6 @@ run() {
 }
 run landing "http://127.0.0.1:$site_port/" -H "cookie: $site_cookie"
 run "doc ($doc)" "http://127.0.0.1:$site_port/docs/$doc" -H "cookie: $site_cookie"
-run "linear 1000" "http://127.0.0.1:$linear_port/" -H "cookie: $linear_cookie"
 run "asset $asset" "http://127.0.0.1:$site_port$asset"
 run "asset $asset (br)" "http://127.0.0.1:$site_port$asset" -H "accept-encoding: br, gzip"
 run health "http://127.0.0.1:$site_port/_silica/health"

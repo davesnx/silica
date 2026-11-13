@@ -49,8 +49,7 @@ skips that check for a debug build.
 The server does not compress HTML pages: the switch has no zlib binding, and
 pages are [private, no-store], so they cannot be compressed ahead. Put a proxy
 that compresses [text/html] in front (Fly.io and Cloudflare do; for Caddy,
-[encode zstd gzip]; for nginx, [gzip on]). It matters for large pages: the
-mini Linear list with 1000 issues is 784 kB, 45 kB with gzip.
+[encode zstd gzip]; for nginx, [gzip on]). It matters for large pages.
 
 The server is one executable, [site/server/main.exe]. It needs the client
 build next to it: the directory [dist] with the hashed files, and the esbuild
@@ -286,11 +285,10 @@ instance finds no session (status 403, or [close_session]), and a
 the other.
 
 One instance goes far: on the test machine of {!page-performance}, the site
-server answers about 1250 docs pages a second, and 1000 Live sessions on one
-mini Linear topic cost about 120 MB of memory with 30 issues. Raise
-[SILICA_MAX_CONNECTIONS] above the number of open pages with Live data, and
-give the machine the memory: a topic sends its full state to each subscriber,
-so memory and time grow with the state size times the subscribers.
+server answers about 1250 docs pages a second. Raise [SILICA_MAX_CONNECTIONS]
+above the number of open pages with Live data, and give the machine the
+memory: a topic sends its full state to each subscriber, so memory and time
+grow with the state size times the subscribers.
 
 So run one instance. To run more, an app must supply:
 

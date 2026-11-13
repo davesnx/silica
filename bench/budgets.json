@@ -2,7 +2,6 @@
   "max": {
     "server render landing median ms": 0.6,
     "server render doc median ms": 2.3,
-    "server render linear median ms": 24,
     "trace recorder step overhead %": 10,
     "trace recorder press overhead %": 10,
     "keyed silica create1k 1x ms": 141,
@@ -31,16 +30,13 @@
     "load site / 1x ready ms": 102,
     "load site /docs/router 1x ready ms": 119,
     "load site /components/select (lazy route) 1x ready ms": 78,
-    "load linear / (1000) 1x ready ms": 346,
     "load site / 4x ready ms": 424,
     "load site /docs/router 4x ready ms": 690,
-    "load site /components/select (lazy route) 4x ready ms": 506,
-    "load linear / (1000) 4x ready ms": 1972
+    "load site /components/select (lazy route) 4x ready ms": 506
   },
   "min": {
     "server landing requests/s": 1800,
     "server doc (glossary) requests/s": 400,
-    "server linear 1000 requests/s": 35,
     "server health requests/s": 40000
   }
 }

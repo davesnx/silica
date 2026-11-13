@@ -4,7 +4,6 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 
 const sessions = Number(process.argv[2] ?? "1000");
-const issues = Number(process.argv[3] ?? "30");
 const build = resolve(process.env["BUILD"] ?? "_build/default");
 
 const freePort = (): Promise<number> =>
@@ -20,8 +19,8 @@ const freePort = (): Promise<number> =>
 const port = await freePort();
 const base = `http://127.0.0.1:${port}`;
 const server = spawn(
-  resolve(build, "linear/server/main.exe"),
-  ["--port", String(port), "--max-connections", "4096", "--issues", String(issues), "--static", resolve(build, "linear/client/dist"), "--metafile", resolve(build, "linear/client/meta.json")],
+  resolve(build, "example/server/main.exe"),
+  ["--port", String(port), "--static", resolve(build, "example/client/dist"), "--metafile", resolve(build, "example/client/meta.json")],
   { stdio: "ignore" },
 );
 const status = (field: string): string =>
@@ -59,7 +58,7 @@ try {
     };
     await new Promise<void>((ok, fail) => {
       client.socket.onopen = () => {
-        client.socket.send(JSON.stringify({ t: "hello", v: 2, csrf, sub: { topic: "issues", key: "all" } }));
+        client.socket.send(JSON.stringify({ t: "hello", v: 2, csrf, sub: { topic: "votes", key: "main" } }));
       };
       client.socket.onmessage = (m) => {
         if (!String(m.data).startsWith('{"t":"state"')) return;
@@ -84,12 +83,12 @@ try {
     const csrf = /name="silica-csrf" content="([^"]+)"/.exec(await page.text())?.[1] ?? "";
     const cpuBefore = cpuSeconds();
     const sent = Date.now();
-    const created = await fetch(base + "/api/issues/create", {
+    const voted = await fetch(base + "/api/vote", {
       method: "POST",
       headers: { cookie, origin: base, "content-type": "application/json", "x-silica-csrf": csrf },
-      body: JSON.stringify({ title: `Fan-out ${round}`, description: "", status: ["Todo"], priority: ["Medium"] }),
+      body: "null",
     });
-    if (created.status !== 200) throw new Error(`create: ${created.status} ${await created.text()}`);
+    if (voted.status !== 200) throw new Error(`vote: ${voted.status} ${await voted.text()}`);
     while (clients.some((c) => c.states < expected)) await new Promise((r) => setTimeout(r, 2));
     results.push(lastArrival - sent);
     console.error(`round ${round}: ${lastArrival - sent} ms, server CPU ${(cpuSeconds() - cpuBefore).toFixed(2)} s`);
@@ -98,7 +97,6 @@ try {
   console.log(
     JSON.stringify({
       sessions,
-      issues,
       connectSeconds,
       rssBefore: Number(rssBefore) / 1024,
       rssConnected: Number(rssConnected) / 1024,

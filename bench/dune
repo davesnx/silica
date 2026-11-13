@@ -9,9 +9,6 @@
   ../site/server/main.exe
   ../site/client/meta.json
   ../site/client/dist
-  ../linear/server/main.exe
-  ../linear/client/meta.json
-  ../linear/client/dist
   keyed/main.js
   keyed/index.html
   filter/main.js

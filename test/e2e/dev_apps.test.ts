@@ -2,7 +2,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
-import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -107,37 +107,6 @@ after(async () => {
     ),
   );
   for (const project of projects) rmSync(project, { recursive: true, force: true });
-});
-
-describe("hot reload on mini Linear", () => {
-  test("an open title editor keeps its draft after a view edit, and the new text shows", async () => {
-    const project = mkdtempSync(join(tmpdir(), "silica-dev-linear-"));
-    projects.push(project);
-    for (const file of ["dune-project", "dune", "silica.opam", "silica-ui.opam"])
-      copyFileSync(join(root, file), join(project, file));
-    for (const directory of ["lib", "browser", "server", "ppx", "ui"]) symlinkSync(join(root, directory), join(project, directory));
-    cpSync(join(root, "linear"), join(project, "linear"), { recursive: true, verbatimSymlinks: true });
-    const port = await freePort();
-    const dev = new Dev(project, ["--server", "linear/server/main.exe", "--client", "linear/client_dev", "--port", String(port)]);
-    devs.push(dev);
-    await dev.waitFor((event) => event.t === "server" && event.status === "started", 0, 900000);
-    const page = await open(browser, `http://127.0.0.1:${port}/issue/1`);
-    await page.getByRole("button", { name: "Edit title" }).click();
-    const title = page.getByRole("textbox", { name: "Title" });
-    await title.fill("A draft that survives the reload");
-    const from = dev.events.length;
-    edit(join(project, "linear/app/shared/linear_detail.mlx"), '"Back to issues"', '"Back to all issues"');
-    const swap = await dev.waitFor((event) => event.t === "hot-reload", from, 300000);
-    assert.equal(swap["status"], "kept", JSON.stringify(swap));
-    assert.deepEqual(swap["restarted"], [], JSON.stringify(swap));
-    assert.ok(
-      (swap["kept"] as string[]).some((path) => path.endsWith(":issue-detail")),
-      JSON.stringify(swap["kept"]),
-    );
-    await page.getByText("Back to all issues").waitFor();
-    assert.equal(await title.inputValue(), "A draft that survives the reload", "the editor is open with its draft");
-    await page.close();
-  });
 });
 
 describe("hot reload on a silica new project", () => {

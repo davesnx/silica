@@ -7,8 +7,8 @@
  (libraries
   silica
   silica.json-melange
-  silica_linear_app_melange
-  silica_example_app_melange))
+  silica_example_app_melange
+  silica_site_app_melange))
 
 (rule
  (alias runtest)

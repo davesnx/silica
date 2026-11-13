@@ -1,9 +1,0 @@
-@import "tailwindcss" source(none);
-@import "../../ui/silica-ui.css";
-@import "./themes.css";
-@source "../app/shared";
-
-@theme inline {
-  --color-warning: var(--warning);
-  --color-warning-surface: var(--warning-surface);
-}

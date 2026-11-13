@@ -5,7 +5,13 @@ type state = Idle | Done of string
 
 let kinds =
   [
-    "double_press"; "focus"; "blur"; "key_up"; "pointer_enter"; "pointer_leave";
+    "double_press";
+    "focus";
+    "blur";
+    "key_up";
+    "pointer_enter";
+    "pointer_leave";
+    "submit";
   ]
 
 let machine =
@@ -42,6 +48,7 @@ let view ~answered state =
           Attr.on_pointer_leave (fun _ -> fired "pointer_leave");
         ]
         [ Node.text "Area" ];
+      Node.element "form" [ Attr.on_submit (Fired "submit") ] [];
       Node.element "p" []
         [
           Node.text

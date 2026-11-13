@@ -7,11 +7,11 @@ platform, see {!page-platform}.
 {1:tailwind Tailwind}
 
 Silica has no CSS layer of its own. An app uses Tailwind through a dune rule.
-Mini Linear has the rule in [linear/client/dune]. The Tailwind command line
+The silica site has the rule in [site/client/dune]. The Tailwind command line
 ([@tailwindcss/cli], from [node_modules]) reads [input.css], finds the class
 names in the app source, and writes [app.css]:
 
-From [linear/client/dune]:
+From [site/client/dune]:
 {@dune skip[
 (rule
  (targets app.css)
@@ -23,6 +23,7 @@ From [linear/client/dune]:
   (glob_files ../../ui/*.ml)
   (glob_files ../app/shared/*.ml)
   (glob_files ../app/shared/*.mlx)
+  (glob_files ../stories/*.mlx)
   (source_tree node_modules))
  (action
   (setenv
@@ -37,19 +38,57 @@ From [linear/client/dune]:
     app.css))))
 ]}
 
-The input file turns off the automatic scan and names the source folder. In the
-dune build folder, the automatic scan also reads earlier outputs, so the CSS
-would depend on what was built before.
+The input file turns off the automatic scan and names the source folders. In
+the dune build folder, the automatic scan also reads earlier outputs, so the
+CSS would depend on what was built before.
 
-{@css file=../linear/client/input.css[
+{@css file=../site/client/input.css[
 @import "tailwindcss" source(none);
 @import "../../ui/silica-ui.css";
 @import "./themes.css";
 @source "../app/shared";
+@source "../stories";
 
 @theme inline {
-  --color-warning: var(--warning);
-  --color-warning-surface: var(--warning-surface);
+  --color-link: var(--link);
+  --color-code-surface: var(--code-surface);
+  --color-code-keyword: var(--code-keyword);
+  --color-code-string: var(--code-string);
+  --color-code-name: var(--code-name);
+  --color-code-comment: var(--code-comment);
+}
+
+@layer base {
+  html {
+    scrollbar-color: var(--ui-border) transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--ui-accent);
+    color: var(--ui-accent-text);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea {
+    caret-color: var(--ui-accent);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
 }
 ]}
 
@@ -70,7 +109,7 @@ that depends on a condition, use {!Silica.Class.join}. It drops empty strings:
 
 Colours, radius, shadow, font and the spacing unit come from themes: the
 [themes.css] file that the [themes] rule writes, and the [@theme inline] block
-for the app tokens of mini Linear. See {!page-theming}.
+for the app tokens of the site. See {!page-theming}.
 
 The components of [silica-ui] use theme tokens. To get their CSS, import
 [silica-ui.css] in the Tailwind input, as the second line of the input above
@@ -118,7 +157,7 @@ text and hydration matches:
 Text that comes from JSON (Remote answers, Live states) and from inputs is
 already correct on both sides. The site test [text that is not ASCII is a
 {js|...|js} literal] fails on a plain literal with such text in the shared code
-of the site, silica-ui, mini Linear and the examples.
+of the site, silica-ui and the examples.
 
 {1:json JSON: two stanzas}
 

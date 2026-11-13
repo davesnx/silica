@@ -7,8 +7,6 @@
   budgets.json
   %{project_root}/site/client/meta.json
   %{project_root}/site/client/dist
-  %{project_root}/linear/client/meta.json
-  %{project_root}/linear/client/dist
   %{project_root}/bench/keyed/main.js)
  (action
   (run
@@ -19,9 +17,6 @@
    site
    %{project_root}/site/client/meta.json
    %{project_root}/site/client/dist
-   linear
-   %{project_root}/linear/client/meta.json
-   %{project_root}/linear/client/dist
    keyed
    %{project_root}/bench/keyed/main.js)))
 
@@ -37,26 +32,32 @@
 
 (rule
  (alias runtest)
- (deps
-  no_codecs.ts
-  codec_markers.json
-  %{project_root}/linear/client/dist
-  %{project_root}/site/client/dist)
+ (deps no_codecs.ts codec_markers.json %{project_root}/site/client/dist)
  (action
   (run
    node
    no_codecs.ts
    codec_markers.json
-   linear
-   %{project_root}/linear/client/dist
    site
    %{project_root}/site/client/dist)))
 
 (rule
  (alias runtest)
+ (enabled_if
+  (= %{profile} release))
+ (deps no_codecs.ts codec_markers.json %{project_root}/example/client/dist)
+ (action
+  (run
+   node
+   no_codecs.ts
+   codec_markers.json
+   example
+   %{project_root}/example/client/dist)))
+
+(rule
+ (alias runtest)
  (deps
   no_dev_client.ts
-  %{project_root}/linear/client/dist
   %{project_root}/site/client/dist
   %{project_root}/example/client/dist)
  (action
@@ -64,8 +65,6 @@
    node
    no_dev_client.ts
    client
-   linear
-   %{project_root}/linear/client/dist
    site
    %{project_root}/site/client/dist
    example
@@ -86,7 +85,6 @@
   (= %{profile} release))
  (deps
   no_dev_client.ts
-  %{project_root}/linear/client/dist
   %{project_root}/site/client/dist
   %{project_root}/example/client/dist)
  (action
@@ -94,8 +92,6 @@
    node
    no_dev_client.ts
    handoff
-   linear
-   %{project_root}/linear/client/dist
    site
    %{project_root}/site/client/dist
    example
@@ -119,17 +115,16 @@
 
 (rule
  (alias runtest)
- (deps
-  dev_bundle.ts
-  codec_markers.json
-  %{project_root}/linear/client_dev/dist)
+ (enabled_if
+  (<> %{profile} release))
+ (deps dev_bundle.ts codec_markers.json %{project_root}/example/client/dist)
  (action
   (run
    node
    dev_bundle.ts
    codec_markers.json
-   linear
-   %{project_root}/linear/client_dev/dist)))
+   example
+   %{project_root}/example/client/dist)))
 
 (rule
  (alias runtest)
@@ -137,7 +132,6 @@
   (= %{profile} release))
  (deps
   no_dev_client.ts
-  %{project_root}/linear/client/dist
   %{project_root}/site/client/dist
   %{project_root}/example/client/dist)
  (action
@@ -145,8 +139,6 @@
    node
    no_dev_client.ts
    inspector
-   linear
-   %{project_root}/linear/client/dist
    site
    %{project_root}/site/client/dist
    example

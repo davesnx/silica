@@ -433,7 +433,6 @@ const runBundles = (): BundleResult[] => {
     ...apps.map((a): [string, string] => [`keyed ${a}`, appDirs[a]]),
     ...(apps.includes("silica") ? [["filter silica", filterDir] as [string, string]] : []),
     ["site client", build("site/client/dist")],
-    ["linear client", build("linear/client/dist")],
   ];
   return dirs.map(([name, dir]) => bundle(name, dir));
 };
@@ -497,81 +496,73 @@ const largestDocsPage = async (base: string): Promise<string> => {
   return best.path;
 };
 
-type LiveResult = { issues: number; cpu: number; latency: Stats };
+type LiveResult = { cpu: number; latency: Stats };
 
 const runLive = async (browser: Browser): Promise<LiveResult[]> => {
   const results: LiveResult[] = [];
-  for (const issues of [30, 1000]) {
-    const linear = await startServer("linear/server/main.exe", ["--issues", String(issues)], "linear/client");
-    try {
-      for (const cpu of rates) {
-        const open = async (): Promise<Page> => {
-          const context = await browser.newContext();
-          const page = await context.newPage();
-          await page.goto(linear.base + "/");
-          await page.waitForSelector("#silica-root[data-silica-ready]", { timeout: 120_000 });
-          await setThrottle(page, cpu);
-          return page;
-        };
-        const watcher = await open();
-        const writer = await open();
-        await new Promise((r) => setTimeout(r, 1000));
-        const samples: number[] = [];
-        for (let r = 0; r < runs + warmup; r++) {
-          const title = `Live probe ${issues} ${cpu} ${r} ${Date.now()}`;
-          await watcher.evaluate((t) => {
-            const w = window as unknown as { __seen?: number };
-            w.__seen = undefined;
-            new MutationObserver((_, observer) => {
-              if (document.querySelector("#issue-list")?.textContent?.includes(t)) {
-                w.__seen = Date.now();
-                observer.disconnect();
-              }
-            }).observe(document.body, { childList: true, subtree: true, characterData: true });
-          }, title);
-          await writer.locator("#new-issue").click();
-          await writer.locator("[role=dialog]").waitFor();
-          await writer.getByLabel("Title").fill(title);
-          const sent = await writer.evaluate(() => {
-            const button = Array.from(document.querySelectorAll("[role=dialog] button")).find((b) => b.textContent?.includes("Create issue"));
-            if (!(button instanceof HTMLElement)) throw new Error("no Create issue button");
-            const t = Date.now();
-            button.click();
-            return t;
-          });
-          await watcher.waitForFunction(() => (window as unknown as { __seen?: number }).__seen !== undefined, null, { timeout: 30_000 });
-          const seen = await watcher.evaluate(() => (window as unknown as { __seen: number }).__seen);
-          await writer.locator("[role=dialog]").waitFor({ state: "detached" });
-          if (r >= warmup) samples.push(seen - sent);
-        }
-        results.push({ issues, cpu, latency: stats(samples) });
-        await watcher.context().close();
-        await writer.context().close();
+  const example = await startServer("example/server/main.exe", [], "example/client");
+  try {
+    for (const cpu of rates) {
+      const open = async (): Promise<Page> => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await page.goto(example.base + "/");
+        await page.waitForSelector("#silica-root[data-silica-ready]", { timeout: 120_000 });
+        await setThrottle(page, cpu);
+        return page;
+      };
+      const watcher = await open();
+      const writer = await open();
+      await new Promise((r) => setTimeout(r, 1000));
+      const samples: number[] = [];
+      for (let r = 0; r < runs + warmup; r++) {
+        await watcher.evaluate(() => {
+          const w = window as unknown as { __seen?: number };
+          w.__seen = undefined;
+          const count = document.querySelector("#votes-count");
+          const before = count?.textContent;
+          new MutationObserver((_, observer) => {
+            if (document.querySelector("#votes-count")?.textContent !== before) {
+              w.__seen = Date.now();
+              observer.disconnect();
+            }
+          }).observe(document.body, { childList: true, subtree: true, characterData: true });
+        });
+        const sent = await writer.evaluate(() => {
+          const button = document.querySelector("#vote");
+          if (!(button instanceof HTMLElement)) throw new Error("no Vote button");
+          const t = Date.now();
+          button.click();
+          return t;
+        });
+        await watcher.waitForFunction(() => (window as unknown as { __seen?: number }).__seen !== undefined, null, { timeout: 30_000 });
+        const seen = await watcher.evaluate(() => (window as unknown as { __seen: number }).__seen);
+        if (r >= warmup) samples.push(seen - sent);
       }
-    } finally {
-      linear.child.kill("SIGTERM");
+      results.push({ cpu, latency: stats(samples) });
+      await watcher.context().close();
+      await writer.context().close();
     }
+  } finally {
+    example.child.kill("SIGTERM");
   }
   return results;
 };
 
 const runLoads = async (browser: Browser): Promise<LoadResult[]> => {
   const site = await startServer("site/server/main.exe", [], "site/client");
-  const linear = await startServer("linear/server/main.exe", ["--issues", "1000"], "linear/client");
   try {
     const docs = await largestDocsPage(site.base);
     const pages: [string, string, string][] = [
       ["site /", site.base + "/", site.base],
       [`site ${docs}`, site.base + docs, site.base],
       ["site /components/select (lazy route)", site.base + "/components/select", site.base],
-      ["linear / (1000)", linear.base + "/", linear.base],
     ];
     const results: LoadResult[] = [];
     for (const cpu of rates) for (const [name, url, origin] of pages) results.push(await measureLoad(browser, name, url, origin, cpu));
     return results;
   } finally {
     site.child.kill("SIGTERM");
-    linear.child.kill("SIGTERM");
   }
 };
 
@@ -650,12 +641,12 @@ const markdown = (r: Results): string => {
   }
   if (r.live && r.live.length > 0) {
     out.push(
-      "## Live: create in one page to the DOM change in another (mini Linear)",
+      "## Live: a vote in one page to the DOM change in another (example app)",
       "",
-      "| issues | CPU | create press to DOM change |",
-      "|---|---|---|",
+      "| CPU | vote press to DOM change |",
+      "|---|---|",
     );
-    for (const l of r.live) out.push(`| ${l.issues} | ${l.cpu}x | ${ms(l.latency)} |`);
+    for (const l of r.live) out.push(`| ${l.cpu}x | ${ms(l.latency)} |`);
     out.push("");
   }
   return out.join("\n");
@@ -691,8 +682,8 @@ const main = async (): Promise<void> => {
         "Page loads: fresh context (cold HTTP cache), throttle set on a same-origin page first, " +
         "first-contentful-paint entry and the time a MutationObserver sees data-silica-ready on the root; " +
         "the CPU check loop (5M iterations, first load) shows the throttle is active. " +
-        "Live: two pages of mini Linear in separate contexts; Date.now() in the writer page just before the Create issue " +
-        "button is clicked, and Date.now() in the watcher page when a MutationObserver sees the new title in the list " +
+        "Live: two pages of the example app in separate contexts; Date.now() in the writer page just before the Vote " +
+        "button is clicked, and Date.now() in the watcher page when a MutationObserver sees the vote count change " +
         "(one machine, one clock): the POST, the handler, Server.publish, the WebSocket message, the step and the paint.",
     },
   };

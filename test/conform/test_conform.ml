@@ -8,9 +8,9 @@ let contains text needle =
   in
   look 0
 
-let typed = [ Record.title; Record.body; "zebra"; "elephant" ]
+let typed = [ Record.body; "elephant"; Record.note; "zebra" ]
 
-let visit = lazy (Record.visit ~create:true ())
+let visit = lazy (Record.visit ~edit:true ())
 
 let absent label text =
   List.iter
@@ -249,78 +249,87 @@ let spec_conformance () =
     (List.length (Spec.conforms [ spec; joint ] trace))
 
 let property_and_allowance () =
-  Linear_codecs.register ();
-  let blank =
-    Check.always ~name:"no blank comment is sent"
-      (Check.state (function
-        | Linear_composer.Sending body ->
-            String.trim body <> ""
-        | Empty | Drafting _ | Failed _ ->
-            true
-        ))
+  Example_codecs.register ();
+  let unique =
+    Check.always ~name:"todo ids are unique"
+      (Check.state (fun (state : Example_todo.state) ->
+           let ids =
+             List.map (fun (todo : Example_todo.todo) -> todo.id) state.todos
+           in
+           List.length (List.sort_uniq compare ids) = List.length ids
+       )
+      )
   in
   let check allow =
-    Check.component ~props:[ 2 ] ~properties:[ blank ] ~allow
-      Linear_composer.component
+    Check.component ~properties:[ unique ] ~allow Example_todo.component
   in
-  let resumed snapshot : Transition.t =
+  let state_codec =
+    Silica_jsonkit.codec ~to_json:Example_todo.state_to_json
+      ~of_json:Example_todo.state_of_json
+  in
+  let resumed ids : Transition.t =
     {
       seq = 1;
       time_ms = None;
-      instance = "comment-composer";
+      instance = "todo";
       number = 1;
       entry = 0;
-      machine = "comment-composer";
+      machine = "todo";
       from = "";
-      target = "sending";
+      target = "todo";
       change = Resumed;
       event = "";
       data = None;
-      props = Some (Codec.int.encode 2);
+      props = None;
       snapshot =
         Some
-          (Codec.to_string Codec.string snapshot
-          |> Printf.sprintf "[\"Sending\",%s]"
-          |> Silica_json.Json.of_string |> Result.get_ok
+          (state_codec.encode
+             {
+               todos =
+                 List.map
+                   (fun id ->
+                     { Example_todo.id; text = "milk"; completed = false }
+                   )
+                   ids;
+               draft = "";
+               next_id = 3;
+             }
           );
       actions = [];
       cause = Start;
     }
   in
-  let trace snapshot : Trace.t =
+  let trace ids : Trace.t =
     {
       header =
         {
-          root = "comment-composer";
+          root = "todo";
           url = None;
           build = "b";
           origin = Runtime { platform = "memory" };
           dropped = 0;
           loop_from = None;
         };
-      transitions = [ resumed snapshot ];
+      transitions = [ resumed ids ];
     }
   in
-  let failing allow snapshot =
+  let failing allow ids =
     List.map
       (fun (deviation : Check.deviation) ->
         Check.difference_to_string deviation.difference
       )
-      (Check.conforms (check allow) (trace snapshot)).deviations
+      (Check.conforms (check allow) (trace ids)).deviations
   in
   Alcotest.(check (list string))
-    "a resumed blank comment breaks the property"
-    [
-      "The property \"no blank comment is sent\" does not hold in state \
-       sending.";
-    ]
-    (failing [] "   ");
-  Alcotest.(check (list string)) "a comment with text holds" [] (failing [] "ok");
+    "a resumed list with a repeated id breaks the property"
+    [ "The property \"todo ids are unique\" does not hold in state todo." ]
+    (failing [] [ 1; 1 ]);
+  Alcotest.(check (list string)) "unique ids hold" [] (failing [] [ 1; 2 ]);
   Alcotest.(check (list string))
     "an allowance turns it off" []
     (failing
-       [ Check.allow ~rule:"no blank comment is sent" ~reason:"a test" () ]
-       "   "
+       [ Check.allow ~rule:"todo ids are unique" ~reason:"a test" () ]
+       [ 1; 1 ]
     )
 
 let () =
@@ -331,7 +340,7 @@ let () =
           Alcotest.test_case "the trace with data holds the typed text" `Quick
             full_trace_holds_the_text;
           Alcotest.test_case
-            "a names-only trace of mini Linear holds no typed text" `Quick
+            "a names-only trace of the example app holds no typed text" `Quick
             names_only_holds_no_typed_text;
           Alcotest.test_case "a recorder without data keeps names only" `Quick
             recorder_keeps_names_only;

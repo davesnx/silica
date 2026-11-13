@@ -1,4 +1,4 @@
 {
-  "linear": ["\"Keep_editing\"", "\"Cursor_previous\"", "\"Toast_closed\""],
+  "example": ["\"Go_back\"", "\"Watching\"", "\"Toggle\""],
   "site": ["\"Open_search\"", "\"Moved\""]
 }

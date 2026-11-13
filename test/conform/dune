@@ -2,20 +2,27 @@
  (name conform_record)
  (wrapped false)
  (modules record)
- (libraries silica silica.memory silica_linear_app_native))
+ (libraries silica silica.memory silica_example_app_native))
 
 (executable
  (name fixtures)
  (modules fixtures)
- (libraries silica silica.json conform_record))
+ (libraries silica silica.jsonkit conform_record silica_example_app_native))
 
 (test
  (name test_conform)
  (modules test_conform)
- (libraries silica silica.json silica.check conform_record alcotest))
+ (libraries
+  silica
+  silica.json
+  silica.check
+  silica.jsonkit
+  conform_record
+  silica_example_app_native
+  alcotest))
 
 (cram
  (deps
   fixtures.exe
-  ../linear_check/main.exe
-  (glob_files ../linear_check/spec/*.spec.txt)))
+  ../example_check/main.exe
+  (glob_files ../example_check/spec/*.spec.txt)))

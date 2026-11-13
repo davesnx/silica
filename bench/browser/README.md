@@ -7,9 +7,9 @@ The driver `run.ts` measures, in Chromium through Playwright:
 - the JS heap after create 1,000 rows;
 - a keystroke in `bench/filter` (Silica, 1,000 rows);
 - bundle bytes (raw, gzip, brotli);
-- page loads of the site server (`/` and the largest docs page) and of the mini
-  Linear server with 1,000 issues: first contentful paint and the time until
-  the root gets `data-silica-ready`.
+- page loads of the site server (`/`, the largest docs page and a lazy route):
+  first contentful paint and the time until the root gets `data-silica-ready`;
+- Live: a vote in one page of the example app to the new count in another.
 
 It writes one JSON file and a Markdown table next to it. The method is in the
 `meta.method` field of the JSON.
@@ -43,7 +43,7 @@ TMPDIR=/tmp node --experimental-strip-types bench/browser/run.ts \
 ```
 
 `--help` lists the options: `--apps`, `--ops`, `--suites`
-(`bundle,keyed,memory,filter,load`), `--cpu`, `--runs`, `--warmup`,
+(`bundle,keyed,memory,filter,load,live`), `--cpu`, `--runs`, `--warmup`,
 `--load-runs`, `--docs-page`, `--label`, `--out`.
 
 Type check: `(cd bench/browser && npm run typecheck)`.

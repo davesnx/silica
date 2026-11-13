@@ -150,9 +150,9 @@ let register () =
 ]}
 
 Derive the JSON on top-level types: the bundler drops an unused top-level
-function, but not the functions inside a submodule that the app uses. Mini
-Linear has [Linear_codecs.register], and its budget test checks that no codec
-reaches the client bundle.
+function, but not the functions inside a submodule that the app uses. The
+example app has [Example_codecs.register]: its server, its check suite, its
+tests and its development client call it, and its production client does not.
 
 [Silica_jsonkit.answer], [Silica_jsonkit.update], [Silica_jsonkit.status] and
 [Silica_jsonkit.error] are the types of {!Silica.Remote}, {!Silica.Topic} and
@@ -166,8 +166,8 @@ states hold closures or other data that is not plain data.
 registered codecs; for a machine that is not registered they give an [Error]
 that names the machine and says how to register it. A test of the app can
 check with {!Silica.Machine.registered_codecs} that the codec module lists
-every machine whose events derive JSON, as the tests of mini Linear, the
-example app and the site do.
+every machine whose events derive JSON, as the tests of the example app and
+the site do.
 
 Under [silica dev], the state codec also keeps the snapshot of a machine
 across a hot reload of the page and a restart of the server: the old code
@@ -175,7 +175,7 @@ encodes the snapshot and the new code decodes it with its own codec. A
 snapshot that does not decode, because the state type changed, starts again,
 and [silica dev] says why; so does the snapshot of a machine with no state
 codec, unless it is the snapshot that the machine starts in. Register the
-codecs in the development client for it, as [linear/client_dev] and the client
+codecs in the development client for it, as [example/client] and the client
 of [silica new] do.
 
 {1:make Make a machine}

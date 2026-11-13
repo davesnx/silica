@@ -285,5 +285,4 @@ does.
 - {!page-machines}, {!page-components} and {!page-data} explain the parts of
   this tutorial in full.
 - {!page-router} adds pages and links.
-- {!page-linear} shows how a larger app uses routes, Live data and dialogs.
 - {!page-glossary} gives the meaning of each term.

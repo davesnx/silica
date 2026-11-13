@@ -2,7 +2,7 @@
   "name": "silica",
   "image": "ghcr.io/davesnx/silica-devcontainer",
   "forwardPorts": [8080],
-  "postCreateCommand": "set -e; for d in example/client linear/client site/client test/browser test/quint; do npm --prefix $d install; done; dune build",
+  "postCreateCommand": "set -e; for d in example/client site/client test/browser test/quint; do npm --prefix $d install; done; dune build",
   "customizations": {
     "vscode": {
       "extensions": ["ocamllabs.ocaml-platform"],

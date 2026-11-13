@@ -1,9 +1,0 @@
-(copy_files ../shared/*.{ml,mlx})
-
-(library
- (name silica_linear_app_native)
- (wrapped false)
- (modes native)
- (libraries silica silica-ui silica.jsonkit jsonkit)
- (preprocess
-  (pps jsonkit.ppx silica.ppx)))

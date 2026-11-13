@@ -547,21 +547,3 @@ component: its stories with their controls and source, and the first story in
 each shipped theme side by side. It replaced the gallery app in v0.12; its
 "Events" stories are the fixtures of the browser tests.
 _Avoid_: storybook, gallery
-
-## Apps
-
-**Mini Linear**:
-The reference app of the repository (`linear/`): a small issue tracker with a
-list, a detail page, a create modal and live updates, over mocked data. It is
-the test of Silica as a whole, not a product.
-_Avoid_: demo, example (the example app is another, smaller app)
-
-**Issue view**:
-The filters, grouping and ordering of the mini Linear list. It is the query part
-of the `Issues` route, so the URL holds it.
-_Avoid_: saved view, display settings
-
-**Conflict**:
-A change sent with an older issue `version` than the server has. The last write
-wins; the loser keeps the draft and sees the new value.
-_Avoid_: merge, rebase

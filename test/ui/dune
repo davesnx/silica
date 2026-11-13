@@ -55,7 +55,5 @@
   (glob_files %{project_root}/site/app/shared/*.ml)
   (glob_files %{project_root}/site/app/shared/*.mlx)
   (glob_files %{project_root}/site/stories/*.mlx)
-  %{project_root}/site/client/input.css
-  (glob_files %{project_root}/linear/app/shared/*.ml)
-  (glob_files %{project_root}/linear/app/shared/*.mlx))
+  %{project_root}/site/client/input.css)
  (libraries alcotest str))

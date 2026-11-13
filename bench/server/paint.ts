@@ -7,17 +7,16 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(resolve(root, "test/e2e/package.json"));
 const { chromium } = require("playwright-core") as typeof import("playwright-core");
 
-const [app = "linear", runsText = "10", exeArg] = process.argv.slice(2);
+const [app = "site", runsText = "10", exeArg] = process.argv.slice(2);
 const runs = Number(runsText);
 const build = resolve(root, "_build/default", app);
 const exe = exeArg ?? resolve(build, "server/main.exe");
 const port = 18090;
 const path = app === "site" ? "/docs/glossary" : "/";
-const extra = app === "linear" ? ["--issues", "1000"] : [];
 
 const server = spawn(
   exe,
-  ["--port", String(port), "--static", resolve(build, "client/dist"), "--metafile", resolve(build, "client/meta.json"), ...extra],
+  ["--port", String(port), "--static", resolve(build, "client/dist"), "--metafile", resolve(build, "client/meta.json")],
   { stdio: "ignore" },
 );
 for (;;) {
