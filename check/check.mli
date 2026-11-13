@@ -436,8 +436,9 @@ type cause = Check_model.cause =
       handler : string;
           (** ["press"], ["double_press"], ["submit"], ["focus"], ["blur"],
               ["pointer_enter"], ["pointer_leave"], ["key_down Enter"],
-              ["key_up Escape"], or ["input 0"] for the text ["0"] of [texts]
-              typed into the field. *)
+              ["key_up Escape"], ["key_down Shift+Enter"] (the key as
+              {!Silica.Key.to_string} prints it), or ["input 0"] for the text
+              ["0"] of [texts] typed into the field. *)
       element : string;
           (** The path of the element, such as ["main > form > button[2]"] (see
               {!Silica.Accessibility.path}). *)

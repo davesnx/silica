@@ -1628,7 +1628,13 @@ Two keys are equal when the key name and every modifier are equal.
 val to_string : t -> string
 ```
 
-`"Ctrl+Shift+k"` style text for traces and logs.
+`"Ctrl+Shift+k"` style text for traces and logs: the modifiers in the order Ctrl, Meta, Alt, Shift, then the key. `repeat` is not in the text.
+
+```ocaml
+val of_string : string -> t
+```
+
+The inverse of `to_string`: `of_string (to_string key)` is `key` when `repeat` is `false`, and `to_string (of_string text)` is `text`. `"Shift++"` is the key `"+"` with Shift. A key is never a repeat.
 
 ## Silica.Live
 
@@ -3372,7 +3378,7 @@ val is_password : tag:string -> kind:string option -> bool
 val is_typed_key : string -> bool
 ```
 
-`is_typed_key key`: the key `key`, a value of `KeyboardEvent.key` such as `"h"` or `"Enter"`, types a character. A named key, such as `"Enter"`, `"Escape"`, `"Tab"`, `"Backspace"` or `"ArrowUp"`, types none.
+`is_typed_key text`: the key in `text` types a character. `text` is a key as `Key.to_string` prints it, such as `"h"`, `"Shift+H"` or `"Shift+Enter"`; only the key part counts (see `Key.of_string`), not the modifiers. So `"Ctrl+h"` counts as typed. A named key, such as `"Enter"`, `"Escape"`, `"Tab"`, `"Backspace"` or `"ArrowUp"`, types none.
 
 ```ocaml
 type t

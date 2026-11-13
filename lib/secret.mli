@@ -22,9 +22,11 @@ val is_password : tag:string -> kind:string option -> bool
     in any case. *)
 
 val is_typed_key : string -> bool
-(** [is_typed_key key]: the key [key], a value of [KeyboardEvent.key] such as
-    ["h"] or ["Enter"], types a character. A named key, such as ["Enter"],
-    ["Escape"], ["Tab"], ["Backspace"] or ["ArrowUp"], types none. *)
+(** [is_typed_key text]: the key in [text] types a character. [text] is a key as
+    {!Key.to_string} prints it, such as ["h"], ["Shift+H"] or ["Shift+Enter"];
+    only the key part counts (see {!Key.of_string}), not the modifiers. So
+    ["Ctrl+h"] counts as typed. A named key, such as ["Enter"], ["Escape"],
+    ["Tab"], ["Backspace"] or ["ArrowUp"], types none. *)
 
 type t
 (** The texts typed into password fields. *)

@@ -746,6 +746,54 @@ let no_hub () =
     );
   Unix.rmdir directory
 
+let dev_cannot_listen () =
+  let here = Sys.getcwd () in
+  let silica = Filename.concat here "../../bin/silica.exe" in
+  let directory = short_directory () in
+  let file name = Filename.concat directory name in
+  Out_channel.with_open_bin (file "dune-project") (fun channel ->
+      Out_channel.output_string channel "(lang dune 3.0)\n"
+  );
+  Out_channel.with_open_bin (file "blocked") (fun _ -> ());
+  let status, errors =
+    Fun.protect
+      ~finally:(fun () -> Sys.chdir here)
+      (fun () ->
+        Sys.chdir directory;
+        let tail =
+          Unix.open_process_args_full silica
+            [|
+              "silica";
+              "dev";
+              "--port";
+              "0";
+              "--socket";
+              Filename.concat "blocked" "inspect.sock";
+            |]
+            [||]
+        in
+        let output, input, errors = tail in
+        close_out input;
+        ignore (In_channel.input_all output);
+        let message = In_channel.input_all errors in
+        (Unix.close_process_full tail, message)
+      )
+  in
+  Alcotest.(check bool) "exit 1" true (status = Unix.WEXITED 1);
+  Alcotest.(check string)
+    "it says which socket and why"
+    "silica dev: cannot listen for the inspector: blocked/inspect.sock: Not a \
+     directory\n"
+    errors;
+  List.iter Sys.remove
+    [
+      file "dune-project";
+      file "blocked";
+      file "_build/silica-dev/lock";
+      file "_build/silica-dev/secret";
+    ];
+  List.iter Unix.rmdir [ file "_build/silica-dev"; file "_build"; directory ]
+
 let websocket_origin () =
   let hub = Hub.create () in
   let proxy =
@@ -842,6 +890,8 @@ let () =
           test "silica inspect graph of a step between sub-states"
             graph_of_sub_states;
           test "the page WebSocket refuses other origins" websocket_origin;
+          test "silica dev says why it cannot listen for the inspector"
+            dev_cannot_listen;
         ]
       );
     ]

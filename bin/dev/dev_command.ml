@@ -46,7 +46,7 @@ let secret () =
       );
       secret
 
-let app_environment ~static ~metafile ~secret ~proxy_port ~port =
+let app_environment ~socket ~static ~metafile ~secret ~proxy_port ~port =
   let ours =
     [
       ("PORT", string_of_int port);
@@ -58,7 +58,7 @@ let app_environment ~static ~metafile ~secret ~proxy_port ~port =
       ("SILICA_STATIC", static);
       ("SILICA_METAFILE", metafile);
       ("SILICA_DEV_STATE", Filename.concat state_directory "state.json");
-      ("SILICA_INSPECT", inspect_socket);
+      ("SILICA_INSPECT", socket);
     ]
   in
   let inherited =
@@ -83,7 +83,7 @@ let fail message =
   prerr_endline ("silica dev: " ^ message);
   1
 
-let run ~server ~client ~port ~json =
+let run ~server ~client ~port ~socket ~json =
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
   let root = Sys.getcwd () in
   let server_path = Filename.concat "_build/default" server in
@@ -135,9 +135,7 @@ let run ~server ~client ~port ~json =
               | None ->
                   None
             in
-            match
-              Inspector_hub.listen (Hub.inspector hub) ~path:inspect_socket
-            with
+            match Inspector_hub.listen (Hub.inspector hub) ~path:socket with
             | Error (Unix.EPERM, message) ->
                 fail
                   ("cannot listen for the inspector: " ^ message
@@ -166,8 +164,9 @@ let run ~server ~client ~port ~json =
                     let supervisor =
                       Supervisor.create ~server:server_path ~metafile
                         ~environment:
-                          (app_environment ~static ~metafile ~secret ~proxy_port)
-                        ~emit ~echo:(fun line ->
+                          (app_environment ~socket ~static ~metafile ~secret
+                             ~proxy_port
+                          ) ~emit ~echo:(fun line ->
                           Mutex.protect print_lock (fun () -> prerr_endline line)
                       )
                     in
@@ -272,6 +271,15 @@ let command =
       & info [ "port" ] ~docv:"PORT" ~doc:"The port of the page, on 127.0.0.1."
     )
   in
+  let socket =
+    Arg.(
+      value & opt string inspect_socket
+      & info [ "socket" ] ~docv:"PATH"
+          ~doc:
+            "The Unix socket of the inspector, which $(b,silica inspect \
+             --socket) reads. The app gets it in $(b,SILICA_INSPECT)."
+    )
+  in
   let json =
     Arg.(
       value & flag
@@ -320,6 +328,8 @@ let command =
        ~exits:[]
     )
     Term.(
-      const (fun server client port json -> run ~server ~client ~port ~json)
-      $ server $ client $ port $ json
+      const (fun server client port socket json ->
+          run ~server ~client ~port ~socket ~json
+      )
+      $ server $ client $ port $ socket $ json
     )

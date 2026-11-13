@@ -39,4 +39,10 @@ val equal : t -> t -> bool
 (** Two keys are equal when the key name and every modifier are equal. *)
 
 val to_string : t -> string
-(** ["Ctrl+Shift+k"] style text for traces and logs. *)
+(** ["Ctrl+Shift+k"] style text for traces and logs: the modifiers in the order
+    Ctrl, Meta, Alt, Shift, then the key. [repeat] is not in the text. *)
+
+val of_string : string -> t
+(** The inverse of {!to_string}: [of_string (to_string key)] is [key] when
+    [repeat] is [false], and [to_string (of_string text)] is [text]. ["Shift++"]
+    is the key ["+"] with Shift. A key is never a repeat. *)

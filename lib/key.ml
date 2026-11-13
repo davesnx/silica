@@ -45,3 +45,19 @@ let to_string t =
          Some t.key;
        ]
     )
+
+let of_string text =
+  let take prefix rest =
+    if String.starts_with ~prefix rest then
+      ( true,
+        String.sub rest (String.length prefix)
+          (String.length rest - String.length prefix)
+      )
+    else
+      (false, rest)
+  in
+  let ctrl, rest = take "Ctrl+" text in
+  let meta, rest = take "Meta+" rest in
+  let alt, rest = take "Alt+" rest in
+  let shift, key = take "Shift+" rest in
+  { key; ctrl; meta; shift; alt; repeat = false }

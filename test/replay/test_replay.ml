@@ -709,6 +709,95 @@ let password_keys_with_modifiers () =
     (List.map (fun key -> (Key.to_string key, runtime key)) keys)
     (List.map (fun key -> (Key.to_string key, exported key)) keys)
 
+let replayed_states = function
+  | Ok (Check.Replayed points) ->
+      List.map
+        (fun (point : (_, _) Check.replayed_step) -> point.state_name)
+        points
+  | Ok (Not_enabled { at; _ }) ->
+      [ Printf.sprintf "step %d is not enabled" at ]
+  | Error message ->
+      [ message ]
+
+let keys_with_modifiers () =
+  Composer_keys.register ();
+  let report = Check.run Composer_keys.check in
+  let spec =
+    List.find (fun (spec : Spec.t) -> spec.id = "composer-keys") report.specs
+  in
+  Alcotest.(check (list (pair string string)))
+    "the spec tells Enter from Shift+Enter"
+    [
+      ("editing -> editing", {|key_down Shift+Enter textbox "Message"|});
+      ("editing -> sent", {|key_down Enter textbox "Message"|});
+    ]
+    (List.sort_uniq compare
+       (List.map
+          (fun (label : Spec.label) ->
+            (label.from ^ " -> " ^ label.target, label.event)
+          )
+          spec.edges
+       )
+    );
+  let violation =
+    List.find
+      (fun (violation : (_, _) Check.violation) ->
+        violation.rule = "no new line"
+      )
+      report.violations
+  in
+  let exported =
+    Check.export Composer_keys.check ~rule:violation.rule
+      violation.counterexample
+  in
+  Alcotest.(check (list string))
+    "the export holds the key with its modifier"
+    [ {|key_down Shift+Enter textbox "Message"|} ]
+    (List.filter_map
+       (fun (record : Transition.t) ->
+         match record.change with
+         | Started | Resumed | Ended ->
+             None
+         | Unhandled | Kept | Entered ->
+             Some (Transition.label record)
+       )
+       exported.transitions
+    );
+  ( match
+      Check.script ~component:"Composer_keys.component"
+        ~check:"Composer_keys.check" Composer_keys.check exported
+    with
+  | Error message ->
+      Alcotest.fail message
+  | Ok text ->
+      Alcotest.(check (pair bool bool))
+        "the generated test presses Shift+Enter, not Enter" (true, false)
+        ( contains text {|Key.of_string "Shift+Enter"|},
+          contains text {|Key.make "Enter"|}
+        )
+  );
+  let memory = Memory.mount Composer_keys.component in
+  Memory.focus (Memory.by_role memory Accessibility.Textbox ~name:"Message");
+  Memory.key memory (Key.make ~shift:true "Enter");
+  Memory.key memory Key.enter;
+  let recorded = Memory.trace memory in
+  Alcotest.(check string)
+    "the recorded run replays in memory" "replayed"
+    (describe_memory
+       (Memory.replay (Memory.mount Composer_keys.component) recorded)
+    );
+  Alcotest.(check (list string))
+    "the recorded run replays by cause in the check"
+    [ "editing"; "editing"; "sent" ]
+    (replayed_states (Check.replay_run Composer_keys.check recorded));
+  Alcotest.(check (list string))
+    "the recorded run replays by data in the check"
+    [ "editing"; "editing"; "sent" ]
+    (replayed_states (Check.replay_trace Composer_keys.check recorded));
+  Alcotest.(check int)
+    "the recorded run conforms to the specs" 0
+    (List.length (Spec.conforms report.specs recorded))
+
 let exact_without_codecs () =
   let violation, trace = stepper_trace () in
   Alcotest.(check (list bool))
@@ -858,6 +947,10 @@ let () =
             "a key with modifiers on a password field is masked the same in \
              the runtime and in exports"
             `Quick password_keys_with_modifiers;
+          Alcotest.test_case
+            "a key with a modifier keeps it in specs, exports, generated tests \
+             and replays"
+            `Quick keys_with_modifiers;
           Alcotest.test_case "an input the state does not offer" `Quick
             not_enabled;
           Alcotest.test_case "a loop and a wait export and replay" `Quick

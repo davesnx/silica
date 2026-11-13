@@ -1866,10 +1866,10 @@ let drive handle (record : Transition.t) =
               Ok (input found text)
           | "key_down", Some key_name ->
               if not (has_focus handle found) then focus found;
-              Ok (key handle (Key.make key_name))
+              Ok (key handle (Key.of_string key_name))
           | "key_up", Some key_name ->
               if not (has_focus handle found) then focus found;
-              Ok (key_up handle (Key.make key_name))
+              Ok (key_up handle (Key.of_string key_name))
           | _ ->
               not_realisable
                 ("the handler " ^ handler ^ " has no input in Silica_memory")

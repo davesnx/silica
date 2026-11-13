@@ -485,7 +485,7 @@ let rec attr_handlers ~keys ~texts = function
       List.filter_map
         (fun (key : Key.t) ->
           Option.map
-            (fun event -> ("key_down " ^ key.key, event))
+            (fun event -> ("key_down " ^ Key.to_string key, event))
             (handler.run key)
         )
         keys
@@ -493,7 +493,7 @@ let rec attr_handlers ~keys ~texts = function
       List.filter_map
         (fun (key : Key.t) ->
           Option.map
-            (fun event -> ("key_up " ^ key.key, event))
+            (fun event -> ("key_up " ^ Key.to_string key, event))
             (handler.run key)
         )
         keys

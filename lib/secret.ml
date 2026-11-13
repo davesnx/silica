@@ -6,7 +6,8 @@ let hide = function "" -> "" | _ -> mask
 let is_password ~tag ~kind =
   tag = "input" && Option.map String.lowercase_ascii kind = Some "password"
 
-let is_typed_key key =
+let is_typed_key text =
+  let key = (Key.of_string text).key in
   key <> ""
   && not
        (String.length key > 1

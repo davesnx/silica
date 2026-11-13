@@ -17,7 +17,8 @@
   rows
   answer_kinds
   gestures
-  feed)
+  feed
+  composer_keys)
  (libraries silica silica.check silica.jsonkit jsonkit)
  (preprocess
   (pps jsonkit.ppx silica.ppx)))

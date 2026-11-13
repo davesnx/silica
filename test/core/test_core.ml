@@ -289,6 +289,49 @@ let test_class_join () =
   Alcotest.(check string) "conditional on" "row bg-gray-100" (join_if true);
   Alcotest.(check string) "conditional off" "row" (join_if false)
 
+let test_key_round_trip () =
+  let keys =
+    [
+      Key.enter;
+      Key.make "h";
+      Key.make "+";
+      Key.make ~shift:true "+";
+      Key.make ~shift:true "Enter";
+      Key.make ~ctrl:true ~meta:true ~alt:true ~shift:true "k";
+      Key.make ~ctrl:true "Ctrl";
+      Key.make ~shift:true "Shift";
+      Key.make " ";
+    ]
+  in
+  Alcotest.(check (list string))
+    "the printed forms"
+    [
+      "Enter";
+      "h";
+      "+";
+      "Shift++";
+      "Shift+Enter";
+      "Ctrl+Meta+Alt+Shift+k";
+      "Ctrl+Ctrl";
+      "Shift+Shift";
+      " ";
+    ]
+    (List.map Key.to_string keys);
+  Alcotest.(check (list bool))
+    "of_string reads each printed form back to its key"
+    (List.map (fun _ -> true) keys)
+    (List.map
+       (fun key -> Key.equal (Key.of_string (Key.to_string key)) key)
+       keys
+    );
+  Alcotest.(check (list string))
+    "to_string prints each text back"
+    [ "Alt+F4"; "Shift+Ctrl+a"; "Meta+"; "+"; "" ]
+    (List.map
+       (fun text -> Key.to_string (Key.of_string text))
+       [ "Alt+F4"; "Shift+Ctrl+a"; "Meta+"; "+"; "" ]
+    )
+
 let () =
   let t name f = Alcotest.test_case name `Quick f in
   Alcotest.run "silica core"
@@ -312,4 +355,5 @@ let () =
       );
       ("codec", [ t "round trip and errors" test_codec ]);
       ("class", [ t "join" test_class_join ]);
+      ("key", [ t "printed form round trip" test_key_round_trip ]);
     ]

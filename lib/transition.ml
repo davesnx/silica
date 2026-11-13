@@ -788,10 +788,14 @@ let make_cause ~mask ~view ~message (cause : Instance.cause) =
                 else
                   Secret.hide input
               )
-        | None, Some key when password_field && Secret.is_typed_key key.key ->
-            Some (Secret.hide (Key.to_string key))
         | None, Some key ->
-            Some (Key.to_string key)
+            let printed = Key.to_string key in
+            Some
+              ( if password_field && Secret.is_typed_key printed then
+                  Secret.hide printed
+                else
+                  printed
+              )
         | None, None ->
             None
       in
