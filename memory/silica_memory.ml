@@ -21,12 +21,6 @@ type request = {
   mutable answer : ((Platform.reply, string) result -> unit) option;
 }
 
-type socket = {
-  events : Platform.socket_events;
-  mutable sent : string list;
-  mutable closed : int option;
-}
-
 type change = Pushed | Replaced of Url.t | Traversed of int
 
 type memory = {
@@ -59,7 +53,18 @@ type memory = {
   mutable announced : string list;
   limiters : (int * int list * string, Rate.t * (message -> unit)) Hashtbl.t;
   mutable recorder : Trace.Recorder.t option;
+  mutable clear_recorder : Trace.Recorder.t option;
   start_url : string;
+}
+
+and socket = {
+  events : Platform.socket_events;
+  mutable sent : string list;
+  mutable closed : int option;
+  mutable opened : bool;
+  mutable served : bool;
+  mutable reconnect : task option;
+  memory : memory;
 }
 
 and element = { owner : memory; root : int; path : int list }
@@ -131,18 +136,205 @@ let network_error r message = answer r (Error message)
 let sockets t = List.rev t.sockets
 let sent s = List.rev s.sent
 let closed s = s.closed
-let socket_open s = s.events.on_open ()
+let socket_open s =
+  s.opened <- true;
+  s.events.on_open ()
+
 let socket_message s data = s.events.on_message data
-let socket_close s code = s.events.on_close code
-let socket_error s = s.events.on_error ()
+
+let losing s lose =
+  let before = s.memory.order in
+  lose ();
+  s.reconnect <-
+    List.find_opt (fun (task : task) -> task.order = before + 1) s.memory.tasks
+
+let socket_close s code =
+  if
+    List.mem code
+      Protocol.[ close_version; close_csrf; close_unknown; close_session ]
+  then
+    s.events.on_close code
+  else
+    losing s (fun () -> s.events.on_close code)
+let socket_error s = losing s (fun () -> s.events.on_error ())
 
 let connect t (events : Platform.socket_events) : Platform.socket =
-  let s = { events; sent = []; closed = None } in
+  let s =
+    {
+      events;
+      sent = [];
+      closed = None;
+      opened = false;
+      served = false;
+      reconnect = None;
+      memory = t;
+    }
+  in
   t.sockets <- s :: t.sockets;
   {
-    send = (fun m -> s.sent <- m :: s.sent);
+    send =
+      (fun message ->
+        s.sent <- message :: s.sent;
+        match Protocol.decode_client message with
+        | Ok Protocol.Ping when s.served ->
+            let (_ : Platform.cancel) =
+              schedule t 0 (fun () ->
+                  if s.closed = None then
+                    s.events.on_message (Protocol.encode_server Protocol.Pong)
+              )
+            in
+            ()
+        | Ok _ | Error _ ->
+            ()
+      );
     close = (fun code -> s.closed <- Some code);
   }
+
+let socket_topic s =
+  List.find_map
+    (fun message ->
+      match Protocol.decode_client message with
+      | Ok (Protocol.Hello { sub = Protocol.Topic { name; _ }; _ }) ->
+          Some name
+      | Ok _ | Error _ ->
+          None
+    )
+    s.sent
+
+let live_socket t topic =
+  let current () =
+    List.find_opt
+      (fun s -> s.closed = None && socket_topic s = Some topic)
+      t.sockets
+  in
+  let reconnected () =
+    match
+      List.find_opt
+        (fun s ->
+          socket_topic s = Some topic
+          && match s.reconnect with Some task -> task.live | None -> false
+        )
+        t.sockets
+    with
+    | Some { reconnect = Some task; _ } ->
+        task.live <- false;
+        task.run ();
+        true
+    | Some { reconnect = None; _ } | None ->
+        false
+  in
+  let open_waiting () =
+    List.iter
+      (fun s -> if s.closed = None && not s.opened then socket_open s)
+      t.sockets
+  in
+  match current () with
+  | Some s ->
+      Some s
+  | None -> (
+      open_waiting ();
+      match current () with
+      | Some s ->
+          Some s
+      | None ->
+          if reconnected () then (
+            open_waiting ();
+            current ()
+          ) else
+            None
+    )
+
+let serve s =
+  if not s.served then (
+    s.served <- true;
+    socket_message s
+      (Protocol.encode_server (Protocol.Hello_ok { v = Protocol.version }))
+  )
+
+let live_update t ~topic text =
+  let fail reason =
+    invalid_arg
+      (Printf.sprintf "Silica_memory.live_update %s %s: %s" topic text reason)
+  in
+  let field name json =
+    match Silica_json.Json.classify json with
+    | `Assoc fields ->
+        List.assoc_opt name fields
+    | _ ->
+        None
+  in
+  let socket () =
+    match live_socket t topic with
+    | Some s ->
+        s
+    | None ->
+        fail "no subscription to the topic is open or waits to connect again"
+  in
+  match Silica_json.Json.of_string text with
+  | Error error ->
+      fail error
+  | Ok update -> (
+      match
+        ( Option.bind (field "seq" update) (fun seq ->
+              match Silica_json.Json.classify seq with
+              | `Int seq ->
+                  Some seq
+              | _ ->
+                  None
+          ),
+          Option.map Codec.constructor_of (field "status" update)
+        )
+      with
+      | Some _, Some (Ok (("Idle" | "Loading"), _)) ->
+          ()
+      | Some seq, Some (Ok ("Ready", [ ready ])) -> (
+          match (field "data" ready, field "stale" ready) with
+          | Some state, Some stale
+            when Silica_json.Json.classify stale = `Bool false ->
+              let s = socket () in
+              serve s;
+              socket_message s
+                (Protocol.encode_server
+                   (Protocol.State { seq; ack = 0; state; actions = [] })
+                )
+          | Some _, Some _ ->
+              socket_close (socket ()) 1006
+          | _ ->
+              fail "the Ready status has no data or no stale"
+        )
+      | Some _, Some (Ok ("Failed", [ failed ])) -> (
+          let close code = socket_close (socket ()) code in
+          match Option.map Codec.constructor_of (field "error" failed) with
+          | Some (Ok ("Network", [ code ])) -> (
+              match Silica_json.Json.classify code with
+              | `String code ->
+                  socket_message (socket ())
+                    (Protocol.encode_server (Protocol.Error { code }))
+              | _ ->
+                  fail "the Network error has no text"
+            )
+          | Some (Ok ("Http", [ status ])) -> (
+              match Silica_json.Json.classify status with
+              | `Int 401 ->
+                  close Protocol.close_session
+              | `Int 403 ->
+                  close Protocol.close_csrf
+              | `Int 404 ->
+                  close Protocol.close_unknown
+              | `Int 426 ->
+                  close Protocol.close_version
+              | _ ->
+                  fail
+                    "a Live subscription fails only with the Http status 401, \
+                     403, 404 or 426"
+            )
+          | _ ->
+              fail
+                "a server and a network give only a Network or an Http failure"
+        )
+      | _ ->
+          fail "it is not an update as Silica.Topic.update_codec writes it"
+    )
 
 let normalize (node : message Node.t) =
   let portals = ref [] in
@@ -653,8 +845,7 @@ type unreachable = Disabled | Hidden | Inert
 
 exception Not_reachable of { reason : unreachable; message : string }
 
-let describe_element (element : element) =
-  let item = accessible_element element in
+let describe_item item =
   let name = Accessibility.name item in
   Printf.sprintf "%s%s at %s"
     ( match Accessibility.role item with
@@ -669,6 +860,9 @@ let describe_element (element : element) =
         Printf.sprintf " %S" name
     )
     (Accessibility.path item)
+
+let describe_element (element : element) =
+  describe_item (accessible_element element)
 
 let natively_disabled (found : found) =
   List.mem found.tag
@@ -722,6 +916,12 @@ let reachable action (element : element) =
                "that is hidden"
            )
         )
+  | None ->
+      ()
+  );
+  ( match Accessibility.behind_modal (accessible_element element) with
+  | Some modal ->
+      refuse Inert ("is behind the modal " ^ describe_item modal)
   | None ->
       ()
   );
@@ -1081,6 +1281,7 @@ let make ~csrf ~url ~media =
     announced = [];
     limiters = Hashtbl.create 8;
     recorder = None;
+    clear_recorder = None;
     start_url = url;
   }
 
@@ -1094,17 +1295,29 @@ let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
        (p, s, e) Instance.t
        ) () =
   let t = make ~csrf ~url ~media in
-  let recorder =
-    Trace.Recorder.create ~capacity:max_int ~data:true
+  let recorder ~mask =
+    Trace.Recorder.create ~capacity:max_int ~data:true ~mask
       ~clock:(fun () -> float_of_int t.now)
       ~platform:"memory" ~build:"memory" ()
   in
-  t.recorder <- Some recorder;
+  let masked = recorder ~mask:true and clear = recorder ~mask:false in
+  t.recorder <- Some masked;
+  t.clear_recorder <- Some clear;
+  let observe =
+    let masked = Trace.Recorder.observer masked
+    and clear = Trace.Recorder.observer clear in
+    {
+      masked with
+      Instance.observe =
+        (fun observed ->
+          masked.observe observed;
+          clear.observe observed
+        );
+    }
+  in
   Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
     ~platform:(platform t)
-    ~create:(fun ~dev ~on_error ->
-      create t ~dev ~on_error ~observe:(Trace.Recorder.observer recorder)
-    )
+    ~create:(fun ~dev ~on_error -> create t ~dev ~on_error ~observe)
     ();
   t
 
@@ -1421,6 +1634,13 @@ let trace handle =
       Trace.Recorder.trace recorder ~url:(Some handle.memory.start_url)
   | None ->
       invalid_arg "Silica_memory.trace: the runtime has not started"
+
+let trace_in_clear handle =
+  match handle.memory.clear_recorder with
+  | Some recorder ->
+      Trace.Recorder.trace recorder ~url:(Some handle.memory.start_url)
+  | None ->
+      invalid_arg "Silica_memory.trace_in_clear: the runtime has not started"
 let advance handle ms = advance handle.memory ms
 let timers handle = timers handle.memory
 let requests handle = requests handle.memory
@@ -1447,6 +1667,7 @@ let pending_request handle path =
            )
         )
 let sockets handle = sockets handle.memory
+let live_update handle ~topic text = live_update handle.memory ~topic text
 let url handle = url handle.memory
 let history handle = history handle.memory
 let history_index handle = history_index handle.memory
@@ -1636,6 +1857,10 @@ let drive handle (record : Transition.t) =
               Ok (leave found)
           | "pointer_enter", _ ->
               Ok (hover found)
+          | "input", Some text when text = Secret.mask ->
+              not_realisable
+                "the text typed into this password field is masked in the \
+                 trace (see Silica.Secret), so it cannot be typed again"
           | "input", Some text ->
               Ok (input found text)
           | "key_down", Some key_name ->
@@ -1765,11 +1990,15 @@ let drive handle (record : Transition.t) =
         | [] ->
             Ok (open_url handle url)
     )
-  | Live { topic; _ } ->
-      not_realisable
-        ("an update of the Live topic " ^ topic
-       ^ ": Silica_memory does not replay Live updates"
-        )
+  | Live { update = None; topic; _ } ->
+      not_realisable ("the trace has no data for the update of " ^ topic)
+  | Live { update = Some update; topic; _ } -> (
+      match live_update handle ~topic (Silica_json.Json.to_string update) with
+      | () ->
+          Ok ()
+      | exception Invalid_argument error ->
+          Error (Not_found { seq = record.seq; error })
+    )
   | Held { source; _ } ->
       not_realisable
         ("the held source " ^ source
@@ -1788,12 +2017,32 @@ let drive handle (record : Transition.t) =
   | Start | Child _ | Ended ->
       Ok ()
 
+let connecting (record : Transition.t) =
+  match record.cause with
+  | Live { update = Some update; _ } -> (
+      match Silica_json.Json.classify update with
+      | `Assoc fields -> (
+          match
+            Option.map Codec.constructor_of (List.assoc_opt "status" fields)
+          with
+          | Some (Ok (("Idle" | "Loading"), _)) ->
+              true
+          | _ ->
+              false
+        )
+      | _ ->
+          false
+    )
+  | _ ->
+      false
+
 let is_input (record : Transition.t) ~root =
   match record.cause with
+  | Live _ ->
+      not (connecting record)
   | Element _
   | Timer _
   | Answer _
-  | Live _
   | Held _
   | Action_result _
   | Url _
@@ -1873,6 +2122,7 @@ let replay handle (expected : Trace.t) =
                         List.filter
                           (fun (record : Transition.t) ->
                             record.instance = wanted.instance
+                            && not (connecting record)
                           )
                           added
                       in

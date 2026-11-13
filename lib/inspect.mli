@@ -96,6 +96,10 @@ type request =
   | Travel of { target : string; seq : int }
       (** Pause the target at a step (not implemented yet). *)
   | Return_live of string  (** Leave time travel (not implemented yet). *)
+  | Seen of string
+      (** The steps of this machine id that the hub got since [silica dev]
+          started, from every target, also the targets that left or connected
+          again after a hot reload. *)
 
 type message =
   | Hello_target of target
@@ -114,6 +118,15 @@ type message =
       (** The answer to [Targets], and the first message to a client. *)
   | Trace_file of { id : int option; target : string; trace : string }
       (** The answer to [Export]: a trace file (see {!Trace.to_jsonl}). *)
+  | Seen_steps of {
+      id : int option;
+      machine : string;
+      steps : Transition.t list;
+    }
+      (** The answer to [Seen]: one step of each kind, in the order the hub
+          first got it, with no user data (see {!Transition.strip}). Two steps
+          are of one kind when they have the same change, states, event and
+          label. *)
   | Gone of string  (** The target disconnected. *)
   | Failure of { id : int option; message : string }
 

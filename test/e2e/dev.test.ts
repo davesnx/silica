@@ -51,7 +51,7 @@ class Dev {
       for (const listener of this.listeners) listener();
     });
     this.child.stderr?.on("data", (data: Buffer) => (this.stderr += data.toString()));
-    this.exited = new Promise((ok) => this.child.on("exit", (code) => ok(code)));
+    this.exited = new Promise((ok) => this.child.on("close", (code) => ok(code)));
   }
 
   waitFor(predicate: (event: Event) => boolean, from: number, timeout = 120000): Promise<Event> {

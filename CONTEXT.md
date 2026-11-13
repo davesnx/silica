@@ -182,8 +182,10 @@ _Avoid_: loading flag, query state
 **Optimistic**:
 A pure value that holds the last confirmed data and the changes that the
 server has not yet confirmed. Its value shows the changes on the data. A change
-**settles** when the Remote answer or a newer Live state confirms it, and goes
-back when the call fails. It is first-order data, so a snapshot can hold it.
+**settles** when the Remote answer confirms it, and goes back when the call
+fails; a Live state replaces the confirmed data and keeps the pending changes,
+so applying a change must be idempotent. It is first-order data, so a snapshot
+can hold it.
 _Avoid_: pending state, draft
 
 **Boundary**:

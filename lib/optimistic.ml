@@ -42,7 +42,7 @@ module type OPTIMISTIC = sig
   val rebase : value -> t -> t
   val value : t -> value
   val confirmed : t -> value
-  val pending : t -> int
+  val pending : t -> (int * change) list
   val is_pending : id:int -> t -> bool
 end
 
@@ -95,6 +95,6 @@ module Make (Change : CHANGE) = struct
       t.confirmed t.pending
 
   let confirmed t = t.confirmed
-  let pending t = List.length t.pending
+  let pending t = t.pending
   let is_pending ~id t = List.mem_assoc id t.pending
 end

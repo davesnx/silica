@@ -569,6 +569,59 @@ let hub_tests =
     );
   ]
 
+let build_phase_tests =
+  let reports progresses =
+    snd
+      (List.fold_left
+         (fun (phase, printed) progress ->
+           let next, reports = Build_phase.next phase progress in
+           ( next,
+             printed
+             @ List.map
+                 (function
+                   | Build_phase.Started ->
+                       "started"
+                   | Succeeded ->
+                       "ok"
+                   | Failed ->
+                       "failed"
+                   )
+                 reports
+           )
+         )
+         (Build_phase.Idle, []) progresses
+      )
+  in
+  let running = Build_watch.Running { complete = 0; remaining = 0 } in
+  let open Alcotest in
+  [
+    test_case "the first build reports its start and its end" `Quick (fun () ->
+        check (list string) "reports" [ "started"; "ok" ]
+          (reports
+             [
+               running;
+               Build_watch.Running { complete = 1; remaining = 2 };
+               Success;
+             ]
+          )
+    );
+    test_case "an end that dune sent with no running state follows a start"
+      `Quick (fun () ->
+        check (list string) "reports"
+          [
+            "started";
+            "ok";
+            "started";
+            "ok";
+            "started";
+            "failed";
+            "started";
+            "ok";
+          ]
+          (reports [ running; Success; Success; Failed; Success ])
+    );
+  ]
+
 let source_tests =
   let open Alcotest in
   [
@@ -624,4 +677,5 @@ let () =
       ("reload", reload_tests);
       ("hub", hub_tests);
       ("source", source_tests);
+      ("build phase", build_phase_tests);
     ]

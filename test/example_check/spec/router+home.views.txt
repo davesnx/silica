@@ -18,19 +18,19 @@ view
 
 state /item/:int
 path
-  / -> /item/:int on open /item/1, by the user opens /item/1
+  / -> /item/:int on link /item/1, by the view offers press on link "Item 1" at div > nav > a[2]
 view
   component item
 
 state /about
 path
-  / -> /about on open /about, by the user opens /about
+  / -> /about on link /about, by the view offers press on link "About" at div > nav > a[4]
 view
   component about
 
 state /edit
 path
-  / -> /edit on open /edit, by the user opens /edit
+  / -> /edit on link /edit, by the view offers press on link "Edit" at div > nav > a[5]
 view
   component edit
 

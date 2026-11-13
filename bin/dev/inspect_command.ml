@@ -186,7 +186,13 @@ let tree socket target machines path json =
                   (fun data ->
                     print_endline ("    data " ^ Silica_json.Json.to_string data)
                   )
-                  instance.data
+                  instance.data;
+                Option.iter
+                  (fun props ->
+                    print_endline
+                      ("    props " ^ Silica_json.Json.to_string props)
+                  )
+                  instance.props
               )
               instances
           )
@@ -308,57 +314,107 @@ let replay file machine json =
             )
     )
 
-let read_spec directory machine =
-  let base = Filename.concat directory machine in
-  let read file decode =
-    match In_channel.with_open_bin file In_channel.input_all with
+let spec_suffixes = [ ".spec.json"; ".spec.txt" ]
+
+let read_specs directory machine =
+  let names =
+    match Sys.readdir directory with
+    | names ->
+        Array.to_list names
+    | exception Sys_error _ ->
+        []
+  in
+  let bases =
+    List.filter_map
+      (fun name ->
+        List.find_map
+          (fun suffix ->
+            if
+              name = machine ^ suffix
+              || String.ends_with ~suffix:("." ^ machine ^ suffix) name
+            then
+              Some (Filename.chop_suffix name suffix)
+            else
+              None
+          )
+          spec_suffixes
+      )
+      names
+    |> List.sort_uniq String.compare
+  in
+  let read base suffix decode =
+    let name = base ^ suffix in
+    match
+      In_channel.with_open_bin
+        (Filename.concat directory name)
+        In_channel.input_all
+    with
     | text -> (
         match decode text with
         | Ok spec ->
-            Some spec
+            Some (name, spec)
         | Error message ->
-            fail 3 (file ^ ": " ^ message)
+            fail 3 (Filename.concat directory name ^ ": " ^ message)
       )
     | exception Sys_error _ ->
         None
   in
-  match
-    read (base ^ ".spec.json") (fun text ->
-        Result.bind (Silica_json.Json.of_string text) Spec.of_json
+  List.filter_map
+    (fun base ->
+      match
+        read base ".spec.json" (fun text ->
+            Result.bind (Silica_json.Json.of_string text) Spec.of_json
+        )
+      with
+      | Some found ->
+          Some found
+      | None ->
+          read base ".spec.txt" Spec.of_text
     )
-  with
-  | Some spec ->
-      Some spec
-  | None ->
-      read (base ^ ".spec.txt") Spec.of_text
+    bases
 
-let observed_labels machine transitions =
+let labelled machine transitions =
   List.filter_map
     (fun (record : Transition.t) ->
+      let label kept =
+        Some
+          ( {
+              Spec.from = record.from;
+              target = record.target;
+              event = Transition.label record;
+              kept;
+            },
+            record
+          )
+      in
       match record.change with
       | _ when record.machine <> machine ->
           None
       | Entered ->
-          Some
-            {
-              Spec.from = record.from;
-              target = record.target;
-              event = Transition.label record;
-              kept = false;
-            }
+          label false
       | Kept ->
-          Some
-            {
-              Spec.from = record.from;
-              target = record.target;
-              event = Transition.label record;
-              kept = true;
-            }
+          label true
       | Started | Resumed | Unhandled | Ended ->
           None
     )
     transitions
-  |> List.sort_uniq compare
+  |> List.sort_uniq (fun (left, _) (right, _) -> compare left right)
+
+let allowed specs record =
+  Spec.conforms specs
+    {
+      header =
+        {
+          root = record.Transition.machine;
+          url = None;
+          build = "";
+          origin = Runtime { platform = "" };
+          dropped = 0;
+          loop_from = None;
+        };
+      transitions = [ record ];
+    }
+  = []
 
 let label_text (label : Spec.label) =
   ( if label.kept then
@@ -408,23 +464,27 @@ let not_checked machine transitions labels =
     edges = labels;
   }
 
+let seen_steps session machine =
+  let id = request session (Seen machine) in
+  let rec find () =
+    match answer session id with
+    | Inspect.Seen_steps { id = Some got; steps; _ } when got = id ->
+        steps
+    | _ ->
+        find ()
+  in
+  find ()
+
 let graph socket target machine specs =
   run (fun () ->
-      let spec =
-        Option.bind specs (fun directory -> read_spec directory machine)
+      let found =
+        Option.fold ~none:[]
+          ~some:(fun directory -> read_specs directory machine)
+          specs
       in
       let live =
         if Sys.file_exists socket then
           let session = connect socket in
-          let wanted =
-            match target with
-            | Some target ->
-                [ target ]
-            | None ->
-                List.map
-                  (fun (target : Inspect.target) -> target.target)
-                  session.targets
-          in
           let current =
             List.concat_map
               (fun (target, instances) ->
@@ -442,30 +502,25 @@ let graph socket target machine specs =
               )
               (trees session target)
           in
-          let transitions =
-            List.concat_map
-              (fun target ->
-                match Trace.of_jsonl (exported session target) with
-                | Ok trace ->
-                    trace.transitions
-                | Error _ ->
-                    []
-              )
-              wanted
-          in
-          Some (current, transitions)
+          Some (current, seen_steps session machine)
         else
           None
       in
       let current, transitions = Option.value live ~default:([], []) in
-      let labels = observed_labels machine transitions in
-      match spec with
-      | Some spec ->
-          print_string (Spec.to_text spec);
-          List.iter print_endline current;
+      let labels = labelled machine transitions in
+      match found with
+      | _ :: _ ->
           List.iter
-            (fun label ->
-              if List.mem label spec.edges then
+            (fun (name, spec) ->
+              print_endline ("spec " ^ name);
+              print_string (Spec.to_text spec)
+            )
+            found;
+          List.iter print_endline current;
+          let specs = List.map snd found in
+          List.iter
+            (fun (label, record) ->
+              if allowed specs record then
                 print_endline ("seen " ^ label_text label)
               else
                 print_endline ("drift " ^ label_text label)
@@ -474,7 +529,7 @@ let graph socket target machine specs =
           if live = None then
             print_endline
               "no silica dev runs here: the current state is not shown"
-      | None when live = None ->
+      | [] when live = None ->
           fail 3
             ("no spec of " ^ machine
             ^ ( match specs with
@@ -485,9 +540,12 @@ let graph socket target machine specs =
               )
             ^ ", and no silica dev runs here"
             )
-      | None ->
+      | [] ->
           print_endline ("not checked " ^ machine);
-          print_string (Spec.to_text (not_checked machine transitions labels));
+          print_string
+            (Spec.to_text
+               (not_checked machine transitions (List.map fst labels))
+            );
           List.iter print_endline current
   )
 
@@ -577,7 +635,7 @@ let tree_command =
             `P
               "One line for each instance: its path, its machine and its \
                state; then the timers and sources it owns, and its snapshot \
-               when the machine registered its codecs.";
+               and props when the machine registered its codecs.";
           ]
          @ exit_status
          )
@@ -674,8 +732,9 @@ let replay_command =
              "Runs $(b,silica replay) $(i,ID) $(i,TRACE_FILE): the steps of \
               the trace go through the check of the machine, and each step, \
               its cause, the rules that fail and the last view are printed. \
-              The steps need their event data: register the codecs of the \
-              machine.";
+              $(i,ID) is the root machine of the trace, which selects the \
+              entry whose root it is, such as a joint check. The steps need \
+              their event data: register the codecs of the machine.";
          ]
        ~exits:[]
     )
@@ -696,7 +755,8 @@ let graph_command =
       & info [ "specs" ] ~docv:"DIR"
           ~doc:
             "A directory with $(i,MACHINE).spec.json or $(i,MACHINE).spec.txt, \
-             as $(b,silica check) writes them."
+             and $(i,ENTRY).$(i,MACHINE).spec.json or .spec.txt of each joint \
+             check, as $(b,silica check) writes them."
     )
   in
   Cmd.v
@@ -706,12 +766,14 @@ let graph_command =
          ([
             `S Manpage.s_description;
             `P
-              "Prints the text form of the spec of the machine (see \
-               $(b,Spec.to_text)), then $(b,current) lines with the state of \
-               each running instance, $(b,seen) lines for the edges of the \
-               spec that the app took, and $(b,drift) lines for the edges it \
-               took that the spec does not have. With no spec, the graph is \
-               the one that the app took, under the line $(b,not checked).";
+              "Prints each spec of the machine as a $(b,spec) line with the \
+               file name and the text form (see $(b,Spec.to_text)), then \
+               $(b,current) lines with the state of each running instance, \
+               $(b,seen) lines for the edges that the app took and a spec has, \
+               and $(b,drift) lines for the edges it took that no spec has. \
+               The edges are those of every page since silica dev started, \
+               also before a reload. With no spec, the graph is the one that \
+               the app took, under the line $(b,not checked).";
           ]
          @ exit_status
          )

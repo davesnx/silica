@@ -105,6 +105,16 @@ comes on standard output, with the compile error in errors.
   Syntax error
   $ mv checks.ml.saved check/checks.ml
 
+A build that succeeds prints nothing of dune, such as a warning (or the
+note of a running dune build --watch that does the build).
+
+  $ cp check/checks.ml checks.ml.saved
+  $ printf '[@@@warnerror "-a"]\nlet () = let unused = 1 in ()\n' >> check/checks.ml
+  $ silica check 2>&1
+  counter: 16 states, 45 transitions
+  passed (exit 0)
+  $ mv checks.ml.saved check/checks.ml
+
 silica check also compares the golden files: a missing one is a finding, with
 the command that writes it. --no-golden leaves them out.
 
@@ -124,7 +134,7 @@ output keeps the report alone.
   $ silica check --graphs graphs
   counter: 16 states, 45 transitions
   passed (exit 0)
-  silica check: wrote the graphs of 1 machine into graphs
+  silica check: wrote 1 graph into graphs, one for each machine of each entry
   $ ls graphs
   counter.md
   counter.spec.json
@@ -215,6 +225,15 @@ trace with a step that no spec has does not conform:
 
   $ silica conform traces/counter_ignored_event_saved.jsonl traces/counter_ignored_event_saving.jsonl 2>&1 | tail -1
   every trace conforms (exit 0)
+
+check/main.ml registers the codecs of the app, so each record of a checker
+trace has its snapshot, and conform checks the snapshots with the code and
+the properties:
+
+  $ grep -c '"snapshot"' traces/counter_ignored_event_saving.jsonl
+  3
+  $ silica conform traces/counter_ignored_event_saving.jsonl 2>&1 | grep 'by data'
+    by data: steps run again in the code: 1; snapshots checked by the properties: 3
   $ sed 's/"from":"counting","to":"saving"/"from":"counting","to":"saved"/' traces/counter_ignored_event_saving.jsonl > traces/changed.jsonl
   $ silica conform traces/changed.jsonl 2>&1 | grep -E '^(deviation|  step|  difference)|exit'
   deviation 1 (unknown-step): transition 2, machine counter, instance counter

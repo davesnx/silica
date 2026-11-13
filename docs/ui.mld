@@ -7,6 +7,15 @@ look of its own. The app gives the classes of each part, and styles the states
 through [data-*] attributes. The site shows each component, with its stories,
 at [/components] (see {!page-stories}).
 
+The dune library is [silica-ui], for native and Melange code, and its modules
+are [Silica_ui.*]. Add it to the [libraries] of the app, next to [silica]:
+
+{@dune skip[
+(library
+ (name app)
+ (libraries silica silica-ui))
+]}
+
 {1:components The components}
 
 {t
@@ -103,7 +112,11 @@ the page cuts it. While it is open, the sources that it needs run during its sta
   [data-side], [data-align] and the CSS variables [--anchor-width],
   [--available-height] and others.
 - For a modal dialog, a focus trap and a scroll lock. The page behind it is
-  [inert].
+  [inert]: the browser renderer sets [inert] on it. The checker and
+  [Silica_memory] treat it the same way: while the view shows an element with
+  [aria-modal="true"], they give no press, input or key to an element outside
+  it (see {!Silica.Accessibility.behind_modal}), so a spec and a test have no
+  step that a user cannot take behind an open dialog.
 
 A popup in a theme scope keeps the theme of the scope (see
 {!page-theming.scope}).

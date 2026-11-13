@@ -70,7 +70,7 @@ comment.
   deviation 1 (property-fails): transition 1, machine comment-composer, instance router/1.0:issue-detail/1.6:comments/1.1:comment-composer
     step: resume in sending
     difference: The property "only a comment with text is ever sent" does not hold in state sending.
-    hint: The app reached a snapshot that breaks "only a comment with text is ever sent" and that the check did not reach: add samples, inputs or props that reach it, so the check finds it too, then fix it. Change the update or the view so that "only a comment with text is ever sent" holds in state sending, or correct the property.
+    hint: The app reached a snapshot that breaks "only a comment with text is ever sent". When silica check does not report it too, the check does not reach this snapshot: add samples, inputs or props that reach it. Then fix it. Change the update or the view so that "only a comment with text is ever sent" holds in state sending, or correct the property.
     view:
       textbox "Comment" value="   " disabled [input, key_down]
       button "Sending..." disabled [press]

@@ -241,6 +241,52 @@ let cache () =
     ]
     (take client)
 
+let props_steps () =
+  let hub = Inspector_hub.create () in
+  let tab = peer hub and client = peer hub in
+  hello_target tab "tab-1" Browser;
+  say tab
+    (Event
+       {
+         id = None;
+         target = "tab-1";
+         event =
+           Mount
+             {
+               path = "panel/2:preview";
+               machine = "preview";
+               state = "ready";
+               data = None;
+               props = Some (Silica_json.Json.declassify (`String ""));
+               owns = [];
+             };
+       }
+    );
+  let props_step ~change ~seq ~target props =
+    step
+      {
+        (record ~change ~seq ~machine:"preview" ~instance:"panel/2:preview"
+           ~from:"ready" ~target ~event:"" ()
+        )
+        with
+        props = Some (Silica_json.Json.declassify (`String props));
+        cause = Props;
+      }
+  in
+  hello_client client;
+  ignore (take client);
+  say tab (props_step ~change:Entered ~seq:2 ~target:"loading" "ocaml");
+  say client (Request { id = Some 1; request = Get_tree None });
+  say tab (props_step ~change:Unhandled ~seq:3 ~target:"loading" "ml");
+  say client (Request { id = Some 2; request = Get_tree None });
+  Alcotest.(check (list string))
+    "the tree has the props of the last props step"
+    [
+      {|{"t":"tree","id":1,"target":"tab-1","instances":[{"path":"panel/2:preview","machine":"preview","state":"loading","props":"ocaml","owns":[]}]}|};
+      {|{"t":"tree","id":2,"target":"tab-1","instances":[{"path":"panel/2:preview","machine":"preview","state":"loading","props":"ml","owns":[]}]}|};
+    ]
+    (take client)
+
 let lifecycle () =
   let hub = Inspector_hub.create () in
   let client = peer hub in
@@ -354,7 +400,7 @@ let tail_json () =
     match Inspector_hub.listen hub ~path with
     | Ok listener ->
         listener
-    | Error message ->
+    | Error (_, message) ->
         Alcotest.fail message
   in
   Alcotest.(check int)
@@ -411,6 +457,189 @@ let tail_json () =
   Unix.close target;
   Inspector_hub.stop listener;
   Alcotest.(check bool) "the socket file is removed" false (Sys.file_exists path);
+  Unix.rmdir directory
+
+let mounted ~path ~machine ~state ~props : Inspect.message =
+  Event
+    {
+      id = None;
+      target = "tab-1";
+      event =
+        Mount
+          {
+            path;
+            machine;
+            state;
+            data = None;
+            props =
+              Option.map
+                (fun props -> Silica_json.Json.declassify (`String props))
+                props;
+            owns = [];
+          };
+    }
+
+let silica_lines arguments =
+  let output =
+    Unix.open_process_args_in "../../bin/silica.exe"
+      (Array.of_list ("silica" :: arguments))
+  in
+  let lines = In_channel.input_lines output in
+  ignore (Unix.close_process_in output);
+  lines
+
+let graph_and_tree () =
+  let directory = short_directory () in
+  let path = Filename.concat directory "inspect.sock" in
+  let specs = Filename.concat directory "spec" in
+  Unix.mkdir specs 0o700;
+  List.iter
+    (fun (name, lines) ->
+      Out_channel.with_open_bin (Filename.concat specs name) (fun channel ->
+          Out_channel.output_string channel (String.concat "\n" lines ^ "\n")
+      )
+    )
+    [
+      ( "preview.spec.txt",
+        [
+          "machine preview";
+          "initial loading";
+          "state loading";
+          "state ready";
+          "edge loading -> ready on loaded";
+        ]
+      );
+      ( "panel+preview.preview.spec.txt",
+        [
+          "machine preview";
+          "initial loading";
+          "state loading";
+          "state ready";
+          "edge loading -> ready on loaded";
+          "edge ready -> loading on props";
+        ]
+      );
+      ( "panel+preview.panel.spec.txt",
+        [
+          "machine panel";
+          "initial idle";
+          "state idle";
+          "state typing";
+          "edge idle -> typing on typed";
+        ]
+      );
+    ];
+  let hub = Inspector_hub.create () in
+  let listener =
+    match Inspector_hub.listen hub ~path with
+    | Ok listener ->
+        listener
+    | Error (_, message) ->
+        Alcotest.fail message
+  in
+  let first = peer hub in
+  hello_target first "tab-1" Browser;
+  List.iter (say first)
+    [
+      step
+        (record ~change:Started ~seq:1 ~machine:"panel" ~instance:"panel"
+           ~from:"" ~target:"idle" ~event:"" ()
+        );
+      step
+        (record ~change:Started ~seq:2 ~machine:"preview"
+           ~instance:"panel/2:preview" ~from:"" ~target:"loading" ~event:"" ()
+        );
+      step
+        (record ~seq:3 ~machine:"preview" ~instance:"panel/2:preview"
+           ~from:"loading" ~target:"ready" ~event:"loaded" ()
+        );
+      step
+        {
+          (record ~seq:4 ~machine:"preview" ~instance:"panel/2:preview"
+             ~from:"ready" ~target:"loading" ~event:"" ()
+          )
+          with
+          cause = Props;
+        };
+      step
+        (record ~seq:5 ~machine:"panel" ~instance:"panel" ~from:"idle"
+           ~target:"typing" ~event:"typed" ()
+        );
+      step
+        (record ~seq:6 ~machine:"panel" ~instance:"panel" ~from:"typing"
+           ~target:"idle" ~event:"settle" ()
+        );
+    ];
+  Inspector_hub.disconnect hub first.connection;
+  let again = peer hub in
+  hello_target again "tab-1" Browser;
+  List.iter (say again)
+    [
+      mounted ~path:"panel" ~machine:"panel" ~state:"idle" ~props:None;
+      step
+        (record ~change:Resumed ~seq:1 ~machine:"panel" ~instance:"panel"
+           ~from:"" ~target:"idle" ~event:"" ()
+        );
+      mounted ~path:"panel/2:preview" ~machine:"preview" ~state:"loading"
+        ~props:(Some "ocaml");
+      step
+        (record ~change:Resumed ~seq:2 ~machine:"preview"
+           ~instance:"panel/2:preview" ~from:"" ~target:"loading" ~event:"" ()
+        );
+    ];
+  let graph machine =
+    silica_lines
+      [ "inspect"; "graph"; machine; "--specs"; specs; "--socket"; path ]
+  in
+  Alcotest.(check (list string))
+    "the specs of every entry, and the edges taken before a reload"
+    [
+      "spec panel+preview.preview.spec.txt";
+      "machine preview";
+      "initial loading";
+      "state loading";
+      "state ready";
+      "edge loading -> ready on loaded";
+      "edge ready -> loading on props";
+      "spec preview.spec.txt";
+      "machine preview";
+      "initial loading";
+      "state loading";
+      "state ready";
+      "edge loading -> ready on loaded";
+      "current loading at panel/2:preview [tab-1]";
+      "seen edge loading -> ready on loaded";
+      "seen edge ready -> loading on props";
+    ]
+    (graph "preview");
+  Alcotest.(check (list string))
+    "the spec of a parent in a joint check, and a drift"
+    [
+      "spec panel+preview.panel.spec.txt";
+      "machine panel";
+      "initial idle";
+      "state idle";
+      "state typing";
+      "edge idle -> typing on typed";
+      "current idle at panel [tab-1]";
+      "seen edge idle -> typing on typed";
+      "drift edge typing -> idle on settle";
+    ]
+    (graph "panel");
+  Alcotest.(check (list string))
+    "the text tree shows the props"
+    [
+      "[tab-1]";
+      "  panel panel idle";
+      "  panel/2:preview preview loading";
+      "    props \"ocaml\"";
+    ]
+    (silica_lines [ "inspect"; "tree"; "--socket"; path ]);
+  Inspector_hub.stop listener;
+  List.iter
+    (fun name -> Sys.remove (Filename.concat specs name))
+    (Array.to_list (Sys.readdir specs));
+  Unix.rmdir specs;
   Unix.rmdir directory
 
 let no_hub () =
@@ -530,6 +759,7 @@ let () =
         [
           test "routes two targets to two clients with filters" routing;
           test "answers tree, export and errors from what targets sent" cache;
+          test "a props step updates the props of the tree" props_steps;
           test "targets connect, are replaced and leave" lifecycle;
           test "refuses other versions and messages of the wrong role" refusals;
         ]
@@ -538,6 +768,7 @@ let () =
         [
           test "silica inspect tail --json prints a Silica_memory run" tail_json;
           test "silica inspect with no silica dev exits 3" no_hub;
+          test "silica inspect graph and tree after a reload" graph_and_tree;
           test "the page WebSocket refuses other origins" websocket_origin;
         ]
       );

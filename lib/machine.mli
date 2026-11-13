@@ -40,10 +40,16 @@
 
     The machine enters a state when its [name] changes. A step to a state with
     the same name keeps its timers and sources running, except those whose
-    {!Source.key} changed; {!Reenter} stops and starts them all again. Hosts
-    carry this out through the actions {!Action.host}: [Start_timer],
-    [Start_call], [Start_live], [Start_source] and [Stop]; a host drops a timer
-    or answer whose id was stopped.
+    {!Source.key} changed; {!Reenter} stops and starts them all again. A name
+    with a dot names a sub-state: the part before the first dot is the state
+    that owns the timers and sources, so a step from ["list.live"] to
+    ["list.offline"] runs no [exit] and no [entry] and keeps each source whose
+    key did not change, as a step that keeps the name does, while the spec, the
+    traces and the golden views still show two states. Use it for the phases of
+    a state that owns a subscription or calls, such as the connection of a Live
+    topic. Hosts carry this out through the actions {!Action.host}:
+    [Start_timer], [Start_call], [Start_live], [Start_source] and [Stop]; a host
+    drops a timer or answer whose id was stopped.
 
     A component with props uses {!make_with_props}: the update, [during],
     [entry] and [exit] get the props, and the props are not an event. *)
@@ -53,9 +59,10 @@ type ('s, 'e) next =
   | Stay of 'e Action.t list
       (** Handled: keep the snapshot and run the actions. *)
   | Go of 's
-      (** Go to the snapshot. When its name is the name of the current one, only
-          the data changes: no exit, no entry, and the timers and sources whose
-          key did not change keep running. *)
+      (** Go to the snapshot. When its name is the name of the current one, or a
+          sub-state of the same state (the same part before the first dot), no
+          exit, no entry, and the timers and sources whose key did not change
+          keep running. *)
   | Go_with of 's * 'e Action.t list
       (** Like [Go], and run the actions between the exit and the entry. *)
   | Reenter of 's
@@ -89,7 +96,8 @@ val make :
 
     [id] names the machine in the spec, in the checker and in the ids of timers
     and sources. [name] names the state of a snapshot: two snapshots with one
-    name are one state, which the machine enters once.
+    name are one state, which the machine enters once. A dot makes sub-states of
+    one state, such as ["list.live"] and ["list.offline"] (see above).
 
     [states] lists every name that [name] gives, so that the checker can report
     the states that no run reached; with no [states], the checker says that it
@@ -247,10 +255,11 @@ val step :
 (** Run the update. A final state handles nothing; [Ignore] leaves the snapshot
     unchanged ([Unhandled]). On a change of state the actions are: [exit] and
     stops of the old state, the actions of the step, [entry] and starts of the
-    new state ([Entered]). A step that keeps the name stops the sources whose
-    key went away, runs the actions and starts the new sources ([Kept]).
-    [Reenter] is [Entered] even when the name stays. Hosts use [Entered] to give
-    each entry of a state its own instance (see {!Instance}).
+    new state ([Entered]). A step that keeps the name, or moves to another
+    sub-state of the same state, stops the sources whose key went away, runs the
+    actions and starts the new sources ([Kept]). [Reenter] is [Entered] even
+    when the name stays. Hosts use [Entered] to give each entry of a state its
+    own instance (see {!Instance}).
 
     [finished] is the id of the timer or call that raised the event: it ended
     when it delivered. A handled step that keeps the name and still has a source

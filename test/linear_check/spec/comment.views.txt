@@ -3,7 +3,8 @@ path
   (start)
 view
   listitem
-    text "Ada on 1970-01-01 Mine"
+    text "Ada on 1970-01-01"
+    text "Mine"
     button "Edit" [press]
 
 state viewing, view 2
@@ -11,7 +12,8 @@ path
   (start)
 view
   listitem
-    text "Ada on 1970-01-01 Mine"
+    text "Ada on 1970-01-01"
+    text "Mine"
 
 state editing
 path
@@ -147,5 +149,6 @@ path
   saving -> edited on saved ok, by the answer of the call comment/saving//api/comments/edit {"id":1,"body":"Mine"} to /api/comments/edit
 view
   listitem
-    text "Ada on 1970-01-01 (edited) x"
+    text "Ada on 1970-01-01 (edited)"
+    text "x"
     button "Edit" [press]

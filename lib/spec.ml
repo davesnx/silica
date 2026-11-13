@@ -909,7 +909,7 @@ let label_of (record : Transition.t) : label option =
           from = record.from;
           target = record.target;
           event = Transition.label record;
-          kept = true;
+          kept = record.from = record.target;
         }
   | Entered ->
       Some

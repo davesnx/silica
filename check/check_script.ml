@@ -13,6 +13,7 @@ type action =
   | Key_up of target * string
   | Advance of int
   | Reply of { path : string; answer : Silica_json.Json.t }
+  | Live_update of { topic : string; update : Silica_json.Json.t }
   | Set_props of int
   | Back
   | Forward
@@ -153,6 +154,11 @@ let action_lines = function
       [ Printf.sprintf "Memory.advance page %d" ms ]
   | Reply { path; answer } ->
       [ reply path answer ]
+  | Live_update { topic; update } ->
+      [
+        Printf.sprintf "Memory.live_update page ~topic:%s %s" (quoted topic)
+          (quoted (Silica_json.Json.to_string update));
+      ]
   | Set_props index ->
       [ Printf.sprintf "Memory.set_props page (props %d)" index ]
   | Back ->
@@ -174,7 +180,13 @@ let target_of = function
   | Key_down (target, _)
   | Key_up (target, _) ->
       Some target
-  | Advance _ | Reply _ | Set_props _ | Back | Forward | Open_url _ ->
+  | Advance _
+  | Reply _
+  | Live_update _
+  | Set_props _
+  | Back
+  | Forward
+  | Open_url _ ->
       None
 
 let input_of = function
@@ -217,7 +229,13 @@ let input_of = function
            \    )"
            key
         )
-  | Advance _ | Reply _ | Set_props _ | Back | Forward | Open_url _ ->
+  | Advance _
+  | Reply _
+  | Live_update _
+  | Set_props _
+  | Back
+  | Forward
+  | Open_url _ ->
       None
 
 let literal text =

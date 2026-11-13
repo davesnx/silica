@@ -124,6 +124,11 @@ text "Waiting for you to stop."
 - : unit = ()
 ]}
 
+The value of a password field, an [<input type="password">], prints as
+[value="••••••••"], eight bullets whatever its length, so that a typed secret
+does not end in a golden file or a counterexample; an empty value prints as
+[value=""] (see {!Silica.Secret}).
+
 {2:props A root with props}
 
 {!Silica_memory.mount_with_props} mounts a component that has props, and
@@ -181,6 +186,14 @@ it back and names the line of an error. A record holds the event data, the
 props and the snapshot only for machines whose codecs are registered with
 {!Silica.Machine.register_codecs}; names, causes, answers and Live updates are
 always there. The {!Silica.Trace} page says what a trace does not hold.
+
+Text typed into a password field is masked in every trace, in the inspector
+and in [silica inspect]: the input text of the cause is [••••••••], and in the
+event data, props and snapshots each string that is the last text typed into a
+password field is [••••••••] too (see {!Silica.Transition.observer}). A replay
+of such a step in the check still runs, by the choice of the checker or by the
+element of the cause; {!Silica_memory.val-replay} stops there, since it cannot
+type the text again.
 
 {!Silica_memory.val-replay} gives a fresh mount the inputs of a trace, such as a
 counterexample of the checker or a recorded run, and says at which step the

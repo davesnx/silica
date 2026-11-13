@@ -245,6 +245,7 @@ type 'e element = {
   tag : string;
   attrs : 'e Node.attr list;
   ancestors : 'e element list;
+  around : 'e element list;
   path : string;
   document : 'e document;
   mutable children : 'e item list;
@@ -259,6 +260,7 @@ and 'e item =
 and 'e document = {
   mutable all : 'e element list;
   ids : (string, 'e element) Hashtbl.t;
+  mutable modals : 'e element list option;
 }
 
 type 'e raw =
@@ -310,9 +312,9 @@ let attribute_in attrs name =
     attrs
 
 let build node =
-  let document = { all = []; ids = Hashtbl.create 16 } in
+  let document = { all = []; ids = Hashtbl.create 16; modals = None } in
   let portals = ref [] in
-  let rec make ~ancestors ~prefix ~collect raws =
+  let rec make ~ancestors ~around ~prefix ~collect raws =
     let counts = Hashtbl.create 8 in
     List.iter
       (function[@warning "-4"]
@@ -336,7 +338,7 @@ let build node =
         | Raw_portal raws ->
             let inner = ref [] in
             let items =
-              make ~ancestors:[] ~prefix:"portal > " ~collect:inner raws
+              make ~ancestors:[] ~around ~prefix:"portal > " ~collect:inner raws
             in
             portals := List.rev !inner :: !portals;
             items
@@ -356,6 +358,7 @@ let build node =
                 tag;
                 attrs;
                 ancestors;
+                around;
                 path = prefix ^ step;
                 document;
                 children = [];
@@ -363,14 +366,16 @@ let build node =
             in
             collect := element :: !collect;
             element.children <-
-              make ~ancestors:(element :: ancestors)
+              make ~ancestors:(element :: ancestors) ~around:(element :: around)
                 ~prefix:(element.path ^ " > ") ~collect raws;
             [ Element element ]
         )
       raws
   in
   let main = ref [] in
-  let items = make ~ancestors:[] ~prefix:"" ~collect:main (flatten node) in
+  let items =
+    make ~ancestors:[] ~around:[] ~prefix:"" ~collect:main (flatten node)
+  in
   document.all <- List.rev !main @ List.concat (List.rev !portals);
   List.iter
     (fun element ->
@@ -387,6 +392,7 @@ let items node = fst (build node)
 let elements node = (snd (build node)).all
 let children element = element.children
 let tag element = element.tag
+let ancestors element = element.ancestors
 let attributes element = element.attrs
 let attribute element name = attribute_in element.attrs name
 let path element = element.path
@@ -834,10 +840,52 @@ let value element =
       | Some number ->
           Some number
       | None ->
-          if List.mem element.tag [ "input"; "textarea"; "select" ] then
+          if Secret.is_password ~tag:element.tag ~kind:(attribute element "type")
+          then
+            Option.map Secret.hide (attribute element "value")
+          else if List.mem element.tag [ "input"; "textarea"; "select" ] then
             attribute element "value"
           else
             None
     )
 
 let modal element = is_true element "aria-modal"
+
+let open_modals document =
+  match document.modals with
+  | Some modals ->
+      modals
+  | None ->
+      let shown =
+        List.filter
+          (fun element -> modal element && not (hidden element))
+          document.all
+      in
+      let innermost =
+        List.filter
+          (fun candidate ->
+            not
+              (List.exists (fun other -> List.memq candidate other.around) shown)
+          )
+          shown
+      in
+      document.modals <- Some innermost;
+      innermost
+
+let behind_modal element =
+  match open_modals element.document with
+  | [] ->
+      None
+  | first :: _ as all ->
+      if
+        List.exists
+          (fun modal ->
+            modal == element
+            || List.memq modal element.around
+            || List.memq element modal.ancestors
+          )
+          all
+      then
+        None
+      else
+        Some first

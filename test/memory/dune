@@ -1,3 +1,9 @@
 (test
  (name test_memory)
- (libraries silica silica.json silica.memory test_apps alcotest))
+ (libraries
+  silica
+  silica.json
+  silica.memory
+  silica_test_support
+  test_apps
+  alcotest))

@@ -57,7 +57,7 @@ let loaded issues =
   { edits = Edits.make issues; stale = false; requests = []; next_id = 1 }
 
 let issues t = Edits.value t.edits
-let pending t = Edits.pending t.edits
+let pending t = List.length (Edits.pending t.edits)
 let requests t = t.requests
 
 let find number t =

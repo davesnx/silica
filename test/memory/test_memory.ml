@@ -1334,6 +1334,67 @@ let unreachable_elements_refuse_input () =
   Memory.press (Memory.by_role memory Accessibility.Button ~name:"Aria");
   string "aria-disabled does not stop a press" "1" (text memory "count")
 
+module Modal = struct
+  let component =
+    Component.make
+      (Test_apps.simple ~id:"modal" ~init:false (fun _ inner -> Some (inner, []))
+      )
+      (fun inner ->
+        let button label event =
+          Node.element "button" [ Attr.on_press event ] [ Node.text label ]
+        in
+        let dialog label children =
+          Node.portal
+            [
+              Node.element "div"
+                [
+                  Attr.string "role" "dialog";
+                  Attr.string "aria-modal" "true";
+                  Attr.string "aria-label" label;
+                ]
+                children;
+            ]
+        in
+        Node.element "main" []
+          [
+            button "Behind" false;
+            dialog "Edit"
+              (button "Open inner" true
+              ::
+              ( if inner then
+                  [ dialog "Confirm" [ button "Back" false ] ]
+                else
+                  []
+              )
+              );
+          ]
+      )
+end
+
+let page_behind_a_modal_refuses_input () =
+  let memory = Memory.mount Modal.component in
+  let refusal label =
+    match Memory.press (Memory.by_text memory label) with
+    | () ->
+        "delivered"
+    | exception Memory.Not_reachable { reason = Inert; message } ->
+        message
+    | exception Memory.Not_reachable _ ->
+        "another reason"
+  in
+  string "a button behind the open modal"
+    "Silica_memory: the button \"Behind\" at main > button is behind the modal \
+     dialog \"Edit\" at portal > div, so a browser does not deliver a press to \
+     it."
+    (refusal "Behind");
+  string "a button inside the open modal" "delivered" (refusal "Open inner");
+  string "a button of the outer modal, behind the inner one"
+    "Silica_memory: the button \"Open inner\" at portal > div > button is \
+     behind the modal dialog \"Confirm\" at portal > div, so a browser does \
+     not deliver a press to it."
+    (refusal "Open inner");
+  string "a button inside the inner modal" "delivered" (refusal "Back")
+
 let visible_text () =
   let memory = Memory.mount Reach.component in
   bool "text in a paragraph with no role" true (Memory.shows memory "0");
@@ -1369,6 +1430,50 @@ let element_states () =
     "expanded" (Some false)
     (Memory.expanded (Memory.by_text memory "Menu"))
 
+let contains text part =
+  let length = String.length part in
+  let rec go index =
+    index + length <= String.length text
+    && (String.sub text index length = part || go (index + 1))
+  in
+  go 0
+
+let password_is_masked () =
+  Silica_test_support.Password_form.register ();
+  let memory = Memory.mount Silica_test_support.Password_form.component in
+  Alcotest.(check bool)
+    "an empty password field prints an empty value" true
+    (contains (Memory.view_text memory) {|input "Password" value="" [input]|});
+  Memory.input (Memory.by_id memory "password") "hunter2";
+  let view = Memory.view_text memory in
+  Alcotest.(check bool)
+    "the view prints the mask" true
+    (contains view {|input "Password" value="••••••••" [input]|});
+  Alcotest.(check bool) "the view has no secret" false (contains view "hunter2");
+  let trace = Memory.trace memory in
+  let text = Trace.to_text trace and json = Trace.to_jsonl trace in
+  Alcotest.(check bool)
+    "the trace text has no secret" false (contains text "hunter2");
+  Alcotest.(check bool)
+    "the trace data and snapshots have no secret" false (contains json "hunter2");
+  Alcotest.(check bool)
+    "the trace keeps the mask in the snapshot" true
+    (contains json "••••••••");
+  Memory.press (Memory.by_text memory "Send");
+  Alcotest.(check bool)
+    "a later snapshot has no secret" false
+    (contains (Trace.to_jsonl (Memory.trace memory)) "hunter2");
+  match
+    Memory.replay
+      (Memory.mount Silica_test_support.Password_form.component)
+      (Memory.trace memory)
+  with
+  | Not_realisable { reason; _ } ->
+      Alcotest.(check bool)
+        "a replay stops at the masked text" true (contains reason "masked")
+  | Replayed | Different _ | Not_found _ ->
+      Alcotest.fail "a replay typed the mask as the password"
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "memory"
@@ -1379,6 +1484,8 @@ let () =
           case "a press on a submit button submits its form"
             press_on_a_submit_button_submits_the_form;
           case "input delivers the value" input_delivers_the_value;
+          case "a password is masked in the view, the trace and a replay"
+            password_is_masked;
           case "After fires later" after_fires_later;
           case "Call delivers success and sends the wire request" call_success;
           case "Call maps non-200, bad JSON and fetch failure" call_errors;
@@ -1471,6 +1578,8 @@ let () =
           case "view_text" view_text_of_the_page;
           case "a disabled, inert or hidden element refuses input"
             unreachable_elements_refuse_input;
+          case "the page behind an open modal refuses input"
+            page_behind_a_modal_refuses_input;
           case "the states of an element" element_states;
           case "the visible text of a page" visible_text;
         ]

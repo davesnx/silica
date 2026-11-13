@@ -65,7 +65,9 @@ let finish graphs code =
       match write dir with
       | Ok count ->
           Printf.eprintf
-            "silica check: wrote the graphs of %d machine%s into %s\n" count
+            "silica check: wrote %d graph%s into %s, one for each machine of \
+             each entry\n"
+            count
             ( if count = 1 then
                 ""
               else

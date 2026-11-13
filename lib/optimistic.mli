@@ -5,8 +5,11 @@
 
     For a Remote mutation: {!OPTIMISTIC.apply} when the call starts,
     {!OPTIMISTIC.settle} when the answer arrives, {!OPTIMISTIC.drop} when it
-    fails. For Live data: {!OPTIMISTIC.apply} when the change is sent, and
-    {!OPTIMISTIC.settle} when a state with a higher [seq] arrives. *)
+    fails. For Live data that the changes go to by Remote calls: the same, and
+    also {!OPTIMISTIC.rebase} for each state of the topic. A state that already
+    holds a change can arrive before the answer to its call, so the change is
+    then in the confirmed value and still pending: {!CHANGE.apply} must be
+    idempotent (see {!CHANGE.apply}). *)
 
 (** How a change goes on a value. *)
 module type CHANGE = sig
@@ -14,7 +17,11 @@ module type CHANGE = sig
   type change
 
   val apply : value -> change -> value
-  (** [apply value change] is the value with the change on it. *)
+  (** [apply value change] is the value with the change on it. With Live data it
+      must be idempotent: [apply (apply value change) change] equals
+      [apply value change], so a change that a Live state already holds does not
+      apply twice. An add checks that the item is not there yet; a set of a
+      field is idempotent already. *)
 end
 
 type ('value, 'change) state
@@ -55,8 +62,9 @@ module type OPTIMISTIC = sig
   val confirmed : t -> value
   (** The confirmed value, with no pending change applied. *)
 
-  val pending : t -> int
-  (** The number of pending changes. *)
+  val pending : t -> (int * change) list
+  (** The pending changes with their ids, oldest first, such as for a [during]
+      that makes one Remote call for each. *)
 
   val is_pending : id:int -> t -> bool
   (** The change [id] is pending. *)

@@ -47,8 +47,9 @@ type cause =
       element : string;
           (** Where the element is, as {!Accessibility.path} gives it. *)
       value : string option;
-          (** The text of an [input], or the name of the key of a [key_down] or
-              [key_up] (see {!Key.to_string}). *)
+          (** The text of an [input] ({!Secret.mask} for a password field), or
+              the name of the key of a [key_down] or [key_up] (see
+              {!Key.to_string}). *)
     }  (** A handler of an element of the view. *)
   | Timer of { id : string; ms : int }  (** A timer that the state owned. *)
   | Answer of { id : string; path : string; answer : Silica_json.Json.t option }
@@ -164,6 +165,12 @@ val names_only : t list -> t list
 
 (** {1 Observers} *)
 
+val learn : Secret.t -> Instance.observed -> unit
+(** [learn secrets observed]: when the step types a text into a password field,
+    [secrets] learns it, as {!observer} does. A host that encodes snapshots
+    itself, such as the inspector, scrubs them with the same table (see
+    {!Secret.scrub}). *)
+
 type pending
 (** A record whose element may not be known yet. The role and name of the
     element of a handler are computed from the view, which costs a walk of it,
@@ -184,8 +191,25 @@ val peek : pending -> t
 val ready : t -> pending
 (** A record that is known. *)
 
-val observer : ?clock:(unit -> float) -> (pending -> unit) -> Instance.observer
-(** [observer ?clock record] numbers the steps from 1, reads the [clock] (no
-    time when it is not given) and gives each record to [record]. The work
-    happens only in the observer: a host with no observer does none, and an app
-    that never calls this function carries none of its code. *)
+val observer :
+  ?clock:(unit -> float) ->
+  ?mask:bool ->
+  ?secrets:Secret.t ->
+  (pending -> unit) ->
+  Instance.observer
+(** [observer ?clock ?secrets record] numbers the steps from 1, reads the
+    [clock] (no time when it is not given) and gives each record to [record].
+
+    Text typed into a password field (see {!Secret}) is masked: the [value] of
+    the [input] cause is {!Secret.mask} (an empty text stays [""]), and the
+    observer learns the text into [secrets] (a new table when it is not given),
+    under the instance path and the element path of the field. In [data],
+    [props] and [snapshot], each string that is the last text typed into a
+    password field is {!Secret.mask}. A trace then cannot type that text again:
+    a replay of it stops at that step.
+
+    With [~mask:false] (default [true]) the records keep that text in clear, for
+    a test that replays its own run in the same process (see
+    [Silica_memory.trace_in_clear]). Never write such records to a file. The
+    work happens only in the observer: a host with no observer does none, and an
+    app that never calls this function carries none of its code. *)

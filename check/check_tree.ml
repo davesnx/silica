@@ -46,6 +46,7 @@ type ('ev, 'e) effects = {
   mutable navigation : 'e Action.host list;
   mutable root_actions : 'e Action.host list;
   mutable remounts : string list;
+  mutable delivered : 'ev list;
 }
 
 let effects () =
@@ -55,6 +56,7 @@ let effects () =
     navigation = [];
     remounts = [];
     root_actions = [];
+    delivered = [];
   }
 
 let rec restrict_attr : type a b.
@@ -181,6 +183,70 @@ let descends ~from instance =
   let prefix = from ^ "/" in
   String.length instance > String.length prefix
   && String.sub instance 0 (String.length prefix) = prefix
+
+type expansion = {
+  expand :
+    'p 's 'e.
+    instance:string -> ('p, 's, 'e) Component.t -> 'p -> 'e Node.t option;
+}
+
+let expand expansion ~owner node =
+  let rec walk : type x. owner:string -> x Node.t -> segment list -> x Node.t =
+   fun ~owner node path ->
+    let walk_all children =
+      List.mapi
+        (fun index child -> walk ~owner child (Index index :: path))
+        children
+    in
+    match Node.view node with
+    | Node.Text _ ->
+        node
+    | Node.Element (tag, attrs, children) ->
+        Node.element tag attrs (walk_all children)
+    | Node.List children ->
+        Node.list (walk_all children)
+    | Node.Keyed (key, child) ->
+        Node.keyed key (walk ~owner child (Key key :: path))
+    | Node.Chunk (Node.Chunk_view { chunk; loading; render }) -> (
+        match Chunk.get chunk with
+        | Some value ->
+            walk ~owner (render value) (Index 0 :: path)
+        | None ->
+            walk ~owner loading (Index 1 :: path)
+      )
+    | Node.Portal (target, children) ->
+        Node.portal ?target (walk_all children)
+    | Node.Boundary { fallback; body } ->
+        Node.boundary ~fallback (walk ~owner body (Index 0 :: path))
+    | Node.Component child -> (
+        let slot =
+          match (child.key, path) with
+          | Some key, _ :: parent ->
+              Key key :: parent
+          | Some key, [] ->
+              [ Key key ]
+          | None, _ ->
+              path
+        in
+        let instance =
+          instance_name ~owner slot (Machine.id child.component.machine)
+        in
+        match expansion.expand ~instance child.component child.props with
+        | None ->
+            node
+        | Some view -> (
+            let resolved =
+              restrict (fun _ -> None) (walk ~owner:instance view [])
+            in
+            match child.key with
+            | Some key ->
+                Node.keyed key resolved
+            | None ->
+                resolved
+          )
+      )
+  in
+  walk ~owner node []
 
 let typed_event : type p s e.
     (p, s, e) runtime -> Check_model.child_event -> e option =
@@ -688,6 +754,7 @@ let joint (type n s ev e)
              effects node bindings child_event Check_model.By_input
           )
     | None ->
+        effects.delivered <- event :: effects.delivered;
         let root, actions, _ =
           model.step node.root { event; via = Check_model.By_input }
         in
@@ -881,7 +948,7 @@ let joint (type n s ev e)
     let resolution = resolved node in
     Hashtbl.replace roots node.root ();
     Check_rules.dedup
-      (model.enabled node.root resolution.own
+      (model.enabled node.root (restrict own_of view)
       @ ( match link with
         | Some link ->
             List.map
@@ -947,7 +1014,7 @@ let joint (type n s ev e)
     | None ->
         model.answer node.root move
   in
-  let step node (move : ev Check_model.move) =
+  let run_step node (move : ev Check_model.move) =
     let bindings = (resolved node).bindings in
     let effects = effects () in
     let node, how =
@@ -983,14 +1050,89 @@ let joint (type n s ev e)
     in
     let node, resolution = settle effects node bindings in
     remember node resolution;
+    (node, effects, how)
+  in
+  let step node move =
+    let node, effects, how = run_step node move in
     (node, returned `Step effects, how)
   in
-  let state_of node instance =
-    match binding_of node instance with
-    | Some (entry, Binding { runtime; _ }) ->
-        Some (Machine.name runtime.machine (world_of runtime entry).s)
-    | None ->
-        None
+  let delivered node move =
+    let _, effects, _ = run_step node move in
+    List.rev effects.delivered
+  in
+  let states (node : n joint) =
+    let bindings = (resolved node).bindings in
+    List.filter_map
+      (fun (entry : running) ->
+        match List.assoc_opt entry.instance bindings with
+        | Some (Binding { runtime; _ }) ->
+            Some
+              {
+                Check_model.instance = entry.instance;
+                machine = Machine.id runtime.machine;
+                state = Machine.name runtime.machine (world_of runtime entry).s;
+              }
+        | None ->
+            None
+      )
+      node.running
+  in
+  let owner (node : n joint) =
+    let table =
+      lazy
+        (let resolution = resolved node in
+         let rec tag owner (node : ev Node.t) =
+           let owner =
+             match
+               List.find_opt
+                 (fun (_, Binding { subtree; _ }) -> subtree == node)
+                 resolution.bindings
+             with
+             | Some (instance, _) ->
+                 Some instance
+             | None ->
+                 owner
+           in
+           match Node.view node with
+           | Node.Element (name, attrs, children) ->
+               Node.element name
+                 ( match owner with
+                 | Some instance ->
+                     Node.String ("data-silica-owner", instance) :: attrs
+                 | None ->
+                     attrs
+                 )
+                 (List.map (tag owner) children)
+           | Node.List children ->
+               Node.list (List.map (tag owner) children)
+           | Node.Keyed (key, child) ->
+               Node.keyed key (tag owner child)
+           | Node.Portal (target, children) ->
+               Node.portal ?target (List.map (tag owner) children)
+           | Node.Boundary { fallback; body } ->
+               Node.boundary ~fallback (tag owner body)
+           | Node.Text _ | Node.Chunk _ | Node.Component _ ->
+               node
+         in
+         List.filter_map
+           (fun element ->
+             Option.map
+               (fun instance -> (Accessibility.path element, instance))
+               (Accessibility.attribute element "data-silica-owner")
+           )
+           (Accessibility.elements (tag None resolution.view))
+        )
+    in
+    fun path ->
+      Option.bind
+        (List.assoc_opt path (Lazy.force table))
+        (fun instance ->
+          List.find_opt
+            (fun (running : Check_model.running_state) ->
+              running.instance = instance
+            )
+            (states node)
+        )
   in
   let child_rules (node : n joint) _ event =
     let resolution = resolved node in
@@ -1058,6 +1200,7 @@ let joint (type n s ev e)
     snapshot = (fun node -> model.snapshot node.root);
     event_name;
     event_of = (fun event -> Some event);
+    delivered;
     cause;
     state_rules =
       (fun node view ->
@@ -1134,7 +1277,8 @@ let joint (type n s ev e)
             | None ->
                 None
           );
-        state_of;
+        states;
+        owner;
         rules = child_rules;
         inside =
           (fun node ->

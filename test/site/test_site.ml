@@ -369,8 +369,8 @@ let test_charts () =
   Alcotest.(check (list string))
     "select states" [ "closed"; "open" ] (names Site_charts.select);
   Alcotest.(check (list string))
-    "tooltip timers of opening, for each delay prop"
-    [ "after 600ms"; "after 0ms" ]
+    "tooltip timers of opening, for each delay prop, and its kept step"
+    [ "after 600ms"; "after 0ms"; "stay on props" ]
     (List.find
        (fun (node : Silica.Statechart_layout.node) -> node.name = "opening")
        Site_charts.tooltip.nodes

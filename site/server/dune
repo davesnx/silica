@@ -62,7 +62,8 @@
      %{project_root}/skills/silica-verify/references/api/silica.md
      %{project_root}/skills/silica-verify/references/api/check.md
      %{project_root}/skills/silica-verify/references/api/memory.md
-     %{project_root}/skills/silica-verify/references/api/server.md))
+     %{project_root}/skills/silica-verify/references/api/server.md
+     %{project_root}/skills/silica-verify/references/api/ui.md))
    (with-stdout-to
     site_llms.ml
     (run
@@ -73,4 +74,5 @@
      %{project_root}/skills/silica-verify/references/api/silica.md
      %{project_root}/skills/silica-verify/references/api/check.md
      %{project_root}/skills/silica-verify/references/api/memory.md
-     %{project_root}/skills/silica-verify/references/api/server.md)))))
+     %{project_root}/skills/silica-verify/references/api/server.md
+     %{project_root}/skills/silica-verify/references/api/ui.md)))))

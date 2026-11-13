@@ -634,6 +634,46 @@ let test_app_block_holds_navigation () =
     "Resume goes to the URL" true
     (List.mem "/ -> /away on url changed" (edges "router"))
 
+let test_app_blocked_navigation_names_the_page () =
+  let check =
+    Check.app ~urls:[ "/away" ] ~max_history:2
+      ~pages:[ Check.child Guarded.page ]
+      ~properties:
+        [ Check.always ~name:"never asks" (Check.not_ (Check.shows "Leave")) ]
+      ~routes:[ Guarded.Home; Guarded.Away ]
+      ~parse:(Router.parse Guarded.routes)
+      ~print:(Router.print Guarded.routes)
+      ~url_event:(fun url -> Router.Url_changed url)
+      Guarded.app
+  in
+  let violation = first (Check.run check) in
+  let expected =
+    [
+      "[guarded at router/:guarded] clean -> dirty: edit, by the view offers \
+       press on button \"Edit\" at button";
+      "/ -> /: open /away, by the user opens /away; then [guarded at \
+       router/:guarded] dirty -> asking";
+    ]
+  in
+  Alcotest.(check (list string))
+    "the blocked navigation names the move of the page" expected
+    (List.map
+       (Check.describe_step ~root:"router")
+       (Check.steps violation.counterexample)
+    );
+  match Check.replay check (inputs violation) with
+  | Replayed points ->
+      Alcotest.(check (list string))
+        "the replay names the move of the page" expected
+        (List.filter_map
+           (fun (point : (_, _) Check.replayed_step) ->
+             Option.map (Check.describe_step ~root:"router") point.step
+           )
+           points
+        )
+  | Not_enabled { at; _ } ->
+      Alcotest.failf "step %d of the counterexample is not enabled" at
+
 let test_app_cancel_reverts_the_history () =
   let cancel ~from ~target =
     match (from, target) with
@@ -2116,6 +2156,33 @@ let test_property_hint_and_event () =
   in
   passes report
 
+let test_step_condition_at_a_start () =
+  let violation =
+    first
+      (Check.run
+         (Check.component
+            ~inputs:(fun _ -> [ Search.Input "a" ])
+            ~samples:[ Check.answers Search.endpoint [ [ "hit" ] ] ]
+            ~properties:
+              [
+                Check.always ~name:"steps keep the query" ~hint:"Own hint."
+                  (Check.transition (fun _ _ _ -> true));
+              ]
+            Search.component
+         )
+      )
+  in
+  Alcotest.(check int) "no step" 0 (List.length (inputs violation));
+  Alcotest.(check string)
+    "the message names the start"
+    "The property \"steps keep the query\" does not hold at a start, in state \
+     idle: it reads the step (Check.event, Check.transition, Check.entered), \
+     and a start has no step, so those conditions are false there. Guard the \
+     step part: not_ (Check.event test) ||| ..., or test the start with a \
+     point condition."
+    violation.message;
+  Alcotest.(check string) "the own hint stays" "Own hint." violation.hint
+
 let impure ~source =
   let starting = ref true in
   let machine =
@@ -2326,6 +2393,84 @@ let test_dialog_focus_follows_the_traps () =
        report.violations
     )
 
+let test_page_behind_a_modal_is_inert () =
+  let dialog ?(hidden = false) label children =
+    Node.portal
+      [
+        Node.element "div"
+          ([
+             Attr.string "role" "dialog";
+             Attr.string "aria-modal" "true";
+             Attr.string "aria-label" label;
+           ]
+          @
+          if hidden then
+            [ Attr.bool "hidden" true ]
+          else
+            []
+          )
+          children;
+      ]
+  in
+  let offers view event =
+    let check =
+      Check.component
+        (component
+           ~inc:(fun n -> Some (n, []))
+           ~dec:(fun n -> Some (n, []))
+           (fun _ -> view)
+        )
+    in
+    match Check.replay check [ Check.Event event ] with
+    | Replayed _ ->
+        true
+    | Not_enabled _ ->
+        false
+  in
+  let page modal =
+    Node.element "main" []
+      [ btn "Behind" Inc; Node.element "div" [] [ btn "Ancestor" Go; modal ] ]
+  in
+  let one = page (dialog "Edit" [ btn "Inside" (Dec : ev) ]) in
+  Alcotest.(check (list bool))
+    "only the buttons inside an open modal in a portal are offered"
+    [ false; true; false ]
+    [ offers one Inc; offers one (Dec : ev); offers one Go ];
+  let nested =
+    page
+      (dialog "Outer"
+         [ btn "Outer" (Dec : ev); dialog "Inner" [ btn "Inner" Inc ] ]
+      )
+  in
+  Alcotest.(check (list bool))
+    "the innermost modal wins: the outer one is behind it" [ false; true ]
+    [ offers nested (Dec : ev); offers nested Inc ];
+  let inline =
+    Node.element "main" []
+      [
+        btn "Behind" Inc;
+        Node.element "div"
+          [ Attr.on_press (Go : ev) ]
+          [
+            Node.element "div"
+              [
+                Attr.string "role" "dialog";
+                Attr.string "aria-modal" "true";
+                Attr.string "aria-label" "Inline";
+              ]
+              [ btn "Inside" (Dec : ev) ];
+          ];
+      ]
+  in
+  Alcotest.(check (list bool))
+    "an element around an inline modal is not behind it" [ false; true; true ]
+    [ offers inline Inc; offers inline (Dec : ev); offers inline Go ];
+  let closed =
+    page (dialog ~hidden:true "Closed" [ btn "Inside" (Dec : ev) ])
+  in
+  Alcotest.(check bool)
+    "a hidden modal leaves the page reachable" true (offers closed Inc)
+
 let view_breach rule (breach : ev Node.t) =
   finding rule
     (Check.component
@@ -2368,6 +2513,22 @@ let suite_finding rule result =
         ("expected the rule " ^ rule ^ " in the JSON, got:\n"
         ^ Silica_json.Json.to_string (Check_suite.to_json result)
         )
+
+let test_field_in_an_empty_label () =
+  let message, hint =
+    view_breach "field-label"
+      (Node.element "label" [] [ Node.element "input" [] [] ])
+  in
+  Alcotest.(check string)
+    "the message names the empty label"
+    "In state active, the textbox field at label > input has no label: the \
+     <label> around it at label has no text."
+    message;
+  Alcotest.(check string)
+    "the hint asks for its text"
+    "Give the <label> at label the text that names the field at label > input, \
+     or give the field an aria-label or an aria-labelledby."
+    hint
 
 let test_every_rule () =
   let paged =
@@ -2826,6 +2987,74 @@ let test_labels_by_cause () =
        (Check.steps violation.counterexample)
     )
 
+type phase = Phase_connecting | Phase_live | Phase_offline
+
+let phase_topic = Topic.declare ~name:"phase" ~state:Codec.int
+
+let phase_name = function
+  | Phase_connecting ->
+      "watching.connecting"
+  | Phase_live ->
+      "watching.live"
+  | Phase_offline ->
+      "watching.offline"
+
+let test_sub_states_in_the_spec () =
+  let machine =
+    Machine.make ~id:"phases" ~init:Phase_connecting ~name:phase_name
+      ~states:[ "watching.connecting"; "watching.live"; "watching.offline" ]
+      ~during:(fun _ ->
+        [
+          Source.live phase_topic "main" (fun (update : int Topic.update) ->
+              match update.status with
+              | Ready { stale = false; _ } ->
+                  Phase_live
+              | Ready { stale = true; _ } ->
+                  Phase_offline
+              | Idle | Loading _ | Failed _ ->
+                  Phase_connecting
+          );
+        ]
+      )
+      (fun _ next -> Machine.Go next)
+  in
+  let report =
+    Check.run
+      (Check.component
+         ~allow:
+           [
+             Check.allow ~rule:"dead-end" ~state:"watching.connecting"
+               ~reason:"A failed feed ends here." ();
+           ]
+         ~samples:[ Check.states phase_topic [ 1 ] ]
+         (Component.make machine (fun _ -> Node.text "phase"))
+      )
+  in
+  Alcotest.(check (list string))
+    "each sub-state is a state of the spec, and each step between them an edge"
+    [
+      "edge watching.connecting -> watching.live";
+      "edge watching.live -> watching.connecting";
+      "edge watching.live -> watching.offline";
+      "edge watching.offline -> watching.connecting";
+      "edge watching.offline -> watching.live";
+      "stay watching.connecting";
+      "stay watching.live";
+    ]
+    (List.sort_uniq compare
+       (List.map
+          (fun (label : Spec.label) ->
+            if label.kept then
+              "stay " ^ label.from
+            else
+              Printf.sprintf "edge %s -> %s" label.from label.target
+          )
+          (List.hd report.specs).edges
+       )
+    );
+  Alcotest.(check (list string))
+    "every sub-state is reached" [] report.unreached
+
 let () =
   Alcotest.run "check"
     [
@@ -2833,6 +3062,8 @@ let () =
         [
           Alcotest.test_case "a machine with no states is unlisted" `Quick
             test_unlisted_states;
+          Alcotest.test_case "sub-states with a dot are states of the spec"
+            `Quick test_sub_states_in_the_spec;
           Alcotest.test_case "a machine with no event_name is labelled by cause"
             `Quick test_labels_by_cause;
         ]
@@ -2848,6 +3079,8 @@ let () =
             test_dialog_with_trap_passes;
           Alcotest.test_case "dialog-focus follows the traps, not the view"
             `Quick test_dialog_focus_follows_the_traps;
+          Alcotest.test_case "the page behind an open modal is inert" `Quick
+            test_page_behind_a_modal_is_inert;
           Alcotest.test_case "aria-label is a name" `Quick
             test_aria_label_is_a_name;
           Alcotest.test_case "focus to missing ref" `Quick
@@ -2889,6 +3122,8 @@ let () =
             `Quick test_app_unreached_routes;
           Alcotest.test_case "a block in a page holds a navigation of the app"
             `Quick test_app_block_holds_navigation;
+          Alcotest.test_case "a blocked navigation names the move of the page"
+            `Quick test_app_blocked_navigation_names_the_page;
           Alcotest.test_case "a guard that cancels reverts the history" `Quick
             test_app_cancel_reverts_the_history;
           Alcotest.test_case "child bug: page check misses it" `Quick
@@ -2938,6 +3173,10 @@ let () =
           Alcotest.test_case "the cause of each step" `Quick test_causes;
           Alcotest.test_case "property hint and event condition" `Quick
             test_property_hint_and_event;
+          Alcotest.test_case "a step condition fails at a start, and says why"
+            `Quick test_step_condition_at_a_start;
+          Alcotest.test_case "a field in an empty label" `Quick
+            test_field_in_an_empty_label;
           Alcotest.test_case "every rule breaks, with a hint" `Quick
             test_every_rule;
         ]

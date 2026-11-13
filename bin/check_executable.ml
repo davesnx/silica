@@ -23,11 +23,12 @@ let build ~command =
     in
     let errors = read_file output in
     Sys.remove output;
-    prerr_string errors;
     if code = 0 then
       Ok ()
-    else
+    else (
+      prerr_string errors;
       Error ("silica " ^ command ^ ": check/main.exe does not build.", errors)
+    )
 
 let run ~command arguments =
   match build ~command with

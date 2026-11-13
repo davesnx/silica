@@ -70,7 +70,8 @@ let holds broken ?cycle_from ?start check page steps =
         Some message
   in
   match
-    Check.replay_run ?cycle_from ?start ~props:!given check (Memory.trace page)
+    Check.replay_run ?cycle_from ?start ~props:!given check
+      (Memory.trace_in_clear page)
   with
   | Error reason ->
       fail broken

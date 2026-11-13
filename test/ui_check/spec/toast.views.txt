@@ -10,7 +10,8 @@ path
 view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
-      text "Saved Saved."
+      text "Saved"
+      text "Saved."
       button "Close" [press]
 
 state running, view 2
@@ -19,7 +20,8 @@ path
 view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
-      text "Saved Saved."
+      text "Saved"
+      text "Saved."
       button "Close" [press]
     alertdialog "Failed" [key_down]
       text "Failed"
@@ -31,7 +33,8 @@ path
 view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
-      text "Saved Saved."
+      text "Saved"
+      text "Saved."
       button "Close" [press]
 
 state paused, view 2
@@ -40,7 +43,8 @@ path
 view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
-      text "Saved Saved."
+      text "Saved"
+      text "Saved."
       button "Close" [press]
     alertdialog "Failed" [key_down]
       text "Failed"
@@ -53,7 +57,8 @@ path
 view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
-      text "Saved Saved."
+      text "Saved"
+      text "Saved."
       button "Close" [press]
 
 state expired, view 2
@@ -63,7 +68,8 @@ path
 view
   region "Notifications" [pointer_enter, pointer_leave, focus, blur]
     dialog "Saved" [key_down]
-      text "Saved Saved."
+      text "Saved"
+      text "Saved."
       button "Close" [press]
     alertdialog "Failed" [key_down]
       text "Failed"

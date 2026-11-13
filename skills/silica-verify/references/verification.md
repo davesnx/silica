@@ -25,7 +25,7 @@ The commands:
 | `dune exec ./check/main.exe -- --only ID` | Runs only the entry `ID`. `silica check` has no `--only`. | as `silica check` |
 | `dune exec ./check/main.exe -- golden check/spec` | Compares the golden files with what the checks find, as `silica check` and `dune test` do. Add `--write` to accept a change. | 0 no change, 1 drift |
 | `dune exec ./check/main.exe -- rules` | Lists every built-in rule with its message and hint. Add `--json` for JSON. | 0 |
-| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart, reload and hot reload, with the instances kept and restarted (see [Development: silica dev](../../../docs/install.mld)); lines that do not start with `{` are the output of the server. | runs until stopped |
+| `silica dev --json` | Builds on each save and prints one JSON line for each build, error, restart, reload and hot reload, with the instances kept and restarted (see [Development: silica dev](../../../docs/install.mld)); stdout has the JSON lines only, and the output of the server goes to stderr. | runs until stopped |
 
 ## The loop
 
@@ -37,7 +37,7 @@ The commands:
 
 4. **Read each finding.** In `report.json`, for each entry, each item of `violations`: `rule`, `message`, `hint`, `state.name`, `view` and `trace`. Each step of `trace` has `event` and `cause.text`, which says what made the step. Find the rule in [the table of rules](verification.md#the-rules). Also read `unreached`, `vacuous` and the top-level `unchecked` and `errors`.
 
-5. **Make a red test.** Make one test for each violation that you fix. Each violation has a `trace_file`, such as `traces/counter_ignored_event_saving.jsonl` (the machine, the rule and the state), and a `test_file`, such as `test/counter_ignored_event_saving_replay.ml`. Run `silica script ID TRACE_FILE --output TEST_FILE` (it writes the file only when the test can be written, and says which file it wrote), add its name to the `names` in `test/dune`, then run `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, it prints why on standard error and writes no file; use `silica replay ID TRACE_FILE` instead.
+5. **Make a red test.** Make one test for each violation that you fix. Each violation has a `trace_file`, such as `traces/counter_ignored_event_saving.jsonl` (the machine, the rule and the state), and a `test_file`, such as `test/counter_ignored_event_saving_replay.ml`: `null` when `silica script` cannot write the test, with the reason in `test_error`. Run `silica script ID TRACE_FILE --output TEST_FILE` (it writes the file only when the test can be written, and says which file it wrote), add its name to the `names` in `test/dune`, then run `dune test`. The test must fail with the same rule and hint. When `silica script` exits 1, it prints why on standard error and writes no file; use `silica replay ID TRACE_FILE` instead.
 
    - The printed test is formatted with the `.ocamlformat` of the app when `ocamlformat` is installed, so `dune build @fmt` passes on it. Do not edit its last line, the assertion.
    - A test that compares a whole view, such as the `Expect.string "view"` in `test/counter_page.ml`, fails in this `dune test` too when your change changed that view; it prints the lines that differ, `-` expected and `+` got. When the difference is the change you want, update the expected text in step 7; when it is not, it is one more bug to fix.
@@ -54,7 +54,7 @@ The commands:
 
 - Put behaviour in the machine. A view only reads the state and names events.
 - Disable each element whose event the state does not handle: `disabled=(not (Machine.can machine () state Event))`. The checker offers no event of a disabled element, and `Silica_memory` refuses to press it.
-- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. The state name is part of that key: a step to a state with another name stops every source of the old state and starts the sources of the new one, even when both own the same `Source.after 3000 Expire`. To keep a timer running across a change, such as a row that asks for confirmation while it shows "New", keep the change as data inside one state. `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
+- `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. The state name is part of that key: a step to a state with another name stops every source of the old state and starts the sources of the new one, even when both own the same `Source.after 3000 Expire`. To keep a timer running across a change, such as a row that asks for confirmation while it shows "New", keep the change as data inside one state, or give the phases sub-state names with a dot, such as `list.live` and `list.offline`: the part before the dot owns the sources, so they keep running, and the spec and the golden views still show each phase (see [Connection phases](../../../docs/data.mld)). `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
 
 From `docs/examples/shared/doc_debounce.mlx`:
 
@@ -220,6 +220,7 @@ The fields that the loop uses. The full shape is in [The JSON report](checker.md
 - `entries[].vacuous`: properties that passed without being tested, because their `from`, their `after` or the left side of their implication never held. It is a warning: the exit code stays 0. The text output prints it as `vacuous: the property "NAME": ...`. Reach that state with `samples`, `texts` or `inputs`, or fix the condition.
 - `entries[].allowed`: each allowance, its reason, and how many violations it turned off.
 - `unchecked`: components that a checked view renders and that no entry checks.
+- `golden`: the `golden-drift` findings, which are not in `entries[].violations`: `golden.changes`, each with `file`, `change` (`missing`, `changed` or `stale`), `rule`, `message`, `hint` and `lines` (the diff). A new machine has `missing` files, so the exit code is 1 with no violation. `null` with `--no-golden`.
 - `errors`: setup errors, such as an `--only` id that no entry has.
 
 With `jq`, one line for each violation:
@@ -362,7 +363,7 @@ From `test/check/test_temporal.ml`:
              );
 ```
 
-The `not_ (event ...)` part makes the property hold at a start and on the other steps. A property of a `Check.child` reads only states and views; one that reads the step raises `Check.Invalid_check`.
+A start has no step, so `Check.event`, `Check.entered` and `Check.transition` are false at a start, and a property built only from them fails there; the message says so. The `not_ (event ...)` part makes the property hold at a start and on the other steps: write a rule about steps as `not_ (event test) ||| ...`. A property of a `Check.child` reads only states and views; one that reads the step raises `Check.Invalid_check`.
 
 ### A rule about an element
 

@@ -100,8 +100,9 @@ let codec machine what = function
       Error
         ("the machine \"" ^ machine.id
        ^ "\" has no registered codecs: call Machine.register_codecs on it in \
-          the codec module of the app (for example Linear_codecs.register), \
-          and call that module before asking for a codec"
+          the codec module of the app (Codecs.register in app/shared/codecs.ml \
+          of an app that silica new made), and call it before asking for a \
+          codec, such as at the start of check/main.ml"
         )
 
 let props_codec machine =
@@ -122,8 +123,16 @@ let default_props machine = machine.default_props
 let type_id machine = machine.type_id
 let run actions = List.map (fun action -> Action.Run action) actions
 
+let owner machine state =
+  let name = name machine state in
+  match String.index_opt name '.' with
+  | Some dot ->
+      String.sub name 0 dot
+  | None ->
+      name
+
 let owned machine props state =
-  let prefix = machine.id ^ "/" ^ name machine state ^ "/" in
+  let prefix = machine.id ^ "/" ^ owner machine state ^ "/" in
   let counts = Hashtbl.create 8 in
   List.map
     (fun source ->
@@ -172,7 +181,7 @@ let without others sources =
   List.filter (fun (id, _) -> not (List.mem_assoc id others)) sources
 
 let move ?finished machine ~from_props ~to_props state next ~reenter actions =
-  if reenter || name machine next <> name machine state then
+  if reenter || owner machine next <> owner machine state then
     ( next,
       exit machine from_props state @ run actions @ enter machine to_props next,
       Entered

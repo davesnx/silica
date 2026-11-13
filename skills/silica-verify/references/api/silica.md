@@ -134,6 +134,12 @@ val tag : 'e element -> string
 The tag name.
 
 ```ocaml
+val ancestors : 'e element -> 'e element list
+```
+
+The elements above it in the page, nearest first. A child of a portal has none.
+
+```ocaml
 val attributes : 'e element -> 'e Node.attr list
 ```
 
@@ -211,13 +217,19 @@ val current : 'e element -> string option
 val value : 'e element -> string option
 ```
 
-`aria-valuetext`, else `aria-valuenow`, else the `value` of an `input`, `textarea` or `select`.
+`aria-valuetext`, else `aria-valuenow`, else the `value` of an `input`, `textarea` or `select`. The value of a password field is `Secret.mask` (an empty value stays `""`), so a typed secret does not show in a printed view.
 
 ```ocaml
 val modal : 'e element -> bool
 ```
 
 `aria-modal="true"`.
+
+```ocaml
+val behind_modal : 'e element -> 'e element option
+```
+
+The open modal that the element is behind, if any. An open modal is an element with `aria-modal="true"` that is not `hidden` and has no other open modal inside it (a modal opened from inside another one is in front of it, also through a portal). While the view shows an open modal, an element is behind it unless it is inside an open modal (also through a portal) or above one in the page; the elements around a portal are not above the portal, as its children are painted at the end of the body. This is the page that the browser renderer makes `inert` while a `Source.focus_trap` runs (the `dialog-focus` rule of the checker asks for that trap on each modal): the checker and `Silica_memory` give no input to an element behind a modal. It stays in the text view, as it stays drawn.
 
 ## Silica.Action
 
@@ -1140,7 +1152,8 @@ type request =
           when only one target is connected. *)
   | Travel of { target : string; seq : int }
       (** Pause the target at a step (not implemented yet). *)
-  | Return_live of string
+  | Return_live of string  (** Leave time travel (not implemented yet). *)
+  | Seen of string
 ```
 
 ```ocaml
@@ -1161,6 +1174,15 @@ type message =
       (** The answer to [Targets], and the first message to a client. *)
   | Trace_file of { id : int option; target : string; trace : string }
       (** The answer to [Export]: a trace file (see {!Trace.to_jsonl}). *)
+  | Seen_steps of {
+      id : int option;
+      machine : string;
+      steps : Transition.t list;
+    }
+      (** The answer to [Seen]: one step of each kind, in the order the hub
+          first got it, with no user data (see {!Transition.strip}). Two steps
+          are of one kind when they have the same change, states, event and
+          label. *)
   | Gone of string  (** The target disconnected. *)
   | Failure of { id : int option; message : string }
 ```
@@ -1642,7 +1664,7 @@ An island: an empty `div` with `data-silica-live` set to the channel. It has no 
 
 *For hosts: the browser runtime, `Silica_memory` and the server use it. App code does not call it.*
 
-One live subscription over a WebSocket, as Live protocol v1 describes it (`Protocol`). The client sends the hello, keeps the heartbeat, drops old states, and connects again after a loss. It reaches the platform only through `Platform.io`.
+One live subscription over a WebSocket, as the Live protocol describes it (`Protocol`). The client sends the hello, keeps the heartbeat, drops old states, and connects again after a loss. It reaches the platform only through `Platform.io`.
 
 ```ocaml
 type config = { ping_ms : int; pong_ms : int }
@@ -1682,7 +1704,7 @@ val start :
   t
 ```
 
-Connect with `io.connect` and keep the connection. `on_state` runs for each state with a `seq` higher than the last one of the same socket. `on_down` runs once when a socket that had no loss before is lost; the client then connects again, and the next state runs `on_state`. `on_fatal` runs once, and the client does not connect again. After a close with `Protocol.close_session`, `io.session_gone` runs first. After `stop`, no callback runs.
+Connect with `io.connect` and keep the connection. `on_state` runs for each state with a `seq` higher than the last one of the same socket. After a loss, the client first schedules the next connect with `io.schedule` (the `Backoff` delay), so that connect is the first task that the loss schedules; then `on_down` runs, once for a socket that had no loss before. The next state runs `on_state`. `on_fatal` runs once, and the client does not connect again. After a close with `Protocol.close_session`, `io.session_gone` runs first. After `stop`, no callback runs.
 
 ```ocaml
 val send_event : t -> 'e Codec.t -> 'e -> unit
@@ -1750,7 +1772,7 @@ The states are the constructors of a plain OCaml variant, with their data inside
       )
 ```
 
-The machine enters a state when its `name` changes. A step to a state with the same name keeps its timers and sources running, except those whose `Source.key` changed; `Reenter` stops and starts them all again. Hosts carry this out through the actions `Action.host`: `Start_timer`, `Start_call`, `Start_live`, `Start_source` and `Stop`; a host drops a timer or answer whose id was stopped.
+The machine enters a state when its `name` changes. A step to a state with the same name keeps its timers and sources running, except those whose `Source.key` changed; `Reenter` stops and starts them all again. A name with a dot names a sub-state: the part before the first dot is the state that owns the timers and sources, so a step from `"list.live"` to `"list.offline"` runs no `exit` and no `entry` and keeps each source whose key did not change, as a step that keeps the name does, while the spec, the traces and the golden views still show two states. Use it for the phases of a state that owns a subscription or calls, such as the connection of a Live topic. Hosts carry this out through the actions `Action.host`: `Start_timer`, `Start_call`, `Start_live`, `Start_source` and `Stop`; a host drops a timer or answer whose id was stopped.
 
 A component with props uses `make_with_props`: the update, `during`, `entry` and `exit` get the props, and the props are not an event.
 
@@ -1760,9 +1782,10 @@ type ('s, 'e) next =
   | Stay of 'e Action.t list
       (** Handled: keep the snapshot and run the actions. *)
   | Go of 's
-      (** Go to the snapshot. When its name is the name of the current one, only
-          the data changes: no exit, no entry, and the timers and sources whose
-          key did not change keep running. *)
+      (** Go to the snapshot. When its name is the name of the current one, or a
+          sub-state of the same state (the same part before the first dot), no
+          exit, no entry, and the timers and sources whose key did not change
+          keep running. *)
   | Go_with of 's * 'e Action.t list
       (** Like [Go], and run the actions between the exit and the entry. *)
   | Reenter of 's
@@ -1798,7 +1821,7 @@ val make :
 
 `make ~id ~init ~name update` is a machine with no props, for example `Machine.make ~id:"save" ~init:Idle ~name ~during update`.
 
-`id` names the machine in the spec, in the checker and in the ids of timers and sources. `name` names the state of a snapshot: two snapshots with one name are one state, which the machine enters once.
+`id` names the machine in the spec, in the checker and in the ids of timers and sources. `name` names the state of a snapshot: two snapshots with one name are one state, which the machine enters once. A dot makes sub-states of one state, such as `"list.live"` and `"list.offline"` (see above).
 
 `states` lists every name that `name` gives, so that the checker can report the states that no run reached; with no `states`, the checker says that it cannot report them for this machine.
 
@@ -1969,7 +1992,7 @@ val step :
   's * 'e Action.host list * how
 ```
 
-Run the update. A final state handles nothing; `Ignore` leaves the snapshot unchanged (`Unhandled`). On a change of state the actions are: `exit` and stops of the old state, the actions of the step, `entry` and starts of the new state (`Entered`). A step that keeps the name stops the sources whose key went away, runs the actions and starts the new sources (`Kept`). `Reenter` is `Entered` even when the name stays. Hosts use `Entered` to give each entry of a state its own instance (see `Instance`).
+Run the update. A final state handles nothing; `Ignore` leaves the snapshot unchanged (`Unhandled`). On a change of state the actions are: `exit` and stops of the old state, the actions of the step, `entry` and starts of the new state (`Entered`). A step that keeps the name, or moves to another sub-state of the same state, stops the sources whose key went away, runs the actions and starts the new sources (`Kept`). `Reenter` is `Entered` even when the name stays. Hosts use `Entered` to give each entry of a state its own instance (see `Instance`).
 
 `finished` is the id of the timer or call that raised the event: it ended when it delivered. A handled step that keeps the name and still has a source with that id in `during` starts it again, so a state whose `during` gives `Source.after 1000 Tick` and handles `Tick` with `Go` ticks every second. Hosts give it for timers and calls; subscriptions and held sources do not end when they deliver.
 
@@ -2191,7 +2214,7 @@ Change the event of an attribute, as `map` does for a node.
 
 An optimistic view of data: the last confirmed value with the changes that the user made and the server has not yet confirmed. Pure: no host is involved. A machine keeps one in its snapshot data: the value is first-order (no functions), so the checker can compare and hash it.
 
-For a Remote mutation: `OPTIMISTIC.apply` when the call starts, `OPTIMISTIC.settle` when the answer arrives, `OPTIMISTIC.drop` when it fails. For Live data: `OPTIMISTIC.apply` when the change is sent, and `OPTIMISTIC.settle` when a state with a higher `seq` arrives.
+For a Remote mutation: `OPTIMISTIC.apply` when the call starts, `OPTIMISTIC.settle` when the answer arrives, `OPTIMISTIC.drop` when it fails. For Live data that the changes go to by Remote calls: the same, and also `OPTIMISTIC.rebase` for each state of the topic. A state that already holds a change can arrive before the answer to its call, so the change is then in the confirmed value and still pending: `CHANGE.apply` must be idempotent (see `CHANGE.apply`).
 
 ```ocaml
 module type CHANGE = sig
@@ -2199,7 +2222,11 @@ module type CHANGE = sig
   type change
 
   val apply : value -> change -> value
-  (** [apply value change] is the value with the change on it. *)
+  (** [apply value change] is the value with the change on it. With Live data it
+      must be idempotent: [apply (apply value change) change] equals
+      [apply value change], so a change that a Live state already holds does not
+      apply twice. An add checks that the item is not there yet; a set of a
+      field is idempotent already. *)
 end
 ```
 
@@ -2249,8 +2276,9 @@ module type OPTIMISTIC = sig
   val confirmed : t -> value
   (** The confirmed value, with no pending change applied. *)
 
-  val pending : t -> int
-  (** The number of pending changes. *)
+  val pending : t -> (int * change) list
+  (** The pending changes with their ids, oldest first, such as for a [during]
+      that makes one Remote call for each. *)
 
   val is_pending : id:int -> t -> bool
   (** The change [id] is pending. *)
@@ -3263,6 +3291,52 @@ val zero : t
 
 All six values are `0.`.
 
+## Silica.Secret
+
+The text of a password field, kept out of what silica prints and records.
+
+A person types a secret into an `<input type="password">`. The text view (see `View_text`), the transition log (see `Transition`), trace files (see `Trace`) and the inspector show `mask` in its place, so that a secret does not end in a golden file, a trace or a log.
+
+```ocaml
+val mask : string
+```
+
+`"••••••••"`: eight bullets, whatever the length of the text.
+
+```ocaml
+val hide : string -> string
+```
+
+`""` stays `""`; any other text is `mask`.
+
+```ocaml
+val is_password : tag:string -> kind:string option -> bool
+```
+
+`is_password ~tag ~kind`: an element with the tag `tag` and the `type` attribute `kind` is a password field: an `input` of the type `"password"`, in any case.
+
+```ocaml
+type t
+```
+
+The texts typed into password fields.
+
+```ocaml
+val create : unit -> t
+```
+
+```ocaml
+val learn : t -> field:string -> string -> unit
+```
+
+`learn secrets ~field text`: `text` is now the text of the password field `field`, such as an instance path and an element path. It replaces the text that `field` had before.
+
+```ocaml
+val scrub : t -> Silica_json.Json.t -> Silica_json.Json.t
+```
+
+The value with each string that is the text of a field of `learn` replaced by `mask`, in all lists and objects. A secret that the app changed, such as a hash or a part of it, does not match and stays.
+
 ## Silica.Source
 
 Timers and sources of events that run during a state: the `during` list of `Machine.make`. A source starts when it comes into the list and stops when it goes out of the list.
@@ -3444,7 +3518,7 @@ type state = {
 type label = { from : string; target : string; event : string; kept : bool }
 ```
 
-A step that a checker run took, with the name of the event that took it. `event` is `""` when the machine gives no event names. `kept` is `true` for a step that kept the state (`Go` to a state with the same name, or `Stay`: the data may change, the timers and sources keep running); then `target = from`.
+A step that a checker run took, with the name of the event that took it. `event` is `""` when the machine gives no event names. `kept` is `true` for a step that kept the state (`Go` to a state with the same name, or `Stay`: the data may change, the timers and sources keep running); then `target = from`. A step between two sub-states of one state, such as `"list.live"` to `"list.offline"` (see `Machine.make`), keeps the timers and sources but changes the name, so it has `kept = false`.
 
 ```ocaml
 type t = {
@@ -3453,8 +3527,9 @@ type t = {
   states : state list;
   edges : label list;
       (** Sorted, without duplicates: the steps of the run. A step that entered
-          a state, from another state or from the same one ([Reenter]), has
-          [kept = false]; a step that kept the state has [kept = true]. *)
+          a state, from another state or from the same one ([Reenter]), or that
+          moved to another sub-state, has [kept = false]; a step that kept the
+          state has [kept = true]. *)
 }
 ```
 
@@ -3630,7 +3705,12 @@ type node = {
   height : float;
   final : bool;
   initial : bool;
-  details : string list;  (** {!Spec.details} of the state. *)
+  details : string list;
+      (** {!Spec.details} of the state, then its kept steps (the [stay] line of
+          {!Spec.to_text}): ["stay on"] and their event names, wrapped at about
+          24 characters, with the next lines indented by two spaces; ["stay"]
+          for kept steps with no event name. A kept step is not an arrow, so
+          this line is how the drawing shows it. *)
   drift : bool;
       (** The state is not in the spec: only an [observed] step names it. *)
 }
@@ -3704,6 +3784,8 @@ One line for the size, each node and each edge, with positions rounded to whole 
 An SVG drawing of a `Statechart_layout.t`. Colors come from the silica-ui theme variables (`--ui-text`, `--ui-muted`, `--ui-border`, `--ui-surface`, `--ui-accent`, `--ui-accent-text`, `--ui-danger`), with the light theme as fallback, so the same node works in a themed page and as a standalone SVG file (render it with `Render.to_string`).
 
 Class names for styles and tests: `chart` on the `svg`; `chart-node` on each state group, with `is-active`, `is-final`, `is-initial` and `is-drift`, and the state name in `data-state`; `chart-edge` on each edge group, with `is-taken`, `is-back` and `is-drift`, and the states in `data-from` and `data-target`; `chart-start` on the start mark; `chart-note` on the `Statechart_layout.t.note`.
+
+Each state box shows the name, then the `Statechart_layout.node.details`: the timers, the sources and the kept steps (`stay on ...`), which have no arrow.
 
 The label of an edge between two states is drawn on a box of the surface color, so the line stops at the label and goes on after it. Drift nodes and edges (`Statechart_layout.layout` with `observed`) are dashed, in the danger color.
 
@@ -3888,6 +3970,7 @@ module Recorder : sig
   val create :
     ?capacity:int ->
     ?data:bool ->
+    ?mask:bool ->
     ?clock:(unit -> float) ->
     ?platform:string ->
     build:string ->
@@ -3896,9 +3979,11 @@ module Recorder : sig
   (** [capacity] (default 1000) is the number of transitions kept; older ones
       are dropped and counted. With [data] (default [false]) the records keep
       event data, props, snapshots, answers, Live updates and input text;
-      without it they keep names only (see {!names_only}). [clock] gives the
-      time of each record in milliseconds; with no clock records have no time.
-      [platform] (default ["browser"]) goes in the header. *)
+      without it they keep names only (see {!names_only}). Text typed into a
+      password field is masked unless [~mask:false] (see
+      {!Transition.observer}). [clock] gives the time of each record in
+      milliseconds; with no clock records have no time. [platform] (default
+      ["browser"]) goes in the header. *)
 
   val observer : t -> Instance.observer
   (** The observer to give a host, such as {!Instance.mount},
@@ -3972,8 +4057,9 @@ type cause =
       element : string;
           (** Where the element is, as {!Accessibility.path} gives it. *)
       value : string option;
-          (** The text of an [input], or the name of the key of a [key_down] or
-              [key_up] (see {!Key.to_string}). *)
+          (** The text of an [input] ({!Secret.mask} for a password field), or
+              the name of the key of a [key_down] or [key_up] (see
+              {!Key.to_string}). *)
     }  (** A handler of an element of the view. *)
   | Timer of { id : string; ms : int }  (** A timer that the state owned. *)
   | Answer of { id : string; path : string; answer : Silica_json.Json.t option }
@@ -4082,6 +4168,12 @@ What stays: the sequence numbers, times, instance paths (with the keys that the 
 **Observers**
 
 ```ocaml
+val learn : Secret.t -> Instance.observed -> unit
+```
+
+`learn secrets observed`: when the step types a text into a password field, `secrets` learns it, as `observer` does. A host that encodes snapshots itself, such as the inspector, scrubs them with the same table (see `Secret.scrub`).
+
+```ocaml
 type pending
 ```
 
@@ -4106,10 +4198,19 @@ val ready : t -> pending
 A record that is known.
 
 ```ocaml
-val observer : ?clock:(unit -> float) -> (pending -> unit) -> Instance.observer
+val observer :
+  ?clock:(unit -> float) ->
+  ?mask:bool ->
+  ?secrets:Secret.t ->
+  (pending -> unit) ->
+  Instance.observer
 ```
 
-`observer ?clock record` numbers the steps from 1, reads the `clock` (no time when it is not given) and gives each record to `record`. The work happens only in the observer: a host with no observer does none, and an app that never calls this function carries none of its code.
+`observer ?clock ?secrets record` numbers the steps from 1, reads the `clock` (no time when it is not given) and gives each record to `record`.
+
+Text typed into a password field (see `Secret`) is masked: the `value` of the `input` cause is `Secret.mask` (an empty text stays `""`), and the observer learns the text into `secrets` (a new table when it is not given), under the instance path and the element path of the field. In `data`, `props` and `snapshot`, each string that is the last text typed into a password field is `Secret.mask`. A trace then cannot type that text again: a replay of it stops at that step.
+
+With `~mask:false` (default `true`) the records keep that text in clear, for a test that replays its own run in the same process (see `Silica_memory.trace_in_clear`). Never write such records to a file. The work happens only in the observer: a host with no observer does none, and an app that never calls this function carries none of its code.
 
 ## Silica.Url
 
@@ -4143,10 +4244,10 @@ One line per element that has a role or a handler, indented by two spaces for ea
 
 - the role (see `Accessibility.role`), or the tag when the element has a handler and no role;
 - the accessible name in quotes, when it is not empty;
-- the states that are set, in this order: `level=2`, `value="..."`, `checked` or `checked=false`, `selected`, `expanded` or `expanded=false`, `disabled`, `current=page`, `href="..."`, `modal`;
+- the states that are set, in this order: `level=2`, `value="..."`, `checked` or `checked=false`, `selected`, `expanded` or `expanded=false`, `disabled`, `current=page`, `href="..."`, `modal`. The value of an `<input type="password">` prints as `value="••••••••"` whatever its length (see `Secret`); an empty value prints as `value=""`;
 - the handlers in brackets, such as `[press, key_down]`.
 
-Other elements are left out and their children move up. The text that is not in such a line prints as `text "..."`: the text of the elements left out side by side is joined into one line, with a space where an element starts or ends and white space collapsed. Text inside an element whose role takes its name from its content (see `Accessibility.name_from_content`) is its name and does not print again.
+Other elements are left out and their children move up. The text that is not in such a line prints as `text "..."`: the text of the elements left out side by side is joined into one line, with a space where an element starts or ends and white space collapsed. As in a browser, a block element ends that line: the text before it, in it and after it print on separate lines. The block elements are those that a browser shows as a block by default: `p`, `div`, `li`, `section`, `main`, `form`, `fieldset`, the headings, lists and table parts, `br`, `hr` and the others of the HTML rendering rules. `label`, `span`, `a`, `strong` and the other inline elements do not end the line. Text inside an element whose role takes its name from its content (see `Accessibility.name_from_content`) is its name and does not print again.
 
 A component node prints as `component <id>`, an island as `island <channel>`, a chunk that loads as `loading`. Hidden elements (see `Accessibility.hidden`) and their children are left out. The children of a portal print at the place of the portal. In a quoted string, a double quote and a backslash are escaped with a backslash. Each line ends with a newline.
 

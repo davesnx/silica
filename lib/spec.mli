@@ -22,7 +22,9 @@ type label = { from : string; target : string; event : string; kept : bool }
     [event] is [""] when the machine gives no event names. [kept] is [true] for
     a step that kept the state ([Go] to a state with the same name, or [Stay]:
     the data may change, the timers and sources keep running); then
-    [target = from]. *)
+    [target = from]. A step between two sub-states of one state, such as
+    ["list.live"] to ["list.offline"] (see {!Machine.make}), keeps the timers
+    and sources but changes the name, so it has [kept = false]. *)
 
 type t = {
   id : string;
@@ -30,8 +32,9 @@ type t = {
   states : state list;
   edges : label list;
       (** Sorted, without duplicates: the steps of the run. A step that entered
-          a state, from another state or from the same one ([Reenter]), has
-          [kept = false]; a step that kept the state has [kept = true]. *)
+          a state, from another state or from the same one ([Reenter]), or that
+          moved to another sub-state, has [kept = false]; a step that kept the
+          state has [kept = true]. *)
 }
 
 val arrows : t -> (string * string) list

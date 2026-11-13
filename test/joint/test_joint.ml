@@ -170,8 +170,10 @@ let memory_equals_checker () =
           | Check.Event Board.Toggle_job
             when List.exists
                    (fun (entry : Check_tree.running) ->
-                     model.tree.state_of node entry.instance = Some "running"
-                     && model.tree.state_of next entry.instance = None
+                     Check_model.state_of model.tree node entry.instance
+                     = Some "running"
+                     && Check_model.state_of model.tree next entry.instance
+                        = None
                    )
                    node.running ->
               incr unmounted_calls
@@ -214,7 +216,10 @@ let joint_check_passes () =
   Alcotest.(check (list string))
     "specs" [ "board"; "row"; "job" ]
     (List.map (fun (spec : Spec.t) -> spec.id) report.specs);
-  Alcotest.(check (list string)) "nothing left out" [] report.not_explored
+  Alcotest.(check (list string)) "nothing left out" [] report.not_explored;
+  Alcotest.(check string)
+    "the text report starts with the entry id" "board+row+job: "
+    (String.sub (Format.asprintf "%a" Check.pp_report report) 0 15)
 
 let unlisted_child_is_not_explored () =
   let report =
@@ -336,10 +341,19 @@ let a_child_step_names_the_move_of_the_root () =
   match report.violations with
   | violation :: _ ->
       let steps = Check.steps violation.counterexample in
-      Alcotest.(check (list (option (pair string string))))
+      Alcotest.(check (list (list (pair string (pair string string)))))
         "the press in the child moves the root"
-        [ Some ("waiting", "complete") ]
-        (List.map (fun (step : _ Check.step) -> step.root_moved) steps);
+        [ [ ("0", ("waiting", "complete")) ] ]
+        (List.map
+           (fun (step : _ Check.step) ->
+             List.map
+               (fun (move : Check.move) ->
+                 (move.instance, (move.from, move.target))
+               )
+               step.moved
+           )
+           steps
+        );
       Alcotest.(check bool)
         "the line names the move of the root" true
         (List.for_all
@@ -352,6 +366,94 @@ let a_child_step_names_the_move_of_the_root () =
         )
   | [] ->
       Alcotest.fail "no violation"
+
+let a_child_step_shows_the_root_event_of_its_output () =
+  let report =
+    Check.run
+      (Check.component
+         ~children:[ Check.child Finisher.component ]
+         ~properties:
+           [
+             Check.always ~name:"complete only after finished"
+               Check.(
+                 not_ (entered "complete")
+                 ||| event (fun Waiter.Finished -> true)
+               );
+             Check.always ~name:"finished completes"
+               Check.(
+                 not_ (entered "complete")
+                 ||| transition (fun before Waiter.Finished after ->
+                     (not before) && after
+                 )
+               );
+           ]
+         Waiter.component
+      )
+  in
+  if not (Check.passed report) then Alcotest.failf "%a" Check.pp_report report
+
+module Unlabelled = struct
+  type event = Typed of string
+
+  let component =
+    Component.make
+      (Machine.make ~id:"unlabelled" ~init:()
+         ~name:(fun () -> "open")
+         ~states:[ "open" ]
+         ~event_name:(fun (Typed _) -> "typed")
+         (fun () (Typed _) -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "label" []
+          [ Node.element "input" [ Attr.on_input (fun text -> Typed text) ] [] ]
+      )
+end
+
+module Unlabelled_page = struct
+  type event = Never
+
+  let component =
+    Component.make
+      (Machine.make ~id:"unlabelled-page" ~init:()
+         ~name:(fun () -> "editing")
+         ~states:[ "editing" ]
+         ~event_name:(fun Never -> "never")
+         (fun () Never -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "main" []
+          [
+            Node.element "h1" [] [ Node.text "Profile" ];
+            Node.element "button" [ Attr.on_press Never ] [ Node.text "Save" ];
+            Component.node Unlabelled.component;
+          ]
+      )
+end
+
+let a_view_rule_names_the_child_that_renders_the_element () =
+  let report =
+    Check.run
+      (Check.component
+         ~children:[ Check.child Unlabelled.component ]
+         Unlabelled_page.component
+      )
+  in
+  match
+    List.find_opt
+      (fun (violation : (_, _) Check.violation) ->
+        violation.rule = "field-label"
+      )
+      report.violations
+  with
+  | Some violation ->
+      Alcotest.(check string)
+        "the child and its state"
+        "In the child unlabelled at instance unlabelled-page/2:unlabelled: In \
+         state open, the textbox field at main > label > input has no label: \
+         the <label> around it at main > label has no text."
+        violation.message
+  | None ->
+      Alcotest.failf "no field-label violation:@.%a" Check.pp_report report
 
 let text_of view = View_text.to_string view
 
@@ -544,6 +646,81 @@ module Reach = struct
     )
 end
 
+module Modal_child = struct
+  type event = Close
+
+  let component =
+    Component.make
+      (Machine.make ~id:"modal-child" ~init:true
+         ~name:(fun shown ->
+           if shown then
+             "open"
+           else
+             "closed"
+         )
+         ~states:[ "open"; "closed" ]
+         ~event_name:(fun Close -> "close")
+         (fun _ Close -> Machine.Go false)
+      )
+      (fun shown ->
+        if shown then
+          Node.portal
+            [
+              Node.element "div"
+                [
+                  Attr.string "role" "dialog";
+                  Attr.string "aria-modal" "true";
+                  Attr.string "aria-label" "Edit";
+                ]
+                [
+                  Node.element "button"
+                    [ Attr.on_press Close ]
+                    [ Node.text "Close" ];
+                ];
+            ]
+        else
+          Node.list []
+      )
+end
+
+module Modal_page = struct
+  type event = Tab
+
+  let component =
+    Component.make
+      (Machine.make ~id:"modal-page" ~init:()
+         ~name:(fun () -> "page")
+         ~states:[ "page" ]
+         ~event_name:(fun Tab -> "tab")
+         (fun () Tab -> Machine.Stay [])
+      )
+      (fun () ->
+        Node.element "main" []
+          [
+            Node.element "button" [ Attr.on_press Tab ] [ Node.text "Tab" ];
+            Component.node Modal_child.component;
+          ]
+      )
+end
+
+let the_page_behind_a_child_modal_is_inert () =
+  let check =
+    Check.component
+      ~children:[ Check.child Modal_child.component ]
+      Modal_page.component
+  in
+  match Check.replay check [ Check.Event Modal_page.Tab ] with
+  | Replayed _ ->
+      Alcotest.fail "the tab behind the open modal of the child took a press"
+  | Not_enabled { enabled; _ } ->
+      Alcotest.(check (list string))
+        "only the button of the modal is offered"
+        [
+          "[modal-child at modal-page/1:modal-child] open -> closed: close, by \
+           the view offers press on button \"Close\" at portal > div > button";
+        ]
+        (List.map (Check.describe_step ~root:"modal-page") enabled)
+
 let checker_offers_what_a_browser_delivers () =
   let report = Check.run (Check.component Reach.component) in
   Alcotest.(check (list string))
@@ -582,6 +759,10 @@ let () =
         [
           Alcotest.test_case "memory renders what the checker sees" `Quick
             memory_equals_checker;
+          Alcotest.test_case "a child step shows the root event of its output"
+            `Quick a_child_step_shows_the_root_event_of_its_output;
+          Alcotest.test_case "a view rule names the child that renders it"
+            `Quick a_view_rule_names_the_child_that_renders_the_element;
           Alcotest.test_case "a joint check passes" `Quick joint_check_passes;
           Alcotest.test_case "a step of a child names the move of the root"
             `Quick a_child_step_names_the_move_of_the_root;
@@ -595,6 +776,8 @@ let () =
             temporal_properties_hold_on_the_parent;
           Alcotest.test_case "a temporal violation in a child replays" `Quick
             temporal_violation_replays;
+          Alcotest.test_case "the page behind a child modal is inert" `Quick
+            the_page_behind_a_child_modal_is_inert;
           Alcotest.test_case "the checker offers what a browser delivers" `Quick
             checker_offers_what_a_browser_delivers;
           Alcotest.test_case "a temporal child property is rejected" `Quick

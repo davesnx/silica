@@ -1,4 +1,58 @@
-type piece = Line of int * string | Words of int * string
+type piece = Line of int * string | Words of int * string | Break
+
+let blocks =
+  [
+    "address";
+    "article";
+    "aside";
+    "blockquote";
+    "br";
+    "caption";
+    "center";
+    "dd";
+    "details";
+    "dialog";
+    "dir";
+    "div";
+    "dl";
+    "dt";
+    "fieldset";
+    "figcaption";
+    "figure";
+    "footer";
+    "form";
+    "h1";
+    "h2";
+    "h3";
+    "h4";
+    "h5";
+    "h6";
+    "header";
+    "hgroup";
+    "hr";
+    "legend";
+    "li";
+    "listing";
+    "main";
+    "menu";
+    "nav";
+    "ol";
+    "p";
+    "plaintext";
+    "pre";
+    "search";
+    "section";
+    "summary";
+    "table";
+    "tbody";
+    "td";
+    "tfoot";
+    "th";
+    "thead";
+    "tr";
+    "ul";
+    "xmp";
+  ]
 
 let quote text =
   let buffer = Buffer.create (String.length text + 2) in
@@ -147,8 +201,13 @@ and piece depth ~skip_text = function
             let children = Accessibility.children element in
             match (role, handlers) with
             | None, [] ->
-                (Words (depth, " ") :: pieces depth ~skip_text children)
-                @ [ Words (depth, " ") ]
+                let edge =
+                  if List.mem (Accessibility.tag element) blocks then
+                    Break
+                  else
+                    Words (depth, " ")
+                in
+                (edge :: pieces depth ~skip_text children) @ [ edge ]
             | _ ->
                 let skip_text =
                   match role with
@@ -206,6 +265,9 @@ let to_string node =
     | Line (depth, text) :: rest ->
         flush pending;
         line depth text;
+        emit None rest
+    | Break :: rest ->
+        flush pending;
         emit None rest
   in
   emit None (pieces 0 ~skip_text:false (Accessibility.items node));

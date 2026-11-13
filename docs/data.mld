@@ -203,8 +203,60 @@ let component = Component.make machine view
 let make ?key () = Component.node ?key component
 ]}
 
+The names that the file takes from the rest of the example app:
+
+- [Example_model.votes_topic] is the topic, declared in shared code as
+  [let votes_topic = Silica.Topic.declare ~name:"votes" ~state:Silica.Codec.int].
+- [Silica_jsonkit.update] and [Silica_jsonkit.status] are
+  {!Silica.Topic.update} and {!Silica.Status.t} with the JSON functions that
+  [[@@deriving json]] uses (see {!page-machines.codecs}).
+
 [Reconnect] gives [Reenter]: the state exits and enters again, so the
 subscription stops and starts again.
+
+{2:phases Connection phases}
+
+A state that subscribes to a topic often has phases that the view shows:
+connecting, live, offline. Give them names with a dot, as sub-states of one
+state, such as [watching.live] and [watching.offline]. The part before the
+first dot is the state that owns the timers, calls and subscriptions, so a
+step between two of its sub-states keeps them running: no [exit], no
+[entry], no new [Loading None], and each pending call goes on. A name with
+no dot for each phase would stop and start the subscription and every call
+at each step, because each name is a state of its own.
+
+{@ocaml[
+# type phase = Connecting | Live | Offline;;
+type phase = Connecting | Live | Offline
+# let score = Silica.Topic.declare ~name:"score" ~state:Silica.Codec.int;;
+val score : int Silica.Topic.t = <abstr>
+# let phase (update : int Silica.Topic.update) =
+    match update.status with
+    | Ready { stale = false; _ } -> Live
+    | Ready { stale = true; _ } -> Offline
+    | Idle | Loading _ | Failed _ -> Connecting;;
+val phase : int Silica.Topic.update -> phase = <fun>
+# let machine =
+    Silica.Machine.make ~id:"score" ~init:Connecting
+      ~name:(function
+        | Connecting -> "watching.connecting"
+        | Live -> "watching.live"
+        | Offline -> "watching.offline")
+      ~states:[ "watching.connecting"; "watching.live"; "watching.offline" ]
+      ~during:(fun _ -> [ Silica.Source.live score "main" phase ])
+      (fun _ next -> Silica.Machine.Go next);;
+val machine : (unit, phase, phase) Silica.Machine.t = <abstr>
+# let _, actions, how = Silica.Machine.step machine () Live Offline;;
+val actions : phase Silica.Action.host list = []
+val how : Silica.Machine.how = Silica.Machine.Kept
+]}
+
+The spec has a state and the edges for each phase, and the golden
+[.views.txt] keeps up to {!Check.views_per_state} views for each of them, so
+the view of each phase, such as the offline one, is in the golden file. With
+one name for the whole state, the phases share those views, and a phase that
+the search reaches late may not show. Keep the data of the topic and the
+pending changes in the snapshot, as before.
 
 {2:islands Islands}
 

@@ -85,7 +85,7 @@ let test_registered_codecs () =
     Machine.make ~id:"save" ~init:Idle ~name ~states ~event_name update
   in
   let missing =
-    {|the machine "save" has no registered codecs: call Machine.register_codecs on it in the codec module of the app (for example Linear_codecs.register), and call that module before asking for a codec|}
+    {|the machine "save" has no registered codecs: call Machine.register_codecs on it in the codec module of the app (Codecs.register in app/shared/codecs.ml of an app that silica new made), and call it before asking for a codec, such as at the start of check/main.ml|}
   in
   Alcotest.(check (result unit string))
     "an unregistered machine says which and how" (Error missing)

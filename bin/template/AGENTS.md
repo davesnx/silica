@@ -15,12 +15,15 @@ Docs for agents, as Markdown, in the Silica repository
   attribute value in mlx that is not a string, such as ``type_=`number``.
 - `skills/silica-verify/references/api/`: every public signature with its
   documentation, one file for each library (`silica.md`, `check.md`,
-  `memory.md`, `server.md`, and `json.md` for `Silica_json.Json.t`, the JSON
-  of a codec). Look a name up there instead of guessing it.
+  `memory.md`, `server.md`, `json.md` for `Silica_json.Json.t`, the JSON
+  of a codec, and `ui.md` for the components of `silica-ui`). Look a name up
+  there instead of guessing it.
 - `docs/*.mld`: every page. In a checkout,
   `dune build site/server/llms-full.txt` writes them all as one Markdown
   file, `_build/default/site/server/llms-full.txt`, with an index in
-  `llms.txt` beside it.
+  `llms.txt` beside it. A block such as `{@mlx file=../example/app/x.mlx[...]}`
+  holds that file of the repository in full (the path is from `docs/`), so
+  read the block; you do not need the file.
 
 ## Layout
 
@@ -36,9 +39,11 @@ Docs for agents, as Markdown, in the Silica repository
   component, such as `Checks.counter`. Tests use them too: the test that
   `silica script` writes evaluates its rule with the check.
 - `check/main.ml`: the suite of the model checker, one `Check_suite.entry`
-  for each check of `Checks`. `check/spec/` holds the golden files of each machine:
-  its states and edges (`.spec.txt`, and `.spec.json` for programs) and the
-  text view of each state (`.views.txt`).
+  for each check of `Checks`. It calls `Codecs.register ()` first, so that
+  `silica conform` can decode the data of a recorded trace. `check/spec/`
+  holds the golden files of each machine: its states and edges (`.spec.txt`,
+  and `.spec.json` for programs) and the text view of each state
+  (`.views.txt`).
 
 ## Commands
 
@@ -53,8 +58,12 @@ Run every command from this directory.
   1: findings; 2: a check stopped at its state limit; 3: a setup error
   (stderr has the reason, such as a compile error).
 - Draw the machines: `silica check --graphs graphs` also writes, for each
-  machine, `graphs/<id>.svg` (the chart), `graphs/<id>.txt` (one fact per
-  line, the form to read) and `graphs/<id>.md` (Mermaid).
+  machine, `graphs/<id>.spec.json` (the spec), `graphs/<id>.svg` (the chart),
+  `graphs/<id>.txt` (one fact per line, the form to read) and
+  `graphs/<id>.md` (Mermaid). For a joint check, `<id>` is
+  `<entry id>.<machine id>`, one for each machine of the entry. The chart
+  lists the kept steps of a state in its box (`stay on ...`); with no
+  browser, read the `.txt` file: it has the same facts.
 - Run one entry: `dune exec ./check/main.exe -- --only ID`.
 - List the rules with their hints: `dune exec ./check/main.exe -- rules`.
 - Replay a trace: `silica replay ID FILE`. Make a test of it:
@@ -63,27 +72,36 @@ Run every command from this directory.
   `dune exec ./check/main.exe -- golden check/spec --write`
 - Run in development: `npm --prefix client install` once, then `silica dev`
   and open http://127.0.0.1:8080. With no browser: `silica dev --json` in the
-  background prints one JSON line for each event; the lines that do not start
-  with `{` are the output of your server:
+  background prints one JSON line for each event on stdout; the output of
+  your server goes to stderr. Its `listening on` line names the internal port
+  of the server: open the `url` of the `dev` line. The events:
   - `{"t":"dev","url":"http://127.0.0.1:8080"}` first.
-  - `{"t":"build","status":"started"}` for a rebuild (the first build reports
-    only its end), then `"ok"` or `"failed"` with
+  - `{"t":"build","status":"started"}` for each build, the first one too,
+    then `"ok"` or `"failed"` with
     `errors`: each has `file`, `line`, `col`, `end_line`, `end_col`,
     `severity`, `message` and `excerpt` (a list of `[line, text]`).
   - `{"t":"server","status":"started"}` or `"restarted"`, with `pid` and
     `ms`; `"crashed"` with `code` and `output`.
-  - `{"t":"reload","what":"code"}` (the page swaps in the new bundle and
-    keeps the state of its machines), `"page"` or `"css"`.
-  - `{"t":"hot-reload","status":"kept","kept":[...],"restarted":[...]}`: each
+  - `{"t":"reload","what":"code"}` with `entry` (the new script) and `css`
+    (the stylesheets swapped, each with `from` and `to`): the page swaps in
+    the new bundle and keeps the state of its machines. `"page"` reloads the
+    page; `"css"` with `css` swaps the stylesheets only.
+  - `{"t":"hot-reload","status":"kept","ms":26,"kept":[...],"restarted":[...]}`:
+    the page ran the new code in `ms`; `kept` lists the instance paths that
+    kept their state; each
     `restarted` entry has `path`, `machine` and `reason`, such as
     `"its snapshot does not decode: ..."`. A machine keeps its state when
     `app/shared/codecs.ml` registers a state codec for it with
     `Machine.register_codecs`, and the old snapshot decodes with the new
     codec. `client/dev_codecs.ml` calls it in the development bundle only.
+    `{"t":"hot-reload","status":"reloaded","reason":...}`: the page fell back
+    to a full reload.
 
   After an edit, wait for `build` `ok` and `server` `restarted` (and
   `hot-reload` when a page is open), or for `failed`, and fix each error.
-  Stop it with SIGINT or SIGTERM.
+  Stop it with SIGINT or SIGTERM. `silica dev` needs Unix sockets (for dune
+  and for `silica inspect`): where the environment forbids them, it stops at
+  start; run it outside the sandbox.
 - Read the machines while `silica dev` runs, from another shell, with no
   browser: `silica inspect tail --json` prints one JSON line for each step of
   each machine of the open pages and of the Live islands of the server, with
@@ -92,12 +110,14 @@ Run every command from this directory.
   `snapshot` when the machine registered its codecs. `--machine ID`,
   `--path PATH`, `--event NAME` and `--change kept` keep the output small;
   `--count N` stops after N lines. `silica inspect tree --json` gives each
-  running instance with its state, data and resources.
+  running instance with its state, data, props and resources.
   `silica inspect export -o run.jsonl` writes the steps of a page as a trace
   file for `silica inspect replay`, `silica replay` and `silica conform`.
-  `silica inspect graph ID --specs check/spec` prints the spec of a machine
-  with its current state, the edges the app took, and `drift` lines for the
-  edges the spec does not have.
+  `silica inspect graph ID --specs check/spec` prints the specs of a machine
+  (also those of each joint check) with its current state, the edges the app
+  took since `silica dev` started, and `drift` lines for the edges no spec
+  has. `silica inspect replay run.jsonl` replays the trace in the entry whose
+  root is the root machine of the trace, such as a joint check.
 
 ## The loop for each change
 
@@ -126,10 +146,16 @@ Run every command from this directory.
 4. For each item of `entries[].violations` in the report, read `rule`,
    `hint`, `state.name`, `view` (the view as text at the failing step) and
    `trace` (each step has `event` and `cause.text`). Find the rule in the
-   table of the verification reference.
+   table of the verification reference. Also read each item of
+   `golden.changes` (`golden-drift`, not in `entries[].violations`): `file`,
+   `change` (`missing`, `changed` or `stale`), `hint` and `lines`. A new
+   machine has `missing` golden files, so the exit code is 1 with no
+   violation; review them, then write them with the command in `hint`.
 5. Make a red test for each violation you fix. Each violation has a
    `trace_file` such as `traces/counter_ignored_event_saving.jsonl` and a
-   `test_file` such as `test/counter_ignored_event_saving_replay.ml`; run
+   `test_file` such as `test/counter_ignored_event_saving_replay.ml`
+   (`null` when `silica script` cannot write the test: `test_error` says
+   why, and you go to `silica replay` below); run
    `silica script ID TRACE_FILE --output TEST_FILE` (it writes the file only
    when the test can be written, and says which file it wrote; the test
    names the check `Checks.<root>`, after the id of the root machine, also
@@ -141,7 +167,8 @@ Run every command from this directory.
    and see the test fail with the rule and hint. A test that compares a whole
    view, such as `test/counter_page.ml`, fails here too when the change
    changed that view, and prints the lines that differ: if the difference is
-   intended, update it in step 8. When `silica script` exits 1 (a step that
+   intended, update it in step 8. The test gives Live updates with
+   `Memory.live_update`. When `silica script` exits 1 (a step that
    cannot run in memory, such as a timer that real time fires later), it
    writes no file; use `silica replay ID TRACE_FILE`: it replays the steps
    that the checker chose, with no codec, and exits 1 while a rule fails at the last step, 3
@@ -163,4 +190,5 @@ Run every command from this directory.
    pass with no output. `report.json` and `traces/` belong to one run, and
    `.gitignore` leaves them out; the red tests keep the steps. A new run of
    `silica check --traces traces` removes the trace files of a check that it
-   no longer writes.
+   no longer writes. It refuses (exit 3) a directory that holds other files
+   and no `.silica-traces` list.

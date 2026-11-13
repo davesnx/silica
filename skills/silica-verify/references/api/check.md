@@ -71,13 +71,13 @@ Holds when the snapshot and its view pass the test together.
 val event : ('e -> bool) -> ('s, 'e) condition
 ```
 
-A step condition: holds on the point reached by a step whose event of the machine passes the test. It does not hold at a start, nor after a step with no event of the machine (new props, a link, an opened URL, back, forward). So in `app`, `event` never sees the `Router.Url_changed` that a navigation gives the router: test the route with `state` or `entered`.
+A step condition: holds on the point reached by a step whose event of the machine passes the test. It does not hold at a start, nor after a step with no event of the machine (new props, a link, an opened URL, back, forward). So in `app`, `event` never sees the `Router.Url_changed` that a navigation gives the router: test the route with `state` or `entered`. In a check with `children`, `event` sees each event that the root machine took in the step: the event of a step of the root, then the events that the outputs of children gave it in that step. On a step of a child, those are the events of its outputs, such as the `Delete Confirm_delete` that the `on_content` of a dialog gives the page; a step of a child whose outputs give the root no event has no event of the machine.
 
 ```ocaml
 val transition : ('s -> 'e -> 's -> bool) -> ('s, 'e) condition
 ```
 
-`transition test`: a step condition that holds on the point reached by a step with an event of the machine when `test before event after` holds, with the snapshots before and after the step. It does not hold at a start, nor after a step with no event of the machine. "Increment adds the step":
+`transition test`: a step condition that holds on the point reached by a step with an event of the machine when `test before event after` holds, with the snapshots before and after the step, for each event of the machine that `event` sees in the step. It does not hold at a start, nor after a step with no event of the machine. "Increment adds the step":
 
 ```
   Check.always ~name:"increment adds the step"
@@ -89,7 +89,7 @@ val transition : ('s -> 'e -> 's -> bool) -> ('s, 'e) condition
     )
 ```
 
-The `not_ (event ...)` part makes the property hold at a start and on the other steps.
+The `not_ (event ...)` part makes the property hold at a start and on the other steps. Without it, the property fails at a start, where there is no step, and the message says so.
 
 ```ocaml
 val ( &&& ) : ('s, 'e) condition -> ('s, 'e) condition -> ('s, 'e) condition
@@ -114,7 +114,7 @@ val always :
   name:string -> ?hint:string -> ('s, 'e) condition -> ('s, 'e) property
 ```
 
-`always ~name ?hint condition`: `condition` holds at every point of every explored run. With a point condition, it is checked on each explored snapshot. With a step condition, it is checked on each start and on each explored step, so `always ~name (not_ (event (( = ) Reset)) ||| state is_zero)` fails on a Reset step that keeps the count even when the snapshot it reaches was first reached by another step; the checker then stores the explored graph, as for `never_after`. A violation has the rule `name`, a `Path` to the first failing point, and the `hint`; `hint` may name `{state}` for the state of the failing point. Without `hint`, the hint asks to change the update, the view, or the property.
+`always ~name ?hint condition`: `condition` holds at every point of every explored run. With a point condition, it is checked on each explored snapshot. With a step condition, it is checked on each start and on each explored step, so `always ~name (not_ (event (( = ) Reset)) ||| state is_zero)` fails on a Reset step that keeps the count even when the snapshot it reaches was first reached by another step; the checker then stores the explored graph, as for `never_after`. A start has no step, so a step condition such as `always ~name (transition test)` fails at a start, with a message that says so: write `not_ (event test) ||| transition test`. A violation has the rule `name`, a `Path` to the first failing point, and the `hint`; `hint` may name `{state}` for the state of the failing point. Without `hint`, the hint asks to change the update, the view, or the property.
 
 **Allowances**
 
@@ -232,9 +232,9 @@ val component :
   ('s, ('p, 'e) input) t
 ```
 
-The check starts once with each of `props` (default: `()` for a machine made by `Silica.Machine.make`; a machine with props needs them), and in every state the parent can give any other of `props`. Events in a state are the handlers of the rendered view (press, double press, submit, focus, blur, pointer enter and leave), the key handlers of the view called with each key of `keys` (default: Escape, Enter, Tab, Arrow up, Arrow down), the input handler of each text field of the view (a `textarea`, or an `input` with no `type` or a type of text, search, email, url, tel, password or number; not a `select` or a checkbox) called with each text of `texts` (default: none), the events of the held sources of the state, `inputs s` (for events that no element of the view gives), the events of running timers, the answers of running calls and the updates of running subscriptions (see `answers` and `states`; `arrivals` defaults to 2). A `Global_keys` source gives the event of each key in its table, which is the press of that key; `Outside_press` gives its event; `Resize` gives `on_resize` with `Silica.Rect.zero`; `Intersection` gives `on_change` with `true` and with `false`. `Scroll` gives `on_scroll` with `Silica.Scroll.zero`; `Visibility`, `Online` and `Media` give their event with `true` and with `false`. A `Block` gives `on_attempt` with a push and with a back, both to `"/"`. A `Dismiss` layer gives its Escape event, its outside event and its focus-out event. A `Focus_trap`, `Scroll_lock` and `Anchor` give no event. An action with a result event answers once, at any later step and in any state: `Measure` with `Some Silica.Rect.zero`, `Copy` and `Load_script` with `true`. The checker treats `Silica.Rate` limits as pass-through: every value arrives, and none is held back. Elements inside a `Silica.Node.Portal` and the body of a `Silica.Node.Boundary` are part of the view. Time is abstract: a running timer can fire at any step, in any order. A timer, call or subscription starts with its start action and stops with `Stop`; a call ends with its answer and a timer when it fires. So nothing of a state that was left arrives. As in a browser and in `Silica_memory`, a handler is not enabled on an element that has `hidden` or `inert` or is inside one, or that is a disabled `button`, `input`, `select`, `textarea`, `option`, `optgroup` or `fieldset` or is inside one; a portal starts again outside them.
+The check starts once with each of `props` (default: `()` for a machine made by `Silica.Machine.make`; a machine with props needs them), and in every state the parent can give any other of `props`. Events in a state are the handlers of the rendered view (press, double press, submit, focus, blur, pointer enter and leave), the key handlers of the view called with each key of `keys` (default: Escape, Enter, Tab, Arrow up, Arrow down), the input handler of each text field of the view (a `textarea`, or an `input` with no `type` or a type of text, search, email, url, tel, password or number; not a `select` or a checkbox) called with each text of `texts` (default: none), the events of the held sources of the state, `inputs s` (for events that no element of the view gives), the events of running timers, the answers of running calls and the updates of running subscriptions (see `answers` and `states`; `arrivals` defaults to 2). A `Global_keys` source gives the event of each key in its table, which is the press of that key; `Outside_press` gives its event; `Resize` gives `on_resize` with `Silica.Rect.zero`; `Intersection` gives `on_change` with `true` and with `false`. `Scroll` gives `on_scroll` with `Silica.Scroll.zero`; `Visibility`, `Online` and `Media` give their event with `true` and with `false`. A `Block` gives `on_attempt` with a push and with a back, both to `"/"`. A `Dismiss` layer gives its Escape event, its outside event and its focus-out event. A `Focus_trap`, `Scroll_lock` and `Anchor` give no event. An action with a result event answers once, at any later step and in any state: `Measure` with `Some Silica.Rect.zero`, `Copy` and `Load_script` with `true`. The checker treats `Silica.Rate` limits as pass-through: every value arrives, and none is held back. Elements inside a `Silica.Node.Portal` and the body of a `Silica.Node.Boundary` are part of the view. Time is abstract: a running timer can fire at any step, in any order. A timer, call or subscription starts with its start action and stops with `Stop`; a call ends with its answer and a timer when it fires. So nothing of a state that was left arrives. As in a browser and in `Silica_memory`, a handler is not enabled on an element that has `hidden` or `inert` or is inside one, or that is a disabled `button`, `input`, `select`, `textarea`, `option`, `optgroup` or `fieldset` or is inside one; a portal starts again outside them. Nor is it enabled on an element behind an open modal (`Silica.Accessibility.behind_modal`), which the browser renderer makes `inert`; in a check with `children`, this holds for the handlers of the root behind the modal of a child too.
 
-The built-in rules are in `rules`. `max_states` (default 100000) bounds the search; when it stops the search, the report is not `complete`. `within` bounds an unbounded state space on purpose: snapshots outside it are neither checked nor expanded, and the report holds for the bounded space. `max_violations` (default 50) stops the search after that many violations; the report is then `truncated`. The checker does not enter component nodes in the view: it lists them in `not_explored` and keeps their props in `children`. To check a child, make a check of its own machine with `~props` from `props`, or list it in `children` to run it inside this check (see `child`). With `children`, properties see the whole resolved view with only the handlers of the root machine.
+The built-in rules are in `rules`. `max_states` (default 100000) bounds the search; when it stops the search, the report is not `complete`. `within` bounds an unbounded state space on purpose: snapshots outside it are neither checked nor expanded, and the report holds for the bounded space. `max_violations` (default 50) stops the search after that many violations; the report is then `truncated`. The checker does not enter component nodes in the view: it lists them in `not_explored` and keeps their props in `children`. To check a child, make a check of its own machine with `~props` from `props`, or list it in `children` to run it inside this check (see `child`). With `children`, properties see the whole resolved view with only the handlers of the root machine, and `event` sees the events of the root machine (see `event`).
 
 ```ocaml
 val live :
@@ -385,6 +385,17 @@ val describe_cause : cause -> string
 One phrase, such as `"the view offers press on button \"Save\" at form > button"` or `"the timer save/saved/after 2000ms (2000 ms)"`.
 
 ```ocaml
+type move = {
+  instance : string;  (** ["0"] for the root machine. *)
+  machine : string;  (** The machine id. *)
+  from : string;  (** The name of the state before the step. *)
+  target : string;  (** The name of the state after the step. *)
+}
+```
+
+A change of state name of a machine other than the one that took a step.
+
+```ocaml
 type 'ev step = {
   input : 'ev;
   event : string;
@@ -400,11 +411,14 @@ type 'ev step = {
   target : string;
       (** The name of the state after the step; [from] for a step that the
           update ignored or that raised. *)
-  root_moved : (string * string) option;
-      (** For a step of a child in a joint check: the state names of the root
-          machine before and after the step, when the step changed it, such as a
-          parent that handles an output of the child. [None] for a step of the
-          root, or when the root kept its state name. *)
+  moved : move list;
+      (** In a joint check, the other machines whose state name the step
+          changed: the root first, then the children in their order. For a step
+          of a child, the root when it handles an output of the child; for a
+          step of the root, the children it moved, such as the page whose
+          {!Silica.Source.block} took a back, forward, address or link
+          navigation. A child that the step started or ended is not in the list.
+          [[]] when no other machine changed its state name. *)
 }
 ```
 
@@ -412,7 +426,7 @@ type 'ev step = {
 val describe_step : root:string -> 'ev step -> string
 ```
 
-One line for a step, as the text report prints it: the machine and instance of a child, the states, the event and the cause, then the change of the root machine `root` when the step moved it, such as `"[step at wizard/2:step] editing -> saved: save, by ...; then wizard: dirty -> clean"`.
+One line for a step, as the text report prints it: the machine and instance of a child, the states, the event and the cause, then each of `moved`, with `root` as the name of the root machine, such as `"[step at wizard/2:step] editing -> saved: save, by ...; then wizard: dirty -> clean"` or `"/edit -> /edit: back, by ...; then [editor at router/:editor] dirty -> asking"`.
 
 ```ocaml
 type 'ev counterexample =
@@ -475,6 +489,7 @@ The most views of one state that a report keeps.
 
 ```ocaml
 type ('s, 'ev) report = {
+  id : string;  (** The id of the check ({!val-id}). *)
   machine : string;  (** The id of the root machine. *)
   states : int;  (** The explored snapshots. *)
   transitions : int;  (** Every explored pair of a snapshot and a step. *)
@@ -549,7 +564,7 @@ Every step of the counterexample, in order: for a `Loop`, the stem then the cycl
 val pp_report : Format.formatter -> ('s, 'ev) report -> unit
 ```
 
-The report as text: the counts, then each violation with its message, hint, numbered steps with their causes, state and view, then the unreached states, the machines that give no `states`, the allowances and what was not explored.
+The report as text: the id of the check (`id`) and the counts, then each violation with its message, hint, numbered steps with their causes, state and view, then the unreached states, the machines that give no `states`, the allowances and what was not explored.
 
 **Rules**
 
@@ -662,7 +677,12 @@ type ('s, 'ev) replay =
   | Not_enabled of {
       at : int;  (** The number of the step, from 1, that is not enabled. *)
       steps : ('s, 'ev) replayed_step list;  (** The points before it. *)
-      enabled : 'ev step list;  (** What the check offers there instead. *)
+      enabled : 'ev step list;
+          (** What the check offers there instead, each with the state it
+              reaches as [target], or [""] when its update raised. *)
+      reason : string option;
+          (** Why the step fits none of them, when the check can say: such as a
+              typed text that is not one of the texts of the check. *)
     }
 ```
 
@@ -690,6 +710,8 @@ val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
 
 A counterexample as a trace file (see `Silica.Trace`): the start, then one transition for each step, with the cause of each step, the answer of each call by the codecs of its endpoint, the actions, and the event, props and snapshot data when the machine registered codecs. The header has the origin `Checker { rule }`, the build `"check"`, no time, and for a `Loop` the `seq` where the cycle starts; the cycle is written once. A step from `inputs` has the cause `Message`; a back or forward has the cause `Url` with the URL it reached. A check with several `props` starts with the props where the last step breaks `rule`. Raises `Invalid_argument` when a step of the counterexample is not enabled in the check.
 
+In a joint check (see `child`), a step of a listed child is a transition with the instance of the child and no props or snapshot data. The start of a listed child, its new props and its end are not transitions of their own, as they are in a trace that the runtime records: their actions are in the transition of the step that caused them, such as the start of the root. `replay_trace` and `script` read the steps only, so they take both kinds of trace; `conforms` has no snapshot of the children here, so it leaves out the properties that read their view.
+
 ```ocaml
 val script :
   ?component:string ->
@@ -699,14 +721,14 @@ val script :
   (string, string) result
 ```
 
-`script check trace` is the OCaml text of a test that drives the component in `Silica_memory` through the steps of a counterexample that `export` wrote, with the queries a person uses: an element by its role and name, an answer to the pending call of a path, the clock moved to the timer. It ends with a check of the rule of the trace that fails exactly while the rule is broken on that run:
+`script check trace` is the OCaml text of a test that drives the component in `Silica_memory` through the steps of a counterexample that `export` wrote, with the queries a person uses: an element by its role and name, an answer to the pending call of a path, the clock moved to the timer, a Live update by `Silica_memory.live_update` (the first one, `Loading`, comes when the subscription starts, so the test leaves it out). It ends with a check of the rule of the trace that fails exactly while the rule is broken on that run:
 
 - `ignored-event`: the last input is given when the view still offers its element, and the update must handle it;
 - `raised`: no error reached `on_error`;
 - a rule of the view: `view_violations` of that rule is empty;
 - any other rule or a property: `Check_expect.holds` runs the steps, then evaluates the rule in the check itself along the run of the page (`replay_run`), with the same meaning as the checker (for a `Loop`, the run goes once around the cycle).
 
-The test refers to the check by `check`, an OCaml expression (default: the value named after the root machine id in the module `Checks`, as `Checks.issue_list` for `issue-list`, also for a joint check such as `issue-list+row`), so the checks of the project live in a library that tests can use. Props come from the check too (`nth_props`), so no props codec is needed. `component` is the OCaml expression of the component (default: the module named after the machine id, as `Issue_list.component`, or `.app` for an app). `Error` says why the steps cannot run in `Silica_memory`: a timer that fires before another timer that real time fires first (the checker lets running timers fire in any order), an event from `inputs`, a Live update, a held source, the result of an action, an element with no role and no text; also when the replay in the check no longer breaks the rule. Replay such a trace in the check with `replay_trace`. In a joint check, the steps of children are steps of the trace too: an element of a child is found in the whole page.
+The test refers to the check by `check`, an OCaml expression (default: the value named after the root machine id in the module `Checks`, as `Checks.issue_list` for `issue-list`, also for a joint check such as `issue-list+row`), so the checks of the project live in a library that tests can use. Props come from the check too (`nth_props`), so no props codec is needed. `component` is the OCaml expression of the component (default: the module named after the machine id, as `Issue_list.component`, or `.app` for an app). `Error` says why the steps cannot run in `Silica_memory`: a timer that fires before another timer that real time fires first (the checker lets running timers fire in any order), an event from `inputs`, a held source, the result of an action, an element with no role and no text; also when the replay in the check no longer breaks the rule. Replay such a trace in the check with `replay_trace`. In a joint check, the steps of children are steps of the trace too: an element of a child is found in the whole page.
 
 ```ocaml
 val view_violations :
@@ -751,6 +773,9 @@ type conformance = {
   steps : int list;  (** The [seq] of each record whose step the code ran. *)
   snapshots : int list;
       (** The [seq] of each record whose snapshot the properties read. *)
+  unchecked : (string * string) list;
+      (** Each property not evaluated because it reads a view with a listed
+          child that the trace does not resolve, with the reason, once. *)
   deviations : deviation list;  (** In the order of the trace. *)
 }
 ```
@@ -762,7 +787,7 @@ val conforms : ('s, 'ev) t -> Silica.Trace.t -> conformance
 `conforms check trace` runs, for each record of the root machine of `check` and of its listed children (see `child`), the code of this build on the data of the trace, with no search:
 
 - The step: a start runs `Silica.Machine.start` with the props of the record (not for the root of an app, whose start depends on the URL, which the record does not hold); a step runs `Silica.Machine.step` on the snapshot of the record before it in the same instance, with the event of the record; new props run `Silica.Machine.set_props`. The state name, the change and the snapshot (by the state codec) must be the ones of the record.
-- The properties: every `always` property of the check (of the child, for a child) holds on the snapshot of the record and its view, with the event of the record. For an app, the URL is the last `Url` cause of the root, or the URL of the header. The view is the view of that machine alone, with its children as component nodes. `action` never holds; temporal properties are not checked here. Allowances apply.
+- The properties: every `always` property of the check (of the child, for a child) holds on the snapshot of the record and its view, with the event of the record. For an app, the URL is the last `Url` cause of the root, or the URL of the header. The view is the view of that machine with the view of each listed child (see `child`) in place of its component node, from the snapshot of the child in the trace, as the checker composes it; a child that the check does not list stays a component node. The properties of a record run after the records of its children that its step caused (new props, a start, an end), so the children have their props. A property that reads a view with a listed child that has no snapshot in the trace, or whose snapshot does not decode, is not evaluated: it is in `unchecked`, never a deviation. `action` never holds; temporal properties are not checked here. Allowances apply.
 
 A record is skipped when the data it needs is not there: a trace with names only, a machine with no registered codecs, a step whose snapshot before was dropped by a full recorder, a machine with props and no props codec (no view, so no properties). `steps` and `snapshots` say what ran.
 
@@ -881,7 +906,7 @@ main.exe rules [--json]
 main.exe conform [--spec DIR] [--only ID]... [--json] TRACE_FILE...
 ```
 
-`check` is the default. With `--traces DIR`, each violation is also written as a trace file `DIR/<id>_<rule>_<state>.jsonl` (`Check.export`; the state is cut to 20 characters, and a second violation with the same name gets `_2`, and so on), and the JSON gives its path in `trace_file` and the name of its `script` test in `test_file` (`test/<id>_<rule>_<state>_replay.ml`). It keeps the list of the files it wrote, by check id, in `DIR/.silica-traces`, and removes the files of a check that ran that this run does not write again, so a stale trace cannot be replayed by mistake; it leaves every other file alone. With `--specs DIR`, it also writes the `<id>.spec.json` golden file (`Silica.Spec.to_json`) of each spec into `DIR`, unless there is a setup error. `golden DIR` runs every entry and compares the golden files in `DIR` (see `golden`). `replay ID TRACE_FILE` replays the trace in the check of the machine `ID` (`Check.replay_trace`) and prints each step with the rules that fail there: exit `0` when no rule fails at the last step, `1` when one does or a step is not enabled, `3` when the trace does not read or cannot be replayed faithfully. `script ID TRACE_FILE` prints a `Silica_memory` test that reproduces the counterexample (`Check.script`), formatted by `ocamlformat` with the configuration of the project when `ocamlformat` is on the path. With `--output FILE`, it writes the test to `FILE` and says so on standard error; without it, it prints the test and says which file to save it in (`test/<trace name>_replay.ml`). When the steps cannot run in `Silica_memory`, it prints why on standard error, writes nothing and exits with `1`. `rules` lists `Check.rules`. `conform TRACE_FILE...` compares each trace, such as one that the app recorded in development or in production, with the golden specs in `--spec DIR` (default `spec`) by names (`Silica.Spec.conforms`) and with the code of each entry by data (`Check.conforms`); with `--only ID`, only with the golden specs and the check of that entry, such as a joint check of a parent with its children (`router+issue-list`). Without `--only`, dependents are not run, and machines named by `elsewhere` or with no spec in the selected files are listed as not checked. Each deviation names the transition, the machine, the instance, the step and the difference, with a hint: the spec is out of date, the check does not explore the behaviour, or the trace is from another build. Exit `0` when every trace conforms, `1` on a deviation, `3` when a trace or a spec does not read. Bad arguments print the usage on standard error and exit with `3`.
+`check` is the default. With `--traces DIR`, each violation is also written as a trace file `DIR/<id>_<rule>_<state>.jsonl` (`Check.export`; the state is cut to 20 characters, and a second violation with the same name gets `_2`, and so on), and the JSON gives its path in `trace_file` and the name of its `script` test in `test_file` (`test/<id>_<rule>_<state>_replay.ml`), or, when `script` cannot write that test, `null` there and the reason in `test_error`. It keeps the list of the files it wrote, by check id, in `DIR/.silica-traces`, and removes the files of a check that ran that this run does not write again, so a stale trace cannot be replayed by mistake; it leaves every other file alone. A `DIR` that holds files and no `.silica-traces` list was not made by silica: the run refuses it before it checks, as a setup error (exit `3`). With `--specs DIR`, it also writes the `<id>.spec.json` golden file (`Silica.Spec.to_json`) of each spec into `DIR`, unless there is a setup error. `golden DIR` runs every entry and compares the golden files in `DIR` (see `golden`). `replay ID TRACE_FILE` replays the trace in the check of the machine `ID` (`Check.replay_trace`) and prints each step with the rules that fail there: exit `0` when no rule fails at the last step, `1` when one does or a step is not enabled, `3` when the trace does not read or cannot be replayed faithfully. `script ID TRACE_FILE` prints a `Silica_memory` test that reproduces the counterexample (`Check.script`), formatted by `ocamlformat` with the configuration of the project when `ocamlformat` is on the path. With `--output FILE`, it writes the test to `FILE` and says so on standard error; without it, it prints the test and says which file to save it in (`test/<trace name>_replay.ml`). When the steps cannot run in `Silica_memory`, it prints why on standard error, writes nothing and exits with `1`. `rules` lists `Check.rules`. `conform TRACE_FILE...` compares each trace, such as one that the app recorded in development or in production, with the golden specs in `--spec DIR` (default `spec`) by names (`Silica.Spec.conforms`) and with the code of each entry by data (`Check.conforms`); with `--only ID`, only with the golden specs and the check of that entry, such as a joint check of a parent with its children (`router+issue-list`). Without `--only`, dependents are not run, and machines named by `elsewhere` or with no spec in the selected files are listed as not checked. Each deviation names the transition, the machine, the instance, the step and the difference, with a hint: the spec is out of date, the check does not explore the behaviour, or the trace is from another build. Exit `0` when every trace conforms, `1` on a deviation, `3` when a trace or a spec does not read. Bad arguments print the usage on standard error and exit with `3`.
 
 ## Check_expect
 

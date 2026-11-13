@@ -857,6 +857,71 @@ let test_remote_machine_reload () =
     [ "stop r/loading//api/double 2" ]
     (described actions)
 
+type connection = Connecting | Live | Offline | Closed
+
+let connection_topic = Topic.declare ~name:"feed" ~state:Codec.int
+
+let connection_name = function
+  | Connecting ->
+      "list.connecting"
+  | Live ->
+      "list.live"
+  | Offline ->
+      "list.offline"
+  | Closed ->
+      "closed"
+
+let test_sub_states_keep_sources () =
+  let machine =
+    Machine.make ~id:"feed" ~init:Connecting ~name:connection_name
+      ~entry:(fun state -> [ note ("enter " ^ connection_name state) ])
+      ~during:(function
+        | Connecting | Live | Offline ->
+            [
+              Source.live connection_topic "main" (fun _ -> Connecting);
+              Remote.call endpoint "change" (fun _ -> Connecting);
+            ]
+        | Closed ->
+            []
+        )
+      (fun _ next -> Machine.Go next)
+  in
+  let actions from next =
+    let _, actions, how = Machine.step machine () from next in
+    (described actions, how)
+  in
+  let sub_state =
+    Alcotest.testable
+      (fun format (actions, how) ->
+        Format.fprintf format "%s (%s)"
+          (String.concat "; " actions)
+          ( match how with
+          | Machine.Kept ->
+              "kept"
+          | Machine.Entered ->
+              "entered"
+          | Machine.Unhandled ->
+              "unhandled"
+          )
+      )
+      ( = )
+  in
+  Alcotest.check sub_state
+    "list.connecting to list.live keeps the subscription and the call"
+    ([], Machine.Kept) (actions Connecting Live);
+  Alcotest.check sub_state "list.live to list.offline too" ([], Machine.Kept)
+    (actions Live Offline);
+  Alcotest.check sub_state
+    "list.offline to closed leaves list: stops both, enters closed"
+    ( [
+        "stop feed/list/live:feed main";
+        "stop feed/list//api/search \"change\"";
+        "note enter closed";
+      ],
+      Machine.Entered
+    )
+    (actions Offline Closed)
+
 let () =
   let t name f = Alcotest.test_case name `Quick f in
   Alcotest.run "silica machine"
@@ -874,6 +939,8 @@ let () =
           t "entry and exit order" test_entry_exit_order;
           t "self goto keeps resources" test_self_goto_keeps_resources;
           t "keyed sources" test_keyed_sources;
+          t "sub-states of a dotted name keep the sources"
+            test_sub_states_keep_sources;
           t "state names cover every state" test_state_names;
           t "event_name" test_event_name;
           t "final ignores events" test_final_ignores_events;

@@ -247,7 +247,9 @@ call, the topic and key of a subscription, the delay of a timer. After each
 step, the machine compares the keys of the old and the new list. Each key
 starts with the name of the state, so a step to a state with another name
 stops every source and starts the sources of the new state, even the ones
-that look the same. It stops the sources whose key went away and starts the
+that look the same. In a name with a dot, such as [list.offline], the key
+starts with the part before the first dot: a step between [list.live] and
+[list.offline] keeps the sources (see {!page-data.phases}). It stops the sources whose key went away and starts the
 new ones. The other sources keep running. So the calls of a state can change
 with its data, and a call whose input changes starts again. See {!page-actions} for the sources.
 
@@ -255,7 +257,8 @@ with its data, and a call whose input changes starts again. See {!page-actions} 
 
 {!Silica.Machine.start} gives the first snapshot and the actions of the start.
 {!Silica.Machine.step} gives the next snapshot, the actions and how the step
-changed the snapshot: [Unhandled], [Kept] (same name) or [Entered].
+changed the snapshot: [Unhandled], [Kept] (same name, or another sub-state
+of the same state) or [Entered].
 {!Silica.Machine.active} lists the timers and sources that run during the
 snapshot.
 These functions take the props; a machine from [Machine.make] has the props

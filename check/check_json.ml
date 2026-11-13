@@ -101,12 +101,18 @@ let step check index (step : _ Check.step) =
       ("data", option Fun.id (Check.input_json check step.input));
       ("cause", cause step.cause);
       ("target", string step.target);
-      ( "root_moved",
-        option
-          (fun (from, target) ->
-            record [ ("from", string from); ("target", string target) ]
+      ( "moved",
+        list
+          (fun (move : Check.move) ->
+            record
+              [
+                ("instance", string move.instance);
+                ("machine", string move.machine);
+                ("from", string move.from);
+                ("target", string move.target);
+              ]
           )
-          step.root_moved
+          step.moved
       );
     ]
 
@@ -118,7 +124,7 @@ let test_file trace_file =
   Filename.concat "test"
     (Filename.remove_extension (Filename.basename trace_file) ^ "_replay.ml")
 
-let violation check ?trace_file (violation : (_, _) Check.violation) =
+let violation check ?written (violation : (_, _) Check.violation) =
   let kind, trace, loop =
     match violation.counterexample with
     | Path trace ->
@@ -145,8 +151,25 @@ let violation check ?trace_file (violation : (_, _) Check.violation) =
       ("kind", string kind);
       ("trace", steps check ~first:1 trace);
       ("loop", option (steps check ~first:(List.length trace + 1)) loop);
-      ("trace_file", option string trace_file);
-      ("test_file", option string (Option.map test_file trace_file));
+      ("trace_file", option string (Option.map fst written));
+      ( "test_file",
+        option string
+          ( match written with
+          | Some (file, Ok ()) ->
+              Some (test_file file)
+          | Some (_, Error _) | None ->
+              None
+          )
+      );
+      ( "test_error",
+        option string
+          ( match written with
+          | Some (_, Error reason) ->
+              Some reason
+          | Some (_, Ok ()) | None ->
+              None
+          )
+      );
     ]
 
 let finding ~rule ~values ~state =
@@ -155,7 +178,7 @@ let finding ~rule ~values ~state =
   in
   (message, hint)
 
-let report ?(trace_files = []) check (report : (_, _) Check.report) =
+let report ?(traces = []) check (report : (_, _) Check.report) =
   record
     [
       ("id", string (Check.id check));
@@ -176,7 +199,7 @@ let report ?(trace_files = []) check (report : (_, _) Check.report) =
         list Fun.id
           (List.mapi
              (fun index item ->
-               violation check ?trace_file:(List.nth_opt trace_files index) item
+               violation check ?written:(List.nth_opt traces index) item
              )
              report.violations
           )

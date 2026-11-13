@@ -86,6 +86,16 @@ let cases =
         mount = (fun () -> Memory.mount Search.component);
         expected = [ ("ignored-event", "done", Same_view) ];
       };
+    Case
+      {
+        check = Feed.check;
+        mount = (fun () -> Memory.mount Feed.component);
+        expected =
+          [
+            ("a new score is not offline", "watching", Same_view);
+            ("a lost feed keeps the last score", "watching", Same_view);
+          ];
+      };
   ]
 
 let contains text part =
@@ -241,7 +251,7 @@ let not_enabled () =
   match Check.replay Save.check [ Event Save.Save; Event Edit ] with
   | Replayed _ ->
       Alcotest.fail "Edit is not offered in the saved state"
-  | Not_enabled { at; steps; enabled } ->
+  | Not_enabled { at; steps; enabled; _ } ->
       Alcotest.(check int) "the step" 2 at;
       Alcotest.(check int) "the points before it" 2 (List.length steps);
       Alcotest.(check (list string))
@@ -490,6 +500,64 @@ let stepper_trace () =
       (Check.export Stepper.check ~rule:violation.rule violation.counterexample)
   )
 
+let password_check =
+  Check.component ~texts:[ "hunter2" ]
+    ~properties:
+      [
+        Check.always ~name:"never sent"
+          (Check.state (fun (state : Silica_test_support.Password_form.state) ->
+               not state.sent
+           )
+          );
+      ]
+    Silica_test_support.Password_form.component
+
+let password_masked_in_exports () =
+  Silica_test_support.Password_form.register ();
+  let violation =
+    List.find
+      (fun (violation : (_, _) Check.violation) -> violation.rule = "never sent")
+      (Check.run password_check).violations
+  in
+  Alcotest.(check bool)
+    "the view of the violation shows the mask" true
+    (contains violation.view {|value="••••••••"|});
+  Alcotest.(check bool)
+    "the view of the violation has no typed text" false
+    (contains violation.view "hunter2");
+  let exported =
+    Check.export password_check ~rule:violation.rule violation.counterexample
+  in
+  let text = Trace.to_text exported and jsonl = Trace.to_jsonl exported in
+  Alcotest.(check bool)
+    "the trace text has no typed text" false (contains text "hunter2");
+  Alcotest.(check bool)
+    "the trace data has no typed text" false (contains jsonl "hunter2");
+  ( match Check.replay_trace password_check (round_trip exported) with
+  | Error message ->
+      Alcotest.fail message
+  | Ok replay ->
+      Alcotest.(check (list string))
+        "the masked trace replays in the check to the failure" [ "never sent" ]
+        (List.filter
+           (fun rule -> rule = "never sent")
+           (List.map
+              (fun (failure : Check.failure) -> failure.rule)
+              (last_point replay).failing
+           )
+        )
+  );
+  match
+    Memory.replay
+      (Memory.mount Silica_test_support.Password_form.component)
+      exported
+  with
+  | Not_realisable { reason; _ } ->
+      Alcotest.(check bool)
+        "memory does not type the mask" true (contains reason "masked")
+  | other ->
+      Alcotest.fail ("memory replayed the mask: " ^ describe_memory other)
+
 let exact_without_codecs () =
   let violation, trace = stepper_trace () in
   Alcotest.(check (list bool))
@@ -627,6 +695,10 @@ let () =
             "each violation: export, replay in the check and in memory" `Quick
             each_violation;
           Alcotest.test_case "inputs give steps with causes" `Quick replay_steps;
+          Alcotest.test_case
+            "a typed password is masked in views and exports and still replays \
+             in the check"
+            `Quick password_masked_in_exports;
           Alcotest.test_case "an input the state does not offer" `Quick
             not_enabled;
           Alcotest.test_case "a loop and a wait export and replay" `Quick

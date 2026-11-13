@@ -32,7 +32,8 @@ is red, then green: a check fails on the bug, then passes on the fix.
    `event` is the `~event_name` of the machine, or, when it has none, the
    label of the cause, such as `press button "Save"` or `after 2000ms`.
 5. Make it red, one test for each violation you fix: each violation has a
-   `trace_file` (`traces/<id>_<rule>_<state>.jsonl`) and a `test_file`;
+   `trace_file` (`traces/<id>_<rule>_<state>.jsonl`) and a `test_file`
+   (`null`, with the reason in `test_error`, when no script test can run it);
    `silica script ID TRACE_FILE --output TEST_FILE` (no file when it exits
    1), add the name of the test file to the names in `test/dune`,
    `dune test`. The test is formatted already
@@ -71,9 +72,10 @@ References, read when a step needs them:
   [silica](references/api/silica.md), [silica.check](references/api/check.md)
   (`Check`, `Check_suite`, `Check_expect`),
   [silica.memory](references/api/memory.md),
-  [silica.server](references/api/server.md) and
+  [silica.server](references/api/server.md),
   [silica.json](references/api/json.md) (the JSON values that
-  `Codec.make` reads and writes). Look a name up here, such as
+  `Codec.make` reads and writes) and [silica-ui](references/api/ui.md)
+  (`Silica_ui.Dialog`, `Silica_ui.Tabs` and the other components). Look a name up here, such as
   `Silica_memory.forward` or `Check.app`, instead of guessing it.
 - [references/checker.md](references/checker.md): the checker in full:
   each rule, properties and temporal properties, samples, children, routed

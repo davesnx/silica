@@ -54,7 +54,7 @@ The built-in rules hold for every component. `Check.rules` lists each with its i
 These rules read the view of each state as data, with the roles and names of `Silica.Accessibility`. They see no browser and no CSS, and they skip hidden elements. A component is checked alone: they do not see the view of its parent, and they see a child component only as a node.
 
 - `accessible-name`: a button, link, checkbox, radio, switch, tab, menu item, option or tree item, and each element with a press handler, has a name. It cannot see a name that CSS paints, such as an icon font.
-- `field-label`: a field (`input`, `textarea`, `select`, or a textbox, searchbox, combobox, listbox, slider or spinbutton role) has a name: a `<label for>`, a `<label>` around it, `aria-label`, `aria-labelledby`, `title` or `placeholder`.
+- `field-label`: a field (`input`, `textarea`, `select`, or a textbox, searchbox, combobox, listbox, slider or spinbutton role) has a name: a `<label for>`, a `<label>` around it, `aria-label`, `aria-labelledby`, `title` or `placeholder`. When the field is inside a `<label>` with no text, the message names that label.
 - `img-alt`: an `img` has `alt` (`alt=""` for decoration), a name, or the role `none`. It does not check that the text is useful, and does not look at `svg`.
 - `unique-ids`: an id is on one element of the view. It cannot see the ids of the parent, nor of another instance of the same component.
 - `aria-reference`: `aria-labelledby`, `aria-describedby`, `aria-activedescendant` and the `for` of a `label` name ids of the view. The rule is off for a view that holds a child component or a chunk that is not loaded, and it does not check `aria-controls` and `aria-owns`, because their target is often in the parent, as the panel of a tab is.
@@ -316,7 +316,7 @@ The state space of a joint check is the product of the parent and its running ch
 - Each child has its own `samples`, `inputs`, `texts` and `within`; the `texts` of the check go only to the fields of the parent.
 - `max_states` of the check bounds the joint snapshots, and `machines` in the report counts the distinct snapshots of each machine, so you can see which one to bound.
 
-The properties of the check, `always` and the temporal ones, see the whole page with only the handlers and actions of the root machine. A child takes only `always` properties with conditions on the state and the view, which see the view of the child. A property of a child that reads the step, and a temporal property on a child, raise `Check.Invalid_check`: put it on the parent, or on the check of the child alone.
+The properties of the check, `always` and the temporal ones, see the whole page with only the handlers and actions of the root machine. On a step of a child, `Check.event` and `Check.transition` see the events that the outputs of the child gave the root machine in that step, such as the `Delete Confirm_delete` that `on_content` of a dialog gives its page; a step whose outputs give the root no event has no event for them. A finding of a view rule, such as `field-label`, on an element that a child renders names the child, its instance and its state: `In the child profile-dialog at instance settings/1.2.2:profile-dialog: In state open, ...`. A child takes only `always` properties with conditions on the state and the view, which see the view of the child. A property of a child that reads the step, and a temporal property on a child, raise `Check.Invalid_check`: put it on the parent, or on the check of the child alone.
 
 ## Live components
 
@@ -454,8 +454,12 @@ let counter =
 From `bin/template/check/main.ml`:
 
 ```ocaml
-let () = Check_suite.main [ Check_suite.entry Checks.counter ]
+let () =
+  Codecs.register ();
+  Check_suite.main [ Check_suite.entry Checks.counter ]
 ```
+
+`Codecs.register ()` registers the codecs of the app (see `Silica.Machine.register_codecs`) before the suite runs: the traces of the checker then hold the data of each step, and `conform` decodes the data of a recorded trace to check it with the code and the properties.
 
 An entry can make more entries from its report, for a child component that needs the props its parent rendered: `Check_suite.entry router ~dependents:(fun report -> [ Check_suite.entry (Check.component ~props:(Check.props report.children Item.component) Item.component) ])`. A component of a library that another suite checks is listed with `Check_suite.elsewhere ~machine ~reason`. A joint check (see [Children](checker.md#children)) is an entry like any other: its id is the root and the listed children joined by `"+"`, such as `"router+issue-list"`, and a child that ran in it counts as checked.
 
@@ -472,7 +476,7 @@ dune exec ./check/main.exe -- rules [--json]
 
 `silica check` builds and runs `check/main.exe`; `silica check --json` adds `--json`, and `silica check --traces DIR` adds `--traces DIR`. `silica replay` and `silica script` run the commands of the same names. `--only ID` runs the entries with these ids. `--specs DIR` also writes the `<id>.spec.json` golden file (`Silica.Spec.to_json`) of each machine into `DIR`. `rules` lists `Check.rules`. `replay` and `script` are in [Replay a finding](checker.md#replay-a-finding).
 
-`silica check --graphs DIR` passes `--specs DIR`, then writes three more files for each machine into `DIR`, for review in a pull request: `<id>.svg` (the chart of `Silica.Statechart_view`), `<id>.txt` (`Silica.Spec.to_text`, one fact per line) and `<id>.md` (a Mermaid block, which GitHub shows as a chart).
+`silica check --graphs DIR` passes `--specs DIR`, then writes three more files for each machine into `DIR`, for review in a pull request: `<id>.svg` (the chart of `Silica.Statechart_view`), `<id>.txt` (`Silica.Spec.to_text`, one fact per line) and `<id>.md` (a Mermaid block, which GitHub shows as a chart), next to `<id>.spec.json`. For a joint check, `<id>` is `<entry id>.<machine id>`, such as `settings+tabs.tabs`, one for each machine of the entry, as for the golden files; a machine in two entries has a graph for each. The count that the command prints is the count of these graphs. The chart draws an arrow for each step that enters a state, and lists the kept steps of a state in its box, under its timers and sources, as `stay on` and their events, such as `stay on close_request escape-key` for an alert dialog that Escape keeps open. With no browser, read `<id>.txt`: it has the same states, arrows and kept steps (`stay` lines) as the chart.
 
 ### Exit codes
 
@@ -542,7 +546,8 @@ When the change is intended, `golden DIR --write` writes the files and removes t
           "trace": [ step ],         for "loop": the steps before the cycle
           "loop": [ step ] | null,   the cycle, which repeats forever
           "trace_file": string | null,
-          "test_file": string | null } ],
+          "test_file": string | null,
+          "test_error": string | null } ],
       "unreached": [ { "state", "rule", "message", "hint" } ],
       "unlisted": [ { "machine", "message" } ],
                                      each machine with no ~states
@@ -577,15 +582,19 @@ step = {
          | { "type": "held", "id", "source", "text" }
          | { "type": "action_result", "action", "text" }
          | { "type": "child", "instance", "machine", "text" },
-  "root_moved": { "from": string, "target": string } | null
-                                     for a step of a child: the change of
-                                     state of the root machine that the step
-                                     caused, such as a parent that handles an
-                                     output of the child
+  "moved": [ { "instance": string, "machine": string,
+               "from": string, "target": string } ]
+                                     the other machines whose state name the
+                                     step changed, root first: for a step of
+                                     a child, the root that handles its
+                                     output; for a step of the root, the
+                                     children it moved, such as the page whose
+                                     Source.block took a navigation; [] when
+                                     none
 }
 ```
 
-`data` is the snapshot or the event as JSON when the machine has codecs (see `Silica.Machine.register_codecs`), else `null`. The `text` of a cause is the phrase that the text report prints. `version` changes only when a field changes its meaning or goes away; new fields can appear in the same version. `kind` is `path` for a violation of a rule or an `always` property; `waits` and `loop` come with temporal properties, in the same shape. In a joint check, the `data` of a step of a child is the event of the child by its codec, and `from` and `target` are the states of that child. `trace_file` is the trace file of the violation with `--traces DIR`, else `null`; `test_file` is the file to save its `script` test in.
+`data` is the snapshot or the event as JSON when the machine has codecs (see `Silica.Machine.register_codecs`), else `null`. The `text` of a cause is the phrase that the text report prints. `version` changes only when a field changes its meaning or goes away; new fields can appear in the same version. `kind` is `path` for a violation of a rule or an `always` property; `waits` and `loop` come with temporal properties, in the same shape. In a joint check, the `data` of a step of a child is the event of the child by its codec, and `from` and `target` are the states of that child. `trace_file` is the trace file of the violation with `--traces DIR`, else `null`; `test_file` is the file to save its `script` test in, and `null` when `script` cannot write that test (a step with no input in `Silica_memory`, such as an event from `~inputs` or a held source); then `test_error` says why, and `replay` is the red check.
 
 A violation of the seeded bug in `test/check_suite/`: the saved state shows the Save button, and the update ignores it there.
 
@@ -610,7 +619,9 @@ From `test/check_suite/run.t`:
 
 A violation can run again, without a search. `check --traces DIR` writes each violation as a trace file `DIR/<id>_<rule>_<state>.jsonl`, by `Check.export`: the start, then each step with its cause, the answer of each call, the actions, and the event and snapshot data when the machine has codecs (see `Silica.Trace`).
 
-`replay ID TRACE_FILE` runs the steps through the check of `ID`, by `Check.replay_trace`, and prints each step with the rules that fail there:
+A trace of the checker has one record for each step of the check: the start of the root, then one record for each move. It differs from a trace that the runtime records in a joint check: the start of a listed child, its new props and its end are not records of their own, and their actions are in the record of the step that caused them. So the first record, the start of the root, holds the timers that the children start, and a step of the parent that gives a child new props holds the actions of that child too. A step of a child (its own event) is a record, with the instance of the child and no snapshot. `replay` and `script` read only the steps, so they take both kinds of trace; `conform` has no snapshot of the children in a trace of the checker, so it does not evaluate a property of the parent that reads their view (see [Conform a trace](checker.md#conform-a-trace)). It lists the files it wrote in `DIR/.silica-traces` and removes those that a new run does not write again. A `DIR` that holds files and no `.silica-traces` list was not made by silica, so the run refuses it as a setup error (exit 3): give a new or empty directory.
+
+`replay ID TRACE_FILE` runs the steps through the check of `ID`, by `Check.replay_trace`, and prints each step with the rules that fail there. `ID` is the id of an entry, or the root machine of one entry, such as `router` for the joint check `router+issue-list`: the root of a recorded trace names its entry. When several entries have that root, or the machine is only a child in an entry, the error names those entries.
 
 From `test/check_suite/run.t`:
 
@@ -663,7 +674,9 @@ Some steps have no input in the memory platform, and then `script` prints why on
 
 - a timer that fires before another running timer that is due earlier. The checker keeps abstract time: any running timer can fire next, so it finds races that slow devices and throttled tabs can make. The memory clock keeps real time, so it cannot make that order;
 - an event from `~inputs`, which no element of the view gives;
-- a Live update, a held source, or the result of an action, which the memory platform gives at once.
+- a held source, or the result of an action, which the memory platform gives at once.
+
+A Live update is a step of the test: `Silica_memory.live_update` gives it on the socket of the subscription, as the server and the network do (a state, a loss with the reconnect after it, a failure).
 
 Use `replay` for those. `Silica_memory.replay` runs a trace, of the checker or recorded in a runtime, in the memory platform and says at which step it differs, or why a step cannot run there.
 
@@ -675,6 +688,8 @@ It compares at two levels:
 
 - By names, `Silica.Spec.conforms`: each start, end and ignored event is in a state of a golden spec of its machine, and each step is an edge or a kept step of it, with the same event name. A machine can have several specs (the specs of each joint check of a parent with a child): one of them must allow the step. This level needs no user data, so it works on the default trace of a recorder, with names only.
 - By data, `Check.conforms`, when the trace holds event data and snapshots: for each record of the root machine of an entry and of its listed children, the code of this build runs the step again from the snapshot before, and it must give the same state name, change and snapshot; then every `always` property of the check holds on the snapshot of the record and its view. So the properties also run on states that the search never reached.
+
+In a joint check, the view that a property reads is the one the checker reads: the view of the parent with the view of each listed child in place of its component node, from the snapshot of the child in the trace. A child that the check does not list stays a component node, as in the checker. The properties of a record run after the records of its children that its step caused (new props, a start, an end), so the children have their new props. When a listed child has no snapshot in the trace (names only, or a recorder that dropped it) or its snapshot does not decode, conform does not evaluate a property that reads that view, and says so in a line `property not checked by conform: "NAME" (REASON)` (`unchecked_properties` with `--json`). Such a property is never a deviation.
 
 `--spec DIR` (default `spec`) names the golden specs. `--only ID` compares with the golden specs and the check of one entry only, such as the joint check `comments+comment+comment-composer` of a parent with its children; machines outside it are listed as not checked. Machines named by `Check_suite.elsewhere` are listed as not checked too; a machine that no spec has is a deviation. Without `--only` the dependents of entries do not run.
 
@@ -696,10 +711,10 @@ Each deviation has a kind, the transition, the machine, the instance, the step a
 - `unknown-step` or `unknown-state`: no golden spec has it. When the trace holds data and the code of this build takes the same step, the spec is out of date (the golden check reports the step as added: review the diff and write it) or the check does not explore it (no golden change: add samples, inputs or props that reach it). With names only, the hint gives both, and says to use the specs of the build that recorded the trace, when it is another build;
 - `different-step`: the code gives another state, change or snapshot: the trace is from another build, or the update depends on something outside the snapshot and the event;
 - `not-decodable`: the event or snapshot types changed: another build;
-- `property-fails`: the app reached a snapshot that breaks an `always` property, with the view at that point;
+- `property-fails`: the app reached a snapshot that breaks an `always` property, with the view at that point. When `silica check` does not report it too, the check does not reach that snapshot;
 - `no-spec`: no check of the suite covers the machine.
 
-It exits `0` when every trace conforms, `1` on a deviation, and `3` when a trace or a spec does not read or an `--only` id has no entry. With `--json`, each trace has its counts, the machines not checked and the deviations, with `kind`, `seq`, `machine`, `instance`, `step`, `difference`, `hint` and `view`.
+It exits `0` when every trace conforms, `1` on a deviation, and `3` when a trace or a spec does not read or an `--only` id has no entry. With `--json`, each trace has its counts, the machines not checked, the properties not checked and the deviations, with `kind`, `seq`, `machine`, `instance`, `step`, `difference`, `hint` and `view`.
 
 What conformance does not prove:
 
@@ -707,5 +722,5 @@ What conformance does not prove:
 - Anything about data with names only: an event with the wrong payload, or a snapshot that breaks a property, has the same names as a good one.
 - Temporal properties (`leads_to`, `never_after`): a trace is one finite run, often cut by the recorder, so "eventually" cannot fail on it.
 - The actions, the timing and the order of timers: the actions of a step and the time between steps are not compared.
-- The view of a child inside its parent: the properties see the view of each machine alone, and a machine with props and no props codec has no view, so its properties do not run.
+- The view of a child that the check does not list: it stays a component node in the view of its parent. A machine with props and no props codec has no view, so its properties do not run.
 - The steps before the first record of an instance that a full recorder dropped, and the start of the root of an app, whose state depends on a URL that the record does not hold.

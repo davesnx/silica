@@ -488,15 +488,15 @@ module Make (Io : IO) : sig
       accepted and the socket is closed at once with
       {!Silica.Protocol.close_session}: a browser cannot read the status of a
       refused upgrade, so a refusal would look like a lost network. The first
-      message of the connection must be a {!Silica.Protocol.Hello} with version
-      1, the CSRF token of the session and an island or a topic that the server
-      knows; the server answers with [Hello_ok] and then a state. Otherwise it
-      closes the socket with the close code of {!Silica.Protocol}. An island
-      with the same session, channel and instance that is still held (see
-      [live_keep]) is attached again and sent its state; the event ids go on. A
-      message above [max_message] gets an [error] message and is dropped. A step
-      that raises closes the socket with {!Silica.Protocol.close_server_error}
-      and ends the island. *)
+      message of the connection must be a {!Silica.Protocol.Hello} with the
+      version {!Silica.Protocol.version}, the CSRF token of the session and an
+      island or a topic that the server knows; the server answers with
+      [Hello_ok] and then a state. Otherwise it closes the socket with the close
+      code of {!Silica.Protocol}. An island with the same session, channel and
+      instance that is still held (see [live_keep]) is attached again and sent
+      its state; the event ids go on. A message above [max_message] gets an
+      [error] message and is dropped. A step that raises closes the socket with
+      {!Silica.Protocol.close_server_error} and ends the island. *)
 
   val publish : t -> 's Silica.Topic.t -> key:string -> 's -> unit Io.t
   (** The new full state of a topic key. Its [seq] is one higher than the last

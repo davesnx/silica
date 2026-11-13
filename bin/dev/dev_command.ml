@@ -138,7 +138,15 @@ let run ~server ~client ~port ~json =
             match
               Inspector_hub.listen (Hub.inspector hub) ~path:inspect_socket
             with
-            | Error message ->
+            | Error (Unix.EPERM, message) ->
+                fail
+                  ("cannot listen for the inspector: " ^ message
+                 ^ ". This environment forbids Unix sockets, and silica dev \
+                    needs them for the inspector and for the build watch of \
+                    dune. Run silica dev where Unix sockets are allowed, such \
+                    as outside the sandbox."
+                  )
+            | Error (_, message) ->
                 fail ("cannot listen for the inspector: " ^ message)
             | Ok inspect_listener -> (
                 match
@@ -173,29 +181,32 @@ let run ~server ~client ~port ~json =
                            url = Printf.sprintf "http://127.0.0.1:%d" proxy_port;
                          }
                       );
-                    let phase = ref `Idle and errors = ref [] in
-                    let on_progress = function
+                    let phase = ref Build_phase.Idle and errors = ref [] in
+                    let on_progress progress =
+                      let next, reports = Build_phase.next !phase progress in
+                      phase := next;
+                      List.iter
+                        (function
+                          | Build_phase.Started ->
+                              emit Dev_event.Build_started
+                          | Succeeded ->
+                              emit Dev_event.Build_ok;
+                              Supervisor.build_succeeded supervisor
+                          | Failed ->
+                              emit (Dev_event.Build_failed !errors)
+                          )
+                        reports;
+                      match progress with
                       | Build_watch.Running { complete; remaining } ->
-                          if !phase <> `Building then (
-                            phase := `Building;
-                            emit Dev_event.Build_started
-                          );
                           Hub.publish hub
                             (Dev_event.Build_progress { complete; remaining })
-                      | Failed ->
-                          phase := `Failed;
-                          emit (Dev_event.Build_failed !errors)
-                      | Success ->
-                          phase := `Ok;
-                          emit Dev_event.Build_ok;
-                          Supervisor.build_succeeded supervisor
-                      | Waiting | Interrupted ->
+                      | Failed | Success | Waiting | Interrupted ->
                           ()
                     in
                     let on_errors latest =
                       let changed = latest <> !errors in
                       errors := latest;
-                      if changed && !phase = `Failed then
+                      if changed && !phase = Build_phase.Broken then
                         emit (Dev_event.Build_failed latest)
                     in
                     let watch =
@@ -282,11 +293,25 @@ let command =
               build succeeds.";
            `P
              "With $(b,--json), each event is one JSON line on stdout: \
-              $(b,{\"t\":\"build\",\"status\":\"started\"}), $(b,\"failed\") \
-              with $(b,errors), $(b,\"ok\"); \
-              $(b,{\"t\":\"server\",\"status\":\"started\"}), \
-              $(b,\"restarted\"), $(b,\"crashed\") with $(b,code) and \
-              $(b,output). The server output goes to stderr.";
+              $(b,{\"t\":\"dev\",\"url\":...}) first, the page to open; \
+              $(b,{\"t\":\"build\",\"status\":\"started\"}) for each build, \
+              then $(b,\"ok\") or $(b,\"failed\") with $(b,errors); \
+              $(b,{\"t\":\"server\",\"status\":\"started\"}) or \
+              $(b,\"restarted\") with $(b,pid) and $(b,ms), $(b,\"crashed\") \
+              with $(b,code) and $(b,output); \
+              $(b,{\"t\":\"reload\",\"what\":\"code\"}) with $(b,entry) and \
+              $(b,css), $(b,\"page\"), or $(b,\"css\") with $(b,css); \
+              $(b,{\"t\":\"hot-reload\",\"status\":\"kept\"}) with $(b,ms), \
+              $(b,kept) and $(b,restarted), or $(b,\"reloaded\") with \
+              $(b,reason).";
+           `P
+             "The server output goes to stderr. Its own $(b,listening on) line \
+              names its internal port: open the $(b,url) of the $(b,dev) \
+              event.";
+           `P
+             "$(b,silica dev) needs Unix sockets, for dune and for $(b,silica \
+              inspect). Where the environment forbids them, it stops at start \
+              and says so.";
            `S Manpage.s_exit_status;
            `P
              "0 after SIGINT or SIGTERM. 1 when the command cannot start, or \

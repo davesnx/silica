@@ -142,6 +142,10 @@ val elements : 'e Node.t -> 'e element list
 val tag : 'e element -> string
 (** The tag name. *)
 
+val ancestors : 'e element -> 'e element list
+(** The elements above it in the page, nearest first. A child of a portal has
+    none. *)
+
 val attributes : 'e element -> 'e Node.attr list
 (** The attributes, as the view gives them. *)
 
@@ -192,7 +196,22 @@ val current : 'e element -> string option
 
 val value : 'e element -> string option
 (** [aria-valuetext], else [aria-valuenow], else the [value] of an [input],
-    [textarea] or [select]. *)
+    [textarea] or [select]. The value of a password field is {!Secret.mask} (an
+    empty value stays [""]), so a typed secret does not show in a printed view.
+*)
 
 val modal : 'e element -> bool
 (** [aria-modal="true"]. *)
+
+val behind_modal : 'e element -> 'e element option
+(** The open modal that the element is behind, if any. An open modal is an
+    element with [aria-modal="true"] that is not {!hidden} and has no other open
+    modal inside it (a modal opened from inside another one is in front of it,
+    also through a portal). While the view shows an open modal, an element is
+    behind it unless it is inside an open modal (also through a portal) or above
+    one in the page; the elements around a portal are not above the portal, as
+    its children are painted at the end of the body. This is the page that the
+    browser renderer makes [inert] while a {!Source.focus_trap} runs (the
+    [dialog-focus] rule of the checker asks for that trap on each modal): the
+    checker and [Silica_memory] give no input to an element behind a modal. It
+    stays in the text view, as it stays drawn. *)

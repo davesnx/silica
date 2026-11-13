@@ -26,7 +26,7 @@ forward                        Memory.forward               pages
 URL that the user opens        Memory.open_url              pages
 props change                   Check_expect.set_props       changing
 step of a child                its element in the page      joint run.t
-Live update                    refused: no Live socket input in memory
+Live update                    Memory.live_update           feed
 held source                    refused: no input for it in memory
 action result                  refused: memory gives it at once
 event from ~inputs             refused: no element gives it (use ~texts)
@@ -460,3 +460,41 @@ A timer that real time fires second has no script; the command says why.
   $ ./gen_script.exe clock accessible-name
   step 2 fires the timer clock/waiting/after 2000ms (2000 ms) before the timer clock/waiting/after 300ms, which is due 1700 ms earlier in real time. The checker lets running timers fire in any order; Silica_memory keeps real time, so it cannot replay this order
   [1]
+
+A Live update: Memory.live_update gives the update on the socket of the
+subscription, as the server and the network give it. The subscription gives
+the first update (connecting) when it starts, so the script leaves it out. A
+loss of the socket, and the state after the reconnect:
+
+  $ cat feed_offline_script.ml
+  module Memory = Silica_memory
+  
+  let broken =
+    Check_expect.rule "a new score is not offline" ~state:"watching"
+      ~message:"The property \"a new score is not offline\" does not hold in state \
+                watching."
+      ~hint:"Change the update or the view so that \"a new score is not \
+             offline\" holds in state watching, or correct the property."
+  
+  let () =
+    let page = Memory.mount Feed.component in
+    Check_expect.holds broken Feed.check page (fun () ->
+        Memory.live_update page ~topic:"score" {|{"seq":1,"status":["Ready",{"data":3,"stale":false}]}|};
+        Memory.live_update page ~topic:"score" {|{"seq":0,"status":["Ready",{"data":3,"stale":true}]}|};
+        Memory.live_update page ~topic:"score" {|{"seq":2,"status":["Ready",{"data":3,"stale":false}]}|}
+    )
+  $ ./feed_offline_script.exe
+  a new score is not offline: The property "a new score is not offline" does not hold in state watching.
+  hint: Change the update or the view so that "a new score is not offline" holds in state watching, or correct the property.
+  It still fails in state watching: The property "a new score is not offline" does not hold in state watching.
+  [1]
+  $ ./feed_offline_fixed_script.exe
+
+A fatal failure is an error that the server sends:
+
+  $ ./feed_lost_script.exe
+  a lost feed keeps the last score: The property "a lost feed keeps the last score" does not hold in state watching.
+  hint: Change the update or the view so that "a lost feed keeps the last score" holds in state watching, or correct the property.
+  It still fails in state watching: The property "a lost feed keeps the last score" does not hold in state watching.
+  [1]
+  $ ./feed_lost_fixed_script.exe

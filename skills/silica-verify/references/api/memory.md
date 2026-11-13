@@ -9,7 +9,7 @@ The platform keeps:
 - the last painted view, as a `Silica.Node.t` and as HTML;
 - a manual clock: nothing scheduled runs until `advance`;
 - the HTTP requests of Remote calls, which the test answers one at a time;
-- the Live sockets, which the test opens, sends messages into and closes;
+- the Live sockets, which the test opens, sends messages into and closes, or which `live_update` drives as a server does;
 - a history of URLs with an index, which the navigation actions, link presses, `back` and `forward` change;
 - the actions that the renderer ran, the running sources, the title, the log lines and the number of times the session was gone.
 
@@ -243,7 +243,7 @@ See `Silica.Accessibility.expanded`.
 
 **Input**
 
-As in a browser, `press`, `double_press`, `input`, `submit` and `focus` reach only an element that a user can reach: they raise `Not_reachable` when the element, or an element around it, is a disabled `button`, `input`, `select`, `textarea`, `option`, `optgroup` or `fieldset`, or has `hidden` or `inert`. `aria-disabled` and `aria-hidden` do not stop input, as in a browser.
+As in a browser, `press`, `double_press`, `input`, `submit` and `focus` reach only an element that a user can reach: they raise `Not_reachable` when the element, or an element around it, is a disabled `button`, `input`, `select`, `textarea`, `option`, `optgroup` or `fieldset`, or has `hidden` or `inert`, or is behind an open modal (`Silica.Accessibility.behind_modal`: the browser renderer makes that page `inert`). `aria-disabled` and `aria-hidden` do not stop input, as in a browser.
 
 ```ocaml
 type unreachable =
@@ -370,9 +370,15 @@ The delays, in milliseconds, of the scheduled tasks that have not run and were n
 val trace : _ t -> Trace.t
 ```
 
-Every transition since the start, with data: the runtime always records (see `Silica.Instance.mount` and `Silica.Trace`). Each record has the time of the memory clock. Event data, props and snapshots are there for the machines that registered their codecs (`Silica.Machine.register_codecs`); answers, Live updates and input text are always there. The header has the first URL, the build `"memory"` and the platform `"memory"`. Read it with `Silica.Trace.to_text` or write it with `Silica.Trace.to_jsonl`.
+Every transition since the start, with data: the runtime always records (see `Silica.Instance.mount` and `Silica.Trace`). Each record has the time of the memory clock. Event data, props and snapshots are there for the machines that registered their codecs (`Silica.Machine.register_codecs`); answers, Live updates and input text are always there, except text typed into a password field, which is masked (see `Silica.Transition.observer`). The header has the first URL, the build `"memory"` and the platform `"memory"`. Read it with `Silica.Trace.to_text` or write it with `Silica.Trace.to_jsonl`.
 
 After an error page, "Try again" starts a new tree: its records follow, with their numbers going on and instance numbers starting again at 1.
+
+```ocaml
+val trace_in_clear : _ t -> Trace.t
+```
+
+`trace` with the text typed into password fields in clear, for a replay of the run in the same process, as `Check_expect.holds` does. Never write it to a file.
 
 **HTTP**
 
@@ -480,6 +486,19 @@ val socket_error : socket -> unit
 
 The socket reports an error.
 
+```ocaml
+val live_update : _ t -> topic:string -> string -> unit
+```
+
+`live_update t ~topic update` gives the subscription to `topic` the update that a Live step of a trace holds: `update` is written as `Silica.Topic.update_codec` writes it, such as `{"seq":1,"status":["Ready",{"data":[],"stale":false}]}`. It acts as the server and the network that give that update:
+
+- `Idle` or `Loading`: nothing; the subscription gives it when it starts.
+- `Ready` with `stale = false`: the server sends the state with its `seq`. First, when that has not happened, the socket opens and the server answers the hello; after a loss, the client connects again at once, without the wait of `Silica.Backoff`, and the clock does not move.
+- `Ready` with `stale = true`: the socket is lost (close code 1006), and the client keeps the last state.
+- `Failed` with `Network code`: the server sends the error `code`; with `Http 401`, `403`, `404` or `426`, it closes the socket with `Silica.Protocol.close_session`, `close_csrf`, `close_unknown` or `close_version`.
+
+The server answers each ping on a socket that it answered the hello of, so the heartbeat never drops the socket while the clock moves. Opening a socket opens every socket that waits to open. Raises `Invalid_argument` when no subscription to `topic` is open or waits to connect again, or when `update` is none of these.
+
 **Records**
 
 ```ocaml
@@ -569,9 +588,10 @@ type replay_result =
       (** The runtime reached another state, or no transition. *)
   | Not_realisable of { seq : int; reason : string }
       (** The step has no input in this platform: a timer that real time does
-          not fire first, a Live update, a held source, the result of an action,
-          an event of the host or of the inputs of a check, a preload, or a step
-          whose data the trace does not hold. *)
+          not fire first, a held source, the result of an action, an event of
+          the host or of the inputs of a check, a preload, a step whose data the
+          trace does not hold, or text typed into a password field, which a
+          trace masks (see {!Silica.Secret}). *)
   | Not_found of { seq : int; error : string }
 ```
 
@@ -587,6 +607,7 @@ val replay : _ t -> Trace.t -> replay_result
 - a timer: `advance` by the time left on it, when no other running timer is due before it;
 - an answer: the pending request of that path gets the answer: `Ok` as a 200 reply, `Rejected` as a 422 reply, `Http` with its status, `Network` as `network_error`;
 - props: `set_props` with the props decoded by the props codec of the machine;
+- a Live update: `live_update` with the update; the subscription gives the first update (`Loading`) when it starts, so that step is not an input;
 - a URL: `back`, `forward`, or a press on the link to it.
 
 Steps caused by other steps (the start of a child, its output, its end) are not inputs. The replay stops at the first step that is not the same.

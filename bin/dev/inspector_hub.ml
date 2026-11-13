@@ -20,10 +20,37 @@ type t = {
   lock : Mutex.t;
   mutable connections : connection list;
   capacity : int;
+  seen : (string, Transition.t list) Hashtbl.t;
 }
 
 let create ?(capacity = 5000) () =
-  { lock = Mutex.create (); connections = []; capacity }
+  {
+    lock = Mutex.create ();
+    connections = [];
+    capacity;
+    seen = Hashtbl.create 16;
+  }
+
+let kind (record : Transition.t) =
+  ( record.change,
+    record.from,
+    record.target,
+    record.event,
+    Transition.label record
+  )
+
+let remember hub (record : Transition.t) =
+  let known =
+    Option.value (Hashtbl.find_opt hub.seen record.machine) ~default:[]
+  in
+  if
+    not
+      (List.exists
+         (fun (other : Transition.t) -> kind other = kind record)
+         known
+      )
+  then
+    Hashtbl.replace hub.seen record.machine (Transition.strip record :: known)
 
 let connect hub ~send =
   let connection = { send_text = send; role = Unknown } in
@@ -104,20 +131,32 @@ let apply hub (state : target_state) (event : Inspect.event) =
   | Unmount path ->
       Hashtbl.remove state.instances path
   | Step { transition; owns } -> (
+      remember hub transition;
       Queue.push transition state.steps;
       if Queue.length state.steps > hub.capacity then (
         ignore (Queue.pop state.steps);
         state.dropped <- state.dropped + 1
       );
+      let props instance =
+        match transition.props with
+        | Some _ ->
+            transition.props
+        | None ->
+            instance.Inspect.props
+      in
       match
         (transition.change, Hashtbl.find_opt state.instances transition.instance)
       with
+      | Unhandled, Some (order, instance) ->
+          Hashtbl.replace state.instances transition.instance
+            (order, { instance with props = props instance })
       | (Kept | Entered), Some (order, instance) ->
           Hashtbl.replace state.instances transition.instance
             ( order,
               {
                 instance with
                 state = transition.target;
+                props = props instance;
                 data =
                   ( match transition.snapshot with
                   | Some _ ->
@@ -237,6 +276,17 @@ let answer hub connection id (request : Inspect.request) =
       | Error message ->
           failure message
     )
+  | Seen machine ->
+      send connection
+        (Seen_steps
+           {
+             id;
+             machine;
+             steps =
+               List.rev
+                 (Option.value (Hashtbl.find_opt hub.seen machine) ~default:[]);
+           }
+        )
   | Travel _ | Return_live _ ->
       failure "time travel is not available yet"
 
@@ -403,7 +453,7 @@ let bound ~path =
 let listen hub ~path =
   match bound ~path with
   | exception Unix.Unix_error (error, _, _) ->
-      Error (path ^ ": " ^ Unix.error_message error)
+      Error (error, path ^ ": " ^ Unix.error_message error)
   | socket ->
       let listener = { socket; path; stopped = Atomic.make false } in
       let rec accept () =

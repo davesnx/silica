@@ -154,10 +154,12 @@ that the release bundles have none of it.
 {2:dev-json Events as JSON}
 
 With [--json], stdout has one JSON object per line. The server output goes to
-stderr. The events:
+stderr; its [listening on] line names the internal port of the server, behind
+[silica dev]: open the [url] of the [dev] event. The events:
 
 - [{"t":"dev","url":"http://127.0.0.1:8080"}]: [silica dev] listens.
-- [{"t":"build","status":"started"}], then [{"t":"build","status":"ok"}] or
+- [{"t":"build","status":"started"}] for each build, the first one too, then
+  [{"t":"build","status":"ok"}] or
   [{"t":"build","status":"failed","errors":[...]}]. Each error has [file]
   (relative to the root), [line], [col] (from 1), [end_line], [end_col],
   [severity] (["error"] or ["warning"]), [message] and [excerpt], a list of
@@ -169,8 +171,9 @@ stderr. The events:
   server stopped. [output] is its last 60 lines. [silica dev] starts it again
   after the next build that succeeds, not before.
 - [{"t":"reload","what":"code","entry":"/static/client_main-HASH.js","css":[...]}]:
-  the page swaps in the new bundle; ["page"] reloads the page; ["css"] swaps
-  the stylesheets only.
+  the page swaps in the new bundle [entry]; each [css] entry has [from] and
+  [to], the old and the new stylesheet. ["page"] reloads the page; ["css"]
+  with [css] swaps the stylesheets only.
 - [{"t":"hot-reload","status":"kept","ms":26,"kept":[...],"restarted":[...]}]:
   the page resumed the new code in [ms]. [kept] lists the instance paths that
   kept their state; each [restarted] entry has [path], [machine] and [reason],
@@ -201,6 +204,12 @@ the client, for [restarted], and after a change to the client for
 SIGINT (Ctrl-C), SIGTERM and SIGHUP stop the server (which saves its state),
 then dune, and free the port; the exit code is 0. The children run in their
 own process groups, so SIGKILL on [silica dev] leaves them running.
+
+[silica dev] needs Unix sockets: dune's RPC socket and the socket of
+[silica inspect] ([_build/silica-dev/inspect.sock]). Where the environment
+forbids them, as some sandboxes do, it stops at start with
+[cannot listen for the inspector: ... Operation not permitted] and says so;
+run it where Unix sockets are allowed.
 
 A second [silica dev] in the same project stops at once with
 [another silica dev runs in this project (pid N)]. A [dune build --watch]

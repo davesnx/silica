@@ -117,7 +117,9 @@ let check_command =
             "Also write the graphs of each checked machine into $(docv): \
              $(i,ID).spec.json (the spec), $(i,ID).svg (the drawing), \
              $(i,ID).txt (the text form, one fact per line) and $(i,ID).md (a \
-             Mermaid block, which GitHub shows as a chart)."
+             Mermaid block, which GitHub shows as a chart). For a joint check, \
+             $(i,ID) is $(i,ENTRY).$(i,MACHINE), one for each machine of the \
+             entry."
     )
   in
   let no_golden =
@@ -138,8 +140,10 @@ let check_command =
             "Write each violation as a trace file \
              $(docv)/<id>_<rule>_<state>.jsonl, for $(b,silica replay) and \
              $(b,silica script); the trace files of a check that this run no \
-             longer writes are removed. $(docv) is relative to the app; the \
-             $(b,.gitignore) of $(b,silica new) leaves out $(b,traces)."
+             longer writes are removed. A $(docv) that holds files and no \
+             $(b,.silica-traces) list is refused (exit 3): give a new or empty \
+             directory. $(docv) is relative to the app; the $(b,.gitignore) of \
+             $(b,silica new) leaves out $(b,traces)."
     )
   in
   Cmd.v
