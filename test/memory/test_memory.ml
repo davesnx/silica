@@ -1474,6 +1474,70 @@ let password_is_masked () =
   | Replayed | Different _ | Not_found _ ->
       Alcotest.fail "a replay typed the mask as the password"
 
+let password_keys_are_masked () =
+  Silica_test_support.Password_keys.register ();
+  let memory = Memory.mount Silica_test_support.Password_keys.component in
+  Memory.focus (Memory.by_id memory "password");
+  Memory.key memory (Key.make "h");
+  Memory.key_up memory (Key.make "h");
+  Memory.key memory Key.escape;
+  let keys =
+    List.filter_map
+      (fun (record : Transition.t) ->
+        match[@warning "-4"] record.cause with
+        | Element { handler = ("key_down" | "key_up") as handler; value; _ } ->
+            Some
+              ( handler,
+                Option.value value ~default:"",
+                Transition.cause_label record.cause,
+                Option.fold ~none:"" ~some:Silica_json.Json.to_string
+                  record.data
+              )
+        | _ ->
+            None
+      )
+      (Memory.trace memory).transitions
+  in
+  Alcotest.(check (list (pair string string)))
+    "a key that types a character is masked; Escape is not"
+    [ ("key_down", "••••••••"); ("key_up", "••••••••"); ("key_down", "Escape") ]
+    (List.map (fun (handler, value, _, _) -> (handler, value)) keys);
+  Alcotest.(check (list string))
+    "the labels show the mask in place of the key"
+    [
+      {|key_down •••••••• "Password"|};
+      {|key_up •••••••• "Password"|};
+      {|key_down Escape "Password"|};
+    ]
+    (List.map (fun (_, _, label, _) -> label) keys);
+  Alcotest.(check (list bool))
+    "the event data holds Escape and not the typed key" [ false; false; true ]
+    (List.map
+       (fun (_, _, _, data) -> contains data {|"h"|} || contains data "Escape")
+       keys
+    );
+  ( match
+      Memory.replay
+        (Memory.mount Silica_test_support.Password_keys.component)
+        (Memory.trace memory)
+    with
+  | Not_realisable { reason; _ } ->
+      Alcotest.(check bool)
+        "a replay stops at the masked key" true (contains reason "masked")
+  | Replayed | Different _ | Not_found _ ->
+      Alcotest.fail "a replay pressed the mask or the typed key"
+  );
+  let both = Memory.mount Silica_test_support.Password_keys.component in
+  let field = Memory.by_id both "password" in
+  Memory.input field "hunter2";
+  Memory.focus field;
+  Memory.key both (Key.make "x");
+  let json = Trace.to_jsonl (Memory.trace both) in
+  Alcotest.(check bool)
+    "after a key, the trace still has no typed text" false
+    (contains json "hunter2");
+  Alcotest.(check bool) "and no typed key" false (contains json {|"x"|})
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "memory"
@@ -1486,6 +1550,8 @@ let () =
           case "input delivers the value" input_delivers_the_value;
           case "a password is masked in the view, the trace and a replay"
             password_is_masked;
+          case "a key typed into a password field is masked in the trace"
+            password_keys_are_masked;
           case "After fires later" after_fires_later;
           case "Call delivers success and sends the wire request" call_success;
           case "Call maps non-200, bad JSON and fetch failure" call_errors;

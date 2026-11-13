@@ -765,9 +765,16 @@ let make_cause ~mask ~view ~message (cause : Instance.cause) =
   | Element (attr, input, key) ->
       let found other = other == attr in
       let located = Option.bind view (fun view -> find_in found view) in
+      let password_field =
+        match located with
+        | Some located ->
+            mask && password located
+        | None ->
+            false
+      in
       let secret =
         match (input, located) with
-        | Some text, Some located when mask && password located ->
+        | Some text, Some located when password_field ->
             Some (element_path located, text)
         | _ ->
             None
@@ -781,6 +788,8 @@ let make_cause ~mask ~view ~message (cause : Instance.cause) =
                 else
                   Secret.hide input
               )
+        | None, Some key when password_field && Secret.is_typed_key key.key ->
+            Some (Secret.hide (Key.to_string key))
         | None, Some key ->
             Some (Key.to_string key)
         | None, None ->
@@ -926,10 +935,15 @@ let make ~secrets ~seq ~time_ms observed =
               ""
           );
         data =
-          ( match event with
-          | Some event ->
+          ( match[@warning "-4"] (event, cause) with
+          | ( _,
+              Element { handler = "key_down" | "key_up"; value = Some value; _ }
+            )
+            when value = Secret.mask ->
+              None
+          | Some event, _ ->
               encoded (Machine.event_codec machine) event
-          | None ->
+          | None, _ ->
               None
           );
         props = with_props;

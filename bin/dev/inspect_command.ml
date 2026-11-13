@@ -393,7 +393,7 @@ let labelled machine transitions =
       | Entered ->
           label false
       | Kept ->
-          label true
+          label (record.from = record.target)
       | Started | Resumed | Unhandled | Ended ->
           None
     )

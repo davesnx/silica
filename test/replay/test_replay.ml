@@ -558,6 +558,157 @@ let password_masked_in_exports () =
   | other ->
       Alcotest.fail ("memory replayed the mask: " ^ describe_memory other)
 
+let password_keys_check =
+  Check.component
+    ~keys:[ Key.make "h"; Key.enter ]
+    ~properties:
+      [
+        Check.always ~name:"never sent after a key"
+          (Check.state (fun (state : Silica_test_support.Password_keys.state) ->
+               not (state.sent && state.keys > 0)
+           )
+          );
+      ]
+    Silica_test_support.Password_keys.component
+
+let password_keys_masked_in_exports () =
+  Silica_test_support.Password_keys.register ();
+  let violation =
+    List.find
+      (fun (violation : (_, _) Check.violation) ->
+        violation.rule = "never sent after a key"
+      )
+      (Check.run password_keys_check).violations
+  in
+  let exported =
+    Check.export password_keys_check ~rule:violation.rule
+      violation.counterexample
+  in
+  let text = Trace.to_text exported and jsonl = Trace.to_jsonl exported in
+  Alcotest.(check bool)
+    "the trace text shows the mask for the typed key" true
+    (contains text ("(form > input) " ^ String.escaped Secret.mask));
+  Alcotest.(check bool)
+    "the trace text has no typed key" false
+    (contains text "(form > input) h");
+  Alcotest.(check bool)
+    "the trace text keeps Enter" true
+    (contains text "(form > input) Enter");
+  Alcotest.(check bool)
+    "the trace data has no typed key" false (contains jsonl {|"h"|});
+  ( match Check.replay_trace password_keys_check (round_trip exported) with
+  | Error message ->
+      Alcotest.fail message
+  | Ok replay ->
+      Alcotest.(check (list string))
+        "the masked trace replays in the check to the failure"
+        [ "never sent after a key" ]
+        (List.filter
+           (fun rule -> rule = "never sent after a key")
+           (List.map
+              (fun (failure : Check.failure) -> failure.rule)
+              (last_point replay).failing
+           )
+        )
+  );
+  let memory = Memory.mount Silica_test_support.Password_keys.component in
+  Memory.focus (Memory.by_id memory "password");
+  Memory.key memory (Key.make "h");
+  Memory.key memory Key.enter;
+  ( match Check.replay_trace password_keys_check (Memory.trace memory) with
+  | Error message ->
+      Alcotest.(check bool)
+        "a recorded run with a masked key does not replay in the check" true
+        (contains message "password field")
+  | Ok _ ->
+      Alcotest.fail "the check replayed a recorded run with a masked key"
+  );
+  match Check.replay_run password_keys_check (Memory.trace memory) with
+  | Error message ->
+      Alcotest.fail message
+  | Ok replay ->
+      Alcotest.(check (list string))
+        "a recorded run with a masked key replays by cause to the failure"
+        [ "never sent after a key" ]
+        (List.filter
+           (fun rule -> rule = "never sent after a key")
+           (List.map
+              (fun (failure : Check.failure) -> failure.rule)
+              (last_point replay).failing
+           )
+        )
+
+let key_steps (trace : Trace.t) =
+  List.filter_map
+    (fun (record : Transition.t) ->
+      match[@warning "-4"] record.cause with
+      | Element { handler = "key_down"; value = Some value; _ } ->
+          Some (value = Secret.mask, Option.is_some record.data)
+      | _ ->
+          None
+    )
+    trace.transitions
+
+let password_keys_with_modifiers () =
+  Silica_test_support.Password_keys.register ();
+  let keys =
+    [
+      Key.make ~shift:true "Enter";
+      Key.make ~ctrl:true "ArrowUp";
+      Key.make ~shift:true "H";
+      Key.make "+";
+      Key.make ~shift:true "+";
+    ]
+  in
+  let runtime key =
+    let memory = Memory.mount Silica_test_support.Password_keys.component in
+    Memory.focus (Memory.by_id memory "password");
+    Memory.key memory key;
+    key_steps (Memory.trace memory)
+  in
+  let exported key =
+    let check =
+      Check.component ~keys:[ key ]
+        ~properties:
+          [
+            Check.always ~name:"nothing pressed"
+              (Check.state
+                 (fun (state : Silica_test_support.Password_keys.state) ->
+                   not (state.sent || state.keys > 0)
+               )
+              );
+          ]
+        Silica_test_support.Password_keys.component
+    in
+    let violation =
+      List.find
+        (fun (violation : (_, _) Check.violation) ->
+          violation.rule = "nothing pressed"
+        )
+        (Check.run check).violations
+    in
+    key_steps
+      (round_trip
+         (Check.export check ~rule:violation.rule violation.counterexample)
+      )
+  in
+  let masked = [ (true, false) ] and kept = [ (false, true) ] in
+  Alcotest.(check (list (pair string (list (pair bool bool)))))
+    "a key with modifiers is masked and loses its data only when it types a \
+     character, in the runtime"
+    [
+      ("Shift+Enter", kept);
+      ("Ctrl+ArrowUp", kept);
+      ("Shift+H", masked);
+      ("+", masked);
+      ("Shift++", masked);
+    ]
+    (List.map (fun key -> (Key.to_string key, runtime key)) keys);
+  Alcotest.(check (list (pair string (list (pair bool bool)))))
+    "and the same in an export of the checker"
+    (List.map (fun key -> (Key.to_string key, runtime key)) keys)
+    (List.map (fun key -> (Key.to_string key, exported key)) keys)
+
 let exact_without_codecs () =
   let violation, trace = stepper_trace () in
   Alcotest.(check (list bool))
@@ -699,6 +850,14 @@ let () =
             "a typed password is masked in views and exports and still replays \
              in the check"
             `Quick password_masked_in_exports;
+          Alcotest.test_case
+            "a key typed into a password field is masked in exports and still \
+             replays"
+            `Quick password_keys_masked_in_exports;
+          Alcotest.test_case
+            "a key with modifiers on a password field is masked the same in \
+             the runtime and in exports"
+            `Quick password_keys_with_modifiers;
           Alcotest.test_case "an input the state does not offer" `Quick
             not_enabled;
           Alcotest.test_case "a loop and a wait export and replay" `Quick

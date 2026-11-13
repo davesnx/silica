@@ -49,7 +49,8 @@ type cause =
       value : string option;
           (** The text of an [input] ({!Secret.mask} for a password field), or
               the name of the key of a [key_down] or [key_up] (see
-              {!Key.to_string}). *)
+              {!Key.to_string}; {!Secret.mask} for a key that types a character
+              into a password field). *)
     }  (** A handler of an element of the view. *)
   | Timer of { id : string; ms : int }  (** A timer that the state owned. *)
   | Answer of { id : string; path : string; answer : Silica_json.Json.t option }
@@ -205,8 +206,10 @@ val observer :
     observer learns the text into [secrets] (a new table when it is not given),
     under the instance path and the element path of the field. In [data],
     [props] and [snapshot], each string that is the last text typed into a
-    password field is {!Secret.mask}. A trace then cannot type that text again:
-    a replay of it stops at that step.
+    password field is {!Secret.mask}. A key that types a character into a
+    password field (see {!Secret.is_typed_key}) is {!Secret.mask} in the
+    [value], and the record has no [data]. A trace then cannot type that text or
+    that key again: a replay of it stops at that step.
 
     With [~mask:false] (default [true]) the records keep that text in clear, for
     a test that replays its own run in the same process (see

@@ -642,6 +642,76 @@ let graph_and_tree () =
   Unix.rmdir specs;
   Unix.rmdir directory
 
+let graph_of_sub_states () =
+  let directory = short_directory () in
+  let path = Filename.concat directory "inspect.sock" in
+  let specs = Filename.concat directory "spec" in
+  Unix.mkdir specs 0o700;
+  let spec_file = Filename.concat specs "editor.spec.txt" in
+  Out_channel.with_open_bin spec_file (fun channel ->
+      Out_channel.output_string channel
+        (String.concat "\n"
+           [
+             "machine editor";
+             "initial Editing.A";
+             "state Editing.A";
+             "state Editing.B";
+             "edge Editing.A -> Editing.B on next";
+           ]
+        ^ "\n"
+        )
+  );
+  let hub = Inspector_hub.create () in
+  let listener =
+    match Inspector_hub.listen hub ~path with
+    | Ok listener ->
+        listener
+    | Error (_, message) ->
+        Alcotest.fail message
+  in
+  let target = peer hub in
+  hello_target target "tab-1" Browser;
+  List.iter (say target)
+    [
+      step
+        (record ~change:Started ~seq:1 ~machine:"editor" ~instance:"editor"
+           ~from:"" ~target:"Editing.A" ~event:"" ()
+        );
+      step
+        (record ~change:Kept ~seq:2 ~machine:"editor" ~instance:"editor"
+           ~from:"Editing.A" ~target:"Editing.B" ~event:"next" ()
+        );
+    ];
+  Alcotest.(check (list string))
+    "a kept step between sub-states is an edge to its target"
+    [
+      "spec editor.spec.txt";
+      "machine editor";
+      "initial Editing.A";
+      "state Editing.A";
+      "state Editing.B";
+      "edge Editing.A -> Editing.B on next";
+      "seen edge Editing.A -> Editing.B on next";
+    ]
+    (silica_lines
+       [ "inspect"; "graph"; "editor"; "--specs"; specs; "--socket"; path ]
+    );
+  Alcotest.(check (list string))
+    "with no spec, the graph has the edge between sub-states"
+    [
+      "not checked editor";
+      "machine editor";
+      "initial Editing.A";
+      "state Editing.A";
+      "state Editing.B";
+      "edge Editing.A -> Editing.B on next";
+    ]
+    (silica_lines [ "inspect"; "graph"; "editor"; "--socket"; path ]);
+  Inspector_hub.stop listener;
+  Sys.remove spec_file;
+  Unix.rmdir specs;
+  Unix.rmdir directory
+
 let no_hub () =
   let directory = short_directory () in
   let tail =
@@ -769,6 +839,8 @@ let () =
           test "silica inspect tail --json prints a Silica_memory run" tail_json;
           test "silica inspect with no silica dev exits 3" no_hub;
           test "silica inspect graph and tree after a reload" graph_and_tree;
+          test "silica inspect graph of a step between sub-states"
+            graph_of_sub_states;
           test "the page WebSocket refuses other origins" websocket_origin;
         ]
       );

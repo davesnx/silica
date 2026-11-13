@@ -1854,6 +1854,17 @@ let similar (first : cause) (second : cause) =
       (first.handler = second.handler
       || first.handler = "input " ^ Secret.mask
          && String.starts_with ~prefix:"input " second.handler
+      || List.exists
+           (fun handler ->
+             first.handler = handler ^ " " ^ Secret.mask
+             && String.starts_with ~prefix:(handler ^ " ") second.handler
+             && Secret.is_typed_key
+                  (String.sub second.handler
+                     (String.length handler + 1)
+                     (String.length second.handler - String.length handler - 1)
+                  )
+           )
+           [ "key_down"; "key_up" ]
       )
       && first.role = second.role && first.name = second.name
   | Timer first, Timer second ->
@@ -2765,7 +2776,9 @@ let wanted_of ?(by_cause = false) (Check check) (trace : Trace.t) records =
       let* wanted = acc in
       let typed_secret =
         match[@warning "-4"] record.cause with
-        | Element { handler = "input"; value = Some value; _ } ->
+        | Element
+            { handler = "input" | "key_down" | "key_up"; value = Some value; _ }
+          ->
             value = Secret.mask
         | _ ->
             false
@@ -2935,6 +2948,12 @@ let masked secrets ~instance view : Transition.cause -> Transition.cause =
     when password_at view element ->
       Secret.learn secrets ~field:(instance ^ " " ^ element) text;
       Element { field with value = Some (Secret.hide text) }
+  | Element
+      ( { handler = "key_down" | "key_up"; value = Some key; element; _ } as
+        field
+      )
+    when password_at view element && Secret.is_typed_key key ->
+      Element { field with value = Some (Secret.hide key) }
   | cause ->
       cause
 
@@ -3024,6 +3043,12 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
                     snapshot = None;
                   }
               in
+              let cause =
+                masked secrets ~instance:step.instance view
+                  (Check_model.transition_cause ~answer:(model.answer node move)
+                     ~url:(check.url state) step.cause
+                  )
+              in
               {
                 common with
                 from = step.from;
@@ -3037,15 +3062,18 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
                       Entered
                   );
                 event = Option.value ~default:"" (model.event_name move.event);
-                data = check.input_json step.input;
+                data =
+                  ( match[@warning "-4"] cause with
+                  | Element
+                      { handler = "key_down" | "key_up"; value = Some value; _ }
+                    when value = Secret.mask ->
+                      None
+                  | _ ->
+                      check.input_json step.input
+                  );
                 props =
                   (match step.cause with Props -> common.props | _ -> None);
-                cause =
-                  masked secrets ~instance:step.instance view
-                    (Check_model.transition_cause
-                       ~answer:(model.answer node move) ~url:(check.url state)
-                       step.cause
-                    );
+                cause;
               }
           | _ ->
               common

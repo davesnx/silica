@@ -6,6 +6,19 @@ let hide = function "" -> "" | _ -> mask
 let is_password ~tag ~kind =
   tag = "input" && Option.map String.lowercase_ascii kind = Some "password"
 
+let is_typed_key key =
+  key <> ""
+  && not
+       (String.length key > 1
+       && String.for_all
+            (fun character ->
+              ('a' <= character && character <= 'z')
+              || ('A' <= character && character <= 'Z')
+              || ('0' <= character && character <= '9')
+            )
+            key
+       )
+
 type t = (string, string) Hashtbl.t
 
 let create () = Hashtbl.create 4

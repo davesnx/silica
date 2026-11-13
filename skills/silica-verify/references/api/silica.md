@@ -3295,7 +3295,9 @@ All six values are `0.`.
 
 The text of a password field, kept out of what silica prints and records.
 
-A person types a secret into an `<input type="password">`. The text view (see `View_text`), the transition log (see `Transition`), trace files (see `Trace`) and the inspector show `mask` in its place, so that a secret does not end in a golden file, a trace or a log.
+A person types a secret into an `<input type="password">`. The text view (see `View_text`), the transition log (see `Transition`), trace files (see `Trace`) and the inspector show `mask` in its place, so that a secret does not end in a golden file, a trace or a log. A key that types a character into a password field (see `is_typed_key`) is also `mask`, and its record has no event data.
+
+A text that the app builds from key events, such as in its snapshot, is not known to silica, and stays.
 
 ```ocaml
 val mask : string
@@ -3314,6 +3316,12 @@ val is_password : tag:string -> kind:string option -> bool
 ```
 
 `is_password ~tag ~kind`: an element with the tag `tag` and the `type` attribute `kind` is a password field: an `input` of the type `"password"`, in any case.
+
+```ocaml
+val is_typed_key : string -> bool
+```
+
+`is_typed_key key`: the key `key`, a value of `KeyboardEvent.key` such as `"h"` or `"Enter"`, types a character. A named key, such as `"Enter"`, `"Escape"`, `"Tab"`, `"Backspace"` or `"ArrowUp"`, types none.
 
 ```ocaml
 type t
@@ -4059,7 +4067,8 @@ type cause =
       value : string option;
           (** The text of an [input] ({!Secret.mask} for a password field), or
               the name of the key of a [key_down] or [key_up] (see
-              {!Key.to_string}). *)
+              {!Key.to_string}; {!Secret.mask} for a key that types a character
+              into a password field). *)
     }  (** A handler of an element of the view. *)
   | Timer of { id : string; ms : int }  (** A timer that the state owned. *)
   | Answer of { id : string; path : string; answer : Silica_json.Json.t option }
@@ -4208,7 +4217,7 @@ val observer :
 
 `observer ?clock ?secrets record` numbers the steps from 1, reads the `clock` (no time when it is not given) and gives each record to `record`.
 
-Text typed into a password field (see `Secret`) is masked: the `value` of the `input` cause is `Secret.mask` (an empty text stays `""`), and the observer learns the text into `secrets` (a new table when it is not given), under the instance path and the element path of the field. In `data`, `props` and `snapshot`, each string that is the last text typed into a password field is `Secret.mask`. A trace then cannot type that text again: a replay of it stops at that step.
+Text typed into a password field (see `Secret`) is masked: the `value` of the `input` cause is `Secret.mask` (an empty text stays `""`), and the observer learns the text into `secrets` (a new table when it is not given), under the instance path and the element path of the field. In `data`, `props` and `snapshot`, each string that is the last text typed into a password field is `Secret.mask`. A key that types a character into a password field (see `Secret.is_typed_key`) is `Secret.mask` in the `value`, and the record has no `data`. A trace then cannot type that text or that key again: a replay of it stops at that step.
 
 With `~mask:false` (default `true`) the records keep that text in clear, for a test that replays its own run in the same process (see `Silica_memory.trace_in_clear`). Never write such records to a file. The work happens only in the observer: a host with no observer does none, and an app that never calls this function carries none of its code.
 

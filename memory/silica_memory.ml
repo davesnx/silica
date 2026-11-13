@@ -1857,7 +1857,8 @@ let drive handle (record : Transition.t) =
               Ok (leave found)
           | "pointer_enter", _ ->
               Ok (hover found)
-          | "input", Some text when text = Secret.mask ->
+          | ("input" | "key_down" | "key_up"), Some text when text = Secret.mask
+            ->
               not_realisable
                 "the text typed into this password field is masked in the \
                  trace (see Silica.Secret), so it cannot be typed again"
