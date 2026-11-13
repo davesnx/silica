@@ -102,7 +102,7 @@ let anchor_takes_place_from_the_state () =
       (fun _ side -> Machine.Go (Shown side))
   in
   let held state =
-    match Machine.held machine () state with
+    match Machine.held machine state with
     | [ Action.Anchor { place; _ } ] ->
         place
     | _ ->

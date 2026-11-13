@@ -20,8 +20,7 @@ let machine : (unit, int, Counter_event.t) Machine.t =
 let view (count : int) : Counter_event.t Node.t =
   <div class_="counter">
     <button
-      on_press=Counter_event.Decr
-      disabled=(not (Machine.can machine () count Decr))>
+      on_press=Counter_event.Decr disabled=(not (Machine.can machine count Decr))>
       "Decrement"
     </button>
     <span>(Node.text (string_of_int count))</span>

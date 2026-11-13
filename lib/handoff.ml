@@ -14,7 +14,7 @@ type codecs = {
 let registered = { state = Machine.state_codec }
 
 let at_start machine props snapshot =
-  match fst (Machine.start machine props) = snapshot with
+  match fst (Machine.start_with_props machine props) = snapshot with
   | equal ->
       equal
   | exception Invalid_argument _ ->
@@ -68,7 +68,7 @@ let decode (type p s e) codecs entry (machine : (p, s, e) Machine.t) props :
     | Not_encoded reason ->
         Error (No_codec reason)
     | At_start ->
-        Ok (fst (Machine.start machine props))
+        Ok (fst (Machine.start_with_props machine props))
     | Encoded text -> (
         match codecs.state machine with
         | Error reason ->
@@ -129,7 +129,7 @@ let hook ?(codecs = registered) handoff =
             match component.view props snapshot with
             | _ ->
                 kept := path :: !kept;
-                Some (snapshot, Machine.resume machine props snapshot)
+                Some (snapshot, Machine.resume_with_props machine props snapshot)
             | exception exn ->
                 restart (Render_failed (Printexc.to_string exn))
           )

@@ -56,7 +56,7 @@ let replays machine (stem : _ Check.step list) (cycle : _ Check.step list) =
   let play state (step : (unit, _) Check.input Check.step) =
     match step.input with
     | Check.Event event ->
-        let next, _, _ = Machine.step machine () state event in
+        let next, _, _ = Machine.step machine state event in
         Alcotest.(check string)
           ("the step " ^ step.event ^ " reaches its target")
           step.target
@@ -65,7 +65,7 @@ let replays machine (stem : _ Check.step list) (cycle : _ Check.step list) =
     | Check.Props _ | Check.In_child _ ->
         Alcotest.fail "no props or children in these fixtures"
   in
-  let start, _ = Machine.start machine () in
+  let start, _ = Machine.start machine in
   let entry = List.fold_left play start stem in
   let back = List.fold_left play entry cycle in
   Alcotest.(check bool)

@@ -136,7 +136,9 @@ let anchor_uses_props () =
         | _ ->
             None
         )
-      (Machine.held filter_popover.component.machine props (Sim.snapshot sim))
+      (Machine.held_with_props filter_popover.component.machine props
+         (Sim.snapshot sim)
+      )
   in
   Alcotest.(check bool)
     "the popup is anchored to the trigger, on the side from the props" true

@@ -956,7 +956,7 @@ type snapshot =
       *)
   | At_start
       (** The machine has no state codec, and the snapshot is the one that
-          {!Machine.start} gives for its props. *)
+          {!Machine.start_with_props} gives for its props. *)
   | Not_encoded of string
 ```
 
@@ -1036,7 +1036,7 @@ val hook : ?codecs:codecs -> t -> Instance.resume * (unit -> outcome)
 
 The `Instance.resume` of the handoff, and what it did so far. An instance whose path is not in the handoff takes the entry of the same machine id when the handoff has exactly one, not taken yet: a view edit that moves a component keeps its state.
 
-An `Encoded` snapshot resumes when the state codec of the new code, from `codecs` (default `registered`), decodes it. An `At_start` snapshot resumes at the snapshot that `Machine.start` gives in the new code, with no entry: a closed popup with no codec keeps being closed. Any other instance starts again from its initial snapshot, and the outcome says why.
+An `Encoded` snapshot resumes when the state codec of the new code, from `codecs` (default `registered`), decodes it. An `At_start` snapshot resumes at the snapshot that `Machine.start_with_props` gives in the new code, with no entry: a closed popup with no codec keeps being closed. Any other instance starts again from its initial snapshot, and the outcome says why.
 
 ## Silica.Inspect
 
@@ -1291,7 +1291,7 @@ type change =
   | Started  (** The instance started. *)
   | Resumed
       (** The instance started again at a snapshot it reached before (see
-          {!Machine.resume}). *)
+          {!Machine.resume_with_props}). *)
   | Unhandled  (** The machine ignored the event or the props. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state. *)
@@ -1938,6 +1938,10 @@ val type_id : ('p, 's, 'e) t -> ('p * 's * 'e) Type.Id.t
 
 A type id made by `make`, one for each machine. Hosts use it to know that two machines with the same id have the same types.
 
+**Running a machine**
+
+Each function that runs a machine has two forms. The plain form, such as `step`, is for a machine made by `make` and takes no props. The form with `_with_props`, such as `step_with_props`, takes the props after the machine: use it for a machine made by `make_with_props`, and in a host that runs machines with any props.
+
 ```ocaml
 type resource =
   | Timer of { id : string; ms : int }
@@ -1947,46 +1951,75 @@ type resource =
 ```
 
 ```ocaml
-val active : ('p, 's, 'e) t -> 'p -> 's -> resource list
+val active : (unit, 's, 'e) t -> 's -> resource list
 ```
 
 The timers and sources that run during the snapshot. After `start`, `step` or `set_props`, the actions and this list agree: a resource is running if and only if its id was started and not stopped.
 
 ```ocaml
-val held : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
+val active_with_props : ('p, 's, 'e) t -> 'p -> 's -> resource list
+```
+
+`active` with the props.
+
+```ocaml
+val held : (unit, 's, 'e) t -> 's -> 'e Action.source list
 ```
 
 The held sources (see `Source.focus_trap`) that run during the snapshot. The checker reads them to know which presses can happen.
 
 ```ocaml
-val can : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
+val held_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.source list
+```
+
+`held` with the props.
+
+```ocaml
+val can : (unit, 's, 'e) t -> 's -> 'e -> bool
 ```
 
 The machine handles the event in this snapshot: it is not final and the update does not give `Ignore`. A view can disable a button with it.
+
+```ocaml
+val can_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
+```
+
+`can` with the props.
 
 ```ocaml
 type how = Unhandled | Kept | Entered
 ```
 
 ```ocaml
-val start : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
+val start : (unit, 's, 'e) t -> 's * 'e Action.host list
 ```
 
-The initial snapshot after the `start` actions of the machine, the actions of entering it, and `on_props None props`.
+The initial snapshot after the `start` actions of the machine and the actions of entering it.
 
 ```ocaml
-val resume : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+val start_with_props : ('p, 's, 'e) t -> 'p -> 's * 'e Action.host list
 ```
 
-`resume machine props snapshot` gives the actions that run the machine again at a snapshot it reached before, in another process or bundle: the starts of the timers, calls, subscriptions and held sources that run during the snapshot, in the order of `during`, with the ids of `active`. A timer starts with its full delay and a call is sent again.
+`start` with the props, followed by `on_props None props`.
+
+```ocaml
+val resume : (unit, 's, 'e) t -> 's -> 'e Action.host list
+```
+
+`resume machine snapshot` gives the actions that run the machine again at a snapshot it reached before, in another process or bundle: the starts of the timers, calls, subscriptions and held sources that run during the snapshot, in the order of `during`, with the ids of `active`. A timer starts with its full delay and a call is sent again.
 
 It gives no `start` actions, no `entry` and no `on_props`: the snapshot entered its state before, when they ran, and their effects (a focus, a title, a navigation, a call made by an action) must not happen twice. After it, the actions and `active` agree, as after `start`.
 
 ```ocaml
+val resume_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+```
+
+`resume` with the props.
+
+```ocaml
 val step :
   ?finished:string ->
-  ('p, 's, 'e) t ->
-  'p ->
+  (unit, 's, 'e) t ->
   's ->
   'e ->
   's * 'e Action.host list * how
@@ -1997,6 +2030,18 @@ Run the update. A final state handles nothing; `Ignore` leaves the snapshot unch
 `finished` is the id of the timer or call that raised the event: it ended when it delivered. A handled step that keeps the name and still has a source with that id in `during` starts it again, so a state whose `during` gives `Source.after 1000 Tick` and handles `Tick` with `Go` ticks every second. Hosts give it for timers and calls; subscriptions and held sources do not end when they deliver.
 
 ```ocaml
+val step_with_props :
+  ?finished:string ->
+  ('p, 's, 'e) t ->
+  'p ->
+  's ->
+  'e ->
+  's * 'e Action.host list * how
+```
+
+`step` with the props.
+
+```ocaml
 val set_props :
   ('p, 's, 'e) t -> previous:'p -> 'p -> 's -> 's * 'e Action.host list * how
 ```
@@ -2004,10 +2049,16 @@ val set_props :
 The parent gave new props: run `on_props (Some previous) props`, then compare the sources by key. `Unhandled` when nothing changed.
 
 ```ocaml
-val exit : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+val exit : (unit, 's, 'e) t -> 's -> 'e Action.host list
 ```
 
 The actions of leaving the snapshot: `exit`, then the stops of its timers and sources.
+
+```ocaml
+val exit_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
+```
+
+`exit` with the props.
 
 ## Silica.Nav
 
@@ -4032,7 +4083,8 @@ type change = Instance.change =
       (** The instance started again at a snapshot it reached before, such as a
           Live island after a server restart: [from] is [""], [target] is the
           state of that snapshot, [actions] are only the starts of what runs
-          during it (see {!Machine.resume}), and the cause is [Start]. *)
+          during it (see {!Machine.resume_with_props}), and the cause is
+          [Start]. *)
   | Unhandled  (** The machine ignored the event: nothing changed. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state, with the same name or another. *)

@@ -261,23 +261,25 @@ changed the snapshot: [Unhandled], [Kept] (same name, or another sub-state
 of the same state) or [Entered].
 {!Silica.Machine.active} lists the timers and sources that run during the
 snapshot.
-These functions take the props; a machine from [Machine.make] has the props
-[()].
+These functions are for a machine from [Machine.make], which has no props.
+For a machine with props, give the props to
+{!Silica.Machine.start_with_props}, {!Silica.Machine.step_with_props} and
+{!Silica.Machine.active_with_props}.
 
 {@ocaml[
 # let machine = Doc_debounce.machine;;
 val machine : (unit, Doc_debounce.state, Doc_debounce.event) Silica.Machine.t =
   <abstr>
-# let state, _ = Silica.Machine.start machine ();;
+# let state, _ = Silica.Machine.start machine;;
 val state : Doc_debounce.state = Doc_debounce.Empty
 # let state, actions, _ =
-    Silica.Machine.step machine () state (Doc_debounce.Typed "oc");;
+    Silica.Machine.step machine state (Doc_debounce.Typed "oc");;
 val state : Doc_debounce.state = Doc_debounce.Typing "oc"
 val actions : Doc_debounce.event Silica.Action.host list =
   [Silica.Action.Start_timer
     {Silica.Action.id = "debounce/typing/after 500ms"; ms = 500;
      event = Doc_debounce.Settle}]
-# Silica.Machine.active machine () state;;
+# Silica.Machine.active machine state;;
 - : Silica.Machine.resource list =
 [Silica.Machine.Timer
   {Silica.Machine.id = "debounce/typing/after 500ms"; ms = 500}]
@@ -288,14 +290,14 @@ a new one:
 
 {@ocaml[
 # let state, actions, _ =
-    Silica.Machine.step machine () state (Doc_debounce.Typed "ocaml");;
+    Silica.Machine.step machine state (Doc_debounce.Typed "ocaml");;
 val state : Doc_debounce.state = Doc_debounce.Typing "ocaml"
 val actions : Doc_debounce.event Silica.Action.host list =
   [Silica.Action.Stop "debounce/typing/after 500ms";
    Silica.Action.Start_timer
     {Silica.Action.id = "debounce/typing/after 500ms"; ms = 500;
      event = Doc_debounce.Settle}]
-# let state, _, _ = Silica.Machine.step machine () state Doc_debounce.Settle;;
+# let state, _, _ = Silica.Machine.step machine state Doc_debounce.Settle;;
 val state : Doc_debounce.state = Doc_debounce.Settled "ocaml"
 # Silica.Machine.name machine state;;
 - : string = "settled"
@@ -410,8 +412,7 @@ let view state : event Node.t =
           disabled=(state.phase = Sending)
           on_input=(fun email -> Typed email)
         />
-        <button
-          on_press=Send disabled=(not (Machine.can machine () state Send))>
+        <button on_press=Send disabled=(not (Machine.can machine state Send))>
           "Subscribe"
         </button>
         ( match state.phase with

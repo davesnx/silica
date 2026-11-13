@@ -337,7 +337,7 @@ let source_tests =
         Alcotest.(check (option string))
           "topic" (Some "counts") (Source.topic source);
         match
-          Machine.active Watch.machine () (Watch.Watching ("k", Status.Idle))
+          Machine.active Watch.machine (Watch.Watching ("k", Status.Idle))
         with
         | [ Machine.Subscription { topic = "counts"; id } ] ->
             Alcotest.(check string) "id" "watch/watching/live:counts k" id

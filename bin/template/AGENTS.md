@@ -132,7 +132,7 @@ Run every command from this directory.
    the verification reference.
 2. Put behaviour in the machine. A view only reads the state and names
    events. Disable an element when its event does nothing in a state:
-   `disabled=(not (Machine.can machine () state Event))`. `Machine.make`
+   `disabled=(not (Machine.can machine state Event))`. `Machine.make`
    takes `~name` (the name of each state in the spec, the checker and the
    traces), `?states` (every name that `name` gives, so that the checker
    reports the states that no run reached), `?event_name` (the name of each

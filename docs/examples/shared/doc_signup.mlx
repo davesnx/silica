@@ -66,8 +66,7 @@ let view state : event Node.t =
           disabled=(state.phase = Sending)
           on_input=(fun email -> Typed email)
         />
-        <button
-          on_press=Send disabled=(not (Machine.can machine () state Send))>
+        <button on_press=Send disabled=(not (Machine.can machine state Send))>
           "Subscribe"
         </button>
         ( match state.phase with

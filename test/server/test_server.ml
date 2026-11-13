@@ -118,8 +118,8 @@ let protocol_tests =
           )
     );
     test_case "timers, calls and stops are not host actions" `Quick (fun () ->
-        let start, _ = Machine.start machine () in
-        let mixing, entered, _ = Machine.step machine () start Mixed in
+        let start, _ = Machine.start machine in
+        let mixing, entered, _ = Machine.step machine start Mixed in
         check int "focus, navigate, timer, call" 4 (List.length entered);
         check
           (list (option host_testable))
@@ -131,7 +131,7 @@ let protocol_tests =
             None;
           ]
           (List.map Protocol.host_of_host_action entered);
-        let _, left, _ = Machine.step machine () mixing Cancel_later in
+        let _, left, _ = Machine.step machine mixing Cancel_later in
         check
           (list (option host_testable))
           "stops are not actions" [ None; None ]

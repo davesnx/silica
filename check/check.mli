@@ -890,13 +890,13 @@ val conforms : ('s, 'ev) t -> Silica.Trace.t -> conformance
 (** [conforms check trace] runs, for each record of the root machine of [check]
     and of its listed children (see {!val-child}), the code of this build on the
     data of the trace, with no search:
-    - The step: a start runs {!Silica.Machine.start} with the props of the
-      record (not for the root of an app, whose start depends on the URL, which
-      the record does not hold); a step runs {!Silica.Machine.step} on the
-      snapshot of the record before it in the same instance, with the event of
-      the record; new props run {!Silica.Machine.set_props}. The state name, the
-      change and the snapshot (by the state codec) must be the ones of the
-      record.
+    - The step: a start runs {!Silica.Machine.start_with_props} with the props
+      of the record (not for the root of an app, whose start depends on the URL,
+      which the record does not hold); a step runs
+      {!Silica.Machine.step_with_props} on the snapshot of the record before it
+      in the same instance, with the event of the record; new props run
+      {!Silica.Machine.set_props}. The state name, the change and the snapshot
+      (by the state codec) must be the ones of the record.
     - The properties: every {!always} property of the check (of the child, for a
       child) holds on the snapshot of the record and its view, with the event of
       the record. For an app, the URL is the last [Url] cause of the root, or

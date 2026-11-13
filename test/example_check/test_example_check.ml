@@ -126,7 +126,7 @@ let round_trips name (machine : (unit, _, _) Silica.Machine.t) check =
   Alcotest.(check bool) (name ^ " has paths") true (report.paths <> []);
   List.iter
     (fun (_, steps) ->
-      let start, _ = Silica.Machine.start machine () in
+      let start, _ = Silica.Machine.start machine in
       round_trip name state_codec start;
       ignore
         (List.fold_left
@@ -134,7 +134,7 @@ let round_trips name (machine : (unit, _, _) Silica.Machine.t) check =
              match step.input with
              | Event event ->
                  round_trip name event_codec event;
-                 let state, _, _ = Silica.Machine.step machine () state event in
+                 let state, _, _ = Silica.Machine.step machine state event in
                  round_trip name state_codec state;
                  state
              | Props () | In_child _ ->

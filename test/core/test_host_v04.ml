@@ -333,12 +333,12 @@ end
 
 let test_machine_sources () =
   let machine = Held.machine in
-  let state, actions = Machine.start machine () in
+  let state, actions = Machine.start machine in
   Alcotest.(check int) "no source in the first state" 0 (List.length actions);
   Alcotest.(check int)
     "no held source" 0
-    (List.length (Machine.held machine () state));
-  let state, actions, _ = Machine.step machine () state Held.Open in
+    (List.length (Machine.held machine state));
+  let state, actions, _ = Machine.step machine state Held.Open in
   let started =
     List.filter_map
       (function
@@ -361,7 +361,7 @@ let test_machine_sources () =
     started;
   Alcotest.(check int)
     "held lists them" 6
-    (List.length (Machine.held machine () state));
+    (List.length (Machine.held machine state));
   Alcotest.check strings "active names the held sources"
     [
       "focus_trap";
@@ -378,16 +378,16 @@ let test_machine_sources () =
          | Machine.Timer _ | Machine.Call _ | Machine.Subscription _ ->
              "not held"
          )
-       (Machine.active machine () state)
+       (Machine.active machine state)
     );
   Alcotest.(check bool)
     "every held source is held" true
     (List.for_all Source.is_held Held.sources);
-  let state, actions, how = Machine.step machine () state (Held.Seen true) in
+  let state, actions, how = Machine.step machine state (Held.Seen true) in
   Alcotest.(check bool)
     "a step in the state keeps the sources" true
     (how = Machine.Kept && actions = []);
-  let _, actions, _ = Machine.step machine () state Held.Escape in
+  let _, actions, _ = Machine.step machine state Held.Escape in
   let stopped =
     List.filter_map (function Action.Stop id -> Some id | _ -> None) actions
   in

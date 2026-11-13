@@ -532,7 +532,7 @@ let joint (type n s ev e)
             in
             if existing = None && room <= 0 then (
               frozen.(runtime.index) <- frozen.(runtime.index) + 1;
-              let snapshot, _ = Machine.start machine child.props in
+              let snapshot, _ = Machine.start_with_props machine child.props in
               keyed
                 (walk
                    ~lift:(lift_child runtime instance)
@@ -560,7 +560,9 @@ let joint (type n s ev e)
                     ) else
                       (world, entry.final_sent)
                 | None ->
-                    let snapshot, actions = Machine.start machine child.props in
+                    let snapshot, actions =
+                      Machine.start_with_props machine child.props
+                    in
                     Check_model.started runtime.recorder machine snapshot;
                     Check_model.see runtime.recorder machine child.props
                       snapshot;
@@ -660,7 +662,7 @@ let joint (type n s ev e)
               let (Runtime runtime) = runtimes.(entry.listed) in
               let world = world_of runtime entry in
               emit_child effects runtime entry.instance
-                (Machine.exit runtime.machine world.props world.s)
+                (Machine.exit_with_props runtime.machine world.props world.s)
           )
           node.running;
         {
@@ -769,7 +771,7 @@ let joint (type n s ev e)
             let world = world_of runtime entry in
             match
               Check_model.newest_block
-                (Machine.held runtime.machine world.props world.s)
+                (Machine.held_with_props runtime.machine world.props world.s)
             with
             | Some on_attempt ->
                 Some
@@ -933,7 +935,7 @@ let joint (type n s ev e)
                   { Check_model.event = lift event; via = Check_model.By_input }
                 )
                 (Check_model.source_events
-                   (Machine.held runtime.machine world.props world.s)
+                   (Machine.held_with_props runtime.machine world.props world.s)
                 @ runtime.options.inputs world.s
                 )
               @ List.map
@@ -1211,7 +1213,7 @@ let joint (type n s ev e)
               let world = world_of runtime entry in
               List.map
                 (Action.map_source (lift_child runtime entry.instance))
-                (Machine.held runtime.machine world.props world.s)
+                (Machine.held_with_props runtime.machine world.props world.s)
             )
             node.running
         in

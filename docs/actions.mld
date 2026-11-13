@@ -101,9 +101,9 @@ let component = Component.make machine view
 The step gives the action to the host as [Run]:
 
 {@ocaml[
-# let state, _ = Silica.Machine.start Doc_copy.machine ();;
+# let state, _ = Silica.Machine.start Doc_copy.machine;;
 val state : Doc_copy.state = Doc_copy.Ready
-# let _, actions, _ = Silica.Machine.step Doc_copy.machine () state Doc_copy.Copy;;
+# let _, actions, _ = Silica.Machine.step Doc_copy.machine state Doc_copy.Copy;;
 val actions : Doc_copy.event Silica.Action.host list =
   [Silica.Action.Run
     (Silica.Action.Copy

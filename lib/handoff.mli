@@ -16,7 +16,7 @@ type snapshot =
       *)
   | At_start
       (** The machine has no state codec, and the snapshot is the one that
-          {!Machine.start} gives for its props. *)
+          {!Machine.start_with_props} gives for its props. *)
   | Not_encoded of string
       (** The machine has no state codec, with the reason from
           {!Machine.state_codec}. *)
@@ -81,6 +81,7 @@ val hook : ?codecs:codecs -> t -> Instance.resume * (unit -> outcome)
 
     An [Encoded] snapshot resumes when the state codec of the new code, from
     [codecs] (default {!registered}), decodes it. An [At_start] snapshot resumes
-    at the snapshot that {!Machine.start} gives in the new code, with no entry:
-    a closed popup with no codec keeps being closed. Any other instance starts
-    again from its initial snapshot, and the outcome says why. *)
+    at the snapshot that {!Machine.start_with_props} gives in the new code, with
+    no entry: a closed popup with no codec keeps being closed. Any other
+    instance starts again from its initial snapshot, and the outcome says why.
+*)

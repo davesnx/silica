@@ -126,7 +126,7 @@ The commands:
 - Put behaviour in the machine. A view only reads the state and names
   events.
 - Disable each element whose event the state does not handle:
-  [disabled=(not (Machine.can machine () state Event))]. The checker offers
+  [disabled=(not (Machine.can machine state Event))]. The checker offers
   no event of a disabled element, and {!Silica_memory} refuses to press it.
 - [Go snapshot] to a state with the same name changes only the data: the
   timers and calls of the state keep running. A source starts again only when

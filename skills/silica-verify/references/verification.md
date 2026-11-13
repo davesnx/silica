@@ -53,7 +53,7 @@ The commands:
 ## Write the machine
 
 - Put behaviour in the machine. A view only reads the state and names events.
-- Disable each element whose event the state does not handle: `disabled=(not (Machine.can machine () state Event))`. The checker offers no event of a disabled element, and `Silica_memory` refuses to press it.
+- Disable each element whose event the state does not handle: `disabled=(not (Machine.can machine state Event))`. The checker offers no event of a disabled element, and `Silica_memory` refuses to press it.
 - `Go snapshot` to a state with the same name changes only the data: the timers and calls of the state keep running. A source starts again only when its key changes, such as the input of a call. The state name is part of that key: a step to a state with another name stops every source of the old state and starts the sources of the new one, even when both own the same `Source.after 3000 Expire`. To keep a timer running across a change, such as a row that asks for confirmation while it shows "New", keep the change as data inside one state, or give the phases sub-state names with a dot, such as `list.live` and `list.offline`: the part before the dot owns the sources, so they keep running, and the spec and the golden views still show each phase (see [Connection phases](../../../docs/data.mld)). `Reenter snapshot` leaves and enters the state, so all its timers and calls start again. A debounce uses `Reenter`, so that each key starts the timer again:
 
 From `docs/examples/shared/doc_debounce.mlx`:

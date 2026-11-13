@@ -203,8 +203,8 @@ let rec step : type p s e.
     guard cell (fun () ->
         let from = cell.snapshot and before = cell.context.actions in
         match
-          Machine.step ?finished cell.component.machine cell.props cell.snapshot
-            event
+          Machine.step_with_props ?finished cell.component.machine cell.props
+            cell.snapshot event
         with
         | _, _, Machine.Unhandled ->
             observe cell Machine.Unhandled from (Some event) before cause
@@ -423,7 +423,7 @@ let create : type p s e.
     | Some started ->
         started
     | None ->
-        Machine.start machine props
+        Machine.start_with_props machine props
   in
   context.next_id <- context.next_id + 1;
   let cell =
@@ -463,7 +463,8 @@ let rec unmount_cell : type p s e. (p, s, e) cell -> unit =
     List.iter (fun (_, Packed child) -> unmount_cell child) cell.children;
     cell.children <- [];
     let before = cell.context.actions in
-    emit cell (Machine.exit cell.component.machine cell.props cell.snapshot);
+    emit cell
+      (Machine.exit_with_props cell.component.machine cell.props cell.snapshot);
     cell.alive <- false;
     Hashtbl.iter
       (fun _ qualified -> add_action cell.context (Action.Stop qualified))

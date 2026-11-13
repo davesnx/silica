@@ -803,7 +803,7 @@ module Make (Io : IO) = struct
       Io.return ()
     and step ?finished ~cause event () =
       let from = !state in
-      let s, actions, how = Machine.step ?finished machine () !state event in
+      let s, actions, how = Machine.step ?finished machine !state event in
       state := s;
       let change =
         match how with
@@ -876,12 +876,12 @@ module Make (Io : IO) = struct
               state := snapshot;
               entry := resumed_entry;
               last_id := ack;
-              let actions = Machine.resume machine () snapshot in
+              let actions = Machine.resume machine snapshot in
               observed ~from:None ~event:None Instance.Resumed actions
                 Instance.Start;
               publish actions
           | None ->
-              let s, actions = Machine.start machine () in
+              let s, actions = Machine.start machine in
               state := s;
               observed ~from:None ~event:None Instance.Started actions
                 Instance.Start;

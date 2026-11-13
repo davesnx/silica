@@ -149,7 +149,7 @@ let owned machine props state =
     )
     (machine.during props state)
 
-let active machine props state =
+let active_with_props machine props state =
   List.map
     (fun (id, source) ->
       match (Source.delay source, Source.topic source) with
@@ -164,7 +164,7 @@ let active machine props state =
     )
     (owned machine props state)
 
-let held machine props state =
+let held_with_props machine props state =
   List.filter_map Source.held (machine.during props state)
 
 let starts sources =
@@ -174,7 +174,7 @@ let stops sources = List.map (fun (id, _) -> Action.Stop id) sources
 let enter machine props state =
   run (machine.entry props state) @ starts (owned machine props state)
 
-let exit machine props state =
+let exit_with_props machine props state =
   run (machine.exit props state) @ stops (owned machine props state)
 
 let without others sources =
@@ -183,7 +183,9 @@ let without others sources =
 let move ?finished machine ~from_props ~to_props state next ~reenter actions =
   if reenter || owner machine next <> owner machine state then
     ( next,
-      exit machine from_props state @ run actions @ enter machine to_props next,
+      exit_with_props machine from_props state
+      @ run actions
+      @ enter machine to_props next,
       Entered
     )
   else
@@ -224,7 +226,7 @@ let apply ?finished machine ~from_props ~to_props state = function
   | Reenter next ->
       move machine ~from_props ~to_props state next ~reenter:true []
 
-let step ?finished machine props state event =
+let step_with_props ?finished machine props state event =
   if machine.final state then
     (state, [], Unhandled)
   else
@@ -234,7 +236,7 @@ let step ?finished machine props state event =
     | (Stay _ | Go _ | Go_with _ | Reenter _) as next ->
         apply ?finished machine ~from_props:props ~to_props:props state next
 
-let can machine props state event =
+let can_with_props machine props state event =
   (not (machine.final state))
   &&
   match machine.update props state event with
@@ -260,15 +262,26 @@ let props_step machine ~previous props state =
   | (Ignore | Stay _ | Go _ | Go_with _ | Reenter _), _ ->
       (state, actions, how)
 
-let start machine props =
+let start_with_props machine props =
   let state = machine.init in
   let state, actions, _ = props_step machine ~previous:None props state in
   (state, run machine.first @ enter machine props machine.init @ actions)
 
-let resume machine props state = starts (owned machine props state)
+let resume_with_props machine props state = starts (owned machine props state)
 
 let set_props machine ~previous props state =
   props_step machine ~previous:(Some previous) props state
+
+let start machine = start_with_props machine ()
+let resume machine state = resume_with_props machine () state
+
+let step ?finished machine state event =
+  step_with_props ?finished machine () state event
+
+let exit machine state = exit_with_props machine () state
+let active machine state = active_with_props machine () state
+let held machine state = held_with_props machine () state
+let can machine state event = can_with_props machine () state event
 
 let no_actions _ _ = []
 let during_nothing _ _ = []

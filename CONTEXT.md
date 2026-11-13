@@ -45,7 +45,7 @@ What a hot reload carries from the running page to the new code: the snapshot of
 each instance by instance path, encoded as JSON by the state codec of its
 machine (`Machine.register_codecs`), and the instance ids of the Live islands
 (`Silica.Handoff`). An instance whose snapshot the new code decodes resumes
-(`Machine.resume`); another one starts again, with the reason shown.
+(`Machine.resume_with_props`); another one starts again, with the reason shown.
 _Avoid_: saved state, hot state
 
 **Event name**:

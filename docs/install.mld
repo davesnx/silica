@@ -316,9 +316,9 @@ HTML of the view:
 {@ocaml[
 # let lamp = Doc_lamp.machine;;
 val lamp : (unit, Doc_lamp.state, Doc_lamp.event) Silica.Machine.t = <abstr>
-# let state, _ = Silica.Machine.start lamp ();;
+# let state, _ = Silica.Machine.start lamp;;
 val state : Doc_lamp.state = Doc_lamp.Off
-# let state, _, _ = Silica.Machine.step lamp () state Doc_lamp.Toggle;;
+# let state, _, _ = Silica.Machine.step lamp state Doc_lamp.Toggle;;
 val state : Doc_lamp.state = Doc_lamp.On
 # Silica.Render.to_string (Doc_lamp.view state);;
 - : string = "<div><p>The lamp is on.</p><button>Turn off</button></div>"

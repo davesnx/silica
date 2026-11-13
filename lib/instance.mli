@@ -59,7 +59,7 @@ type change =
   | Started  (** The instance started. *)
   | Resumed
       (** The instance started again at a snapshot it reached before (see
-          {!Machine.resume}). *)
+          {!Machine.resume_with_props}). *)
   | Unhandled  (** The machine ignored the event or the props. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state. *)

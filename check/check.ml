@@ -3728,7 +3728,8 @@ let conform_record (Target target) ~expansion ~allow ~url ~(before : kept)
     | Started, _, _ ->
         Option.bind (props_of props_json) (fun props ->
             run (fun () ->
-                compare ~change:Started (fst (Machine.start machine props))
+                compare ~change:Started
+                  (fst (Machine.start_with_props machine props))
             )
         )
     | (Kept | Entered | Unhandled), Props, _ -> (
@@ -3749,7 +3750,9 @@ let conform_record (Target target) ~expansion ~allow ~url ~(before : kept)
         match (snapshot_before (), props_of props_json) with
         | Some state, Some props ->
             run (fun () ->
-                let state, _, how = Machine.step machine props state event in
+                let state, _, how =
+                  Machine.step_with_props machine props state event
+                in
                 compare ~change:(change_of_how how) state
             )
         | _ ->

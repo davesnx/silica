@@ -645,7 +645,9 @@ module Target = struct
         Held { held with id = Printf.sprintf "%d.%d/%s" number entry held.id }
 
   let instance_of target since ~path ~in_tree (Instance.Inspected step) =
-    let active = Machine.active step.machine step.props step.snapshot in
+    let active =
+      Machine.active_with_props step.machine step.props step.snapshot
+    in
     let active =
       if in_tree then
         List.map (qualify ~number:step.number ~entry:step.entry) active

@@ -758,10 +758,10 @@ let resume_tests =
         let describe actions = List.map Transition.describe actions in
         check (list string) "the timer of waiting"
           [ "start timer tally/waiting/after 50ms 50ms" ]
-          (describe (Machine.resume tally () (Waiting 3)));
+          (describe (Machine.resume tally (Waiting 3)));
         check (list string) "no entry focus" []
-          (describe (Machine.resume tally () (Counting 3)));
-        let _, started = Machine.start tally () in
+          (describe (Machine.resume tally (Counting 3)));
+        let _, started = Machine.start tally in
         check (list string) "start runs the entry" [ "focus field" ]
           (describe started)
     );

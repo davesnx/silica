@@ -484,7 +484,7 @@ let source_events (sources : _ Action.source list) =
     sources
 
 let resource_cause machine world via event =
-  let active () = Machine.active machine world.props world.s in
+  let active () = Machine.active_with_props machine world.props world.s in
   match via with
   | By_timer id ->
       Timer
@@ -544,7 +544,7 @@ let resource_cause machine world via event =
             ""
         )
   | By_input -> (
-      let held = Machine.held machine world.props world.s in
+      let held = Machine.held_with_props machine world.props world.s in
       let ids =
         List.filter_map
           (function Machine.Held { id; name } -> Some (id, name) | _ -> None)
@@ -588,7 +588,7 @@ let started recorder machine state =
 
 let see recorder machine props state =
   let name = Machine.name machine state in
-  let active = Machine.active machine props state in
+  let active = Machine.active_with_props machine props state in
   let pick f = List.filter_map f active in
   let found =
     {
@@ -654,7 +654,7 @@ let record recorder machine ~from ~props state label (how : Machine.how) =
 
 let send ?finished ~label recorder machine world event =
   let state, actions, how =
-    Machine.step ?finished machine world.props world.s event
+    Machine.step_with_props ?finished machine world.props world.s event
   in
   record recorder machine ~from:world.s ~props:world.props state
     (fun () ->
@@ -823,7 +823,7 @@ let owner_rules machine world =
         | Machine.Held _ ->
             None
         )
-      (Machine.active machine world.props world.s)
+      (Machine.active_with_props machine world.props world.s)
   in
   List.filter_map
     (fun (id, _) ->
@@ -972,7 +972,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
   let start () =
     List.map
       (fun props ->
-        let s, actions = Machine.start machine props in
+        let s, actions = Machine.start_with_props machine props in
         started recorder machine s;
         see recorder machine props s;
         (exec (empty_world props s) actions, actions)
@@ -1001,7 +1001,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
           (Check_rules.typed ~texts view)
       @ List.map
           (fun event -> { event = (Event event : (_, _) input); via = By_input })
-          (source_events (Machine.held machine world.props world.s)
+          (source_events (Machine.held_with_props machine world.props world.s)
           @ inputs world.s
           )
       @ List.filter_map
@@ -1083,7 +1083,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
       (fun world view ->
         owner_rules machine world
         @ Check_accessibility.dialog_focus
-            ~held:(Machine.held machine world.props world.s)
+            ~held:(Machine.held_with_props machine world.props world.s)
             view
         @
         if client_only then
@@ -1094,7 +1094,7 @@ let component_model ~client_only ~keys ~texts ~inputs ~props ~samples ~arrivals
             )
             (List.filter_map
                (function Machine.Held { name; _ } -> Some name | _ -> None)
-               (Machine.active machine world.props world.s)
+               (Machine.active_with_props machine world.props world.s)
             )
         else
           []
@@ -1269,7 +1269,8 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
                 (host_action host world action, acc)
             | Some navigation -> (
                 match
-                  newest_block (Machine.held machine world.props world.s)
+                  newest_block
+                    (Machine.held_with_props machine world.props world.s)
                 with
                 | Some on_attempt ->
                     let s, more, _ =
@@ -1300,7 +1301,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
   in
   let user event = { event; via = By_view } in
   let start () =
-    let s0, actions0 = Machine.start machine () in
+    let s0, actions0 = Machine.start machine in
     started recorder machine s0;
     see recorder machine () s0;
     [
@@ -1317,7 +1318,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
           (Check_rules.typed ~texts view)
       @ List.map
           (fun event -> { event = Event event; via = By_input })
-          (source_events (Machine.held machine world.props world.s)
+          (source_events (Machine.held_with_props machine world.props world.s)
           @ inputs (to_state world)
           )
       @ List.map
@@ -1458,7 +1459,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       (fun world view ->
         owner_rules machine world
         @ Check_accessibility.dialog_focus
-            ~held:(Machine.held machine world.props world.s)
+            ~held:(Machine.held_with_props machine world.props world.s)
             view
         @ route_findings world @ link_findings view
       );

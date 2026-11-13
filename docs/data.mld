@@ -246,7 +246,7 @@ val phase : int Silica.Topic.update -> phase = <fun>
       ~during:(fun _ -> [ Silica.Source.live score "main" phase ])
       (fun _ next -> Silica.Machine.Go next);;
 val machine : (unit, phase, phase) Silica.Machine.t = <abstr>
-# let _, actions, how = Silica.Machine.step machine () Live Offline;;
+# let _, actions, how = Silica.Machine.step machine Live Offline;;
 val actions : phase Silica.Action.host list = []
 val how : Silica.Machine.how = Silica.Machine.Kept
 ]}

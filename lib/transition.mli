@@ -21,7 +21,8 @@ type change = Instance.change =
       (** The instance started again at a snapshot it reached before, such as a
           Live island after a server restart: [from] is [""], [target] is the
           state of that snapshot, [actions] are only the starts of what runs
-          during it (see {!Machine.resume}), and the cause is [Start]. *)
+          during it (see {!Machine.resume_with_props}), and the cause is
+          [Start]. *)
   | Unhandled  (** The machine ignored the event: nothing changed. *)
   | Kept  (** The step kept the state name. *)
   | Entered  (** The step entered a state, with the same name or another. *)
