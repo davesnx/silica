@@ -99,6 +99,18 @@ val set_props : 'p t -> 'p -> unit
     runs, and the view paints again. Props equal to the current ones do nothing.
 *)
 
+(** {1 Instances} *)
+
+val running : _ t -> Instance.running list
+(** Every mounted instance of the current tree, parents before their children
+    (see {!Silica.Instance.val-running}). After an error page it is the tree of
+    "Try again". *)
+
+val send : _ t -> Instance.message -> unit
+(** Give the message to the runtime, as the renderer gives the message of a
+    handler: it runs through the queue, and the view paints again. Make it with
+    the [message] of an instance from {!running}. *)
+
 (** {1 View} *)
 
 val view : _ t -> Instance.message Node.t

@@ -1,0 +1,4 @@
+(library
+ (name silica_mcp)
+ (modes native)
+ (libraries silica silica.json silica.memory))

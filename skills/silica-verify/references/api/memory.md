@@ -79,6 +79,20 @@ val set_props : 'p t -> 'p -> unit
 
 Give the root new props, as a parent does: the `on_props` of the machine runs, and the view paints again. Props equal to the current ones do nothing.
 
+**Instances**
+
+```ocaml
+val running : _ t -> Instance.running list
+```
+
+Every mounted instance of the current tree, parents before their children (see `Silica.Instance.running`). After an error page it is the tree of "Try again".
+
+```ocaml
+val send : _ t -> Instance.message -> unit
+```
+
+Give the message to the runtime, as the renderer gives the message of a handler: it runs through the queue, and the view paints again. Make it with the `message` of an instance from `running`.
+
 **View**
 
 ```ocaml

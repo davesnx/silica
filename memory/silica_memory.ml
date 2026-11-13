@@ -52,6 +52,7 @@ type memory = {
   mutable paints : int;
   mutable focused : element option;
   mutable dispatch : message -> unit;
+  mutable running : unit -> Instance.running list;
   mutable on_route : (Router.event -> message) option;
   mutable last : change option;
   mutable route_focus : bool;
@@ -1074,6 +1075,7 @@ let make ~csrf ~url ~media =
     focused = None;
     dispatch =
       (fun _ -> failwith "Silica_memory: the runtime has not made the renderer");
+    running = (fun () -> []);
     on_route = None;
     last = None;
     route_focus = false;
@@ -1103,7 +1105,11 @@ let start (type p s e) ?dev ?on_error ?answers ?live_config ?(csrf = "")
   Runtime.start ?dev ?on_error ?answers ?live_config ?on_route
     ~platform:(platform t)
     ~create:(fun ~dev ~on_error ->
-      create t ~dev ~on_error ~observe:(Trace.Recorder.observer recorder)
+      let tree =
+        create t ~dev ~on_error ~observe:(Trace.Recorder.observer recorder)
+      in
+      t.running <- (fun () -> Instance.running tree);
+      tree
     )
     ();
   t
@@ -1389,6 +1395,8 @@ let mount_with_props ?dev ?on_error ?answers ?live_config ?csrf ?url ?media
   { memory; props; props_of_json }
 
 let set_props handle props = handle.props props
+let running handle = handle.memory.running ()
+let send handle message = handle.memory.dispatch message
 let view handle = view handle.memory
 let html handle = html handle.memory
 let paints handle = paints handle.memory

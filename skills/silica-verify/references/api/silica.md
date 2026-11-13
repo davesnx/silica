@@ -1528,6 +1528,9 @@ type running =
       machine : ('p, 's, 'e) Machine.t;
       props : 'p;
       snapshot : 's;
+      message : 'e -> message;
+          (** The message that gives the event to this instance, as a handler of
+              its view does, with the cause {!constructor-Message}. *)
     }
       -> running
 ```

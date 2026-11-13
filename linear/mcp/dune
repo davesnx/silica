@@ -1,0 +1,13 @@
+(executable
+ (name linear_mcp)
+ (modes native)
+ (libraries
+  silica
+  silica.json
+  silica.memory
+  silica.server
+  silica.adapter
+  silica_mcp
+  silica_linear_app_native
+  silica_linear_server
+  unix))
