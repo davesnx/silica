@@ -33,7 +33,6 @@ The production build (see {!page-deploy.build}), in bytes after brotli 11:
   {tr {td Site, first load: entry and shared chunk} {td 67 910} {td 286 435}}
   {tr {td Site, lazy chunk of the component pages} {td 19 383} {td 113 346}}
   {tr {td Site, CSS} {td 5 663} {td 29 821}}
-  {tr {td Mini Linear, JavaScript} {td 65 347} {td 296 301}}
   {tr {td Keyed rows app: Silica} {td 41 648} {td 166 205}}
   {tr {td Keyed rows app: React 19} {td 60 500} {td 226 800}}
   {tr {td Keyed rows app: Solid} {td 6 350} {td 17 200}}
@@ -108,24 +107,19 @@ v0.12 tree, run back to back.
   {tr {td Site [/]} {td 1x} {td 60 / 35.1} {td 52 / 33.7}}
   {tr {td Site [/docs/router]} {td 1x} {td 80 / 46.6} {td 60 / 39.5}}
   {tr {td Site [/components/select], a lazy route} {td 1x} {td } {td 40 / 25.9}}
-  {tr {td Mini Linear, 1000 issues} {td 1x} {td 204 / 144.4} {td 152 / 115.3}}
   {tr {td Site [/]} {td 4x} {td 212 / 155.0} {td 104 / 141.3}}
   {tr {td Site [/docs/router]} {td 4x} {td 236 / 162.4} {td 148 / 229.8}}
   {tr {td Site [/components/select], a lazy route} {td 4x} {td } {td 120 / 168.5}}
-  {tr {td Mini Linear, 1000 issues} {td 4x} {td 220 / 626.1} {td 224 / 657.1}}
 }
 
 At 4x the docs page is ready later than before (229.8 ms against 162.4): the
 entry now imports a shared chunk, one more file to fetch and run. The first
-paint is earlier on every site page. The mini Linear list with 1000 issues
-spends its time in hydration: the page is 784 kB of HTML and the answers of
-the settle step hold every issue twice (in the view and in the answer table).
+paint is earlier on every site page.
 
 {1:server Server}
 
 In process, median ms per page (v0.12 in parentheses): site landing 0.191
-(0.226), largest docs page 0.747 (0.925), mini Linear with 1000 issues 7.85
-(13.4).
+(0.226), largest docs page 0.747 (0.925).
 
 Requests per second, [wrk -t4 -c32 -d10s], v0.12 and the final build run back
 to back:
@@ -134,7 +128,6 @@ to back:
   {tr {th Target} {th Before} {th Now}}
   {tr {td Site landing} {td 3 547} {td 5 553}}
   {tr {td Largest docs page} {td 757} {td 1 250}}
-  {tr {td Mini Linear, 1000 issues} {td 60} {td 112}}
   {tr {td The entry script, brotli accepted} {td 565 (1.3 MB, not compressed)} {td 18 731}}
   {tr {td Health} {td 90 245} {td 134 557}}
 }
@@ -143,25 +136,11 @@ One OCaml domain renders, so pages per second is about one over the render
 time. HTML is not compressed by the server: a proxy does it (see
 {!page-deploy.build}).
 
-{1:live Live}
-
-From the press of "Create issue" in one mini Linear page to the new row in
-another page (the call, the handler, the publish, the WebSocket message, the
-step and the paint): 3 ms with 30 issues, 19 ms with 1000 (17 and 68.5 ms at
-4x).
-
-1000 sessions on one topic, from the create call to the state at the last
-socket: 11 ms with 30 issues; 156 ms with 1000 issues, when each message is
-about 250 kB. The server holds 122 MB with 1000 sessions and 30 issues, 889 MB
-with 1000 issues. A topic sends its full state to every subscriber, so the
-cost grows with the state size times the subscribers. Before v0.13 the adapter
-accepted at most 64 connections, so 1000 sessions could not connect.
-
 {1:budgets Budgets}
 
 - Size: [dune test --profile release] fails when a production bundle grows
   over its brotli budget ([test/budget/budgets.json]: the site first load, its
-  lazy chunks and CSS, mini Linear, the keyed rows app). The budgets are the
+  lazy chunks and CSS, the keyed rows app). The budgets are the
   sizes above plus about 2 percent. A development build carries the hot reload
   code of [silica dev], so the check runs on the release profile only; a debug
   build ([SILICA_MINIFY=false]) skips it.

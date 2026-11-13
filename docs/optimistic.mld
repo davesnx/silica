@@ -145,7 +145,3 @@ A change that sets a field to a value is idempotent already. Give the
 checker a property such as "an item never shows twice" and samples where the
 published state holds the change: it finds an [apply] that is not
 idempotent.
-
-Mini Linear edits the fields of an issue in this way. Each change goes to the
-server in its own Remote call, made by a small child component, and a failed
-change shows a toast. See {!page-linear.features}.

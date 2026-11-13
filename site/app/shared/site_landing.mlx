@@ -192,9 +192,8 @@ let view (Watching current) : event Node.t =
             "Read the documentation"
           </h2>
           <p class_="mt-3 max-w-[56ch] leading-7 text-ui-muted">
-            "Concepts, how-to pages, the mini Linear walkthrough, and a \
-             browser of every silica-ui component with its stories and \
-             statechart."
+            "Concepts, how-to pages, and a browser of every silica-ui \
+             component with its stories and statechart."
           </p>
         </div>
         <div class_="flex flex-wrap gap-3">

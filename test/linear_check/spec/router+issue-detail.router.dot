@@ -1,9 +1,0 @@
-digraph "router" {
-rankdir=LR;
-"router.__init" [shape=point];
-"router.__init" -> "router./?new&status&assignee&priority&label&group&order";
-"router./?new&status&assignee&priority&label&group&order" [label="/?new&status&assignee&priority&label&group&order" shape=box];
-"router./issue/:int" [label="/issue/:int" shape=box];
-"router./?new&status&assignee&priority&label&group&order" -> "router./issue/:int" [label="url changed"];
-"router./issue/:int" -> "router./?new&status&assignee&priority&label&group&order" [label="url changed"];
-}

@@ -203,7 +203,7 @@ A counterexample uses only explored states and steps, so it is never false. A st
 
 ### Cost
 
-The graph is stored only when a check has a temporal property: one target and one step for each explored transition. Each property then visits each state at most twice. On mini Linear, the three temporal properties add about 8% to the time of its checks and 0.75 GB to their memory, most of it for the 5 million transitions of the issue detail. A condition that reads actions runs the step again when it needs them, so the actions are not stored.
+The graph is stored only when a check has a temporal property: one target and one step for each explored transition. Each property then visits each state at most twice. A condition that reads actions runs the step again when it needs them, so the actions are not stored.
 
 ## Allowances
 
@@ -695,17 +695,17 @@ It compares at two levels:
 
 In a joint check, the view that a property reads is the one the checker reads: the view of the parent with the view of each listed child in place of its component node, from the snapshot of the child in the trace. A child that the check does not list stays a component node, as in the checker. The properties of a record run after the records that its step caused (the step of its parent on its output, and the new props, the start and the end of its children), so the children have their new props. An end has no properties to check: its snapshot is the one of the record before it. When a listed child has no snapshot in the trace (names only, or a recorder that dropped it) or its snapshot does not decode, conform does not evaluate a property that reads that view, and says so in a line `property not checked by conform: "NAME" (REASON)` (`unchecked_properties` with `--json`). Such a property is never a deviation.
 
-`--spec DIR` (default `spec`) names the golden specs. `--only ID` compares with the golden specs and the check of one entry only, such as the joint check `comments+comment+comment-composer` of a parent with its children; machines outside it are listed as not checked. Machines named by `Check_suite.elsewhere` are listed as not checked too; a machine that no spec has is a deviation. Without `--only` the dependents of entries do not run.
+`--spec DIR` (default `spec`) names the golden specs. `--only ID` compares with the golden specs and the check of one entry only, such as the joint check `router+item` of a parent with its child; machines outside it are listed as not checked. Machines named by `Check_suite.elsewhere` are listed as not checked too; a machine that no spec has is a deviation. Without `--only` the dependents of entries do not run.
 
-From `test/conform/run.t`, a trace from an older build that did not trim a comment: the names conform, the data does not:
+From `test/conform/run.t`, a trace from an older build that did not trim a todo: the names conform, the data does not:
 
 ```
-conform traces/old-build.jsonl: root router, build 2026-10-01, 39 transitions
+conform traces/old-build.jsonl: root router, build 2026-10-01, 20 transitions
   by names: transitions checked against the golden specs: 20
-  by data: steps run again in the code: 9; snapshots checked by the properties: 9
-deviation 1 (different-step): transition 38, machine comment-composer, instance router/1.0:issue-detail/1.6:comments/1.1:comment-composer
-  step: drafting -> sending on send
-  difference: the trace has drafting -> sending (entered), snapshot ["Sending","  Purple elephant memo  "]; the code gives drafting -> sending (entered), snapshot ["Sending","Purple elephant memo"]
+  by data: steps run again in the code: 9; snapshots checked by the properties: 8
+deviation 1 (different-step): transition 8, machine todo, instance router/:home/2:todo
+  step: stay todo on add
+  difference: the trace has todo -> todo (kept), snapshot {"todos":[{"id":1,"text":"  Purple elephant memo  ","completed":false}],"draft":"","next_id":2}; the code gives todo -> todo (kept), snapshot {"todos":[{"id":1,"text":"Purple elephant memo","completed":false}],"draft":"","next_id":2}
   hint: The trace is from another build (2026-10-01), or the update changed since it was recorded: check the trace with the code and specs of that build. If it is this build, the update depends on something outside the snapshot and the event: make it a function of them.
 a trace does not conform (exit 1)
 ```

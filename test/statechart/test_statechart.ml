@@ -453,13 +453,9 @@ let labels_in_the_middle () =
 
 let shared_events_once () =
   let routers =
-    List.filter
-      (fun (name, _, _) ->
-        name = "example_check/router" || name = "linear_check/router"
-      )
-      (layouts ())
+    List.filter (fun (name, _, _) -> name = "example_check/router") (layouts ())
   in
-  Alcotest.(check int) "two routers" 2 (List.length routers);
+  Alcotest.(check int) "one router" 1 (List.length routers);
   List.iter
     (fun (name, _, (layout : Statechart_layout.t)) ->
       ( match layout.note with
@@ -685,7 +681,7 @@ let view () =
     (occurrences "rx=\"3\"" plain);
   Alcotest.(check int) "no note" 0 (occurrences "chart-note" plain);
   let _, _, router =
-    List.find (fun (name, _, _) -> name = "linear_check/router") goldens
+    List.find (fun (name, _, _) -> name = "example_check/router") goldens
   in
   let router =
     Render.to_string (Statechart_view.view (Statechart_layout.layout router))

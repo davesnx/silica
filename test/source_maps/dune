@@ -7,13 +7,10 @@
   %{project_root}/example/client/dist
   %{project_root}/example/client/out/example/client/client_main.mjs
   %{project_root}/site/client/dist
-  %{project_root}/site/client/out/site/client/client_main.mjs
-  %{project_root}/linear/client/dist
-  %{project_root}/linear/client/out/linear/client/client_main.mjs)
+  %{project_root}/site/client/out/site/client/client_main.mjs)
  (action
   (run
    node
    source_maps.ts
    %{project_root}/example/client/dist
-   %{project_root}/site/client/dist
-   %{project_root}/linear/client/dist)))
+   %{project_root}/site/client/dist)))

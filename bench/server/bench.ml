@@ -97,23 +97,12 @@ let () =
   Arg.parse
     [
       ("-n", Arg.Set_int runs, "renders per page (default 200)");
-      ("--only", Arg.Set_string only, "landing, doc or linear");
+      ("--only", Arg.Set_string only, "landing or doc");
     ]
     ignore "In-process server render benchmark";
   let site = Site_server.create (config ()) ~assets ~read:(fun _ -> None) () in
-  let linear =
-    Linear_server.create ~count:1000 (config ()) ~assets
-      ~read:(fun _ -> None)
-      ()
-  in
   let doc = longest_doc () in
-  let pages =
-    [
-      ("landing", site, "/");
-      ("doc", site, "/docs/" ^ doc.slug);
-      ("linear", linear, "/");
-    ]
-  in
+  let pages = [ ("landing", site, "/"); ("doc", site, "/docs/" ^ doc.slug) ] in
   Printf.printf "runs per page: %d; longest doc: %s\n" !runs doc.slug;
   print_endline
     "| page | HTML bytes | median ms | p90 ms | minor words | major words |";

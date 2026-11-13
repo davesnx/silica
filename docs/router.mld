@@ -228,8 +228,8 @@ asks the user, then sends [Action.Resume nav] to let it happen. While a block is
 held, closing or reloading the tab asks the user through the browser.
 
 The block starts and stops with the snapshot that holds it, so it cannot
-stay after the draft is saved. Mini Linear holds one while a title or a
-description differs from the saved text (see {!page-linear}).
+stay after the draft is saved. The edit page of the example app holds one
+while its draft is not empty ([example/app/shared/example_edit.mlx]).
 
 {1:preload Preload}
 
@@ -243,8 +243,7 @@ when it starts. A link starts them early:
 
 The runtime keeps a successful answer for 30 seconds, for one use. The page
 takes it when it makes the same call with the same input, so it shows with no
-loading state. A link whose route has no calls has no preload attribute. Mini
-Linear preloads the issue and its comments (see {!page-linear}).
+loading state. A link whose route has no calls has no preload attribute.
 
 {1:lazy Lazy routes}
 

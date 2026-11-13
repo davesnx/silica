@@ -516,7 +516,6 @@ let shared_dirs =
     "../../site/app/shared";
     "../../site/stories";
     "../../ui";
-    "../../linear/app/shared";
     "../../docs/examples/shared";
     "../../site/app/melange";
   ]

@@ -1,4 +1,5 @@
 let () =
+  Example_codecs.register ();
   let open Example_checks in
   Check_suite.main
     ([

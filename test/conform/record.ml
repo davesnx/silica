@@ -1,25 +1,12 @@
 open Silica
-open Linear_model
+open Example_model
 module Memory = Silica_memory
 
-let title = "Quarterly zebra migration"
 let body = "Purple elephant memo"
+let note = "Quarterly zebra migration"
 
-let issue number title : Issue.t =
-  {
-    number;
-    title;
-    description = "";
-    status = Issue_status.Todo;
-    priority = Priority.Medium;
-    assignee = None;
-    labels = [];
-    created_at = 0;
-    updated_at = 0;
-    version = 1;
-  }
-
-let issues = [ issue 1 "First"; issue 2 "Second" ]
+let item id : Item.t =
+  { id; title = "Item " ^ string_of_int id; price_cents = 1999; tags = [] }
 
 let reply request endpoint value =
   Memory.reply request (Codec.to_string (Remote.output endpoint) value)
@@ -29,48 +16,38 @@ let rec answer t =
   List.iter
     (fun request ->
       match Memory.path request with
-      | "/api/me" ->
-          reply request me_endpoint User.Ada
-      | "/api/issues" ->
-          reply request issues_endpoint issues
-      | "/api/comments" ->
-          reply request comments_endpoint
-            { Thread.viewer = User.Ada; comments = [] }
-      | "/api/issues/create" ->
-          reply request create_endpoint (issue 3 title)
-      | "/api/comments/add" ->
-          reply request add_comment_endpoint
-            {
-              Comment.id = 1;
-              number = 2;
-              author = User.Ada;
-              body;
-              created_at = 0;
-              edited = false;
-            }
+      | "/api/item" ->
+          reply request item_endpoint (item 1)
+      | "/api/vote" ->
+          reply request vote_endpoint 1
       | path ->
           failwith ("unexpected call " ^ path)
     )
     pending;
   if pending <> [] then answer t
 
-let visit ~create () =
-  Linear_codecs.register ();
-  let t = Memory.mount_app ~url:"/" Linear_app.app in
+let link t name = Memory.press (Memory.by_role ~name t Accessibility.Link)
+
+let add t text =
+  let field = Memory.by_role ~name:"New todo" t Accessibility.Textbox in
+  Memory.input field text;
+  Memory.submit field
+
+let visit ~edit () =
+  Example_codecs.register ();
+  let t = Memory.mount_app ~url:"/" Example_app.app in
   answer t;
-  if create then (
-    Memory.press (Memory.by_role ~name:"New issue" t Accessibility.Link);
-    let dialog = Memory.by_role ~name:"New issue" t Accessibility.Dialog in
-    let field =
-      Memory.by_role ~within:dialog ~name:"Title" t Accessibility.Textbox
-    in
-    Memory.input field title;
-    Memory.submit field;
-    answer t
+  add t body;
+  if edit then add t note;
+  Memory.press (Memory.by_id t "vote");
+  answer t;
+  link t "Item 1";
+  answer t;
+  link t "Item 2";
+  answer t;
+  if edit then (
+    link t "Edit";
+    Memory.input (Memory.by_role ~name:"Draft" t Accessibility.Textbox) "note";
+    Memory.press (Memory.by_role ~name:"Save" t Accessibility.Button)
   );
-  Memory.press (Memory.by_id t "issue-row-2");
-  answer t;
-  Memory.input (Memory.by_id t "comment-input") body;
-  Memory.press (Memory.by_id t "comment-send");
-  answer t;
   Memory.trace t

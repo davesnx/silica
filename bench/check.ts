@@ -29,7 +29,7 @@ const measured: Record<string, number> = {};
 const lines: string[] = [];
 
 const server = run(build("bench/server/bench.exe"), ["-n", "300"]);
-for (const m of server.matchAll(/^\| (landing|doc|linear) \| \d+ \| ([\d.]+) \| ([\d.]+) \|/gm))
+for (const m of server.matchAll(/^\| (landing|doc) \| \d+ \| ([\d.]+) \| ([\d.]+) \|/gm))
   measured[`server render ${m[1]} median ms`] = Number(m[2]);
 
 const trace = run(build("bench/trace/trace_bench.exe"), []);
@@ -37,7 +37,7 @@ for (const m of trace.matchAll(/^\| trace recorder (step|press) overhead \| (-?[
   measured[`trace recorder ${m[1]} overhead %`] = Number(m[2]);
 
 const wrk = run("bash", [resolve(root, "bench/server/wrk.sh")], { DURATION: process.env["SILICA_BENCH_WRK"] ?? "5s" });
-for (const m of wrk.matchAll(/^\| (landing|doc \(\w+\)|linear 1000|health) \| ([\d.]+) \|/gm))
+for (const m of wrk.matchAll(/^\| (landing|doc \(\w+\)|health) \| ([\d.]+) \|/gm))
   measured[`server ${m[1]} requests/s`] = Number(m[2]);
 
 const json = resolve(root, "bench/browser/results/bench.json");

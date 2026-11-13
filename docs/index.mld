@@ -80,7 +80,6 @@ Guides:
   Vercel, the session secret, and one instance.
 - {!page-performance}: the numbers, how they are measured, the budgets that
   tests enforce, and where Silica is slower than other frameworks.
-- {!page-linear}: how the reference app Mini Linear is made.
 
 Reference:
 

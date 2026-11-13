@@ -1,4 +1,0 @@
-machine router
-initial /?new&status&assignee&priority&label&group&order
-state /?new&status&assignee&priority&label&group&order
-stay /?new&status&assignee&priority&label&group&order on "url changed"

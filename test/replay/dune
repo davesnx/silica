@@ -371,6 +371,21 @@
 
 (rule
  (with-stdout-to
+  gestures_submit_script.ml
+  (run ./gen_script.exe gestures "a gesture is answered@submit")))
+
+(rule
+ (with-stdout-to
+  gestures_submit_fixed_script.ml
+  (run
+   ./gen_script.exe
+   gestures
+   "a gesture is answered@submit"
+   Gestures.fixed
+   Gestures.fixed_check)))
+
+(rule
+ (with-stdout-to
   pages_forward_script.ml
   (run ./gen_script.exe pages "forward stays back")))
 
@@ -472,6 +487,8 @@
   gestures_pointer_enter_fixed_script
   gestures_pointer_leave_script
   gestures_pointer_leave_fixed_script
+  gestures_submit_script
+  gestures_submit_fixed_script
   pages_forward_script
   changing_script
   changing_fixed_script
@@ -527,6 +544,8 @@
   gestures_pointer_enter_fixed_script
   gestures_pointer_leave_script
   gestures_pointer_leave_fixed_script
+  gestures_submit_script
+  gestures_submit_fixed_script
   pages_forward_script
   changing_script
   changing_fixed_script
@@ -626,6 +645,10 @@
   gestures_pointer_leave_script.exe
   gestures_pointer_leave_fixed_script.ml
   gestures_pointer_leave_fixed_script.exe
+  gestures_submit_script.ml
+  gestures_submit_script.exe
+  gestures_submit_fixed_script.ml
+  gestures_submit_fixed_script.exe
   pages_forward_script.ml
   pages_forward_script.exe
   changing_script.ml

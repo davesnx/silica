@@ -165,8 +165,6 @@ let () =
             (check_dir ~strict:true "../../site/stories");
           Alcotest.test_case "site CSS" `Quick
             (check_css "../../site/client/input.css");
-          Alcotest.test_case "mini Linear" `Quick
-            (check_dir ~strict:true "../../linear/app/shared");
         ]
       );
     ]

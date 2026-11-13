@@ -23,10 +23,7 @@
   (source_tree %{project_root}/docs/examples)
   (glob_files %{project_root}/example/app/shared/*)
   %{project_root}/example/app/native/dune
-  %{project_root}/example/app/melange/dune
-  (glob_files %{project_root}/linear/app/shared/*)
-  (glob_files %{project_root}/linear/client/*.{ml,css})
-  (glob_files %{project_root}/linear/server/*.ml))
+  %{project_root}/example/app/melange/dune)
  (action
   (with-stdout-to
    %{target}

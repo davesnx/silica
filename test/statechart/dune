@@ -6,7 +6,6 @@
  (targets golden_specs.ml)
  (deps
   (glob_files ../example_check/spec/*.spec.txt)
-  (glob_files ../linear_check/spec/*.spec.txt)
   (glob_files ../ui_check/spec/*.spec.txt))
  (action
   (with-stdout-to

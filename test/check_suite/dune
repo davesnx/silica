@@ -1,6 +1,6 @@
 (executable
  (name fixtures)
- (libraries silica silica.check)
+ (libraries silica silica.check silica.memory)
  (preprocess
   (pps silica.ppx)))
 
