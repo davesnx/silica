@@ -35,18 +35,22 @@
     route is found by trying the listed routes in order, so the last one must
     match every path (use {!Route.rest}): a bad path goes to that route. A query
     value that does not parse falls back to its default, so it never makes a bad
-    route. *)
+    route. A URL that {!parse} rejects does not change the route: for
+    [Url_changed] the router raises {!Action.Reload}, so the host loads the URL
+    from the server, and for [Preload] it does nothing. *)
 
 type event =
   | Url_changed of Url.t
       (** Sent by a host when the URL changes: at a navigation action, a link
-          press, and when the user moves in the history. *)
+          press, and when the user moves in the history. When {!parse} rejects
+          the URL, the router keeps its route and raises {!Action.Reload}. *)
   | Preload of Url.t
       (** Sent by a host when a link may be pressed soon (see {!preload}). The
           router answers with a {!Action.Preload} for each call that the
           [preload] function of the routes gives for the route of the URL, and a
           {!Action.Load_chunk} for each chunk that the [chunks] function of
-          {!make} gives, and changes nothing else. *)
+          {!make} gives, and changes nothing else. When {!parse} rejects the
+          URL, the router does nothing. *)
 
 type preload =
   | Intent
@@ -181,19 +185,20 @@ val make :
   render:('r -> event Node.t) ->
   Url.t ->
   (unit, 'r, event) Component.t
-(** The router component for the app root, starting at the URL. [render] shows
-    the page of the current route, as a component node. [guard] runs before a
-    URL change to another URL takes effect, and at the start with [from = None]:
-    use it for "go to login". At the start, [Redirect] starts in the other route
-    and raises {!Action.Replace} with its URL (a server render answers it with a
-    redirect), and [Cancel] starts in the route of the URL, as there is no route
-    to stay in. For unsaved data inside a page, use {!Host.block}. [exit] runs
-    when a route is left, as the [exit] of its state, and before the page starts
-    again when a [reenter] route gets new parameters. [title] gives the document
-    title of a route: the router raises {!Action.Set_title} with it at the start
-    and at each change of route or parameters, before the actions of the page,
-    so a page machine that sets its own title wins. A change to the same printed
-    URL does nothing. [chunks] gives the code that [render] shows with
-    {!Node.val-chunk} for a route: the router loads it when a link to that route
-    preloads (see {!val-routes}, [chunked]). The router names its events
-    ["url changed"] and ["preload"]. *)
+(** The router component for the app root, starting at the URL. Raises [Failure]
+    when {!parse} rejects the URL. [render] shows the page of the current route,
+    as a component node. [guard] runs before a URL change to another URL takes
+    effect, and at the start with [from = None]: use it for "go to login". At
+    the start, [Redirect] starts in the other route and raises {!Action.Replace}
+    with its URL (a server render answers it with a redirect), and [Cancel]
+    starts in the route of the URL, as there is no route to stay in. For unsaved
+    data inside a page, use {!Host.block}. [exit] runs when a route is left, as
+    the [exit] of its state, and before the page starts again when a [reenter]
+    route gets new parameters. [title] gives the document title of a route: the
+    router raises {!Action.Set_title} with it at the start and at each change of
+    route or parameters, before the actions of the page, so a page machine that
+    sets its own title wins. A change to the same printed URL does nothing.
+    [chunks] gives the code that [render] shows with {!Node.val-chunk} for a
+    route: the router loads it when a link to that route preloads (see
+    {!val-routes}, [chunked]). The router names its events ["url changed"] and
+    ["preload"]. *)

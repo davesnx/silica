@@ -225,30 +225,37 @@ let make routes ?(guard = fun ~from:_ ~target:_ -> Allow)
     Url.to_string (print routes a) = Url.to_string (print routes b)
   in
   let update current = function
-    | Preload url ->
-        let target = parse_exn routes url in
-        Machine.Stay
-          (List.map
-             (fun request -> Action.Preload request)
-             (routes.preload target)
-          @ List.map
-              (fun chunk -> Action.Load_chunk { chunk; on_ready = None })
-              (chunks target)
-          )
+    | Preload url -> (
+        match parse routes url with
+        | Error _ ->
+            Machine.Stay []
+        | Ok target ->
+            Machine.Stay
+              (List.map
+                 (fun request -> Action.Preload request)
+                 (routes.preload target)
+              @ List.map
+                  (fun chunk -> Action.Load_chunk { chunk; on_ready = None })
+                  (chunks target)
+              )
+      )
     | Url_changed url -> (
-        let target = parse_exn routes url in
-        if same_url target current then
-          Machine.Stay []
-        else
-          match guard ~from:(Some current) ~target with
-          | Allow ->
-              move current target
-          | Redirect other ->
-              move
-                ~actions:[ Action.Replace (print routes other) ]
-                current other
-          | Cancel ->
-              Machine.Stay [ Action.Revert_navigation ]
+        match parse routes url with
+        | Error _ ->
+            Machine.Stay [ Action.Reload ]
+        | Ok target when same_url target current ->
+            Machine.Stay []
+        | Ok target -> (
+            match guard ~from:(Some current) ~target with
+            | Allow ->
+                move current target
+            | Redirect other ->
+                move
+                  ~actions:[ Action.Replace (print routes other) ]
+                  current other
+            | Cancel ->
+                Machine.Stay [ Action.Revert_navigation ]
+          )
       )
   in
   fun url ->

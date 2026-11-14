@@ -1315,8 +1315,14 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
             | None ->
                 (world, acc)
           )
-        | Action.Run Action.Reload ->
-            nav world.hist world.idx (nth world.hist world.idx)
+        | Action.Run Action.Reload -> (
+            let url = nth world.hist world.idx in
+            match parse url with
+            | Ok _ ->
+                nav world.hist world.idx url
+            | Error message ->
+                failwith ("reload of a URL that the routes reject: " ^ message)
+          )
         | action -> (
             match attempt_action world action with
             | None ->

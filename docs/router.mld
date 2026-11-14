@@ -128,6 +128,13 @@ val route : (Doc_books.route, string) result =
 The router tries the routes in the order of the list. The last route must
 match every path, so a bad path goes to it.
 
+[parse] rejects a path outside the [base], and a path that no route matches.
+[Router.make] raises [Failure] when [parse] rejects the first URL. When
+[parse] rejects the URL of a [Url_changed], the route does not change and the
+router raises {!Silica.Action.Reload}: the host loads the URL from the server,
+which decides the answer. When [parse] rejects the URL of a [Preload], the
+router does nothing.
+
 {1:app The router component}
 
 [Router.routes] lists the routes, with these options:

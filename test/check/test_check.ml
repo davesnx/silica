@@ -809,6 +809,41 @@ let test_link_does_not_parse () =
        "goes to /broken, which does not parse: no route for /broken."
     )
 
+let test_reload_of_a_rejected_url () =
+  let routes =
+    Router.routes ~base:"/app"
+      [
+        Router.route
+          Route.(s "about")
+          (fun () -> About)
+          (function About -> Some () | _ -> None);
+      ]
+  in
+  let rejected =
+    match Router.parse routes (Url.of_string "/outside") with
+    | Error message ->
+        message
+    | Ok _ ->
+        Alcotest.fail "expected the routes to reject /outside"
+  in
+  let violation =
+    first
+      (Check.run
+         (Check.app ~urls:[ "/outside" ] ~routes:[ About ]
+            ~parse:(Router.parse routes) ~print:(Router.print routes)
+            ~url_event:(fun url -> Router.Url_changed url)
+            (fun url -> Router.make routes ~render:(fun _ -> Node.text "") url)
+         )
+      )
+  in
+  Alcotest.(check string) "rule" "raised" violation.rule;
+  Alcotest.(check bool)
+    ("the problem: " ^ violation.message)
+    true
+    (contains violation.message
+       ("reload of a URL that the routes reject: " ^ rejected)
+    )
+
 let test_link_to_not_found () =
   app_violation "link-parses" []
     (app
@@ -3311,6 +3346,8 @@ let () =
             test_link_not_canonical;
           Alcotest.test_case "link does not parse" `Quick
             test_link_does_not_parse;
+          Alcotest.test_case "reload of a rejected url" `Quick
+            test_reload_of_a_rejected_url;
           Alcotest.test_case "link to the not-found route" `Quick
             test_link_to_not_found;
           Alcotest.test_case "not-found link needs the predicate" `Quick

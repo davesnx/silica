@@ -646,6 +646,41 @@ let test_no_catch_all () =
   | Ok _ ->
       Alcotest.fail "expected Error"
 
+let mount_app url =
+  Sim.mount (Router.make (preload_routes ~base:"/app" ()) ~render (u url))
+
+let test_start_outside_base () =
+  match
+    Router.make (preload_routes ~base:"/app" ()) ~render (u "/issues/7")
+  with
+  | _ ->
+      Alcotest.fail "expected Failure for a first URL outside the base"
+  | exception Failure _ ->
+      ()
+
+let test_url_changed_outside_base () =
+  let sim = mount_app "/app/issues/7" in
+  Sim.clear_log sim;
+  go sim "/issues/8";
+  Alcotest.(check bool) "the route stays" true (Sim.snapshot sim = Issue 7);
+  has sim "issue 7:0";
+  Alcotest.check strings "the host reloads" [ "reload" ] (Sim.log sim)
+
+let test_preload_outside_base () =
+  let sim = mount_app "/app/issues/7" in
+  Sim.clear_log sim;
+  Sim.send sim (Router.Preload (u "/issues/8"));
+  Alcotest.(check bool) "the route stays" true (Sim.snapshot sim = Issue 7);
+  Alcotest.check strings "no action" [] (Sim.log sim)
+
+let test_url_changed_no_match () =
+  let routes = Router.routes [ List.hd route_list ] in
+  let sim = Sim.mount (Router.make routes ~render (u "/")) in
+  Sim.clear_log sim;
+  go sim "/x";
+  Alcotest.(check bool) "the route stays" true (Sim.snapshot sim = Home);
+  Alcotest.check strings "the host reloads" [ "reload" ] (Sim.log sim)
+
 let test_route_units () =
   let open Route in
   let check_parse name route url expected =
@@ -725,6 +760,10 @@ let () =
           t "links and actions" test_links_and_actions;
           t "state names" test_state_names;
           t "no catch-all route" test_no_catch_all;
+          t "first url outside the base" test_start_outside_base;
+          t "url changed outside the base" test_url_changed_outside_base;
+          t "preload outside the base" test_preload_outside_base;
+          t "url changed with no match" test_url_changed_no_match;
         ]
       );
       ("route", [ t "patterns" test_route_units; t "map query" test_map_query ]);
