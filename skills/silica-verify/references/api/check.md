@@ -708,12 +708,25 @@ Replays the steps of the root instance of a trace, such as one that `export` wro
 `Error` also when the trace is of another machine, has no start of its root, or holds data that does not decode.
 
 ```ocaml
-val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
+val export :
+  ('s, 'ev) t ->
+  rule:string ->
+  'ev counterexample ->
+  (Silica.Trace.t, string) result
 ```
 
-A counterexample as a trace file (see `Silica.Trace`): the start, then one transition for each step, with the cause of each step, the answer of each call by the codecs of its endpoint, the actions, and the event, props and snapshot data when the machine registered codecs. The header has the origin `Checker { rule }`, the build `"check"`, no time, and for a `Loop` the `seq` where the cycle starts; the cycle is written once. A step from `inputs` has the cause `Message`; a back or forward has the cause `Url` with the URL it reached. A check with several `props` starts with the props where the last step breaks `rule`. Raises `Invalid_argument` when a step of the counterexample is not enabled in the check.
+A counterexample as a trace file (see `Silica.Trace`): the start, then one transition for each step, with the cause of each step, the answer of each call by the codecs of its endpoint, the actions, and the event, props and snapshot data when the machine registered codecs. The header has the origin `Checker { rule }`, the build `"check"`, no time, and for a `Loop` the `seq` where the cycle starts; the cycle is written once. A step from `inputs` has the cause `Message`; a back or forward has the cause `Url` with the URL it reached. A check with several `props` starts with the props where the last step breaks `rule`.
+
+`Error` when a step of the counterexample is not enabled in the check, or when the start of the check raises. Both depend on the code of the check: an update that reads mutable state can offer other moves when `export` runs it again.
 
 In a joint check (see `child`), the trace has one transition for each move of each instance, in the order of a trace that the runtime records: the step of the instance that got the event, the step of a parent on the output of a child (the cause `Child`), then the new props, the start and the end of each listed child, where a child ends after its own children. The start of the root comes before the start of each child. Each transition holds the actions of its instance only, and the props and snapshot data of its machine. `number`, `entry` and the instance prefix of the ids in the actions are not the ones of a run, and a navigation that a child starts in a step has no `Url` transition. `replay_trace` and `script` read the steps only, so they take both kinds of trace; `conforms` reads all the transitions.
+
+```ocaml
+val export_exn :
+  ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
+```
+
+`export`, but raises `Invalid_argument` with the text of the `Error`.
 
 ```ocaml
 val script :

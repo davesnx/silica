@@ -1131,27 +1131,38 @@ let write_traces dir result =
         @ [ { id = None; message = "--traces " ^ dir ^ ": " ^ message } ];
     }
   in
+  let rec all f = function
+    | [] ->
+        Ok []
+    | item :: rest ->
+        Result.bind (f item) (fun first ->
+            Result.map (List.cons first) (all f rest)
+        )
+  in
+  let write check ((violation : (_, _) Check.violation), name) =
+    let file = Filename.concat dir (name ^ ".jsonl") in
+    Result.map
+      (fun trace ->
+        write_file file (Silica.Trace.to_jsonl trace);
+        (file, Result.map ignore (Check.script check trace))
+      )
+      (Check.export check ~rule:violation.rule violation.counterexample)
+  in
   match
     if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
-    List.map
+    all
       (fun (Ran { check; report }) ->
-        ( Check.id check,
-          List.map2
-            (fun (violation : (_, _) Check.violation) name ->
-              let file = Filename.concat dir (name ^ ".jsonl") in
-              let trace =
-                Check.export check ~rule:violation.rule violation.counterexample
-              in
-              write_file file (Silica.Trace.to_jsonl trace);
-              (file, Result.map ignore (Check.script check trace))
-            )
-            report.violations
-            (trace_names (Check.id check) report.violations)
-        )
+        Result.map
+          (fun files -> (Check.id check, files))
+          (all (write check)
+             (List.combine report.violations
+                (trace_names (Check.id check) report.violations)
+             )
+          )
       )
       result.ran
   with
-  | trace_files -> (
+  | Ok trace_files -> (
       match read_manifest dir with
       | Ok manifest ->
           remove_stale dir manifest trace_files;
@@ -1159,7 +1170,7 @@ let write_traces dir result =
       | Error message ->
           fail message
     )
-  | exception (Sys_error message | Invalid_argument message) ->
+  | Error message | (exception Sys_error message) ->
       fail message
 
 type found = Found : ('s, 'ev) Check.t -> found

@@ -60,7 +60,7 @@ let () =
           report.violations
       in
       let trace =
-        Check.export check ~rule:violation.rule violation.counterexample
+        Check.export_exn check ~rule:violation.rule violation.counterexample
       in
       match
         Check.script ?component

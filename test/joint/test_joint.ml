@@ -542,7 +542,7 @@ let temporal_violation_replays () =
         );
       let trace =
         round_trip
-          (Check.export Joint_cases.bumped ~rule violation.counterexample)
+          (Check.export_exn Joint_cases.bumped ~rule violation.counterexample)
       in
       Alcotest.(check (list string))
         "the trace has a record for each move of each instance"
@@ -813,7 +813,7 @@ let shelf_trace () =
   with
   | [ violation ] ->
       round_trip
-        (Check.export seeded_shelf ~rule:"seeded" violation.counterexample)
+        (Check.export_exn seeded_shelf ~rule:"seeded" violation.counterexample)
   | violations ->
       Alcotest.failf "expected one seeded violation, got %d:@.%a"
         (List.length violations) Check.pp_report report

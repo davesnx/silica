@@ -788,7 +788,11 @@ val replay_trace :
     [Error] also when the trace is of another machine, has no start of its root,
     or holds data that does not decode. *)
 
-val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
+val export :
+  ('s, 'ev) t ->
+  rule:string ->
+  'ev counterexample ->
+  (Silica.Trace.t, string) result
 (** A counterexample as a trace file (see {!Silica.Trace}): the start, then one
     transition for each step, with the cause of each step, the answer of each
     call by the codecs of its endpoint, the actions, and the event, props and
@@ -797,8 +801,12 @@ val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
     where the cycle starts; the cycle is written once. A step from [inputs] has
     the cause [Message]; a back or forward has the cause [Url] with the URL it
     reached. A check with several [props] starts with the props where the last
-    step breaks [rule]. Raises [Invalid_argument] when a step of the
-    counterexample is not enabled in the check.
+    step breaks [rule].
+
+    [Error] when a step of the counterexample is not enabled in the check, or
+    when the start of the check raises. Both depend on the code of the check: an
+    update that reads mutable state can offer other moves when [export] runs it
+    again.
 
     In a joint check (see {!val-child}), the trace has one transition for each
     move of each instance, in the order of a trace that the runtime records: the
@@ -811,6 +819,10 @@ val export : ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
     are not the ones of a run, and a navigation that a child starts in a step
     has no [Url] transition. {!replay_trace} and {!script} read the steps only,
     so they take both kinds of trace; {!conforms} reads all the transitions. *)
+
+val export_exn :
+  ('s, 'ev) t -> rule:string -> 'ev counterexample -> Silica.Trace.t
+(** {!export}, but raises [Invalid_argument] with the text of the [Error]. *)
 
 val script :
   ?component:string ->

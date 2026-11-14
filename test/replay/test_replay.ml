@@ -152,7 +152,9 @@ let each_violation () =
           let label = Check.id check ^ " " ^ violation.rule in
           let trace =
             round_trip
-              (Check.export check ~rule:violation.rule violation.counterexample)
+              (Check.export_exn check ~rule:violation.rule
+                 violation.counterexample
+              )
           in
           ( match trace.header.origin with
           | Checker { rule; _ } ->
@@ -276,7 +278,7 @@ let loop_and_waits () =
         Alcotest.fail "no steps"
   in
   let trace =
-    round_trip (Check.export Save.check ~rule:"edits" (Loop { stem; cycle }))
+    round_trip (Check.export_exn Save.check ~rule:"edits" (Loop { stem; cycle }))
   in
   Alcotest.(check (option int))
     "the cycle starts after the stem" (Some 3) trace.header.loop_from;
@@ -295,7 +297,7 @@ let loop_and_waits () =
   );
   let saves = steps_of (Check.replay Save.check [ Event Save.Save ]) in
   let trace =
-    round_trip (Check.export Save.check ~rule:"waits" (Waits saves))
+    round_trip (Check.export_exn Save.check ~rule:"waits" (Waits saves))
   in
   Alcotest.(check (option int)) "no cycle" None trace.header.loop_from;
   match Check.replay_trace Save.check trace with
@@ -307,7 +309,7 @@ let loop_and_waits () =
 
 let trace_errors () =
   let trace =
-    Check.export Save.check ~rule:"r"
+    Check.export_exn Save.check ~rule:"r"
       (Path (steps_of (Check.replay Save.check [ Event Save.Save ])))
   in
   ( match Check.replay_trace Upload.check trace with
@@ -345,7 +347,8 @@ let no_codecs () =
   let report = Check.run Nameless.check in
   let violation = List.hd report.violations in
   let trace =
-    Check.export Nameless.check ~rule:violation.rule violation.counterexample
+    Check.export_exn Nameless.check ~rule:violation.rule
+      violation.counterexample
   in
   Alcotest.(check (list bool))
     "no event data" [ false; false ]
@@ -365,7 +368,7 @@ let answer_data () =
   let report = Check.run Upload.check in
   let violation = List.hd report.violations in
   let trace =
-    Check.export Upload.check ~rule:violation.rule violation.counterexample
+    Check.export_exn Upload.check ~rule:violation.rule violation.counterexample
   in
   Alcotest.(check (list string))
     "the answer of the call"
@@ -417,7 +420,7 @@ let script_errors () =
   let report = Check.run Clock.check in
   let violation = List.hd report.violations in
   let trace =
-    Check.export Clock.check ~rule:violation.rule violation.counterexample
+    Check.export_exn Clock.check ~rule:violation.rule violation.counterexample
   in
   match Check.script Clock.check trace with
   | Ok _ ->
@@ -442,7 +445,9 @@ let props () =
   in
   let trace =
     round_trip
-      (Check.export Labelled.check ~rule:violation.rule violation.counterexample)
+      (Check.export_exn Labelled.check ~rule:violation.rule
+         violation.counterexample
+      )
   in
   Alcotest.(check (list string))
     "the start with the props that break the rule" [ {|""|} ]
@@ -459,7 +464,8 @@ let props () =
   Alcotest.(check string) "the same view" violation.view (Memory.view_text page);
   let steps = steps_of (Check.replay Labelled.check [ Props "" ]) in
   let trace =
-    round_trip (Check.export Labelled.check ~rule:"accessible-name" (Path steps))
+    round_trip
+      (Check.export_exn Labelled.check ~rule:"accessible-name" (Path steps))
   in
   let page = Memory.mount_with_props ~props:"Go" Labelled.component in
   Alcotest.(check string)
@@ -472,7 +478,7 @@ let not_found () =
   let steps =
     steps_of (Check.replay Nameless.check [ Event Nameless.Edit; Event Done ])
   in
-  let trace = Check.export Nameless.check ~rule:"edit" (Path steps) in
+  let trace = Check.export_exn Nameless.check ~rule:"edit" (Path steps) in
   let page = Memory.mount Nameless.fixed in
   match Memory.replay page trace with
   | Not_found { seq; error } ->
@@ -487,17 +493,40 @@ let not_found () =
 let export_not_enabled () =
   let save = steps_of (Check.replay Save.check [ Event Save.Save ]) in
   let edit = steps_of (Check.replay Save.check [ Event Save.Edit ]) in
-  Alcotest.check_raises "a step the check does not offer"
-    (Invalid_argument
-       "Check.export: step 2 of the counterexample is not enabled in the check"
-    ) (fun () -> ignore (Check.export Save.check ~rule:"r" (Path (save @ edit)))
+  let message =
+    "Check.export: step 2 of the counterexample is not enabled in the check"
+  in
+  ( match Check.export Save.check ~rule:"r" (Path (save @ edit)) with
+  | Error error ->
+      Alcotest.(check string) "a step the check does not offer" message error
+  | Ok _ ->
+      Alcotest.fail "a step the check does not offer exports"
+  );
+  Alcotest.check_raises "the raising form" (Invalid_argument message) (fun () ->
+      ignore (Check.export_exn Save.check ~rule:"r" (Path (save @ edit)))
   )
+
+let export_ok () =
+  let save = steps_of (Check.replay Save.check [ Event Save.Save ]) in
+  Alcotest.(check (result string string))
+    "the trace of a step the check offers"
+    (Ok
+       {|{"root":"save","build":"check","origin":{"type":"checker","rule":"r","start":0,"choices":[1]},"dropped":0}
+{"seq":1,"instance":"save","number":1,"entry":0,"machine":"save","from":"","to":"editing","change":"started","event":"","snapshot":["Editing",0],"cause":{"type":"start"}}
+{"seq":2,"instance":"save","number":1,"entry":0,"machine":"save","from":"editing","to":"saved","change":"entered","event":"save","data":["Save"],"snapshot":["Saved"],"cause":{"type":"element","handler":"press","role":"button","name":"Save","element":"form > button[2]"}}
+|}
+    )
+    (Result.map Silica.Trace.to_jsonl
+       (Check.export Save.check ~rule:"r" (Path save))
+    )
 
 let stepper_trace () =
   let violation = List.hd (Check.run Stepper.check).violations in
   ( violation,
     round_trip
-      (Check.export Stepper.check ~rule:violation.rule violation.counterexample)
+      (Check.export_exn Stepper.check ~rule:violation.rule
+         violation.counterexample
+      )
   )
 
 let password_check =
@@ -526,7 +555,8 @@ let password_masked_in_exports () =
     "the view of the violation has no typed text" false
     (contains violation.view "hunter2");
   let exported =
-    Check.export password_check ~rule:violation.rule violation.counterexample
+    Check.export_exn password_check ~rule:violation.rule
+      violation.counterexample
   in
   let text = Trace.to_text exported and jsonl = Trace.to_jsonl exported in
   Alcotest.(check bool)
@@ -581,7 +611,7 @@ let password_keys_masked_in_exports () =
       (Check.run password_keys_check).violations
   in
   let exported =
-    Check.export password_keys_check ~rule:violation.rule
+    Check.export_exn password_keys_check ~rule:violation.rule
       violation.counterexample
   in
   let text = Trace.to_text exported and jsonl = Trace.to_jsonl exported in
@@ -689,7 +719,7 @@ let password_keys_with_modifiers () =
     in
     key_steps
       (round_trip
-         (Check.export check ~rule:violation.rule violation.counterexample)
+         (Check.export_exn check ~rule:violation.rule violation.counterexample)
       )
   in
   let masked = [ (true, false) ] and kept = [ (false, true) ] in
@@ -747,7 +777,7 @@ let keys_with_modifiers () =
       report.violations
   in
   let exported =
-    Check.export Composer_keys.check ~rule:violation.rule
+    Check.export_exn Composer_keys.check ~rule:violation.rule
       violation.counterexample
   in
   Alcotest.(check (list string))
@@ -870,7 +900,8 @@ let typing_cause () =
        (Check.steps violation.counterexample)
     );
   let trace =
-    Check.export Stepper.typing ~rule:violation.rule violation.counterexample
+    Check.export_exn Stepper.typing ~rule:violation.rule
+      violation.counterexample
   in
   match Check.script Stepper.typing trace with
   | Error message ->
@@ -887,7 +918,7 @@ let props_steps_without_codecs () =
   let violation = List.hd (Check.run Rows.changing_check).violations in
   let trace =
     round_trip
-      (Check.export Rows.changing_check ~rule:violation.rule
+      (Check.export_exn Rows.changing_check ~rule:violation.rule
          violation.counterexample
       )
   in
@@ -982,6 +1013,7 @@ let () =
             props_steps_without_codecs;
           Alcotest.test_case "export of a step that is not enabled" `Quick
             export_not_enabled;
+          Alcotest.test_case "export of steps the check offers" `Quick export_ok;
         ]
       );
     ]

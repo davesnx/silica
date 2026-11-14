@@ -2974,10 +2974,10 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
   in
   let trace (type n e) (model : (n, s, ev, e) Check_model.model) ~start =
     function
-    | Unfaithful reason ->
-        invalid_arg ("Check.export: " ^ reason)
+    | Unfaithful _ ->
+        assert false
     | Stuck { at; _ } ->
-        invalid_arg
+        Error
           (Printf.sprintf
              "Check.export: step %d of the counterexample is not enabled in \
               the check"
@@ -3184,30 +3184,31 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
         in
         let firsts = List.rev firsts in
         let transitions = List.rev_map scrubbed transitions in
-        {
-          Trace.header =
-            {
-              root = machine;
-              url =
-                ( match points with
-                | first :: _ ->
-                    check.url (model.snapshot first.node)
-                | [] ->
-                    None
-                );
-              build = "check";
-              origin = Checker { rule; start; choices };
-              dropped = 0;
-              loop_from =
-                ( match counterexample with
-                | Loop { stem; _ } ->
-                    List.nth_opt firsts (List.length stem + 1)
-                | Path _ | Waits _ ->
-                    None
-                );
-            };
-          transitions;
-        }
+        Ok
+          {
+            Trace.header =
+              {
+                root = machine;
+                url =
+                  ( match points with
+                  | first :: _ ->
+                      check.url (model.snapshot first.node)
+                  | [] ->
+                      None
+                  );
+                build = "check";
+                origin = Checker { rule; start; choices };
+                dropped = 0;
+                loop_from =
+                  ( match counterexample with
+                  | Loop { stem; _ } ->
+                      List.nth_opt firsts (List.length stem + 1)
+                  | Path _ | Waits _ ->
+                      None
+                  );
+              };
+            transitions;
+          }
   in
   let loop_from =
     match counterexample with
@@ -3224,10 +3225,17 @@ let export (type s ev) (Check check as subject : (s, ev) t) ~rule
   | Ok trace ->
       trace
   | Error error ->
-      invalid_arg
+      Error
         ("Check.export: the start of the check raised "
        ^ Printexc.to_string error
         )
+
+let export_exn check ~rule counterexample =
+  match export check ~rule counterexample with
+  | Ok trace ->
+      trace
+  | Error message ->
+      invalid_arg message
 
 let view_violations ?rule ~state view =
   List.filter_map

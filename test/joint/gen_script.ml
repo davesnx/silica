@@ -3,7 +3,7 @@ let () =
   match report.violations with
   | violation :: _ -> (
       let trace =
-        Check.export Joint_cases.bumped ~rule:violation.rule
+        Check.export_exn Joint_cases.bumped ~rule:violation.rule
           violation.counterexample
       in
       match

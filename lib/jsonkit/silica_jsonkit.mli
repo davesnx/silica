@@ -8,7 +8,9 @@ val codec :
 (** The value goes through a safe copy of the JSON tree between [Jsonkit.t] and
     [Silica_json.Json.t]. A decoder that raises, such as with
     [Jsonkit.Of_json_error], [Failure] or [Not_found], gives [Error] with the
-    text of the exception. [Out_of_memory] and [Stack_overflow] go on. *)
+    text of the exception. [Out_of_memory] and [Stack_overflow] go on. In
+    Melange a stack overflow is a JavaScript [RangeError], not [Stack_overflow],
+    so it gives [Error]. *)
 
 val to_json : 'a Silica.Codec.t -> 'a -> Jsonkit.t
 (** The encoder of a codec, for a hand-written [to_json] next to derived ones.
