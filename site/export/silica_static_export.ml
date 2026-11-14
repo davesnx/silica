@@ -36,8 +36,15 @@ let rec mkdir_p dir =
 
 let write ~out name content =
   let path = Filename.concat out name in
-  mkdir_p (Filename.dirname path);
-  Out_channel.with_open_bin path (fun oc -> Out_channel.output_string oc content)
+  try
+    mkdir_p (Filename.dirname path);
+    Ok
+      (Out_channel.with_open_bin path (fun oc ->
+           Out_channel.output_string oc content;
+           Out_channel.flush oc
+       )
+      )
+  with Sys_error message -> Error (name ^ ": " ^ message)
 
 let get handle path : Silica_server.response =
   handle
@@ -82,8 +89,8 @@ let rec each f = function
 let run ~handle ~pages ~not_found ~files ~prefix ~out =
   let written = ref 0 in
   let write name content =
-    write ~out name content;
-    incr written
+    let* () = write ~out name content in
+    Ok (incr written)
   in
   let answers = Hashtbl.create 64 in
   let page ~status ~file path =
@@ -96,7 +103,7 @@ let run ~handle ~pages ~not_found ~files ~prefix ~out =
       | Error message, _ | _, Error message ->
           fail message
       | Ok html, Ok list ->
-          write file html;
+          let* () = write file html in
           each
             (fun (call, input, output) ->
               let name = answer_file ~path:call ~input in
@@ -117,15 +124,17 @@ let run ~handle ~pages ~not_found ~files ~prefix ~out =
     each (fun path -> page ~status:200 ~file:(page_file path) path) pages
   in
   let* () = page ~status:404 ~file:"404.html" not_found in
-  Hashtbl.iter
-    (fun name (_, output) -> write (strip_slashes prefix ^ name) output)
-    answers;
+  let* () =
+    each
+      (fun (name, (_, output)) -> write (strip_slashes prefix ^ name) output)
+      (List.of_seq (Hashtbl.to_seq answers))
+  in
   let* () =
     each
       (fun path ->
         let r = get handle path in
         if r.status = 200 then
-          Ok (write (strip_slashes path) r.body)
+          write (strip_slashes path) r.body
         else
           Error (Printf.sprintf "%s: status %d" path r.status)
       )
@@ -136,13 +145,15 @@ let run ~handle ~pages ~not_found ~files ~prefix ~out =
       (fun path -> Silica_server.Assets.is_hashed (Filename.basename path))
       files
   in
-  write "_headers"
-    (String.concat ""
-       (List.map
-          (fun path ->
-            path ^ "\n  Cache-Control: public, max-age=31536000, immutable\n"
-          )
-          hashed
-       )
-    );
+  let* () =
+    write "_headers"
+      (String.concat ""
+         (List.map
+            (fun path ->
+              path ^ "\n  Cache-Control: public, max-age=31536000, immutable\n"
+            )
+            hashed
+         )
+      )
+  in
   Ok !written

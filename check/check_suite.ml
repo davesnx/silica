@@ -286,8 +286,6 @@ let suffixes = [ ".spec.txt"; ".spec.json"; ".views.txt"; ".qnt"; ".dot" ]
 let is_golden name =
   List.exists (fun suffix -> String.ends_with ~suffix name) suffixes
 
-let read_file path = In_channel.with_open_bin path In_channel.input_all
-
 let write_file path text =
   Out_channel.with_open_bin path (fun channel ->
       Out_channel.output_string channel text
@@ -539,12 +537,11 @@ let golden_with ~program ~write dir result =
     List.exists
       (fun (name, text) ->
         name = id ^ ".spec.txt"
-        &&
-        let path = Filename.concat dir name in
-        (not (Sys.file_exists path)) || read_file path <> text
+        && Check_conform.read_file (Filename.concat dir name) <> Ok text
       )
       files
   in
+  let unreadable = ref [] in
   let changes =
     List.filter_map
       (fun (name, text) ->
@@ -552,25 +549,31 @@ let golden_with ~program ~write dir result =
         if not (List.mem name existing) then
           Some (name, Missing)
         else
-          let before = read_file path in
-          if before = text then
-            None
-          else if String.ends_with ~suffix:".spec.txt" name then
-            Some (name, Changed (spec_lines ~before ~after:text))
-          else if String.ends_with ~suffix:".views.txt" name then
-            Some (name, Changed (views_lines ~before ~after:text))
-          else
-            let id =
-              if String.ends_with ~suffix:".spec.json" name then
-                Filename.chop_suffix name ".spec.json"
+          match Check_conform.read_file path with
+          | Error message ->
+              unreadable := { id = None; message } :: !unreadable;
+              None
+          | Ok before ->
+              if before = text then
+                None
+              else if String.ends_with ~suffix:".spec.txt" name then
+                Some (name, Changed (spec_lines ~before ~after:text))
+              else if String.ends_with ~suffix:".views.txt" name then
+                Some (name, Changed (views_lines ~before ~after:text))
               else
-                Filename.remove_extension name
-            in
-            if spec_changed id then
-              Some
-                (name, Changed [ "follows the changes of " ^ id ^ ".spec.txt" ])
-            else
-              Some (name, Changed (line_diff before text))
+                let id =
+                  if String.ends_with ~suffix:".spec.json" name then
+                    Filename.chop_suffix name ".spec.json"
+                  else
+                    Filename.remove_extension name
+                in
+                if spec_changed id then
+                  Some
+                    ( name,
+                      Changed [ "follows the changes of " ^ id ^ ".spec.txt" ]
+                    )
+                else
+                  Some (name, Changed (line_diff before text))
       )
       files
     @
@@ -586,6 +589,7 @@ let golden_with ~program ~write dir result =
         )
         existing
   in
+  let result = { result with errors = result.errors @ List.rev !unreadable } in
   let write = write && result.errors = [] in
   if write then (
     if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
@@ -1045,25 +1049,29 @@ let manifest_name = ".silica-traces"
 let read_manifest dir =
   let path = Filename.concat dir manifest_name in
   if Sys.file_exists path then
-    List.filter_map
-      (fun line ->
-        match String.index_opt line '\t' with
-        | Some tab ->
-            Some
-              ( String.sub line 0 tab,
-                String.sub line (tab + 1) (String.length line - tab - 1)
-              )
-        | None ->
-            None
+    Result.map
+      (fun text ->
+        List.filter_map
+          (fun line ->
+            match String.index_opt line '\t' with
+            | Some tab ->
+                Some
+                  ( String.sub line 0 tab,
+                    String.sub line (tab + 1) (String.length line - tab - 1)
+                  )
+            | None ->
+                None
+          )
+          (String.split_on_char '\n' text)
       )
-      (String.split_on_char '\n' (read_file path))
+      (Check_conform.read_file path)
   else
-    []
+    Ok []
 
-let remove_stale dir trace_files =
+let remove_stale dir manifest trace_files =
   let ran = List.map fst trace_files in
   let kept, owned =
-    List.partition (fun (id, _) -> not (List.mem id ran)) (read_manifest dir)
+    List.partition (fun (id, _) -> not (List.mem id ran)) manifest
   in
   let written =
     List.concat_map
@@ -1115,6 +1123,14 @@ let foreign_traces dir =
     None
 
 let write_traces dir result =
+  let fail message =
+    {
+      result with
+      errors =
+        result.errors
+        @ [ { id = None; message = "--traces " ^ dir ^ ": " ^ message } ];
+    }
+  in
   match
     if not (Sys.file_exists dir) then Sys.mkdir dir 0o755;
     List.map
@@ -1135,16 +1151,16 @@ let write_traces dir result =
       )
       result.ran
   with
-  | trace_files ->
-      remove_stale dir trace_files;
-      { result with trace_files }
+  | trace_files -> (
+      match read_manifest dir with
+      | Ok manifest ->
+          remove_stale dir manifest trace_files;
+          { result with trace_files }
+      | Error message ->
+          fail message
+    )
   | exception (Sys_error message | Invalid_argument message) ->
-      {
-        result with
-        errors =
-          result.errors
-          @ [ { id = None; message = "--traces " ^ dir ^ ": " ^ message } ];
-      }
+      fail message
 
 type found = Found : ('s, 'ev) Check.t -> found
 
@@ -1258,10 +1274,10 @@ let load entries ~id ~file =
   | Error message ->
       Error message
   | Ok (id, found) -> (
-      match read_file file with
-      | exception Sys_error message ->
+      match Check_conform.read_file file with
+      | Error message ->
           Error message
-      | text -> (
+      | Ok text -> (
           match Silica.Trace.of_jsonl text with
           | Ok trace ->
               Ok (id, found, trace)
@@ -1414,7 +1430,7 @@ let formatted ~name text =
         )
     with
     | 0 ->
-        read_file output
+        Result.value (Check_conform.read_file output) ~default:text
     | _ ->
         text
     | exception Sys_error _ ->

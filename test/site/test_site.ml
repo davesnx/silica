@@ -9,9 +9,15 @@ let server =
        Silica_server.default_config ~origins:Silica_server.Localhost
          ~secret:"0123456789abcdef0123456789abcdef"
      in
-     match Silica_server.Assets.of_metafile ~prefix:"/static/" metafile with
-     | Ok assets ->
-         Site_server.create config ~assets ~read:(fun _ -> None) ()
+     match
+       Result.bind
+         (Silica_server.Assets.of_metafile ~prefix:"/static/" metafile)
+         (fun assets ->
+           Site_server.create config ~assets ~read:(fun _ -> None) ()
+       )
+     with
+     | Ok server ->
+         server
      | Error message ->
          failwith message
     )
@@ -603,6 +609,41 @@ let test_static_export () =
     Alcotest.fail "404.html is not the not-found page";
   ignore (Sys.command ("rm -rf " ^ Filename.quote out))
 
+let test_missing_asset () =
+  let config =
+    Silica_server.default_config ~origins:Silica_server.Localhost
+      ~secret:"0123456789abcdef0123456789abcdef"
+  in
+  let created =
+    Result.bind
+      (Silica_server.Assets.of_metafile ~prefix:"/static/"
+         {|{"outputs":{"dist/client_main-AAAAAAAA.js":{"entryPoint":"out/client_main.mjs"}}}|}
+      ) (fun assets ->
+        Site_server.create config ~assets ~read:(fun _ -> None) ()
+    )
+  in
+  Alcotest.(check (result unit string))
+    "no app.css" (Error "no asset named app.css")
+    (Result.map ignore created)
+
+let test_static_export_write_error () =
+  let out = Filename.temp_dir "silica-static" "" in
+  let docs = Filename.concat out "docs" in
+  Out_channel.with_open_bin docs ignore;
+  let result =
+    Silica_static_export.run
+      ~handle:(fun r -> Server.handle (Lazy.force server) r)
+      ~pages:[ "/docs/router" ] ~not_found:"/404" ~files:[]
+      ~prefix:"/silica-answers/" ~out
+  in
+  ignore (Sys.command ("rm -rf " ^ Filename.quote out));
+  Alcotest.(check (result int string))
+    "a plain file where a directory must be"
+    (Error
+       (Printf.sprintf "docs/router.html: %s/router.html: Not a directory" docs)
+    )
+    result
+
 let round_trip codec value =
   match codec with
   | Error message ->
@@ -654,6 +695,10 @@ let () =
           Alcotest.test_case "static export file names" `Quick test_static_names;
           Alcotest.test_case "static export of every route" `Quick
             test_static_export;
+          Alcotest.test_case "static export reports a file it cannot write"
+            `Quick test_static_export_write_error;
+          Alcotest.test_case "a metafile without app.css gives no server" `Quick
+            test_missing_asset;
         ]
       );
       ( "site",

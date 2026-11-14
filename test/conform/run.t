@@ -120,6 +120,13 @@ A trace that does not read is a setup error:
   conform: traces/cut.jsonl: line 1: Line 1, bytes 7-8:
   Unexpected end of input
   [3]
+
+So is a spec that does not read:
+
+  $ mkdir -p unreadable/x.spec.txt
+  $ ../example_check/main.exe conform --spec unreadable traces/conforms.jsonl
+  conform: unreadable/x.spec.txt: Is a directory
+  [3]
   $ ../example_check/main.exe conform --spec ../example_check/spec
   conform: give at least one trace file
   Usage:

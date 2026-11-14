@@ -159,7 +159,7 @@ let make ?(modify = Fun.id) ?(topics = true) ?observe_live () =
         headers = [ ("content-type", "text/html; charset=utf-8") ];
         body =
           Printf.sprintf "csrf=%s nonce=%s script=%s" page.csrf page.nonce
-            (try page.asset "client_main.js" with Failure _ -> "none");
+            (Option.value (page.asset "client_main.js") ~default:"none");
       }
     )
     ()
@@ -711,8 +711,8 @@ let asset_tests =
         check string "script" "/static/client_main-4F2A9C1B.js"
           (word_after "script=" r.body)
     );
-    test_case "an unknown logical name fails" `Quick (fun () ->
-        let seen = ref false in
+    test_case "an unknown logical name has no URL" `Quick (fun () ->
+        let found = ref (Some "not asked") and raised = ref None in
         let t = make () in
         ignore t;
         let t =
@@ -723,15 +723,18 @@ let asset_tests =
             ~read:(fun _ -> None)
             ~handlers:[] ~islands:[] ~topics:[]
             ~page:(fun page ->
-              ( try ignore (page.asset "missing.js")
-                with Failure _ -> seen := true
+              found := page.asset "missing.js";
+              ( try ignore (page.asset_exn "missing.js")
+                with Failure message -> raised := Some message
               );
               { Silica_server.status = 200; headers = []; body = "" }
             )
             ()
         in
         ignore (Server.handle t (request "/"));
-        check bool "Failure" true !seen
+        check (option string) "asset" None !found;
+        check (option string) "asset_exn"
+          (Some "Silica_server: no asset named missing.js") !raised
     );
     test_case "static files are GET only and need no session" `Quick (fun () ->
         let t = make () in
@@ -1494,14 +1497,113 @@ let topic_tests =
     );
   ]
 
+let fill_descriptors () =
+  let rec fill opened =
+    match Unix.openfile "/dev/null" [ Unix.O_RDONLY ] 0 with
+    | descriptor ->
+        fill (descriptor :: opened)
+    | exception Unix.Unix_error (Unix.EMFILE, _, _) ->
+        opened
+  in
+  fill []
+
+let without_descriptors () =
+  let t = make () in
+  let client =
+    match visit t with
+    | client ->
+        client
+    | exception exn ->
+        prerr_endline
+          ("the set-up request before the fill failed: "
+         ^ Printexc.to_string exn
+          );
+        exit 3
+  in
+  let opened = fill_descriptors () in
+  let fresh = Server.handle t (request "/") in
+  let known =
+    Server.handle t (request ~headers:[ ("cookie", client.cookie) ] "/")
+  in
+  List.iter Unix.close opened;
+  List.iter
+    (fun (name, (r : Silica_server.response)) ->
+      let csp = header "content-security-policy" r in
+      Printf.printf
+        "%s: %d, cookie %b, error page %b, csp %b, frame-ancestors none %b, \
+         nonce %b\n"
+        name r.status
+        (header "set-cookie" r <> None)
+        (contains r.body "<h1>Something went wrong</h1><p>Error id: ")
+        (csp <> None)
+        (Option.fold csp ~none:false ~some:(fun csp ->
+             contains csp "frame-ancestors 'none'"
+         )
+        )
+        (Option.fold csp ~none:false ~some:(fun csp -> contains csp "nonce-"))
+    )
+    [ ("new session", fresh); ("known session", known) ];
+  List.iter
+    (fun (meth, path, status) ->
+      Printf.printf "observed %s %s %d\n" meth path status
+    )
+    (List.rev !requests)
+
+let random_tests =
+  let open Alcotest in
+  [
+    test_case "a page whose session id or nonce cannot be read gets 500" `Quick
+      (fun () ->
+        let out = Filename.temp_file "silica-policy" ".out" in
+        let err = Filename.temp_file "silica-policy" ".err" in
+        let code =
+          Sys.command
+            (Printf.sprintf
+               "ulimit -n 256 && exec %s --without-descriptors > %s 2> %s"
+               (Filename.quote Sys.executable_name)
+               (Filename.quote out) (Filename.quote err)
+            )
+        in
+        let read path = In_channel.with_open_bin path In_channel.input_all in
+        let out_text = read out and err_text = read err in
+        Sys.remove out;
+        Sys.remove err;
+        check int ("exit code, stderr: " ^ err_text) 0 code;
+        check string "answers and observed requests"
+          "new session: 500, cookie false, error page true, csp true, \
+           frame-ancestors none true, nonce false\n\
+           known session: 500, cookie false, error page true, csp true, \
+           frame-ancestors none true, nonce false\n\
+           observed GET / 200\n\
+           observed GET / 500\n\
+           observed GET / 500\n"
+          out_text;
+        check int "one log line for each page" 2
+          (List.length
+             (List.filter
+                (fun line ->
+                  String.starts_with ~prefix:"silica: error " line
+                  && contains line
+                       "(none) (): Failure(\"Random_source: /dev/urandom: "
+                )
+                (String.split_on_char '\n' err_text)
+             )
+          )
+    );
+  ]
+
 let () =
-  Alcotest.run "silica-policy"
-    [
-      ("pages", page_tests);
-      ("calls", call_tests);
-      ("localhost", localhost_tests);
-      ("assets", asset_tests);
-      ("upgrade", upgrade_tests);
-      ("islands", island_tests);
-      ("topics", topic_tests);
-    ]
+  if Array.mem "--without-descriptors" Sys.argv then
+    without_descriptors ()
+  else
+    Alcotest.run "silica-policy"
+      [
+        ("pages", page_tests);
+        ("calls", call_tests);
+        ("localhost", localhost_tests);
+        ("assets", asset_tests);
+        ("random", random_tests);
+        ("upgrade", upgrade_tests);
+        ("islands", island_tests);
+        ("topics", topic_tests);
+      ]

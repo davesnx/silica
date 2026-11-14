@@ -269,9 +269,22 @@ let () =
     | Error message ->
         failwith message
   in
+  let script =
+    match Silica_server.Assets.resolve assets "tutorial_client.js" with
+    | Some script ->
+        script
+    | None ->
+        failwith "no tutorial_client.js in the metafile"
+  in
+  let secret =
+    match Silica_server_kit.Random_source.hex_id ~bytes:32 with
+    | Ok secret ->
+        secret
+    | Error message ->
+        failwith message
+  in
   let config =
-    Silica_server.default_config ~origins:Silica_server.Localhost
-      ~secret:(Silica_server_kit.Random_source.hex_id ~bytes:32)
+    Silica_server.default_config ~origins:Silica_server.Localhost ~secret
   in
   let server =
     Server.create config ~assets
@@ -281,8 +294,7 @@ let () =
         Server.render_page_settled
           (fun _url -> Tutorial_greeting.component)
           ~status:(fun _ -> 200)
-          ~scripts:[ page.asset "tutorial_client.js" ]
-          page
+          ~scripts:[ script ] page
       )
       ()
   in
@@ -294,12 +306,14 @@ The parts:
 - [Server.implement] connects an endpoint to a function. The function gets the
   context (the request and the session) and the input, and gives [Ok output]
   or [Error reason]. The handlers go to [Server.create] once.
-- [Silica_server.Assets.of_metafile] reads the esbuild metafile. The page asks
-  for a file by its name before the hash, such as [tutorial_client.js], and
-  gets the URL with the hash.
+- [Silica_server.Assets.of_metafile] reads the esbuild metafile.
+  [Silica_server.Assets.resolve] gives the URL with the hash for the name of a
+  file before the hash, such as [tutorial_client.js]. The server resolves it
+  once at start, so a missing name stops the program and not a request.
 - [default_config] needs the allowed origins and a secret of at least 16
-  bytes. [Localhost] is for development only. In production give the list of
-  origins of the site.
+  bytes. [Random_source.hex_id] gives a random one, or an [Error] when the
+  system gives no random bytes. [Localhost] is for development only. In
+  production give the list of origins of the site.
 - [render_page_settled] runs the Remote calls of the first render on the
   server with the handlers of the server, and writes the answers into the
   page. It takes the [page] record. The browser then starts from

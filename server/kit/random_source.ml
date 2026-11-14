@@ -1,9 +1,8 @@
-let bytes n =
-  let path = "/dev/urandom" in
+let bytes ?(source = "/dev/urandom") n =
   let fail reason =
-    failwith (Printf.sprintf "Random_source: %s: %s" path reason)
+    Error (Printf.sprintf "Random_source: %s: %s" source reason)
   in
-  match open_in_bin path with
+  match open_in_bin source with
   | exception Sys_error reason ->
       fail reason
   | ic ->
@@ -12,7 +11,7 @@ let bytes n =
         (fun () ->
           match In_channel.really_input_string ic n with
           | Some s ->
-              s
+              Ok s
           | None ->
               fail (Printf.sprintf "could not read %d bytes" n)
           | exception Sys_error reason ->
@@ -20,6 +19,9 @@ let bytes n =
         )
 
 let hex_id ~bytes:n =
-  let raw = bytes n in
-  String.concat ""
-    (List.init n (fun i -> Printf.sprintf "%02x" (Char.code raw.[i])))
+  Result.map
+    (fun raw ->
+      String.concat ""
+        (List.init n (fun i -> Printf.sprintf "%02x" (Char.code raw.[i])))
+    )
+    (bytes n)

@@ -110,17 +110,24 @@ let is_lower_hex s =
   String.for_all (function '0' .. '9' | 'a' .. 'f' -> true | _ -> false) s
 
 let test_random () =
-  Alcotest.(check int) "bytes length" 16 (String.length (Random_source.bytes 16));
-  Alcotest.(check int) "zero bytes" 0 (String.length (Random_source.bytes 0));
-  Alcotest.(check bool)
-    "bytes differ" true
-    (Random_source.bytes 16 <> Random_source.bytes 16);
-  let id = Random_source.hex_id ~bytes:16 in
+  let bytes n = Result.get_ok (Random_source.bytes n) in
+  let hex_id n = Result.get_ok (Random_source.hex_id ~bytes:n) in
+  Alcotest.(check int) "bytes length" 16 (String.length (bytes 16));
+  Alcotest.(check int) "zero bytes" 0 (String.length (bytes 0));
+  Alcotest.(check bool) "bytes differ" true (bytes 16 <> bytes 16);
+  let id = hex_id 16 in
   Alcotest.(check int) "hex length" 32 (String.length id);
   Alcotest.(check bool) "lowercase hex" true (is_lower_hex id);
-  Alcotest.(check bool)
-    "ids differ" true
-    (Random_source.hex_id ~bytes:16 <> Random_source.hex_id ~bytes:16)
+  Alcotest.(check bool) "ids differ" true (hex_id 16 <> hex_id 16)
+
+let test_random_source_missing () =
+  Alcotest.(check (result string string))
+    "no source"
+    (Error
+       "Random_source: /nonexistent/urandom: /nonexistent/urandom: No such \
+        file or directory"
+    )
+    (Random_source.bytes ~source:"/nonexistent/urandom" 16)
 
 let message_pp ppf (m : Ws.message) =
   let s =
@@ -636,7 +643,13 @@ let () =
         ]
       );
       ("base64", [ Alcotest.test_case "vectors" `Quick test_base64 ]);
-      ("random", [ Alcotest.test_case "bytes and ids" `Quick test_random ]);
+      ( "random",
+        [
+          Alcotest.test_case "bytes and ids" `Quick test_random;
+          Alcotest.test_case "a source that does not open" `Quick
+            test_random_source_missing;
+        ]
+      );
       ( "ws",
         [
           Alcotest.test_case "accept key" `Quick test_accept_key;

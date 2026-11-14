@@ -16,4 +16,6 @@ val create :
   assets:Silica_server.Assets.t ->
   read:(string -> string option) ->
   unit ->
-  Server.t
+  (Server.t, string) result
+(** The server, or an [Error] that names the first of [client_main.js] and
+    [app.css] that [assets] does not have. *)

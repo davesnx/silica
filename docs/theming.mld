@@ -125,14 +125,14 @@ start the theme component with the same choice. The server render writes the
 
 From [site/server/site_server.ml]:
 {@ocaml skip[
-          Server.render_page_settled
-            (Site_app.make
-               (Site_theme.choice
-                  (Silica_server.cookie page.context.request
-                     Silica_ui.Theme.cookie_name
-                  )
-               )
-            )
+                 Server.render_page_settled
+                   (Site_app.make
+                      (Site_theme.choice
+                         (Silica_server.cookie page.context.request
+                            Silica_ui.Theme.cookie_name
+                         )
+                      )
+                   )
 ]}
 
 From [site/client/client_main.ml]:

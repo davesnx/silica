@@ -24,7 +24,20 @@ type checked = {
   findings : finding list;
 }
 
-let read_file path = In_channel.with_open_bin path In_channel.input_all
+let read_file path =
+  match open_in_bin path with
+  | exception Sys_error message ->
+      Error message
+  | channel ->
+      Fun.protect
+        ~finally:(fun () -> close_in_noerr channel)
+        (fun () ->
+          match In_channel.input_all channel with
+          | text ->
+              Ok text
+          | exception Sys_error message ->
+              Error (path ^ ": " ^ message)
+        )
 
 let spec_files ~only dir =
   let wanted name =
@@ -56,11 +69,14 @@ let load_specs ~only dir =
       List.fold_left
         (fun specs file ->
           Result.bind specs (fun specs ->
-              match Spec.of_text (read_file (Filename.concat dir file)) with
-              | Ok spec ->
-                  Ok (spec :: specs)
-              | Error message ->
-                  Error (Filename.concat dir file ^ ": " ^ message)
+              let path = Filename.concat dir file in
+              Result.bind (read_file path) (fun text ->
+                  match Spec.of_text text with
+                  | Ok spec ->
+                      Ok (spec :: specs)
+                  | Error message ->
+                      Error (path ^ ": " ^ message)
+              )
           )
         )
         (Ok []) files
@@ -497,16 +513,13 @@ let run ~json ~spec_dir ~only ~subjects ~elsewhere files =
         List.fold_left
           (fun traces file ->
             Result.bind traces (fun traces ->
-                match read_file file with
-                | exception Sys_error message ->
-                    Error message
-                | text -> (
+                Result.bind (read_file file) (fun text ->
                     match Trace.of_jsonl text with
                     | Ok trace ->
                         Ok ((file, trace) :: traces)
                     | Error message ->
                         Error (file ^ ": " ^ message)
-                  )
+                )
             )
           )
           (Ok []) files

@@ -330,7 +330,7 @@ let with_server f =
         ]
       ~page:(fun (page : Server.page) ->
         Server.render_page_settled app ~status
-          ~scripts:[ page.asset "app.js" ]
+          ~scripts:[ page.asset_exn "app.js" ]
           page
       )
       ()

@@ -86,6 +86,15 @@ The app builds its server and its client bundle, and its tests pass.
   $ ls _build/default/client/dist | sed 's/-[A-Z0-9]*\./-HASH./'
   client_main-HASH.js
   client_main-HASH.js.map
+
+The server stops at start when the metafile has no client script.
+
+  $ echo '{"outputs":{}}' > no-script.json
+  $ SILICA_METAFILE=no-script.json ./_build/default/server/main.exe 2>&1
+  silica: SILICA_SECRET is not set: a random secret is used, and the sessions end when the server stops
+  bad esbuild metafile: no client_main.js
+  [1]
+  $ rm no-script.json
   $ dune test 2>&1
   $ silica check 2>&1
   counter: 16 states, 45 transitions

@@ -170,7 +170,8 @@ let page ?(csrf = "") ?(nonce = "") ?(islands = []) ?(url = "/") handlers :
     url = Url.of_string url;
     csrf;
     nonce;
-    asset = (fun name -> "/" ^ name);
+    asset = (fun name -> Some ("/" ^ name));
+    asset_exn = (fun name -> "/" ^ name);
     imports = (fun _ -> []);
     handlers;
     islands;

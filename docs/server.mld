@@ -212,8 +212,9 @@ body ["internal error"]; the detail goes to the log, not to the client.
 {1:render Pages}
 
 The [page] function gets a [page] record: the context, the URL, the CSRF token,
-the nonce, [asset], which gives the URL of a file of the client build, and the
-handlers and islands of the server. It renders the app with one of these:
+the nonce, [asset] and [asset_exn], which give the URL of a file of the client
+build, and the handlers and islands of the server. It renders the app with one
+of these:
 
 - [Server.render_page]: mount the root at the URL, start the machines and
   print the view.
@@ -235,9 +236,13 @@ with the details only in [dev] mode.
 
 {!Silica_server.Assets.of_metafile} reads the esbuild metafile: the map from
 the name of a file before the hash, such as [client_main.js], to the file with
-the hash. The page asks for a file by its name with [page.asset]. [read]
-gives the bytes of a file under [/static/]; the server never asks for a name
-with [..], a leading slash or control characters.
+the hash. {!Silica_server.Assets.resolve} gives the URL of a name, or [None]
+when the metafile does not have it. Resolve the names of the page once at
+start, and stop the program when one is missing, so that no request can fail
+on a name. The [page] record also has [asset], which gives an option, and
+[asset_exn], which raises [Failure] for a missing name. [read] gives the bytes
+of a file under [/static/]; the server never asks for a name with [..], a
+leading slash or control characters.
 
 A file with a hash in its name gets
 [cache-control: public, max-age=31536000, immutable]. Other files get

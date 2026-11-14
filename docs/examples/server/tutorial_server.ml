@@ -17,9 +17,22 @@ let () =
     | Error message ->
         failwith message
   in
+  let script =
+    match Silica_server.Assets.resolve assets "tutorial_client.js" with
+    | Some script ->
+        script
+    | None ->
+        failwith "no tutorial_client.js in the metafile"
+  in
+  let secret =
+    match Silica_server_kit.Random_source.hex_id ~bytes:32 with
+    | Ok secret ->
+        secret
+    | Error message ->
+        failwith message
+  in
   let config =
-    Silica_server.default_config ~origins:Silica_server.Localhost
-      ~secret:(Silica_server_kit.Random_source.hex_id ~bytes:32)
+    Silica_server.default_config ~origins:Silica_server.Localhost ~secret
   in
   let server =
     Server.create config ~assets
@@ -29,8 +42,7 @@ let () =
         Server.render_page_settled
           (fun _url -> Tutorial_greeting.component)
           ~status:(fun _ -> 200)
-          ~scripts:[ page.asset "tutorial_client.js" ]
-          page
+          ~scripts:[ script ] page
       )
       ()
   in

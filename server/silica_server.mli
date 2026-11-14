@@ -133,8 +133,10 @@ val secret_of_env : origins:origins -> dev:dev option -> (string, string) result
     least 16 bytes. When it is not set: an [Error] for a server with [Origins]
     (a public server, where a random secret would end the sessions at each
     restart and deploy) or with [dev] (whose sessions outlive the process); with
-    [Localhost] and no [dev], a random secret, and a line on stderr says so. The
-    [Error] message says what to do. *)
+    [Localhost] and no [dev], a random secret, and a line on stderr says so, or
+    the [Error] of {!Silica_server_kit.Random_source.hex_id} when no random
+    bytes can be read. The [Error] message of a missing or short secret says
+    what to do. *)
 
 val cookie : request -> string -> string option
 (** The value of the cookie [name] in the [cookie] header of the request. A page
@@ -233,9 +235,14 @@ module Make (Io : IO) : sig
     url : Silica.Url.t;
     csrf : string;  (** The token for this session; the render writes it. *)
     nonce : string;  (** For the [Content-Security-Policy] of this response. *)
-    asset : string -> string;
-        (** The URL of a logical asset name (see {!Assets}). Raises [Failure]
-            when the name is not in the manifest. *)
+    asset : string -> string option;
+        (** The URL of a logical asset name (see {!Assets}), or [None] when the
+            name is not in the manifest. The manifest does not change while the
+            server runs, so a program can check its names once at start with
+            {!Assets.resolve} on the [assets] it gives to {!create}. *)
+    asset_exn : string -> string;
+        (** {!asset}, but raises [Failure] when the name is not in the manifest.
+        *)
     imports : string -> string list;
         (** The public paths that the asset at a public path imports statically
             (see {!Assets.imports}). Pass them as [preload], so the browser

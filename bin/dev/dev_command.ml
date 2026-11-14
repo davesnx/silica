@@ -37,14 +37,17 @@ let secret () =
   let path = Filename.concat state_directory "secret" in
   match In_channel.with_open_bin path In_channel.input_all with
   | text when String.length (String.trim text) >= 32 ->
-      String.trim text
+      Ok (String.trim text)
   | _ | (exception Sys_error _) ->
-      let secret = Silica_server_kit.Random_source.hex_id ~bytes:32 in
-      Out_channel.with_open_gen
-        [ Open_wronly; Open_creat; Open_trunc; Open_binary ] 0o600 path
-        (fun channel -> output_string channel secret
-      );
-      secret
+      Result.map
+        (fun secret ->
+          Out_channel.with_open_gen
+            [ Open_wronly; Open_creat; Open_trunc; Open_binary ] 0o600 path
+            (fun channel -> output_string channel secret
+          );
+          secret
+        )
+        (Silica_server_kit.Random_source.hex_id ~bytes:32)
 
 let app_environment ~socket ~static ~metafile ~secret ~proxy_port ~port =
   let ours =
@@ -126,121 +129,134 @@ let run ~server ~client ~port ~socket ~json =
               "a dune build --watch already runs in this project. Stop it; \
                silica dev starts its own."
         | None -> (
-            let secret = secret () in
-            let supervisor_cell = ref None in
-            let app_port ~timeout =
-              match !supervisor_cell with
-              | Some supervisor ->
-                  Supervisor.app_port supervisor ~timeout
-              | None ->
-                  None
-            in
-            match Inspector_hub.listen (Hub.inspector hub) ~path:socket with
-            | Error (Unix.EPERM, message) ->
-                fail
-                  ("cannot listen for the inspector: " ^ message
-                 ^ ". This environment forbids Unix sockets, and silica dev \
-                    needs them for the inspector and for the build watch of \
-                    dune. Run silica dev where Unix sockets are allowed, such \
-                    as outside the sandbox."
-                  )
-            | Error (_, message) ->
-                fail ("cannot listen for the inspector: " ^ message)
-            | Ok inspect_listener -> (
-                match
-                  Proxy.start ~port ~app_port ~on_dev_socket:(Hub.attach hub)
-                    ~client_script:Dev_client_script.source
-                with
-                | Error message ->
-                    Inspector_hub.stop inspect_listener;
+            match secret () with
+            | Error message ->
+                fail message
+            | Ok secret -> (
+                let supervisor_cell = ref None in
+                let app_port ~timeout =
+                  match !supervisor_cell with
+                  | Some supervisor ->
+                      Supervisor.app_port supervisor ~timeout
+                  | None ->
+                      None
+                in
+                match Inspector_hub.listen (Hub.inspector hub) ~path:socket with
+                | Error (Unix.EPERM, message) ->
                     fail
-                      (Printf.sprintf
-                         "cannot listen on port %d: %s. Choose another with \
-                          --port."
-                         port message
+                      ("cannot listen for the inspector: " ^ message
+                     ^ ". This environment forbids Unix sockets, and silica \
+                        dev needs them for the inspector and for the build \
+                        watch of dune. Run silica dev where Unix sockets are \
+                        allowed, such as outside the sandbox."
                       )
-                | Ok proxy -> (
-                    let proxy_port = Proxy.port proxy in
-                    let supervisor =
-                      Supervisor.create ~server:server_path ~metafile
-                        ~environment:
-                          (app_environment ~socket ~static ~metafile ~secret
-                             ~proxy_port
-                          ) ~emit ~echo:(fun line ->
-                          Mutex.protect print_lock (fun () -> prerr_endline line)
-                      )
-                    in
-                    supervisor_cell := Some supervisor;
-                    List.iter
-                      (fun signal -> Sys.set_signal signal on_signal)
-                      [ Sys.sigint; Sys.sigterm; Sys.sighup ];
-                    emit
-                      (Dev_event.Listening
-                         {
-                           url = Printf.sprintf "http://127.0.0.1:%d" proxy_port;
-                         }
-                      );
-                    let phase = ref Build_phase.Idle and errors = ref [] in
-                    let on_progress progress =
-                      let next, reports = Build_phase.next !phase progress in
-                      phase := next;
-                      List.iter
-                        (function
-                          | Build_phase.Started ->
-                              emit Dev_event.Build_started
-                          | Succeeded ->
-                              emit Dev_event.Build_ok;
-                              Supervisor.build_succeeded supervisor
-                          | Failed ->
-                              emit (Dev_event.Build_failed !errors)
-                          )
-                        reports;
-                      match progress with
-                      | Build_watch.Running { complete; remaining } ->
-                          Hub.publish hub
-                            (Dev_event.Build_progress { complete; remaining })
-                      | Failed | Success | Waiting | Interrupted ->
-                          ()
-                    in
-                    let on_errors latest =
-                      let changed = latest <> !errors in
-                      errors := latest;
-                      if changed && !phase = Build_phase.Broken then
-                        emit (Dev_event.Build_failed latest)
-                    in
-                    let watch =
-                      Build_watch.start ~root
-                        ~targets:[ server; Filename.concat client "meta.json" ]
-                        ~log:(Filename.concat state_directory "dune.log")
-                        ~on_progress ~on_errors
-                        ~on_end:(fun () -> Atomic.set ended true)
-                    in
-                    let finish () =
-                      Supervisor.stop supervisor;
-                      Proxy.stop proxy;
-                      Inspector_hub.stop inspect_listener
-                    in
-                    match watch with
+                | Error (_, message) ->
+                    fail ("cannot listen for the inspector: " ^ message)
+                | Ok inspect_listener -> (
+                    match
+                      Proxy.start ~port ~app_port
+                        ~on_dev_socket:(Hub.attach hub)
+                        ~client_script:Dev_client_script.source
+                    with
                     | Error message ->
-                        finish ();
-                        fail message
-                    | Ok watch ->
-                        while
-                          not (Atomic.get stop_requested || Atomic.get ended)
-                        do
-                          Thread.delay 0.05
-                        done;
-                        let lost = not (Atomic.get stop_requested) in
-                        Build_watch.stop watch;
-                        finish ();
-                        if lost then
-                          fail
-                            ("dune stopped:\n"
-                            ^ Build_watch.log_tail
-                                (Filename.concat state_directory "dune.log")
-                            )
-                        else
-                          0
+                        Inspector_hub.stop inspect_listener;
+                        fail
+                          (Printf.sprintf
+                             "cannot listen on port %d: %s. Choose another \
+                              with --port."
+                             port message
+                          )
+                    | Ok proxy -> (
+                        let proxy_port = Proxy.port proxy in
+                        let supervisor =
+                          Supervisor.create ~server:server_path ~metafile
+                            ~environment:
+                              (app_environment ~socket ~static ~metafile ~secret
+                                 ~proxy_port
+                              ) ~emit ~echo:(fun line ->
+                              Mutex.protect print_lock (fun () ->
+                                  prerr_endline line
+                              )
+                          )
+                        in
+                        supervisor_cell := Some supervisor;
+                        List.iter
+                          (fun signal -> Sys.set_signal signal on_signal)
+                          [ Sys.sigint; Sys.sigterm; Sys.sighup ];
+                        emit
+                          (Dev_event.Listening
+                             {
+                               url =
+                                 Printf.sprintf "http://127.0.0.1:%d" proxy_port;
+                             }
+                          );
+                        let phase = ref Build_phase.Idle and errors = ref [] in
+                        let on_progress progress =
+                          let next, reports =
+                            Build_phase.next !phase progress
+                          in
+                          phase := next;
+                          List.iter
+                            (function
+                              | Build_phase.Started ->
+                                  emit Dev_event.Build_started
+                              | Succeeded ->
+                                  emit Dev_event.Build_ok;
+                                  Supervisor.build_succeeded supervisor
+                              | Failed ->
+                                  emit (Dev_event.Build_failed !errors)
+                              )
+                            reports;
+                          match progress with
+                          | Build_watch.Running { complete; remaining } ->
+                              Hub.publish hub
+                                (Dev_event.Build_progress
+                                   { complete; remaining }
+                                )
+                          | Failed | Success | Waiting | Interrupted ->
+                              ()
+                        in
+                        let on_errors latest =
+                          let changed = latest <> !errors in
+                          errors := latest;
+                          if changed && !phase = Build_phase.Broken then
+                            emit (Dev_event.Build_failed latest)
+                        in
+                        let watch =
+                          Build_watch.start ~root
+                            ~targets:
+                              [ server; Filename.concat client "meta.json" ]
+                            ~log:(Filename.concat state_directory "dune.log")
+                            ~on_progress ~on_errors
+                            ~on_end:(fun () -> Atomic.set ended true)
+                        in
+                        let finish () =
+                          Supervisor.stop supervisor;
+                          Proxy.stop proxy;
+                          Inspector_hub.stop inspect_listener
+                        in
+                        match watch with
+                        | Error message ->
+                            finish ();
+                            fail message
+                        | Ok watch ->
+                            while
+                              not (Atomic.get stop_requested || Atomic.get ended)
+                            do
+                              Thread.delay 0.05
+                            done;
+                            let lost = not (Atomic.get stop_requested) in
+                            Build_watch.stop watch;
+                            finish ();
+                            if lost then
+                              fail
+                                ("dune stopped:\n"
+                                ^ Build_watch.log_tail
+                                    (Filename.concat state_directory "dune.log")
+                                )
+                            else
+                              0
+                      )
                   )
               )
           )

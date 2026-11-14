@@ -8,9 +8,13 @@ let server =
     Silica_server.default_config ~origins:Silica_server.Localhost
       ~secret:"0123456789abcdef0123456789abcdef"
   in
-  match Silica_server.Assets.of_metafile ~prefix:"/static/" metafile with
-  | Ok assets ->
-      Site_server.create config ~assets ~read:(fun _ -> None) ()
+  match
+    Result.bind (Silica_server.Assets.of_metafile ~prefix:"/static/" metafile)
+      (fun assets -> Site_server.create config ~assets ~read:(fun _ -> None) ()
+    )
+  with
+  | Ok server ->
+      server
   | Error message ->
       failwith message
 

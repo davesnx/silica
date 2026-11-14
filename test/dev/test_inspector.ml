@@ -348,7 +348,7 @@ let short_directory () =
   let name =
     Filename.concat
       (Filename.get_temp_dir_name ())
-      ("si-" ^ Silica_server_kit.Random_source.hex_id ~bytes:4)
+      ("si-" ^ Result.get_ok (Silica_server_kit.Random_source.hex_id ~bytes:4))
   in
   Unix.mkdir name 0o700;
   name

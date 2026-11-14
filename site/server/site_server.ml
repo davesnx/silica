@@ -50,28 +50,37 @@ let text_files =
   "/llms.txt" :: "/llms-full.txt"
   :: List.map (fun (slug, _) -> "/docs/" ^ slug ^ ".md") Site_llms.pages
 
+let asset assets name =
+  Option.to_result ~none:("no asset named " ^ name)
+    (Silica_server.Assets.resolve assets name)
+
 let create config ~assets ~read () =
-  Server.create config ~assets ~read ~handlers ~islands:[] ~topics:[]
-    ~page:(fun (page : Server.page) ->
-      match markdown page.url.path with
-      | Some body ->
-          text body
-      | None ->
-          Server.render_page_settled
-            (Site_app.make
-               (Site_theme.choice
-                  (Silica_server.cookie page.context.request
-                     Silica_ui.Theme.cookie_name
-                  )
-               )
-            )
-            ~status:Site_app.status
-            ~scripts:[ page.asset "client_main.js" ]
-            ~preload:(page.imports (page.asset "client_main.js"))
-            ~head:
-              (Printf.sprintf "<link rel=\"stylesheet\" href=\"%s\">"
-                 (page.asset "app.css")
-              )
-            page
-    )
-    ()
+  match (asset assets "client_main.js", asset assets "app.css") with
+  | Error message, _ | _, Error message ->
+      Error message
+  | Ok script, Ok style ->
+      Ok
+        (Server.create config ~assets ~read ~handlers ~islands:[] ~topics:[]
+           ~page:(fun (page : Server.page) ->
+             match markdown page.url.path with
+             | Some body ->
+                 text body
+             | None ->
+                 Server.render_page_settled
+                   (Site_app.make
+                      (Site_theme.choice
+                         (Silica_server.cookie page.context.request
+                            Silica_ui.Theme.cookie_name
+                         )
+                      )
+                   )
+                   ~status:Site_app.status ~scripts:[ script ]
+                   ~preload:(page.imports script)
+                   ~head:
+                     (Printf.sprintf "<link rel=\"stylesheet\" href=\"%s\">"
+                        style
+                     )
+                   page
+           )
+           ()
+        )

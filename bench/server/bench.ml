@@ -100,7 +100,13 @@ let () =
       ("--only", Arg.Set_string only, "landing or doc");
     ]
     ignore "In-process server render benchmark";
-  let site = Site_server.create (config ()) ~assets ~read:(fun _ -> None) () in
+  let site =
+    match Site_server.create (config ()) ~assets ~read:(fun _ -> None) () with
+    | Ok site ->
+        site
+    | Error message ->
+        failwith message
+  in
   let doc = longest_doc () in
   let pages = [ ("landing", site, "/"); ("doc", site, "/docs/" ^ doc.slug) ] in
   Printf.printf "runs per page: %d; longest doc: %s\n" !runs doc.slug;

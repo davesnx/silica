@@ -114,7 +114,14 @@ let () =
         exit 1
   in
   let server =
-    Site_server.create config ~assets ~read:(Adapter.read_dir !static) ()
+    match
+      Site_server.create config ~assets ~read:(Adapter.read_dir !static) ()
+    with
+    | Ok server ->
+        server
+    | Error message ->
+        prerr_endline ("site: bad metafile: " ^ message);
+        exit 1
   in
   Adapter.run ~port:!port ~max_connections:!max_connections ~addr:!addr
     ~on_stop:(fun () -> Adapter.Server.shutdown server)

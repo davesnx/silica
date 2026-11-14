@@ -35,6 +35,14 @@ let () =
         prerr_endline ("bad esbuild metafile: " ^ message);
         exit 1
   in
+  let script =
+    match Silica_server.Assets.resolve assets "client_main.js" with
+    | Some script ->
+        script
+    | None ->
+        prerr_endline "bad esbuild metafile: no client_main.js";
+        exit 1
+  in
   let server =
     Server.create
       {
@@ -49,8 +57,7 @@ let () =
         Server.render_page_settled
           (fun _url -> Counter.component)
           ~status:(fun _ -> 200)
-          ~scripts:[ page.asset "client_main.js" ]
-          page
+          ~scripts:[ script ] page
       )
       ()
   in

@@ -128,7 +128,7 @@ let secret_of_env ~origins ~dev =
       prerr_endline
         "silica: SILICA_SECRET is not set: a random secret is used, and the \
          sessions end when the server stops";
-      Ok (Silica_server_kit.Random_source.hex_id ~bytes:32)
+      Silica_server_kit.Random_source.hex_id ~bytes:32
 
 let cookie_name = "silica_sid"
 let csrf_header = "x-silica-csrf"
@@ -966,7 +966,8 @@ module Make (Io : IO) = struct
     url : Url.t;
     csrf : string;
     nonce : string;
-    asset : string -> string;
+    asset : string -> string option;
+    asset_exn : string -> string;
     imports : string -> string list;
     handlers : handler list;
     islands : island list;
@@ -1429,17 +1430,16 @@ module Make (Io : IO) = struct
         )
 
   let new_session t =
-    let now = t.config.now () in
-    let session =
-      {
-        Session.id = Kit.Random_source.hex_id ~bytes:16;
-        created = now;
-        last_seen = now;
-        data = [];
-      }
-    in
-    t.config.sessions.set session;
-    session
+    Result.map
+      (fun id ->
+        let now = t.config.now () in
+        let session =
+          { Session.id; created = now; last_seen = now; data = [] }
+        in
+        t.config.sessions.set session;
+        session
+      )
+      (Kit.Random_source.hex_id ~bytes:16)
 
   let set_cookie t id =
     Printf.sprintf "%s=%s; Path=/; HttpOnly; SameSite=Lax%s" cookie_name id
@@ -1460,6 +1460,13 @@ module Make (Io : IO) = struct
                false
            )
          host
+
+  let content_security_policy ~script ~sockets =
+    Printf.sprintf
+      "default-src 'self'; script-src %s; style-src 'self' 'unsafe-inline'; \
+       img-src 'self' data:; connect-src 'self'%s; object-src 'none'; base-uri \
+       'none'; frame-ancestors 'none'"
+      script sockets
 
   let security_headers (req : request) (res : response) =
     let res =
@@ -1483,12 +1490,9 @@ module Make (Io : IO) = struct
           { res with headers = List.remove_assoc "x-silica-nonce" res.headers }
         in
         with_header "content-security-policy"
-          (Printf.sprintf
-             "default-src 'self'; script-src 'self' 'nonce-%s'; style-src \
-              'self' 'unsafe-inline'; img-src 'self' data:; connect-src \
-              'self'%s; object-src 'none'; base-uri 'none'; frame-ancestors \
-              'none'"
-             nonce sockets
+          (content_security_policy
+             ~script:(Printf.sprintf "'self' 'nonce-%s'" nonce)
+             ~sockets
           )
           res
     | _ ->
@@ -1582,58 +1586,75 @@ module Make (Io : IO) = struct
                 }
 
   let asset_url t name =
-    match Option.bind t.assets (fun assets -> Assets.resolve assets name) with
+    Option.bind t.assets (fun assets -> Assets.resolve assets name)
+
+  let asset_url_exn t name =
+    match asset_url t name with
     | Some url ->
         url
     | None ->
         failwith ("Silica_server: no asset named " ^ name)
 
+  let page_failure t message =
+    let dev = Option.is_some t.config.dev in
+    Io.return
+      (default_error_page ~dev (Instance.failure ~dev (Failure message))
+      |> with_header "cache-control" "private, no-store"
+      |> with_header "content-security-policy"
+           (content_security_policy ~script:"'none'" ~sockets:"")
+      )
+
   let serve_page t (req : request) =
-    let session, fresh =
+    let session =
       match find_session t req.headers with
       | Some session ->
-          (session, false)
+          Ok (session, false)
       | None ->
-          (new_session t, true)
+          Result.map (fun session -> (session, true)) (new_session t)
     in
-    let nonce = Kit.Base64.encode_url (Kit.Random_source.bytes 16) in
-    let csrf = Kit.Csrf.token ~secret:t.config.secret ~session:session.id in
-    let url = { (Url.of_string req.path) with query = req.query } in
-    let* res =
-      t.page
-        {
-          context = { request = req; session };
-          url;
-          csrf;
-          nonce;
-          asset = asset_url t;
-          handlers = t.handlers;
-          islands = t.islands;
-          dev = Option.is_some t.config.dev;
-          imports =
-            (fun public ->
-              match t.assets with
-              | Some assets ->
-                  Assets.imports assets public
-              | None ->
-                  []
-            );
-        }
-    in
-    let res =
-      (match t.config.dev with Some _ -> with_dev_client res | None -> res)
-      |> with_header "cache-control" "private, no-store"
-      |> with_header "x-silica-nonce" nonce
-    in
-    Io.return
-      ( if fresh then
-          {
-            res with
-            headers = ("set-cookie", set_cookie t session.id) :: res.headers;
-          }
-        else
-          res
-      )
+    match (session, Kit.Random_source.bytes 16) with
+    | Error message, _ | _, Error message ->
+        page_failure t message
+    | Ok (session, fresh), Ok random ->
+        let nonce = Kit.Base64.encode_url random in
+        let csrf = Kit.Csrf.token ~secret:t.config.secret ~session:session.id in
+        let url = { (Url.of_string req.path) with query = req.query } in
+        let* res =
+          t.page
+            {
+              context = { request = req; session };
+              url;
+              csrf;
+              nonce;
+              asset = asset_url t;
+              asset_exn = asset_url_exn t;
+              handlers = t.handlers;
+              islands = t.islands;
+              dev = Option.is_some t.config.dev;
+              imports =
+                (fun public ->
+                  match t.assets with
+                  | Some assets ->
+                      Assets.imports assets public
+                  | None ->
+                      []
+                );
+            }
+        in
+        let res =
+          (match t.config.dev with Some _ -> with_dev_client res | None -> res)
+          |> with_header "cache-control" "private, no-store"
+          |> with_header "x-silica-nonce" nonce
+        in
+        Io.return
+          ( if fresh then
+              {
+                res with
+                headers = ("set-cookie", set_cookie t session.id) :: res.headers;
+              }
+            else
+              res
+          )
 
   let run_handler t (h : handler) context body =
     let* result = h.call context body in

@@ -102,6 +102,14 @@ let () =
         prerr_endline ("silica example: bad metafile: " ^ message);
         exit 1
   in
+  let script =
+    match Silica_server.Assets.resolve assets "client_main.js" with
+    | Some script ->
+        script
+    | None ->
+        prerr_endline "silica example: bad metafile: no client_main.js";
+        exit 1
+  in
   let t =
     Server.create config ~assets ~read:(Adapter.read_dir !static) ~handlers
       ~islands
@@ -115,8 +123,7 @@ let () =
         ]
       ~page:(fun (page : Server.page) ->
         Server.render_page_settled Example_app.app ~status:Example_app.status
-          ~scripts:[ page.asset "client_main.js" ]
-          page
+          ~scripts:[ script ] page
       )
       ()
   in

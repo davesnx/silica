@@ -332,6 +332,18 @@ let property_and_allowance () =
        [ 1; 1 ]
     )
 
+let spec_that_is_a_directory () =
+  let dir = Filename.temp_dir "silica-conform" "" in
+  let spec = Filename.concat dir "x.spec.txt" in
+  Sys.mkdir spec 0o755;
+  let loaded = Check_conform.load_specs ~only:[] dir in
+  Sys.rmdir spec;
+  Sys.rmdir dir;
+  Alcotest.(check (result int string))
+    "a directory named like a spec"
+    (Error (spec ^ ": Is a directory"))
+    (Result.map List.length loaded)
+
 let () =
   Alcotest.run "conform"
     [
@@ -351,7 +363,11 @@ let () =
         ]
       );
       ( "spec",
-        [ Alcotest.test_case "conformance by names" `Quick spec_conformance ]
+        [
+          Alcotest.test_case "conformance by names" `Quick spec_conformance;
+          Alcotest.test_case "a spec that does not read" `Quick
+            spec_that_is_a_directory;
+        ]
       );
       ( "check",
         [
