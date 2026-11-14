@@ -1169,44 +1169,78 @@ let rec take count = function
   | _ ->
       []
 
+let print_route ~print route =
+  match print route with
+  | url ->
+      Ok url
+  | exception (Failure message | Invalid_argument message) ->
+      Error message
+
+let first_url ~routes ~print =
+  match routes with
+  | [] ->
+      raise (Invalid_check "Check.app needs at least one route in ~routes")
+  | first :: _ -> (
+      match print_route ~print first with
+      | Ok url ->
+          url
+      | Error message ->
+          raise
+            (Invalid_check
+               ("Check.app cannot print the first route in ~routes: " ^ message)
+            )
+    )
+
 let link_problem ?is_not_found ~parse ~print href =
   let url = Url.of_string href in
   match parse url with
-  | Ok snapshot ->
-      let printed = Url.to_string (print snapshot) in
-      if printed <> Url.to_string { url with hash = None } then
-        Some
-          ("which is not canonical: the router prints that route as " ^ printed)
-      else if
-        match is_not_found with
-        | Some is_not_found ->
-            is_not_found snapshot
-        | None ->
-            false
-      then
-        Some "which parses to the not-found route"
-      else
-        None
+  | Ok snapshot -> (
+      match print_route ~print snapshot with
+      | Error message ->
+          Some ("which parses to a route that does not print: " ^ message)
+      | Ok printed ->
+          let printed = Url.to_string printed in
+          if printed <> Url.to_string { url with hash = None } then
+            Some
+              ("which is not canonical: the router prints that route as "
+             ^ printed
+              )
+          else if
+            match is_not_found with
+            | Some is_not_found ->
+                is_not_found snapshot
+            | None ->
+                false
+          then
+            Some "which parses to the not-found route"
+          else
+            None
+    )
   | Error message ->
       Some ("which does not parse: " ^ message)
 
-let round_trips ~parse ~print route =
-  match print route with
-  | url ->
-      parse url = Ok route
-  | exception Failure _ ->
-      false
+let round_trip ~parse ~print ~which route =
+  match print_route ~print route with
+  | Ok url when parse url = Ok route ->
+      None
+  | Ok url ->
+      Some
+        (Check_rules.finding "route-round-trip"
+           ~values:[ ("url", Url.to_string url) ]
+        )
+  | Error message ->
+      Some
+        {
+          (Check_rules.finding "route-round-trip"
+             ~values:[ ("route", which); ("error", message) ]
+          )
+          with
+          Check_rules.custom = Some Check_rules.unprintable_route_texts;
+        }
 
 let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
     ~parse ~print ?is_not_found ~url_event root =
-  let first =
-    match routes with
-    | [] ->
-        raise (Invalid_check "Check.app needs at least one route in ~routes")
-    | first :: _ ->
-        first
-  in
-  let url0 = print first in
+  let url0 = first_url ~routes ~print in
   let component : (_, _, _) Component.t = root url0 in
   let machine = component.machine in
   let host = host ~samples ~arrivals in
@@ -1421,13 +1455,7 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
         None
   in
   let route_findings world =
-    if round_trips ~parse ~print world.s then
-      []
-    else
-      [
-        Check_rules.finding "route-round-trip"
-          ~values:[ ("url", Url.to_string (print world.s)) ];
-      ]
+    Option.to_list (round_trip ~parse ~print ~which:"the route" world.s)
   in
   let link_findings view =
     List.filter_map
@@ -1489,17 +1517,18 @@ let app_model ~keys ~texts ~urls ~max_history ~inputs ~samples ~arrivals ~routes
       (fun ~values view actions -> Check_rules.focus_target ~values view actions);
     setup_findings =
       (fun () ->
-        List.filter_map
-          (fun route ->
-            if round_trips ~parse ~print route then
-              None
-            else
-              Some
-                (Check_rules.finding "route-round-trip"
-                   ~values:[ ("url", Url.to_string (print route)) ]
-                )
+        List.filter_map Fun.id
+          (List.mapi
+             (fun index route ->
+               round_trip ~parse ~print
+                 ~which:
+                   (Printf.sprintf "the route at position %d of ~routes"
+                      (index + 1)
+                   )
+                 route
+             )
+             routes
           )
-          routes
       );
     specs = (fun () -> [ spec_of recorder machine ]);
     unreached =

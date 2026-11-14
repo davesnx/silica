@@ -315,6 +315,12 @@ let empty_label_texts =
      or give the field an aria-label or an aria-labelledby."
   )
 
+let unprintable_route_texts =
+  ( "In state {state}, {route} does not print: {error}.",
+    "Make print give a URL for every route, for example list a Router.route \
+     whose data function gives data for it."
+  )
+
 let property_start_message =
   "The property \"{property}\" does not hold at a start, in state {state}: it \
    reads the step (Check.event, Check.transition, Check.entered), and a start \

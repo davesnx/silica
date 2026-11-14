@@ -581,7 +581,9 @@ let root_machine ~routes ~print root =
   | [] ->
       None
   | first :: _ ->
-      Some (root (print first)).Component.machine
+      Option.map
+        (fun url -> (root url).Component.machine)
+        (Result.to_option (Check_model.print_route ~print first))
 
 let app_state_json ~routes ~print root (state : _ app_state) =
   Option.bind (root_machine ~routes ~print root) (fun machine ->
@@ -655,13 +657,11 @@ let app_input_of ~routes ~print root (record : Transition.t) =
 
 let app_root ~routes ~print ~properties root =
   let url_of url =
-    match (url, routes) with
-    | Some url, _ ->
+    match url with
+    | Some url ->
         Url.of_string url
-    | None, first :: _ ->
-        print first
-    | None, [] ->
-        raise (Invalid_check "Check.app needs at least one route in ~routes")
+    | None ->
+        Check_model.first_url ~routes ~print
   in
   Root
     {
@@ -678,11 +678,8 @@ let app ?(max_states = 100_000) ?(max_violations = 50) ?(within = fun _ -> true)
     ~url_event root =
   let id =
     lazy
-      ( match routes with
-      | [] ->
-          raise (Invalid_check "Check.app needs at least one route in ~routes")
-      | first :: _ ->
-          Machine.id (root (print first)).Component.machine
+      (Machine.id
+         (root (Check_model.first_url ~routes ~print)).Component.machine
       )
   in
   let flat () =

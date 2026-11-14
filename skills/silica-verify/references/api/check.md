@@ -324,6 +324,8 @@ Besides the component rules, two rules hold:
 - `route-round-trip`: `parse (print route) = Ok route` for every route in `routes` and for the route of every reached state, so a `Silica.Router.route` whose constructor and data function disagree is found. Routes with a query: list one value with the default and one without.
 - `link-parses`: for the `href` of every `data-silica-link` anchor in a rendered view, `parse href` gives `Ok route` and `print route` is the same URL string (the link is canonical), and, when `is_not_found` is given, `route` is not the not-found route. A `parse` that gives `Error` fails the rule.
 
+A `print` that raises `Failure` or `Invalid_argument` for a route, as `Silica.Router.print` does for a route that no listed route gives data for, fails `route-round-trip` for that route and `link-parses` for a link to it, with the message of the exception. When the first route of `routes` does not print, or `routes` is empty, `run` raises `Invalid_check`.
+
 ```ocaml
 val id : ('s, 'ev) t -> string
 ```

@@ -820,6 +820,103 @@ let test_link_to_not_found () =
 let test_link_to_not_found_allowed_without_predicate () =
   passes (app ~extra:[ raw_link "/items/007" ] ())
 
+let violation_of rule report =
+  match
+    List.find_opt
+      (fun (violation : (_, _) Check.violation) -> violation.rule = rule)
+      report.Check.violations
+  with
+  | Some violation ->
+      violation
+  | None ->
+      Alcotest.failf "expected a violation of %s, got:\n%s" rule (print report)
+
+let test_round_trip_route_does_not_print () =
+  let print = function
+    | Item 8 ->
+        failwith "no listed route gives data for item 8"
+    | route ->
+        Router.print routes route
+  in
+  let violation =
+    violation_of "route-round-trip"
+      (app ~print ~routes_to_check:[ items_default; Item 8 ] ())
+  in
+  Alcotest.(check string)
+    "message"
+    "In state /items?sort, the route at position 2 of ~routes does not print: \
+     no listed route gives data for item 8."
+    violation.message
+
+let test_round_trip_reached_route_does_not_print () =
+  let print = function
+    | Item 7 ->
+        invalid_arg "Route.choice_query: the value is not in the list"
+    | route ->
+        Router.print routes route
+  in
+  let violation =
+    violation_of "route-round-trip"
+      (app ~print ~routes_to_check:[ items_default ] ())
+  in
+  Alcotest.(check string)
+    "message"
+    "In state /items/:int, the route does not print: Route.choice_query: the \
+     value is not in the list."
+    violation.message
+
+let test_first_route_does_not_print () =
+  let check =
+    Check.app ~routes:[ About; items_default ] ~parse:(Router.parse routes)
+      ~print:(function
+        | About ->
+            failwith "no listed route gives data for About"
+        | route ->
+            Router.print routes route
+        )
+      ~url_event:(fun url -> Router.Url_changed url)
+      (app_root ())
+  in
+  ( match Check.run check with
+  | exception Check.Invalid_check message ->
+      Alcotest.(check string)
+        "message"
+        "Check.app cannot print the first route in ~routes: no listed route \
+         gives data for About"
+        message
+  | report ->
+      Alcotest.fail ("expected Invalid_check, got:\n" ^ print report)
+  );
+  Alcotest.(check bool)
+    "no state JSON" true
+    (Check.state_json check
+       { router = About; history = [ Url.of_string "/about" ]; index = 0 }
+    = None
+    );
+  Alcotest.(check bool)
+    "no input JSON" true
+    (Check.input_json check (Event (Router.Url_changed (Url.of_string "/about")))
+    = None
+    )
+
+let test_link_route_does_not_print () =
+  let print = function
+    | About ->
+        failwith "no listed route gives data for About"
+    | route ->
+        Router.print routes route
+  in
+  let violation =
+    violation_of "link-parses" (app ~print ~routes_to_check:[ items_default ] ())
+  in
+  Alcotest.(check bool)
+    ("the problem: " ^ violation.message)
+    true
+    (contains violation.message
+       "goes to /about, which parses to a route that does not print: no listed \
+        route gives data for About."
+    )
+
 type stale_event = Leave | Back | Tick
 type stale_state = Waiting | Left | Fired | Late
 
@@ -3218,6 +3315,14 @@ let () =
             test_link_to_not_found;
           Alcotest.test_case "not-found link needs the predicate" `Quick
             test_link_to_not_found_allowed_without_predicate;
+          Alcotest.test_case "round trip: a route does not print" `Quick
+            test_round_trip_route_does_not_print;
+          Alcotest.test_case "round trip: a reached route does not print" `Quick
+            test_round_trip_reached_route_does_not_print;
+          Alcotest.test_case "the first route does not print" `Quick
+            test_first_route_does_not_print;
+          Alcotest.test_case "a link to a route that does not print" `Quick
+            test_link_route_does_not_print;
         ]
       );
     ]
