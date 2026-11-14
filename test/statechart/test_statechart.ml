@@ -91,7 +91,16 @@ let text_errors () =
     "open quote" "line 3: a quoted word has no closing quote"
     (error "machine m\ninitial a\nstate \"a\n");
   Alcotest.(check string) "no machine" "no machine line" (error "initial a\n");
-  Alcotest.(check string) "no initial" "no initial line" (error "machine m\n")
+  Alcotest.(check string) "no initial" "no initial line" (error "machine m\n");
+  Alcotest.(check string)
+    "an edge to an undeclared state" "edge a -> b: no state b"
+    (error "machine m\ninitial a\nstate a\nedge a -> b");
+  Alcotest.(check string)
+    "an undeclared initial state" "initial b: no state b"
+    (error "machine m\ninitial b\nstate a\n");
+  Alcotest.(check string)
+    "a stay in an undeclared state" "stay b: no state b"
+    (error "machine m\ninitial a\nstate a\nstay b on tick\n")
 
 let json_round_trip () =
   let through_text spec =
@@ -119,7 +128,21 @@ let json_errors () =
     "wrong type" "id: expected a string" (error {|{"id":1}|});
   Alcotest.(check string)
     "bad edge" "edges: expected an object with the field \"from\""
-    (error {|{"id":"m","init":"a","states":[],"edges":[["a"]]}|})
+    (error {|{"id":"m","init":"a","states":[],"edges":[["a"]]}|});
+  let state name =
+    Printf.sprintf
+      {|{"name":%S,"final":false,"timers":[],"network":[],"held":[]}|} name
+  in
+  Alcotest.(check string)
+    "an edge to an undeclared state" "edge a -> b: no state b"
+    (error
+       ({|{"id":"m","init":"a","states":[|} ^ state "a"
+      ^ {|],"edges":[{"from":"a","target":"b","event":"","kept":false}]}|}
+       )
+    );
+  Alcotest.(check string)
+    "an undeclared initial state" "initial b: no state b"
+    (error ({|{"id":"m","init":"b","states":[|} ^ state "a" ^ {|],"edges":[]}|}))
 
 let mermaid () =
   Alcotest.(check string)

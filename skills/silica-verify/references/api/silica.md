@@ -3761,7 +3761,7 @@ One `edge` line for each arrow, with the names of the events of its edges; one `
 val of_text : string -> (t, string) result
 ```
 
-Reads `to_text`. The edges come back sorted, without duplicates, as `Check` gives them. `Error` names the line it cannot read.
+Reads `to_text`. The edges come back sorted, without duplicates, as `Check` gives them. `Error` names the line it cannot read, or the item that names a state with no `state` line, such as `"edge a -> b: no state b"`.
 
 ```ocaml
 val to_mermaid : t -> string
@@ -3779,7 +3779,7 @@ An object with the fields `"id"`, `"init"`, `"states"` (objects with `"name"`, `
 val of_json : Silica_json.Json.t -> (t, string) result
 ```
 
-Reads `to_json`. `Error` names the field it cannot read.
+Reads `to_json`. `Error` names the field it cannot read, or the initial state, edge or kept step that names a state that is not in `"states"`, as `of_text` does.
 
 ```ocaml
 type change =

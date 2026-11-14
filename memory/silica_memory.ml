@@ -871,19 +871,14 @@ let natively_disabled (found : found) =
     ]
   && attr_value found.attrs "disabled" <> None
 
-let reachable action (element : element) =
+let reach action (element : element) =
   let chain = chain element in
   let refuse cause text =
-    raise
-      (Not_reachable
-         {
-           reason = cause;
-           message =
-             Printf.sprintf
-               "Silica_memory: the %s %s, so a browser does not deliver %s to \
-                it."
-               (describe_element element) text action;
-         }
+    Error
+      ( cause,
+        Printf.sprintf
+          "Silica_memory: the %s %s, so a browser does not deliver %s to it."
+          (describe_element element) text action
       )
   in
   let blocked (found : found) =
@@ -892,14 +887,14 @@ let reachable action (element : element) =
     else
       Hidden
   in
-  ( match
-      List.find_opt
-        (fun (found : found) ->
-          attr_value found.attrs "hidden" <> None
-          || attr_value found.attrs "inert" <> None
-        )
-        chain
-    with
+  match
+    List.find_opt
+      (fun (found : found) ->
+        attr_value found.attrs "hidden" <> None
+        || attr_value found.attrs "inert" <> None
+      )
+      chain
+  with
   | Some found when found.el.path = element.path ->
       refuse (blocked found)
         ( if attr_value found.attrs "inert" <> None then
@@ -916,22 +911,28 @@ let reachable action (element : element) =
                "that is hidden"
            )
         )
-  | None ->
+  | None -> (
+      match Accessibility.behind_modal (accessible_element element) with
+      | Some modal ->
+          refuse Inert ("is behind the modal " ^ describe_item modal)
+      | None -> (
+          match List.find_opt natively_disabled chain with
+          | Some found when found.el.path = element.path ->
+              refuse Disabled "is disabled"
+          | Some found ->
+              refuse Disabled
+                (Printf.sprintf "is inside the disabled %s" found.tag)
+          | None ->
+              Ok ()
+        )
+    )
+
+let reachable action element =
+  match reach action element with
+  | Ok () ->
       ()
-  );
-  ( match Accessibility.behind_modal (accessible_element element) with
-  | Some modal ->
-      refuse Inert ("is behind the modal " ^ describe_item modal)
-  | None ->
-      ()
-  );
-  match List.find_opt natively_disabled chain with
-  | Some found when found.el.path = element.path ->
-      refuse Disabled "is disabled"
-  | Some found ->
-      refuse Disabled (Printf.sprintf "is inside the disabled %s" found.tag)
-  | None ->
-      ()
+  | Error (reason, message) ->
+      raise (Not_reachable { reason; message })
 
 let hover e =
   let chain = chain e in
@@ -1831,18 +1832,33 @@ let drive handle (record : Transition.t) =
       | Error error ->
           Error (Not_found { seq = record.seq; error })
       | Ok found -> (
+          let reached action run =
+            match reach action found with
+            | Ok () ->
+                Ok (run found)
+            | Error (_, reason) ->
+                not_realisable reason
+          in
+          let focused run =
+            if has_focus handle found then
+              Ok (run ())
+            else
+              reached "focus" (fun found ->
+                  focus found;
+                  run ()
+              )
+          in
           match (handler, value) with
           | "press", _ ->
-              Ok (press found)
+              reached "a press" press
           | "double_press", _ ->
-              Ok (double_press found)
+              reached "a double press" double_press
           | "submit", _ ->
-              Ok (submit found)
+              reached "a submit" submit
           | "focus", _ ->
-              Ok (focus found)
+              reached "focus" focus
           | "blur", _ ->
-              if not (has_focus handle found) then focus found;
-              Ok (blur handle)
+              focused (fun () -> blur handle)
           | "pointer_leave", _ ->
               Ok (leave found)
           | "pointer_enter", _ ->
@@ -1853,13 +1869,11 @@ let drive handle (record : Transition.t) =
                 "the text typed into this password field is masked in the \
                  trace (see Silica.Secret), so it cannot be typed again"
           | "input", Some text ->
-              Ok (input found text)
+              reached "input" (fun found -> input found text)
           | "key_down", Some key_name ->
-              if not (has_focus handle found) then focus found;
-              Ok (key handle (Key.of_string key_name))
+              focused (fun () -> key handle (Key.of_string key_name))
           | "key_up", Some key_name ->
-              if not (has_focus handle found) then focus found;
-              Ok (key_up handle (Key.of_string key_name))
+              focused (fun () -> key_up handle (Key.of_string key_name))
           | _ ->
               not_realisable
                 ("the handler " ^ handler ^ " has no input in Silica_memory")
@@ -1976,8 +1990,13 @@ let drive handle (record : Transition.t) =
         Ok (forward handle)
       else
         match select handle "href" url with
-        | link :: _ ->
-            Ok (press link)
+        | link :: _ -> (
+            match reach "a press" link with
+            | Ok () ->
+                Ok (press link)
+            | Error (_, reason) ->
+                not_realisable reason
+          )
         | [] ->
             Ok (open_url handle url)
     )

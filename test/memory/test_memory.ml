@@ -1588,6 +1588,47 @@ let password_keys_are_masked () =
     (contains json "hunter2");
   Alcotest.(check bool) "and no typed key" false (contains json {|"x"|})
 
+let save_form ~disabled =
+  Component.make
+    (Test_apps.simple ~id:"save" ~init:0 (fun count () -> Some (count + 1, [])))
+    (fun count ->
+      Node.element "main" []
+        [
+          Node.element "p"
+            [ Attr.string "id" "count" ]
+            [ Node.text (string_of_int count) ];
+          Node.element "button"
+            [ Attr.on_press (); Attr.bool "disabled" disabled ]
+            [ Node.text "Save" ];
+        ]
+    )
+
+let replay_of_a_press_on_a_disabled_button () =
+  let memory = Memory.mount (save_form ~disabled:false) in
+  Memory.press (Memory.by_text memory "Save");
+  let press_seq =
+    List.find_map
+      (fun (record : Transition.t) ->
+        match[@warning "-4"] record.cause with
+        | Element { handler = "press"; _ } ->
+            Some record.seq
+        | _ ->
+            None
+      )
+      (Memory.trace memory).transitions
+  in
+  match
+    Memory.replay (Memory.mount (save_form ~disabled:true)) (Memory.trace memory)
+  with
+  | Not_realisable { seq; reason } ->
+      Alcotest.(check (option int)) "the step of the press" press_seq (Some seq);
+      string "the reason names the disabled button"
+        "Silica_memory: the button \"Save\" at main > button is disabled, so a \
+         browser does not deliver a press to it."
+        reason
+  | Replayed | Different _ | Not_found _ ->
+      Alcotest.fail "a replay pressed a disabled button"
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "memory"
@@ -1602,6 +1643,8 @@ let () =
             password_is_masked;
           case "a key typed into a password field is masked in the trace"
             password_keys_are_masked;
+          case "a replay of a press on a disabled button is not realisable"
+            replay_of_a_press_on_a_disabled_button;
           case "After fires later" after_fires_later;
           case "Call delivers success and sends the wire request" call_success;
           case "Call maps non-200, bad JSON and fetch failure" call_errors;

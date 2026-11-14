@@ -6,8 +6,9 @@
 val codec :
   to_json:('a -> Jsonkit.t) -> of_json:(Jsonkit.t -> 'a) -> 'a Silica.Codec.t
 (** The value goes through a safe copy of the JSON tree between [Jsonkit.t] and
-    [Silica_json.Json.t]. A decoder that raises [Jsonkit.Of_json_error] gives
-    [Error] with the text of the exception. Any other exception goes on. *)
+    [Silica_json.Json.t]. A decoder that raises, such as with
+    [Jsonkit.Of_json_error], [Failure] or [Not_found], gives [Error] with the
+    text of the exception. [Out_of_memory] and [Stack_overflow] go on. *)
 
 val to_json : 'a Silica.Codec.t -> 'a -> Jsonkit.t
 (** The encoder of a codec, for a hand-written [to_json] next to derived ones.

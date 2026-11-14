@@ -602,8 +602,10 @@ type replay_result =
       (** The step has no input in this platform: a timer that real time does
           not fire first, a held resource, the result of an action, an event of
           the host or of the inputs of a check, a preload, a step whose data the
-          trace does not hold, or text typed into a password field, which a
-          trace masks (see {!Silica.Secret}). *)
+          trace does not hold, text typed into a password field, which a trace
+          masks (see {!Silica.Secret}), or an element or link that a browser
+          does not deliver the input to: then [reason] is the message of
+          {!Not_reachable}. *)
   | Not_found of { seq : int; error : string }
 ```
 

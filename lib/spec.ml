@@ -363,6 +363,40 @@ let token word =
     Buffer.add_char b '"';
     Buffer.contents b
 
+let declared t =
+  let items =
+    ("initial " ^ token t.init, [ t.init ])
+    :: List.map
+         (fun l ->
+           ( ( if l.kept then
+                 "stay " ^ token l.from
+               else
+                 Printf.sprintf "edge %s -> %s" (token l.from) (token l.target)
+             ),
+             [ l.from; l.target ]
+           )
+         )
+         t.edges
+  in
+  match
+    List.find_map
+      (fun (item, names) ->
+        List.find_map
+          (fun name ->
+            if List.exists (fun s -> s.name = name) t.states then
+              None
+            else
+              Some (Printf.sprintf "%s: no state %s" item (token name))
+          )
+          names
+      )
+      items
+  with
+  | Some error ->
+      Error error
+  | None ->
+      Ok t
+
 let label_events t ~kept (a, c) =
   List.sort_uniq compare
     (List.filter_map
@@ -593,7 +627,7 @@ let of_text text =
   | _, None ->
       Error "no initial line"
   | Some id, Some init ->
-      Ok
+      declared
         {
           id;
           init;
@@ -776,7 +810,7 @@ let of_json json =
       )
       json
   in
-  Ok { id; init; states; edges }
+  declared { id; init; states; edges }
 
 type change =
   | Initial_changed of { before : string; after : string }

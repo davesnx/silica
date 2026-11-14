@@ -129,6 +129,27 @@ let tests =
         | Ok _ ->
             Alcotest.fail "expected an error"
     );
+    Alcotest.test_case "a hand-written decoder that raises is an error value"
+      `Quick (fun () ->
+        let raising exn =
+          Silica_jsonkit.codec ~to_json:Item.to_json ~of_json:(fun _ ->
+              raise exn
+          )
+        in
+        Alcotest.(check (list (result string string)))
+          "errors"
+          [ Error {|Failure("bad id")|}; Error "Not_found" ]
+          (List.map
+             (fun exn ->
+               Result.map
+                 (fun (_ : Item.t) -> "decoded")
+                 ((raising exn).Silica.Codec.decode
+                    (Silica_json.Json.declassify `Null)
+                 )
+             )
+             [ Failure "bad id"; Not_found ]
+          )
+    );
   ]
 
 let () = Alcotest.run "jsonkit" [ ("silica_jsonkit", tests) ]

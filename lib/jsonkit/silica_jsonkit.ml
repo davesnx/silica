@@ -25,7 +25,9 @@ let codec ~to_json ~of_json : _ Silica.Codec.t =
       match of_json (of_silica j) with
       | x ->
           Ok x
-      | exception (Jsonkit.Of_json_error _ as e) ->
+      | exception ((Out_of_memory | Stack_overflow) as e) ->
+          raise e
+      | exception e ->
           Error (Printexc.to_string e)
     )
 
@@ -50,7 +52,9 @@ let reader of_json =
       match of_json (of_silica json) with
       | value ->
           Ok value
-      | exception (Jsonkit.Of_json_error _ as error) ->
+      | exception ((Out_of_memory | Stack_overflow) as error) ->
+          raise error
+      | exception error ->
           Error (Printexc.to_string error)
     )
 
