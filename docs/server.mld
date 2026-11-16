@@ -284,7 +284,7 @@ yet. A handler publishes the new full state of a key with [Server.publish];
 each subscriber gets it with a sequence number one higher than the last. The
 example app publishes the votes after each vote:
 
-From [example/server/main.ml]:
+From [example/server/example_server.ml]:
 {@ocaml skip[
   let vote _ () =
     let n = Atomic.fetch_and_add votes 1 + 1 in
@@ -296,7 +296,7 @@ From [example/server/main.ml]:
   in
 ]}
 
-From [example/server/main.ml]:
+From [example/server/example_server.ml]:
 {@ocaml skip[
       ~topics:
         [

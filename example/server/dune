@@ -1,6 +1,14 @@
+(library
+ (name silica_example_server)
+ (wrapped false)
+ (modules example_server)
+ (libraries silica_example_app_native silica.server silica.adapter))
+
 (executable
  (name main)
+ (modules main)
  (libraries
+  silica_example_server
   silica_example_app_native
   silica.server
   silica.server-kit

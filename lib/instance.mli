@@ -70,7 +70,9 @@ type cause =
   | Start
   | Props  (** The parent gave new props. *)
   | End
-  | Message  (** A message of the host for the root (see {!val-message}). *)
+  | Message
+      (** A message of the host: for the root (see {!val-message}), or for an
+          instance (the [message] of {!type-running}). *)
   | Handler
       (** A handler of the view whose message is made with the view, such as a
           press: the element is the one that holds the delivered message (see
@@ -277,6 +279,9 @@ type running =
       machine : ('p, 's, 'e) Machine.t;
       props : 'p;
       snapshot : 's;
+      message : 'e -> message;
+          (** The message that gives the event to this instance, as a handler of
+              its view does, with the cause {!constructor-Message}. *)
     }
       -> running  (** An instance that is mounted. *)
 

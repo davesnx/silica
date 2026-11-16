@@ -178,6 +178,55 @@ codec, unless it is the snapshot that the machine starts in. Register the
 codecs in the development client for it, as [example/client] and the client
 of [silica new] do.
 
+{1:tools Tools for agents}
+
+An agent can use an app through the events of its machines, over the Model
+Context Protocol (MCP). {!Silica.Mcp.make} declares a tool: a name, a
+description that the model reads to choose it, and its arguments as a
+{!Silica.Mcp.Input.t}. One input value gives both the JSON Schema of the
+arguments and their decoder, so the two agree. {!Silica.Mcp.tools} binds the
+tools to the events of a machine:
+
+{@ocaml[
+let typed =
+  Silica.Mcp.make ~name:"word.type" ~description:"Type a word"
+    Silica.Mcp.Input.(field "text" ~description:"The word" string)
+
+let clear =
+  Silica.Mcp.make ~name:"word.clear" ~description:"Clear the word"
+    Silica.Mcp.Input.none
+
+let tools =
+  Silica.Mcp.tools Doc_debounce.machine
+    [
+      Silica.Mcp.on typed (fun text -> Doc_debounce.Typed text);
+      Silica.Mcp.on clear (fun () -> Doc_debounce.Clear);
+    ]
+]}
+
+The schema and the decoder of the arguments:
+
+{@ocaml[
+# Silica_json.Json.to_string
+    (Silica.Mcp.Input.schema (Silica.Mcp.input typed));;
+- : string =
+"{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"The word\"}},\"required\":[\"text\"],\"additionalProperties\":false}"
+# Silica.Mcp.Input.decode (Silica.Mcp.input typed)
+    (Result.get_ok
+       (Silica_json.Json.of_string {|{"text": "ocaml", "colour": "red"}|}));;
+- : (string, string) result = Error "unknown field colour"
+]}
+
+A call of a tool sends its event to a running instance of the machine. The
+update decides: a state that ignores the event refuses the call, and the
+answer names the state. Every tool of a machine also takes the optional
+argument [instance], the instance path of the instance that gets the event,
+for when several run. As with the codecs, keep the tools in a module that only
+the MCP server references, so a browser bundle carries none: the example app
+has [Example_tools], which only [example/mcp] uses. The server in [mcp/]
+([Silica_mcp]) runs the app on the memory platform and speaks MCP 2026-07-28
+over stdio.
+
 {1:make Make a machine}
 
 [Machine.make ~id ~init ~name update] makes the machine. [id] names the

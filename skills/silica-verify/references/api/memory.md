@@ -91,6 +91,20 @@ val lifecycle : _ t -> Runtime.state
 
 The state of the runtime: running, showing the error page, or stopped.
 
+**Instances**
+
+```ocaml
+val running : _ t -> Instance.running list
+```
+
+Every mounted instance of the current tree, parents before their children (see `Silica.Instance.running`). None while the error page shows or after `stop`; after "Try again" it is the new tree.
+
+```ocaml
+val send : _ t -> Instance.message -> unit
+```
+
+Give the message to the runtime, as the renderer gives the message of a handler: it runs through the queue, and the view paints again. Make it with the `message` of an instance from `running`.
+
 **View**
 
 ```ocaml

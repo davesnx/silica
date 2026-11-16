@@ -46,35 +46,6 @@ let () =
       );
     ]
     ignore "silica example server";
-  let item _ id =
-    if id < 0 then
-      Error (Printf.sprintf "no item %d" id)
-    else
-      Ok
-        {
-          Example_model.Item.id;
-          title = Printf.sprintf "Item %d" id;
-          price_cents = 100 * (id + 1);
-          tags = [ "demo" ];
-        }
-  in
-  let votes = Atomic.make 0 in
-  let server = ref None in
-  let vote _ () =
-    let n = Atomic.fetch_and_add votes 1 + 1 in
-    ignore
-      (Server.publish (Option.get !server) Example_model.votes_topic ~key:"main"
-         n
-      );
-    Ok n
-  in
-  let handlers =
-    [
-      Server.implement Example_model.item_endpoint item;
-      Server.implement Example_model.vote_endpoint vote;
-    ]
-  in
-  let islands = [ Server.Island Example_counter.live ] in
   let origins =
     match !origins with
     | [] ->
@@ -111,21 +82,7 @@ let () =
         exit 1
   in
   let t =
-    Server.create config ~assets ~read:(Adapter.read_dir !static) ~handlers
-      ~islands
-      ~topics:
-        [
-          Server.Topic_def
-            {
-              topic = Example_model.votes_topic;
-              init = (fun _ ~key:_ -> Ok (Atomic.get votes));
-            };
-        ]
-      ~page:(fun (page : Server.page) ->
-        Server.render_page_settled Example_app.app ~status:Example_app.status
-          ~scripts:[ script ] page
-      )
-      ()
+    Example_server.create config ~assets ~read:(Adapter.read_dir !static)
+      ~script
   in
-  server := Some t;
   Adapter.run ~port:!port ~on_stop:(fun () -> Server.shutdown t) t

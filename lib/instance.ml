@@ -985,6 +985,7 @@ type running =
       machine : ('p, 's, 'e) Machine.t;
       props : 'p;
       snapshot : 's;
+      message : 'e -> message;
     }
       -> running
 
@@ -1000,6 +1001,7 @@ let running tree =
              machine = cell.component.machine;
              props = cell.props;
              snapshot = cell.snapshot;
+             message = to_message Message cell;
            }
         :: found
         )
