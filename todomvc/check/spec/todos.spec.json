@@ -1,0 +1,185 @@
+{
+  "id": "todos",
+  "init": "empty",
+  "states": [
+    {
+      "name": "empty",
+      "final": false,
+      "timers": [],
+      "network": [],
+      "held": []
+    },
+    {
+      "name": "editing",
+      "final": false,
+      "timers": [],
+      "network": [],
+      "held": []
+    },
+    {
+      "name": "list",
+      "final": false,
+      "timers": [],
+      "network": [],
+      "held": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "editing",
+      "target": "editing",
+      "event": "edit",
+      "kept": true
+    },
+    {
+      "from": "editing",
+      "target": "editing",
+      "event": "edit draft",
+      "kept": true
+    },
+    {
+      "from": "editing",
+      "target": "empty",
+      "event": "clear completed",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "empty",
+      "event": "destroy",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "empty",
+      "event": "draft",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "empty",
+      "event": "save edit",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "empty",
+      "event": "toggle all",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "add",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "cancel edit",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "clear completed",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "destroy",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "draft",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "save edit",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "toggle",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "toggle all",
+      "kept": false
+    },
+    {
+      "from": "empty",
+      "target": "empty",
+      "event": "draft",
+      "kept": true
+    },
+    {
+      "from": "empty",
+      "target": "list",
+      "event": "add",
+      "kept": false
+    },
+    {
+      "from": "list",
+      "target": "editing",
+      "event": "edit",
+      "kept": false
+    },
+    {
+      "from": "list",
+      "target": "empty",
+      "event": "clear completed",
+      "kept": false
+    },
+    {
+      "from": "list",
+      "target": "empty",
+      "event": "destroy",
+      "kept": false
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "add",
+      "kept": true
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "clear completed",
+      "kept": true
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "destroy",
+      "kept": true
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "draft",
+      "kept": true
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "toggle",
+      "kept": true
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "toggle all",
+      "kept": true
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+open Silica
+open Todomvc_routes
+
+let render : route -> Router.event Node.t = function
+  | Todos filter ->
+      <Todomvc_todos filter />
+  | Not_found path ->
+      <section class_="todoapp">
+        <header class_="header"><h1>"todos"</h1></header>
+        <p class_="info">
+          (Node.text ("No page at " ^ path ^ ". "))
+          (Router.link routes (Todos All) [] [ Node.text "Show all todos" ])
+        </p>
+      </section>
+
+let app = Router.make routes ~title:(fun _ -> "silica • TodoMVC") ~render
+
+let status route =
+  if Router.is_not_found routes route then
+    404
+  else
+    200

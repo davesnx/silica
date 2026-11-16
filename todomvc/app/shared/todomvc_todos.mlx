@@ -1,0 +1,380 @@
+open Silica
+open Jsonkit.Primitives
+open Todomvc_routes
+
+type todo = { id : int; title : string; completed : bool } [@@deriving json]
+type edit = { todo : int; text : string } [@@deriving json]
+
+type state = {
+  todos : todo list;
+  draft : string;
+  editing : edit option;
+  next_id : int;
+}
+[@@deriving json]
+
+type event =
+  | Draft of string
+  | Add of string
+  | Toggle of int
+  | Toggle_all
+  | Destroy of int
+  | Clear_completed
+  | Edit of int
+  | Edit_draft of string
+  | Save_edit
+  | Cancel_edit
+[@@deriving json]
+
+let event_name = function
+  | Draft _ ->
+      "draft"
+  | Add _ ->
+      "add"
+  | Toggle _ ->
+      "toggle"
+  | Toggle_all ->
+      "toggle all"
+  | Destroy _ ->
+      "destroy"
+  | Clear_completed ->
+      "clear completed"
+  | Edit _ ->
+      "edit"
+  | Edit_draft _ ->
+      "edit draft"
+  | Save_edit ->
+      "save edit"
+  | Cancel_edit ->
+      "cancel edit"
+
+let name state =
+  match (state.editing, state.todos) with
+  | Some _, _ ->
+      "editing"
+  | None, [] ->
+      "empty"
+  | None, _ :: _ ->
+      "list"
+
+let init = { todos = []; draft = ""; editing = None; next_id = 1 }
+let edit_ref = Ref.make "todo-edit"
+let has id state = List.exists (fun todo -> todo.id = id) state.todos
+let all_completed state = List.for_all (fun todo -> todo.completed) state.todos
+
+let active_count state =
+  List.length (List.filter (fun todo -> not todo.completed) state.todos)
+
+let commit state =
+  match state.editing with
+  | None ->
+      state
+  | Some edit -> (
+      let others = List.filter (fun todo -> todo.id <> edit.todo) state.todos in
+      match String.trim edit.text with
+      | "" ->
+          { state with todos = others; editing = None }
+      | title ->
+          {
+            state with
+            todos =
+              List.map
+                (fun todo ->
+                  if todo.id = edit.todo then
+                    { todo with title }
+                  else
+                    todo
+                )
+                state.todos;
+            editing = None;
+          }
+    )
+
+let rec update filter state event : (state, event) Machine.next =
+  match (state.editing, event) with
+  | None, Draft draft ->
+      Go { state with draft }
+  | None, Add text -> (
+      match String.trim text with
+      | "" ->
+          Ignore
+      | title ->
+          Go
+            {
+              state with
+              todos =
+                state.todos
+                @ [ { id = state.next_id; title; completed = false } ];
+              draft = "";
+              next_id = state.next_id + 1;
+            }
+    )
+  | None, Toggle id when has id state ->
+      Go
+        {
+          state with
+          todos =
+            List.map
+              (fun todo ->
+                if todo.id = id then
+                  { todo with completed = not todo.completed }
+                else
+                  todo
+              )
+              state.todos;
+        }
+  | None, Toggle_all when state.todos <> [] ->
+      let completed = not (all_completed state) in
+      Go
+        {
+          state with
+          todos = List.map (fun todo -> { todo with completed }) state.todos;
+        }
+  | None, Destroy id when has id state ->
+      Go
+        {
+          state with
+          todos = List.filter (fun todo -> todo.id <> id) state.todos;
+        }
+  | None, Clear_completed when active_count state < List.length state.todos ->
+      Go
+        {
+          state with
+          todos = List.filter (fun todo -> not todo.completed) state.todos;
+        }
+  | None, Edit id -> (
+      match List.find_opt (fun todo -> todo.id = id) state.todos with
+      | Some todo ->
+          Go_with
+            ( { state with editing = Some { todo = id; text = todo.title } },
+              [ Action.Focus edit_ref ]
+            )
+      | None ->
+          Ignore
+    )
+  | Some edit, Edit_draft text ->
+      Go { state with editing = Some { edit with text } }
+  | Some _, Save_edit ->
+      Go (commit state)
+  | Some _, Cancel_edit ->
+      Go { state with editing = None }
+  | Some edit, Edit id when id = edit.todo ->
+      Ignore
+  | ( Some _,
+      ( Draft _
+      | Add _
+      | Toggle _
+      | Toggle_all
+      | Destroy _
+      | Clear_completed
+      | Edit _ ) ) -> (
+      let committed = commit state in
+      match update filter committed event with
+      | Ignore ->
+          Go committed
+      | next ->
+          next
+    )
+  | ( None,
+      ( Toggle _
+      | Toggle_all
+      | Destroy _
+      | Clear_completed
+      | Edit_draft _
+      | Save_edit
+      | Cancel_edit ) ) ->
+      Ignore
+
+let machine =
+  Machine.make_with_props ~id:"todos" ~init ~name
+    ~states:[ "empty"; "list"; "editing" ]
+    ~event_name update
+
+let text = Node.text
+
+let shown filter todo =
+  match filter with
+  | All ->
+      true
+  | Active ->
+      not todo.completed
+  | Completed ->
+      todo.completed
+
+let edit_keys key =
+  if Key.equal key Key.enter then
+    Some Save_edit
+  else if Key.equal key Key.escape then
+    Some Cancel_edit
+  else
+    None
+
+let open_keys id key =
+  if Key.equal key Key.enter || Key.equal key (Key.make " ") then
+    Some (Edit id)
+  else
+    None
+
+let row state todo =
+  let editing =
+    match state.editing with
+    | Some edit when edit.todo = todo.id ->
+        Some edit
+    | Some _ | None ->
+        None
+  in
+  let class_name =
+    Class.join
+      [
+        ( if todo.completed then
+            "completed"
+          else
+            ""
+        );
+        ( if editing <> None then
+            "editing"
+          else
+            ""
+        );
+      ]
+  in
+  Node.keyed (string_of_int todo.id)
+    ( match editing with
+    | Some edit ->
+        <li class_=class_name>
+          <input
+            class_="edit"
+            ref=edit_ref
+            aria_label=(Printf.sprintf "Edit todo %d" todo.id)
+            value=edit.text
+            on_input=(fun text -> Edit_draft text)
+            on_blur=Save_edit
+            on_key_down=edit_keys
+          />
+        </li>
+    | None ->
+        <li class_=class_name>
+          <div class_="view">
+            <input
+              class_="toggle"
+              type_=`checkbox
+              aria_label=(Printf.sprintf "Todo %d: %s" todo.id todo.title)
+              checked=todo.completed
+              on_press=(Toggle todo.id)
+            />
+            <label
+              role=`button
+              tabindex=0
+              on_double_press=(Edit todo.id)
+              on_key_down=(open_keys todo.id)>
+              (text todo.title)
+            </label>
+            <button
+              class_="destroy"
+              aria_label=(Printf.sprintf "Delete todo %d" todo.id)
+              on_press=(Destroy todo.id)
+            />
+          </div>
+        </li>
+    )
+
+let filter_link current filter label =
+  Router.link ~current:(Todos current) routes (Todos filter)
+    [
+      Attr.string "class"
+        ( if current = filter then
+            "selected"
+          else
+            ""
+        );
+    ]
+    [ text label ]
+
+let footer filter state =
+  let left = active_count state in
+  <footer class_="footer">
+    <span class_="todo-count">
+      <strong>(text (string_of_int left))</strong>
+      (text
+         ( if left = 1 then
+             " item left"
+           else
+             " items left"
+         )
+      )
+    </span>
+    <ul class_="filters">
+      <li>(filter_link filter All "All")</li>
+      <li>(filter_link filter Active "Active")</li>
+      <li>(filter_link filter Completed "Completed")</li>
+    </ul>
+    ( if left < List.length state.todos then
+        <button class_="clear-completed" on_press=Clear_completed>
+          "Clear completed"
+        </button>
+      else
+        Node.list []
+    )
+  </footer>
+
+let add_key state key =
+  if Key.equal key Key.enter && String.trim state.draft <> "" then
+    Some (Add state.draft)
+  else
+    None
+
+let view filter state =
+  Node.list
+    [
+      <section class_="todoapp">
+        <header class_="header">
+          <h1>"todos"</h1>
+          <input
+            class_="new-todo"
+            placeholder="What needs to be done?"
+            aria_label="New todo"
+            autofocus=true
+            value=state.draft
+            on_input=(fun draft -> Draft draft)
+            on_key_down=(add_key state)
+          />
+        </header>
+        ( match state.todos with
+        | [] ->
+            Node.list []
+        | _ :: _ ->
+            Node.list
+              [
+                <section class_="main">
+                  <input
+                    id="toggle-all"
+                    class_="toggle-all"
+                    type_=`checkbox
+                    checked=(all_completed state)
+                    on_press=Toggle_all
+                  />
+                  <label for_="toggle-all">"Mark all as complete"</label>
+                  <ul class_="todo-list">
+                    (Node.list
+                       (List.map (row state)
+                          (List.filter (shown filter) state.todos)
+                       )
+                    )
+                  </ul>
+                </section>;
+                footer filter state;
+              ]
+        )
+      </section>;
+      <footer class_="info">
+        <p>"Double-click to edit a todo"</p>
+        <p>
+          "Written with "
+          <a href="https://github.com/davesnx/silica">"silica"</a>
+        </p>
+        <p>"Part of " <a href="http://todomvc.com">"TodoMVC"</a></p>
+      </footer>;
+    ]
+
+let component = Component.make_with_props machine view
+let make ~filter () = Component.node_with_props ~props:filter component

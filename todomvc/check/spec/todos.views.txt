@@ -1,0 +1,986 @@
+state empty
+path
+  (start)
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state empty, view 2
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state empty, view 3
+path
+  empty -> empty on draft, by the view offers input " " on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 2
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 3
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" current=page href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 4
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 5
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 6
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 7
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+  text "0 items left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 8
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 9
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 10
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "0 items left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" current=page href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 11
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" current=page href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 12
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" current=page href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 13
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 14
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 15
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  list -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      checkbox "Todo 1: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 1" [press]
+    listitem
+      checkbox "Todo 2: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 2" [press]
+  text "2 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list, view 16
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+  text "0 items left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state list: 47 more views, past the bound of 16 views a state
+
+state editing
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 2
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 3
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 4
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+  editing -> editing on edit draft, by the view offers input " " on textbox "Edit todo 1" at section > section > ul > li > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value=" " [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 5
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+  editing -> editing on props, by new props
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" current=page href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 6
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 7
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 8
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+  editing -> editing on edit draft, by the view offers input " " on textbox "Edit todo 1" at section > section > ul > li > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value=" " [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 9
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 10
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "1 item left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 11
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "0 items left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" current=page href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 12
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+  editing -> editing on edit draft, by the view offers input " " on textbox "Edit todo 1" at section > section > ul > li > input
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value=" " [input, blur, key_down]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 13
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+  editing -> editing on props, by new props
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+  text "0 items left"
+  list
+    listitem
+      link "All" href="/"
+    listitem
+      link "Active" current=page href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 14
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="milk" [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 15
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on toggle all, by the view offers press on checkbox "Mark all as complete" at section > section > input
+  list -> list on draft, by the view offers input " " on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value=" " [input, key_down]
+  checkbox "Mark all as complete" checked [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+  text "0 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  button "Clear completed" [press]
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing, view 16
+path
+  empty -> empty on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  empty -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> list on draft, by the view offers input "milk" on textbox "New todo" at section > header > input
+  list -> list on add, by the view offers key_down Enter on textbox "New todo" at section > header > input
+  list -> editing on edit, by the view offers double_press on button "milk" at section > section > ul > li[1] > div > label
+view
+  heading "todos" level=1
+  textbox "New todo" value="" [input, key_down]
+  checkbox "Mark all as complete" checked=false [press]
+  text "Mark all as complete"
+  list
+    listitem
+      textbox "Edit todo 1" value="milk" [input, blur, key_down]
+    listitem
+      checkbox "Todo 2: milk" checked=false [press]
+      button "milk" [double_press, key_down]
+      button "Delete todo 2" [press]
+  text "2 items left"
+  list
+    listitem
+      link "All" current=page href="/"
+    listitem
+      link "Active" href="/active"
+    listitem
+      link "Completed" href="/completed"
+  contentinfo
+    text "Double-click to edit a todo"
+    text "Written with"
+    link "silica" href="https://github.com/davesnx/silica"
+    text "Part of"
+    link "TodoMVC" href="http://todomvc.com"
+
+state editing: 149 more views, past the bound of 16 views a state

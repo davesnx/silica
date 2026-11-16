@@ -1,0 +1,53 @@
+(dirs)
+
+(melange.emit
+ (target out)
+ (alias client-js)
+ (modules client_main dev_codecs)
+ (module_systems
+  (esm mjs))
+ (libraries silica_todomvc_app_melange silica.browser silica.json-melange))
+
+(rule
+ (enabled_if
+  (= %{profile} release))
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  ../../example/client/package.json
+  (source_tree ../../example/client/node_modules))
+ (action
+  (run
+   ../../example/client/node_modules/esbuild/bin/esbuild
+   out/todomvc/client/client_main.mjs
+   --bundle
+   --format=esm
+   --outdir=dist
+   --entry-names=[name]-[hash]
+   --metafile=meta.json)))
+
+(rule
+ (enabled_if
+  (<> %{profile} release))
+ (targets
+  (dir dist)
+  meta.json)
+ (deps
+  (alias client-js)
+  ../../example/client/package.json
+  (source_tree ../../example/client/node_modules))
+ (action
+  (run
+   ../../example/client/node_modules/esbuild/bin/esbuild
+   out/todomvc/client/client_main.mjs
+   --bundle
+   --format=esm
+   --outdir=dist
+   --entry-names=[name]-[hash]
+   --metafile=meta.json
+   --sourcemap
+   --sources-content=false
+   --inject:out/node_modules/silica.browser/hot_reload.mjs
+   --inject:out/todomvc/client/dev_codecs.mjs)))
