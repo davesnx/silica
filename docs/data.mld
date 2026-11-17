@@ -263,10 +263,25 @@ pending changes in the snapshot, as before.
 
 {2:islands Islands}
 
-A Live component runs its machine on the server, one instance for each
-connection: the client sends events and gets the state. It is declared with
-{!Silica.Live.declare} and placed in a view with {!Silica.Live.slot}. See
-{!page-hydration.islands}.
+A Live component runs its machine on the server: the client sends events and
+gets the state. It is declared with {!Silica.Live.declare} and placed in a
+view with {!Silica.Live.slot}. See {!page-hydration.islands}.
+
+The server runs an island in one of two ways:
+
+- [Island live]: one instance for each session and instance id of the page.
+- [Shared (live, shared)]: one instance for every socket of every session.
+  {!Silica_server.Make.share} starts it. All tabs see the same state, and an
+  event from one tab changes the state in all of them. Several channels can
+  show one shared instance, each with its own view, as the three filters of
+  TodoMVC do.
+
+On a shared island, each socket keeps its own event ids and gets its own
+[ack]. The host actions of a step, such as [Focus], go only to the socket
+whose event made the step. A step from {!Silica_server.Make.val-send}, a timer or
+a call sends its state with no actions. {!Silica_server.Make.snapshot} gives
+the state now. The server HTML of a shared island shows the current state, not
+the initial state. A shared instance keeps nothing across a restart.
 
 {1:next Next}
 

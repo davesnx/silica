@@ -38,8 +38,12 @@ val start :
     loss, the client first schedules the next connect with [io.schedule] (the
     {!Backoff} delay), so that connect is the first task that the loss
     schedules; then [on_down] runs, once for a socket that had no loss before.
-    The next state runs [on_state]. [on_fatal] runs once, and the client does
-    not connect again. After a close with {!Protocol.close_session},
+    The next state runs [on_state]. A state whose [ack] is below the id of an
+    event that the client sent on the same socket does not run [on_state]: it
+    lacks that event, and painting it would undo input that the server has not
+    seen, such as the text typed into a field. Its actions wait, and run with
+    the next state that has every event sent. [on_fatal] runs once, and the
+    client does not connect again. After a close with {!Protocol.close_session},
     [io.session_gone] runs first. After {!stop}, no callback runs. *)
 
 val send_event : t -> 'e Codec.t -> 'e -> unit

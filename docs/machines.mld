@@ -223,9 +223,55 @@ answer names the state. Every tool of a machine also takes the optional
 argument [instance], the instance path of the instance that gets the event,
 for when several run. As with the codecs, keep the tools in a module that only
 the MCP server references, so a browser bundle carries none: the example app
-has [Example_tools], which only [example/mcp] uses. The server in [mcp/]
-([Silica_mcp]) runs the app on the memory platform and speaks MCP 2026-07-28
-over stdio.
+has [Example_tools], which only [example/mcp] uses.
+
+The MCP server is in [mcp/] ([Silica_mcp]). It speaks MCP 2026-07-28 only. It
+runs the app on a host, and the host sets the transport:
+
+- [Silica_mcp.memory] runs the app on the memory platform, in the process of
+  the MCP server. It answers the Remote calls and runs the timers. Use it with
+  [Silica_mcp.serve], which reads and writes JSON-RPC over stdio. The example
+  app does this in [example/mcp].
+- [Silica_mcp.server] drives machines that run on the silica server, such as a
+  shared instance ({!Silica_server.Make.share}). Each
+  [Silica_mcp.instance] gives the state of an instance now and sends an event
+  to it. Give [Silica_mcp.http] to {!Silica_server.Make.create} as [mcp]: the
+  server then answers MCP over streamable HTTP at {!Silica_server.mcp_path}
+  ([/mcp]). TodoMVC does this, so the agent and every open tab use one list.
+
+From [todomvc/server/todomvc_server.ml]:
+{@ocaml skip[
+let mcp todos =
+  let snapshot () = Server.snapshot todos in
+  Silica_mcp.make ~name:"silica-todomvc" ~version:"0.0.0"
+    ~instructions:Todomvc_tools.instructions ~routes:Todomvc_tools.routes
+    Todomvc_tools.publications
+    (Silica_mcp.server ~app:Todomvc_app.app
+       ~islands:
+         (List.map
+            (fun live -> Silica_mcp.island live snapshot)
+            Todomvc_live.islands
+         )
+       [
+         Silica_mcp.instance Todomvc_todos.machine ~path:"shared" ~props:()
+           ~snapshot ~send:(Server.send todos);
+       ]
+    )
+]}
+
+A request to [/mcp] gets the same size and [sec-fetch-site] checks as other
+requests. The server checks the [Origin] header when it is present, and
+answers 403 when the origin is not allowed. A request without [Origin] is
+accepted: an MCP client is not a browser and sends no [Origin], cookie or
+CSRF token. A browser always sends [Origin] with a [POST], so a page of
+another site cannot reach [/mcp].
+
+On the server host, the agent has its own URL. It starts at [/] and only
+[navigate] changes it. It is not the URL of a tab, and [navigate] changes no
+tab. [read] gives the view text of the app at that URL, with each island of
+[islands] at the current state of its shared instance. The other machines of
+the app start fresh for each [read]; only the instances of the list take
+events.
 
 {1:make Make a machine}
 

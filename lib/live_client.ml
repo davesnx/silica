@@ -19,6 +19,8 @@ type t = {
   mutable down : bool;
   mutable attempt : int;
   mutable next_id : int;
+  mutable sent : int;
+  mutable deferred : Protocol.host list;
   mutable cancel_timer : unit -> unit;
   mutable detach : unit -> unit;
   mutable stated : bool;
@@ -56,6 +58,8 @@ let finish_socket t =
   t.cancel_timer <- ignore;
   t.ready <- false;
   t.stated <- false;
+  t.sent <- 0;
+  t.deferred <- [];
   Option.iter (fun (ws : Platform.socket) -> ws.close 1000) t.socket;
   t.socket <- None
 
@@ -113,13 +117,19 @@ let rec connect t =
             t.attempt <- 0;
             t.down <- false;
             t.stated <- true;
-            t.on_state ~seq ~state ~actions;
+            if ack >= t.sent then (
+              let actions = t.deferred @ actions in
+              t.deferred <- [];
+              t.on_state ~seq ~state ~actions
+            ) else
+              t.deferred <- t.deferred @ actions;
             let all = List.rev t.held in
             t.held <- [];
             List.iter
               (fun held ->
                 held.expire ();
                 send (held.encode t.next_id);
+                t.sent <- t.next_id;
                 t.next_id <- t.next_id + 1
               )
               all
@@ -182,6 +192,8 @@ let start ?(config = default_config) ~io ~sub ~on_state ~on_down ~on_fatal () =
       down = false;
       attempt = 0;
       next_id = 1;
+      sent = 0;
+      deferred = [];
       cancel_timer = ignore;
       detach = ignore;
       stated = false;
@@ -196,6 +208,7 @@ let send_event t codec event =
   match t.socket with
   | Some ws when t.ready && t.stated && not t.stopped ->
       ws.Platform.send (encode t.next_id);
+      t.sent <- t.next_id;
       t.next_id <- t.next_id + 1
   | _ when t.stopped ->
       ()

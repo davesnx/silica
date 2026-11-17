@@ -37,29 +37,142 @@ let string_member name json =
           None
   )
 
+type instance =
+  | Machine_instance : {
+      machine : ('p, 's, 'e) Machine.t;
+      path : string;
+      props : 'p;
+      snapshot : unit -> 's;
+      send : 'e -> (bool, string) result;
+    }
+      -> instance
+
+let instance machine ~path ~props ~snapshot ~send =
+  Machine_instance { machine; path; props; snapshot; send }
+
+type island = Island_view : ('s, 'e) Live.t * (unit -> 's) -> island
+
+let island live snapshot = Island_view (live, snapshot)
+
+type host = {
+  settle : unit -> (unit, string) result;
+  url : unit -> string;
+  open_url : string -> (unit, string) result;
+  instances : unit -> instance list;
+  read : unit -> (string * Json.t) list;
+}
+
+let settle ~answer app =
+  let rec loop round =
+    Memory.advance app 0;
+    match Memory.pending app with
+    | [] ->
+        Ok ()
+    | requests when round < max_rounds ->
+        List.iter
+          (fun request ->
+            let status, body = answer request in
+            Memory.reply ~status request body
+          )
+          requests;
+        loop (round + 1)
+    | requests ->
+        Error
+          (Printf.sprintf "The app still makes calls after %d rounds: %s."
+             max_rounds
+             (String.concat ", " (List.map Memory.path requests))
+          )
+  in
+  loop 0
+
+let memory ~answer app =
+  let settle () = settle ~answer app in
+  {
+    settle;
+    url = (fun () -> Memory.url app);
+    open_url =
+      (fun url ->
+        Memory.open_url app url;
+        settle ()
+      );
+    instances =
+      (fun () ->
+        List.map
+          (fun (Instance.Running running) ->
+            Machine_instance
+              {
+                machine = running.machine;
+                path = running.path;
+                props = running.props;
+                snapshot = (fun () -> running.snapshot);
+                send =
+                  (fun event ->
+                    Memory.send app (running.message event);
+                    Result.map (fun () -> true) (settle ())
+                  );
+              }
+          )
+          (Memory.running app)
+      );
+    read =
+      (fun () ->
+        [
+          ("timers", list (List.map int (Memory.timers app)));
+          ("page", text (Memory.view_text app));
+        ]
+      );
+  }
+
+let server ?(url = "/") ~app ~islands instances =
+  let current = Atomic.make url in
+  let island channel =
+    List.find_map
+      (fun (Island_view (live, snapshot)) ->
+        if live.Live.channel = channel then
+          Some (Node.map ignore (live.component.view () (snapshot ())))
+        else
+          None
+      )
+      islands
+  in
+  {
+    settle = (fun () -> Ok ());
+    url = (fun () -> Atomic.get current);
+    open_url =
+      (fun url ->
+        Atomic.set current url;
+        Ok ()
+      );
+    instances = (fun () -> instances);
+    read =
+      (fun () ->
+        let tree = Instance.mount (app (Url.of_string (Atomic.get current))) in
+        let view, _ = Instance.update tree None in
+        ignore (Instance.unmount tree);
+        [ ("page", text (View_text.to_string ~island view)) ]
+      );
+  }
+
 type tool =
   | Read : tool
   | Navigate : routes * string Mcp.t -> tool
   | Event : ('p, 's, 'e) Machine.t * 'e Mcp.call Mcp.t -> tool
 
-type t =
-  | Server : {
-      name : string;
-      version : string;
-      instructions : string option;
-      answer : Memory.request -> int * string;
-      tools : (string * Json.t * tool) list;
-      published : int list;
-      app : 'p Memory.t;
-    }
-      -> t
+type t = {
+  name : string;
+  version : string;
+  instructions : string option;
+  tools : (string * Json.t * tool) list;
+  published : int list;
+  host : host;
+}
 
 let read_tool =
   Mcp.make ~name:"read"
     ~description:
       "The current URL, the running instances of the published machines with \
-       their states, the timers that wait (delays in ms), and the text of the \
-       page."
+       their states, and the text of the page; an app that runs in memory also \
+       gives the timers that wait (delays in ms)."
     ~annotations:(Mcp.annotations ~read_only:true ~open_world:false ())
     Mcp.Input.none
 
@@ -77,7 +190,7 @@ let navigate_tool (Routes { patterns; _ }) =
 
 let machine_uid machine = Type.Id.uid (Machine.type_id machine)
 
-let make ~name ~version ?instructions ~answer ?routes publications app =
+let make ~name ~version ?instructions ?routes publications host =
   let entry tool kind = (Mcp.name tool, Mcp.definition tool, kind) in
   let tools =
     ( match routes with
@@ -103,32 +216,30 @@ let make ~name ~version ?instructions ~answer ?routes publications app =
         check (tool :: seen) rest
   in
   check [] tools;
-  Server
-    {
-      name;
-      version;
-      instructions;
-      answer;
-      tools;
-      published =
-        List.map
-          (fun (Mcp.Publication { machine; _ }) -> machine_uid machine)
-          publications;
-      app;
-    }
+  {
+    name;
+    version;
+    instructions;
+    tools;
+    published =
+      List.map
+        (fun (Mcp.Publication { machine; _ }) -> machine_uid machine)
+        publications;
+    host;
+  }
 
 type ('p, 's, 'e) found = {
   path : string;
   props : 'p;
   snapshot : 's;
-  message : 'e -> Instance.message;
+  send : 'e -> (bool, string) result;
 }
 
 let instances : type p s e.
-    (p, s, e) Machine.t -> Instance.running list -> (p, s, e) found list =
- fun machine running ->
+    (p, s, e) Machine.t -> instance list -> (p, s, e) found list =
+ fun machine listed ->
   List.filter_map
-    (fun (Instance.Running other) : (p, s, e) found option ->
+    (fun (Machine_instance other) : (p, s, e) found option ->
       match
         Type.Id.provably_equal (Machine.type_id machine)
           (Machine.type_id other.machine)
@@ -138,54 +249,31 @@ let instances : type p s e.
             {
               path = other.path;
               props = other.props;
-              snapshot = other.snapshot;
-              message = other.message;
+              snapshot = other.snapshot ();
+              send = other.send;
             }
       | None ->
           None
     )
-    running
+    listed
 
-let settle ~answer app =
-  let rec loop round =
-    Memory.advance app 0;
-    match Memory.pending app with
-    | [] ->
-        Ok ()
-    | requests when round < max_rounds ->
-        List.iter
-          (fun request ->
-            let status, body = answer request in
-            Memory.reply ~status request body
-          )
-          requests;
-        loop (round + 1)
-    | requests ->
-        Error
-          (Printf.sprintf "The app still makes calls after %d rounds: %s."
-             max_rounds
-             (String.concat ", " (List.map Memory.path requests))
-          )
-  in
-  loop 0
-
-let summary ~published app =
-  let state (Instance.Running { path; machine; snapshot; _ }) =
+let summary ~published host =
+  let state (Machine_instance { path; machine; snapshot; _ }) =
     if List.mem (machine_uid machine) published then
       Some
         (assoc
            [
              ("machine", text (Machine.id machine));
              ("instance", text path);
-             ("state", text (Machine.name machine snapshot));
+             ("state", text (Machine.name machine (snapshot ())));
            ]
         )
     else
       None
   in
   [
-    ("url", text (Memory.url app));
-    ("instances", list (List.filter_map state (Memory.running app)));
+    ("url", text (host.url ()));
+    ("instances", list (List.filter_map state (host.instances ())));
   ]
 
 let decode tool arguments =
@@ -196,26 +284,21 @@ let decode tool arguments =
     )
     (Mcp.Input.decode (Mcp.input tool) arguments)
 
-let read app arguments =
+let read host arguments =
   let* () = decode read_tool arguments in
-  Ok
-    [
-      ("timers", list (List.map int (Memory.timers app)));
-      ("page", text (Memory.view_text app));
-    ]
+  Ok (host.read ())
 
-let navigate ~answer app (Routes { routes; published; _ }) tool arguments =
+let navigate host (Routes { routes; published; _ }) tool arguments =
   let* url = decode tool arguments in
   let* route =
     Result.map_error
       (fun reason -> Printf.sprintf "The URL %s: %s" url reason)
       (Router.parse routes (Url.of_string url))
   in
-  if published route then (
-    Memory.open_url app url;
-    let* () = settle ~answer app in
+  if published route then
+    let* () = host.open_url url in
     Ok []
-  ) else
+  else
     Error
       (Printf.sprintf "The URL %s is the route %s, which is not published." url
          (Router.name routes route)
@@ -249,55 +332,61 @@ let choose machine ~url instance found =
     )
 
 let send_event : type p s e.
-    answer:(Memory.request -> int * string) ->
-    _ Memory.t ->
+    host ->
     (p, s, e) Machine.t ->
     e Mcp.call Mcp.t ->
     Json.t ->
     ((string * Json.t) list, string) result =
- fun ~answer app machine tool arguments ->
+ fun host machine tool arguments ->
   let* { Mcp.event; instance } = decode tool arguments in
   let* found =
-    choose machine ~url:(Memory.url app) instance
-      (instances machine (Memory.running app))
+    choose machine ~url:(host.url ()) instance
+      (instances machine (host.instances ()))
   in
-  if Machine.can_with_props machine found.props found.snapshot event then (
-    Memory.send app (found.message event);
-    let* () = settle ~answer app in
-    let state =
-      List.find_map
-        (fun after ->
-          if after.path = found.path then
-            Some (text (Machine.name machine after.snapshot))
-          else
-            None
-        )
-        (instances machine (Memory.running app))
-    in
-    Ok
-      [
-        ("instance", text found.path);
-        ("state", Option.value state ~default:(Json.declassify `Null));
-      ]
-  ) else
+  let refused snapshot =
     Error
       (Printf.sprintf "%s at %s is in the state %s, which ignores %s."
          (Machine.id machine) found.path
-         (Machine.name machine found.snapshot)
+         (Machine.name machine snapshot)
          (Mcp.name tool)
       )
+  in
+  if Machine.can_with_props machine found.props found.snapshot event then
+    let* handled = found.send event in
+    let after =
+      List.find_opt
+        (fun after -> after.path = found.path)
+        (instances machine (host.instances ()))
+    in
+    match (handled, after) with
+    | false, Some after ->
+        refused after.snapshot
+    | false, None | true, _ ->
+        Ok
+          [
+            ("instance", text found.path);
+            ( "state",
+              match after with
+              | Some after ->
+                  text (Machine.name machine after.snapshot)
+              | None ->
+                  Json.declassify `Null
+            );
+          ]
+  else
+    refused found.snapshot
 
-let call ~answer ~published app tool arguments =
+let call ~published host tool arguments =
   let outcome =
     try
-      let* () = settle ~answer app in
+      let* () = host.settle () in
       match tool with
       | Read ->
-          read app arguments
+          read host arguments
       | Navigate (routes, tool) ->
-          navigate ~answer app routes tool arguments
+          navigate host routes tool arguments
       | Event (machine, tool) ->
-          send_event ~answer app machine tool arguments
+          send_event host machine tool arguments
     with exn -> Error ("The app failed: " ^ Printexc.to_string exn)
   in
   let block value =
@@ -305,7 +394,7 @@ let call ~answer ~published app tool arguments =
   in
   match outcome with
   | Ok fields ->
-      let structured = assoc (fields @ summary ~published app) in
+      let structured = assoc (fields @ summary ~published host) in
       [
         ("content", block (Json.to_string structured));
         ("structuredContent", structured);
@@ -358,9 +447,7 @@ let check_meta id params =
             )
     )
 
-let handle
-    (Server { name; version; instructions; answer; tools; published; app })
-    message =
+let handle { name; version; instructions; tools; published; host } message =
   let complete id fields =
     assoc
       [
@@ -422,7 +509,7 @@ let handle
         | Some tool, `Assoc _ -> (
             match List.find_opt (fun (other, _, _) -> other = tool) tools with
             | Some (_, _, tool) ->
-                complete id (call ~answer ~published app tool arguments)
+                complete id (call ~published host tool arguments)
             | None ->
                 error id (-32602) ("Unknown tool: " ^ tool)
           )
@@ -475,3 +562,150 @@ let serve ?(input = stdin) ?(output = stdout) server =
         loop ()
   in
   loop ()
+
+let header_mismatch id message =
+  Error (error id (-32020) ("Header mismatch: " ^ message))
+
+let same_name ~header name =
+  header = name
+  || header = "=?base64?" ^ Silica_server_kit.Base64.encode name ^ "?="
+
+let check_headers header message id meth =
+  let params = Option.value (member "params" message) ~default:(assoc []) in
+  let body_version =
+    Option.bind (member "_meta" params)
+      (string_member "io.modelcontextprotocol/protocolVersion")
+  in
+  match (header "mcp-protocol-version", header "mcp-method") with
+  | None, _ ->
+      header_mismatch id "the request has no MCP-Protocol-Version header."
+  | Some version, _
+    when Option.fold ~none:false
+           ~some:(fun body -> body <> version)
+           body_version ->
+      header_mismatch id
+        (Printf.sprintf
+           "MCP-Protocol-Version header value '%s' does not match body value \
+            '%s'."
+           version
+           (Option.value body_version ~default:"")
+        )
+  | Some _, None ->
+      header_mismatch id "the request has no Mcp-Method header."
+  | Some _, Some method_header when method_header <> meth ->
+      header_mismatch id
+        (Printf.sprintf
+           "Mcp-Method header value '%s' does not match body value '%s'."
+           method_header meth
+        )
+  | Some _, Some _ -> (
+      match (meth, string_member "name" params) with
+      | "tools/call", Some name -> (
+          match header "mcp-name" with
+          | None ->
+              header_mismatch id "the request has no Mcp-Name header."
+          | Some value when not (same_name ~header:value name) ->
+              header_mismatch id
+                (Printf.sprintf
+                   "Mcp-Name header value '%s' does not match body value '%s'."
+                   value name
+                )
+          | Some _ ->
+              Ok ()
+        )
+      | _ ->
+          Ok ()
+    )
+
+let status_of answer =
+  match
+    Option.bind (member "error" answer) (fun error ->
+        Option.bind (member "code" error) (fun code ->
+            match Json.classify code with
+            | `Int code ->
+                Some code
+            | `Null | `Bool _ | `Float _ | `String _ | `List _ | `Assoc _ ->
+                None
+        )
+    )
+  with
+  | Some -32601 ->
+      404
+  | Some (-32700 | -32600 | -32020 | -32022) ->
+      400
+  | Some _ | None ->
+      200
+
+let http server (request : Silica_server.request) : Silica_server.response =
+  let header name =
+    List.find_map
+      (fun (key, value) ->
+        if String.lowercase_ascii key = name then
+          Some value
+        else
+          None
+      )
+      request.headers
+  in
+  let json status body : Silica_server.response =
+    {
+      status;
+      headers = [ ("content-type", "application/json") ];
+      body = Json.to_string body;
+    }
+  in
+  let null = Json.declassify `Null in
+  let is_json content_type =
+    String.length content_type >= 16
+    && String.lowercase_ascii (String.sub content_type 0 16)
+       = "application/json"
+  in
+  if request.meth <> "POST" then
+    {
+      status = 405;
+      headers =
+        [ ("allow", "POST"); ("content-type", "text/plain; charset=utf-8") ];
+      body = "The MCP endpoint takes one JSON-RPC message by POST.";
+    }
+  else
+    match header "content-type" with
+    | Some content_type when is_json content_type -> (
+        match Json.of_string request.body with
+        | Error reason ->
+            json 400 (error null (-32700) ("Parse error: " ^ reason))
+        | Ok message -> (
+            let id = Option.value (member "id" message) ~default:null in
+            match string_member "method" message with
+            | None ->
+                json 400
+                  (error id (-32600)
+                     "The body must be one JSON-RPC request or notification, \
+                      an object with a method."
+                  )
+            | Some meth -> (
+                let checked =
+                  match member "id" message with
+                  | Some id ->
+                      check_headers header message id meth
+                  | None ->
+                      Ok ()
+                in
+                match checked with
+                | Error answer ->
+                    json 400 answer
+                | Ok () -> (
+                    match handle server message with
+                    | None ->
+                        { status = 202; headers = []; body = "" }
+                    | Some answer ->
+                        json (status_of answer) answer
+                  )
+              )
+          )
+      )
+    | Some _ | None ->
+        {
+          status = 415;
+          headers = [ ("content-type", "text/plain; charset=utf-8") ];
+          body = "The MCP endpoint takes application/json.";
+        }

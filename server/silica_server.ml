@@ -133,6 +133,7 @@ let secret_of_env ~origins ~dev =
 let cookie_name = "silica_sid"
 let csrf_header = "x-silica-csrf"
 let live_path = "/_silica/live"
+let mcp_path = "/mcp"
 let health_path = "/_silica/health"
 let dev_client_path = "/_silica/dev/client.js"
 
@@ -386,19 +387,49 @@ module Make (Io : IO) = struct
   let ( let* ) = Io.bind
 
   type context = { request : request; session : Session.session }
-  type island = Island : ('s, 'e) Live.t -> island
+  type runner = {
+    receive : string -> unit Io.t;
+    event : subscriber:int -> int -> Json.t -> unit Io.t;
+    resend : unit -> unit Io.t;
+    set_send : (string -> unit Io.t) option -> unit;
+    attach :
+      int -> send:(string -> unit Io.t) -> stop:(unit -> unit) -> unit Io.t;
+    detach : int -> unit;
+    alive : unit -> bool;
+    close : unit -> unit;
+    save : unit -> ((string * Json.t) list, string) result;
+  }
+
+  type ('s, 'e) shared = {
+    machine : (unit, 's, 'e) Machine.t;
+    runner : runner;
+    current : unit -> 's;
+    submit : 'e -> (bool, string) result Io.t;
+  }
+
+  type island =
+    | Island : ('s, 'e) Live.t -> island
+    | Shared : ('s, 'e) Live.t * ('s, 'e) shared -> island
+
+  let island_channel = function
+    | Island live ->
+        live.Live.channel
+    | Shared (live, _) ->
+        live.Live.channel
 
   let island_html islands channel =
     List.find_map
-      (fun (Island l) ->
-        if l.Live.channel = channel then
-          Some
-            (Render.to_string
-               (l.component.view () (Machine.init l.component.machine))
-            )
-        else
-          None
-      )
+      (function
+        | Island live when live.Live.channel = channel ->
+            Some
+              (Render.to_string
+                 (live.component.view () (Machine.init live.component.machine))
+              )
+        | Shared (live, shared) when live.Live.channel = channel ->
+            Some (Render.to_string (live.component.view () (shared.current ())))
+        | Island _ | Shared _ ->
+            None
+        )
       islands
 
   type outcome = {
@@ -663,15 +694,6 @@ module Make (Io : IO) = struct
               page (Instance.failure ?dev ?on_error exn)
           )
 
-  type runner = {
-    receive : string -> unit Io.t;
-    event : int -> Json.t -> unit Io.t;
-    resend : unit -> unit Io.t;
-    set_send : (string -> unit Io.t) option -> unit;
-    close : unit -> unit;
-    save : unit -> ((string * Json.t) list, string) result;
-  }
-
   let call_endpoint : type i o x.
       handler list ->
       context ->
@@ -708,8 +730,29 @@ module Make (Io : IO) = struct
               Remote.Failed (Remote.Http 500)
           )
 
-  let start_runner ~log ?(on_close = ignore) ?observe ?resume
-      (live : (_, _) Live.t) ~handlers ~context ~send =
+  type subscriber = {
+    mutable send : (string -> unit Io.t) option;
+    mutable received : int;
+    mutable last : int;
+    stop : unit -> unit;
+  }
+
+  let solo = 0
+  let submit_timeout = 10.
+
+  let start_runner : type s e.
+      log:(string -> unit) ->
+      ?on_close:(unit -> unit) ->
+      ?observe:Instance.observer ->
+      ?resume:s * int * int ->
+      shared:bool ->
+      (s, e) Live.t ->
+      handlers:handler list ->
+      context:context ->
+      send:(string -> unit Io.t) option ->
+      (runner * (unit -> s) * (e -> (bool, string) result Io.t)) Io.t =
+   fun ~log ?(on_close = ignore) ?observe ?resume ~shared live ~handlers
+       ~context ~send ->
     let machine = live.component.machine in
     let state = ref (Machine.init machine) in
     let entry = ref 0 in
@@ -741,9 +784,11 @@ module Make (Io : IO) = struct
     let channel = live.channel in
     let owned : (string, int) Hashtbl.t = Hashtbl.create 8 in
     let next_token = ref 0 in
-    let sender = ref (Some send) in
+    let subscribers : (int, subscriber) Hashtbl.t = Hashtbl.create 4 in
+    if not shared then
+      Hashtbl.replace subscribers solo
+        { send; received = 0; last = 0; stop = ignore };
     let seq = ref 0 in
-    let last_id = ref 0 in
     let fail e =
       log (Printf.sprintf "live %s: %s" channel (Printexc.to_string e));
       Mutex.lock lock;
@@ -751,8 +796,16 @@ module Make (Io : IO) = struct
       running := false;
       let first = not !closed in
       closed := true;
+      let stops =
+        Hashtbl.fold
+          (fun _ subscriber stops -> subscriber.stop :: stops)
+          subscribers []
+      in
       Mutex.unlock lock;
-      if first then on_close ()
+      if first then (
+        List.iter (fun stop -> stop ()) stops;
+        on_close ()
+      )
     in
     let rec drain () =
       Mutex.lock lock;
@@ -786,22 +839,49 @@ module Make (Io : IO) = struct
         drain ()
       )
     in
-    let send_state actions =
-      match !sender with
-      | None ->
-          Io.return ()
-      | Some send ->
-          incr seq;
-          send
-            (Protocol.encode_state live.state ~seq:!seq ~ack:!last_id !state
-               (List.filter_map Protocol.host_of_host_action actions)
-            )
+    let send_state ?only ~origin actions =
+      let host = List.filter_map Protocol.host_of_host_action actions in
+      let messages =
+        Mutex.protect lock (fun () ->
+            let targets =
+              Hashtbl.fold
+                (fun key subscriber targets ->
+                  match subscriber.send with
+                  | Some send when only = None || only = Some key ->
+                      (key, send, subscriber.last) :: targets
+                  | Some _ | None ->
+                      targets
+                )
+                subscribers []
+            in
+            if targets <> [] then incr seq;
+            List.map
+              (fun (key, send, ack) ->
+                let actions =
+                  if (not shared) || origin = Some key then
+                    host
+                  else
+                    []
+                in
+                ( send,
+                  Protocol.encode_state live.state ~seq:!seq ~ack !state actions
+                )
+              )
+              targets
+        )
+      in
+      List.fold_left
+        (fun previous (send, message) ->
+          let* () = previous in
+          send message
+        )
+        (Io.return ()) messages
     in
-    let rec publish actions =
-      let* () = send_state actions in
+    let rec publish ~origin actions =
+      let* () = send_state ~origin actions in
       List.iter run actions;
       Io.return ()
-    and step ?finished ~cause event () =
+    and step ?finished ?origin ?(handled = ignore) ~cause event () =
       let from = !state in
       let s, actions, how = Machine.step ?finished machine !state event in
       state := s;
@@ -816,7 +896,8 @@ module Make (Io : IO) = struct
             Instance.Entered
       in
       observed ~from:(Some from) ~event:(Some event) change actions cause;
-      publish actions
+      handled (how <> Machine.Unhandled);
+      publish ~origin actions
     and run = function
       | Action.Start_timer { id; ms; event } ->
           let token = start id in
@@ -875,38 +956,103 @@ module Make (Io : IO) = struct
           | Some (snapshot, ack, resumed_entry) ->
               state := snapshot;
               entry := resumed_entry;
-              last_id := ack;
+              Mutex.protect lock (fun () ->
+                  Option.iter
+                    (fun subscriber ->
+                      subscriber.received <- ack;
+                      subscriber.last <- ack
+                    )
+                    (Hashtbl.find_opt subscribers solo)
+              );
               let actions = Machine.resume machine snapshot in
               observed ~from:None ~event:None Instance.Resumed actions
                 Instance.Start;
-              publish actions
+              publish ~origin:None actions
           | None ->
               let s, actions = Machine.start machine in
               state := s;
               observed ~from:None ~event:None Instance.Started actions
                 Instance.Start;
-              publish actions
+              publish ~origin:None actions
       )
     in
-    let event id json =
-      if id <= !last_id then
+    let event ~subscriber id json =
+      let fresh =
+        Mutex.protect lock (fun () ->
+            match Hashtbl.find_opt subscribers subscriber with
+            | Some known when id > known.received ->
+                known.received <- id;
+                true
+            | Some _ | None ->
+                false
+        )
+      in
+      if not fresh then
         Io.return ()
       else
-        match Protocol.decode_event_payload live.event json with
-        | Error e ->
-            log (Printf.sprintf "live %s: dropped event: %s" channel e);
-            Io.return ()
-        | Ok e ->
-            last_id := id;
-            enqueue (step ~cause:Instance.Message e)
+        let decoded = Protocol.decode_event_payload live.event json in
+        enqueue (fun () ->
+            Mutex.protect lock (fun () ->
+                Option.iter
+                  (fun known -> known.last <- id)
+                  (Hashtbl.find_opt subscribers subscriber)
+            );
+            match decoded with
+            | Error e ->
+                log (Printf.sprintf "live %s: dropped event: %s" channel e);
+                Io.return ()
+            | Ok e ->
+                step ~origin:subscriber ~cause:Instance.Message e ()
+        )
     in
-    Io.return
+    let submit event =
+      if !closed then
+        Io.return
+          (Error
+             (Printf.sprintf "The machine %s stopped after an error."
+                (Machine.id machine)
+             )
+          )
+      else
+        let answer = Io.promise () in
+        let* () =
+          enqueue (fun () ->
+              match
+                step
+                  ~handled:(fun handled -> Io.resolve answer (Ok handled))
+                  ~cause:Instance.Message event ()
+              with
+              | io ->
+                  io
+              | exception exn ->
+                  Io.resolve answer
+                    (Error
+                       (Printf.sprintf "The machine %s failed: %s"
+                          (Machine.id machine) (Printexc.to_string exn)
+                       )
+                    );
+                  raise exn
+          )
+        in
+        let* result = Io.await answer ~timeout:submit_timeout in
+        Io.return
+          ( match result with
+          | Some result ->
+              result
+          | None ->
+              Error
+                (Printf.sprintf "The machine %s did not take the event in %g s."
+                   (Machine.id machine) submit_timeout
+                )
+          )
+    in
+    let runner =
       {
         receive =
           (fun msg ->
             match Protocol.decode_client msg with
             | Ok (Protocol.Event { id; event = json }) ->
-                event id json
+                event ~subscriber:solo id json
             | Ok _ ->
                 log
                   (Printf.sprintf "live %s: dropped message: not an event"
@@ -918,8 +1064,28 @@ module Make (Io : IO) = struct
                 Io.return ()
           );
         event;
-        resend = (fun () -> enqueue (fun () -> publish []));
-        set_send = (fun next -> sender := next);
+        resend = (fun () -> enqueue (fun () -> publish ~origin:None []));
+        set_send =
+          (fun next ->
+            Mutex.protect lock (fun () ->
+                Option.iter
+                  (fun subscriber -> subscriber.send <- next)
+                  (Hashtbl.find_opt subscribers solo)
+            )
+          );
+        attach =
+          (fun key ~send ~stop ->
+            Mutex.protect lock (fun () ->
+                Hashtbl.replace subscribers key
+                  { send = Some send; received = 0; last = 0; stop }
+            );
+            enqueue (fun () -> send_state ~only:key ~origin:None [])
+          );
+        detach =
+          (fun key ->
+            Mutex.protect lock (fun () -> Hashtbl.remove subscribers key)
+          );
+        alive = (fun () -> not !closed);
         close =
           (fun () ->
             if not !closed then (
@@ -932,22 +1098,53 @@ module Make (Io : IO) = struct
           (fun () ->
             Result.map
               (fun (codec : _ Codec.t) ->
+                let ack =
+                  Mutex.protect lock (fun () ->
+                      match Hashtbl.find_opt subscribers solo with
+                      | Some subscriber ->
+                          subscriber.last
+                      | None ->
+                          0
+                  )
+                in
                 [
                   ("machine", Json.declassify (`String (Machine.id machine)));
                   ("snapshot", codec.encode !state);
-                  ("ack", Json.declassify (`Int !last_id));
+                  ("ack", Json.declassify (`Int ack));
                   ("entry", Json.declassify (`Int !entry));
                 ]
               )
               (Machine.state_codec machine)
           );
       }
+    in
+    Io.return (runner, (fun () -> !state), submit)
 
   let stderr_log line = Printf.eprintf "silica: %s\n%!" line
 
   let live ?on_close ?observe live ~handlers ~context ~send =
-    start_runner ~log:stderr_log ?on_close ?observe live ~handlers ~context
-      ~send
+    let* runner, _, _ =
+      start_runner ~log:stderr_log ?on_close ?observe ~shared:false live
+        ~handlers ~context ~send:(Some send)
+    in
+    Io.return runner
+
+  let server_context =
+    {
+      request =
+        { meth = "GET"; path = "/"; query = []; headers = []; body = "" };
+      session = { Session.id = ""; created = 0.; last_seen = 0.; data = [] };
+    }
+
+  let share ?(handlers = []) live =
+    let* runner, current, submit =
+      start_runner ~log:stderr_log ~shared:true live ~handlers
+        ~context:server_context ~send:None
+    in
+    Io.return { machine = live.component.machine; runner; current; submit }
+
+  let snapshot shared = shared.current ()
+  let send shared event = shared.submit event
 
   let receive r msg = r.receive msg
   let resend r = r.resend ()
@@ -1020,6 +1217,7 @@ module Make (Io : IO) = struct
     handlers : handler list;
     islands : island list;
     topics : topic_def list;
+    mcp : (request -> response Io.t) option;
     page : page -> response Io.t;
     observe_live : (context -> channel:string -> Instance.observer) option;
     inspector : Inspect_target.t option;
@@ -1034,10 +1232,26 @@ module Make (Io : IO) = struct
     mutable stopped : bool;
   }
 
-  let empty config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
-      () =
+  let empty config ?assets ?observe_live ~read ~handlers ~islands ~topics ?mcp
+      ~page () =
     if String.length config.secret < 16 then
       invalid_arg "Silica_server.create: secret must have at least 16 bytes";
+    List.iter
+      (function
+        | Shared (live, shared)
+          when Machine.id live.component.machine <> Machine.id shared.machine ->
+            invalid_arg
+              (Printf.sprintf
+                 "Silica_server.create: the island %s runs the machine %s, its \
+                  shared instance runs %s"
+                 live.channel
+                 (Machine.id live.component.machine)
+                 (Machine.id shared.machine)
+              )
+        | Shared _ | Island _ ->
+            ()
+        )
+      islands;
     {
       config;
       assets;
@@ -1045,6 +1259,7 @@ module Make (Io : IO) = struct
       handlers;
       islands;
       topics;
+      mcp;
       page;
       observe_live;
       inspector =
@@ -1095,57 +1310,66 @@ module Make (Io : IO) = struct
     let named reason =
       Printf.sprintf "island %S (instance %S): %s" channel instance reason
     in
-    let+ (Island live) =
+    let+ island =
       Option.to_result
         ~none:(named "no island has this channel")
-        (List.find_opt (fun (Island l) -> l.Live.channel = channel) t.islands)
+        (List.find_opt (fun island -> island_channel island = channel) t.islands)
     in
-    let machine = live.component.machine in
-    let+ () =
-      match t.config.sessions.get ~now session with
-      | Some _ ->
-          Ok ()
-      | None ->
-          Error (named "its session is gone")
-    in
-    let+ () =
-      match string_field fields "machine" with
-      | Ok id when id = Machine.id machine ->
-          Ok ()
-      | Ok id ->
-          Error
-            (named
-               (Printf.sprintf "it ran the machine %S, the channel now has %S"
-                  id (Machine.id machine)
-               )
-            )
-      | Error message ->
-          Error (named message)
-    in
-    let+ (codec : _ Codec.t) =
-      Result.map_error named (Machine.state_codec machine)
-    in
-    let+ snapshot =
-      Result.map_error
-        (fun message -> named ("its snapshot does not decode: " ^ message))
-        (Codec.field "snapshot" codec json)
-    in
-    let+ ack = Result.map_error named (count_field fields "ack") in
-    let+ entry = Result.map_error named (count_field fields "entry") in
-    Ok
-      ( (session, channel, instance),
-        {
-          saved = json;
-          since = now;
-          start =
-            (fun ~on_close ~observe context ~send ->
-              start_runner
-                ~log:(log t ~source:"silica.live")
-                ~on_close ?observe ~resume:(snapshot, ack, entry) live
-                ~handlers:t.handlers ~context ~send
-            );
-        }
-      )
+    match island with
+    | Shared _ ->
+        Error (named "a shared island is not saved")
+    | Island live ->
+        let machine = live.component.machine in
+        let+ () =
+          match t.config.sessions.get ~now session with
+          | Some _ ->
+              Ok ()
+          | None ->
+              Error (named "its session is gone")
+        in
+        let+ () =
+          match string_field fields "machine" with
+          | Ok id when id = Machine.id machine ->
+              Ok ()
+          | Ok id ->
+              Error
+                (named
+                   (Printf.sprintf
+                      "it ran the machine %S, the channel now has %S" id
+                      (Machine.id machine)
+                   )
+                )
+          | Error message ->
+              Error (named message)
+        in
+        let+ (codec : _ Codec.t) =
+          Result.map_error named (Machine.state_codec machine)
+        in
+        let+ snapshot =
+          Result.map_error
+            (fun message -> named ("its snapshot does not decode: " ^ message))
+            (Codec.field "snapshot" codec json)
+        in
+        let+ ack = Result.map_error named (count_field fields "ack") in
+        let+ entry = Result.map_error named (count_field fields "entry") in
+        Ok
+          ( (session, channel, instance),
+            {
+              saved = json;
+              since = now;
+              start =
+                (fun ~on_close ~observe context ~send ->
+                  let* runner, _, _ =
+                    start_runner
+                      ~log:(log t ~source:"silica.live")
+                      ~on_close ?observe ~resume:(snapshot, ack, entry)
+                      ~shared:false live ~handlers:t.handlers ~context
+                      ~send:(Some send)
+                  in
+                  Io.return runner
+                );
+            }
+          )
 
   let read_private_file t path =
     match Unix.lstat path with
@@ -1399,14 +1623,19 @@ module Make (Io : IO) = struct
             ended
         )
       in
-      List.iter (fun (inst : instance) -> inst.runner.close ()) ended
+      List.iter (fun (inst : instance) -> inst.runner.close ()) ended;
+      List.iter
+        (function
+          | Shared (_, shared) -> shared.runner.close () | Island _ -> ()
+          )
+        t.islands
     )
 
-  let create config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
-      () =
+  let create config ?assets ?observe_live ~read ~handlers ~islands ~topics ?mcp
+      ~page () =
     let t =
-      empty config ?assets ?observe_live ~read ~handlers ~islands ~topics ~page
-        ()
+      empty config ?assets ?observe_live ~read ~handlers ~islands ~topics ?mcp
+        ~page ()
     in
     Option.iter (load_state t) config.dev;
     t
@@ -1726,26 +1955,44 @@ module Make (Io : IO) = struct
             )
         )
 
-  let route t (req : request) =
-    if req.meth = "GET" && req.path = health_path then
-      Io.return (with_header "cache-control" "no-store" (text 200 "ok"))
-    else if req.meth = "GET" then
-      if
-        t.config.assets_prefix <> ""
-        && starts_with ~prefix:t.config.assets_prefix req.path
-      then
-        serve_asset t req
-      else if List.exists (fun h -> h.path = req.path) t.handlers then
-        Io.return (text 405 "method not allowed")
-      else
-        serve_page t req
-    else if List.exists (fun h -> h.path = req.path) t.handlers then
-      if req.meth = "POST" then
-        serve_call t req
-      else
-        Io.return (text 405 "method not allowed")
+  let serve_mcp t mcp (req : request) =
+    let forbidden = Io.return (text 403 "forbidden") in
+    if String.length req.body > t.config.max_body then
+      Io.return (text 413 "payload too large")
+    else if not (fetch_site_ok req.headers) then
+      forbidden
     else
-      Io.return (text 404 "not found")
+      match header "origin" req.headers with
+      | Some origin when not (origin_allowed t.config.origins req.headers origin)
+        ->
+          forbidden
+      | Some _ | None ->
+          mcp req
+
+  let route t (req : request) =
+    match t.mcp with
+    | Some mcp when req.path = mcp_path ->
+        serve_mcp t mcp req
+    | Some _ | None ->
+        if req.meth = "GET" && req.path = health_path then
+          Io.return (with_header "cache-control" "no-store" (text 200 "ok"))
+        else if req.meth = "GET" then
+          if
+            t.config.assets_prefix <> ""
+            && starts_with ~prefix:t.config.assets_prefix req.path
+          then
+            serve_asset t req
+          else if List.exists (fun h -> h.path = req.path) t.handlers then
+            Io.return (text 405 "method not allowed")
+          else
+            serve_page t req
+        else if List.exists (fun h -> h.path = req.path) t.handlers then
+          if req.meth = "POST" then
+            serve_call t req
+          else
+            Io.return (text 405 "method not allowed")
+        else
+          Io.return (text 404 "not found")
 
   let handle t (req : request) =
     let started = t.config.now () in
@@ -1841,7 +2088,7 @@ module Make (Io : IO) = struct
                 let hello_island channel instance_id =
                   match
                     List.find_opt
-                      (fun (Island l) -> l.Live.channel = channel)
+                      (fun island -> island_channel island = channel)
                       t.islands
                   with
                   | None ->
@@ -1849,6 +2096,22 @@ module Make (Io : IO) = struct
                         send_server (Protocol.Error { code = "unknown_island" })
                       in
                       fail_hello Protocol.close_unknown
+                  | Some (Shared (_, shared)) ->
+                      if shared.runner.alive () then (
+                        let* () =
+                          send_server
+                            (Protocol.Hello_ok { v = Protocol.version })
+                        in
+                        attached := `Shared shared.runner;
+                        shared.runner.attach id
+                          ~send:(warning_send t socket.send) ~stop:(fun () ->
+                            close_with Protocol.close_server_error
+                        )
+                      ) else
+                        let* () =
+                          send_server (Protocol.Error { code = "unavailable" })
+                        in
+                        fail_hello Protocol.close_server_error
                   | Some (Island l) -> (
                       let key = (session.id, channel, instance_id) in
                       let replaced = ref None in
@@ -1922,10 +2185,14 @@ module Make (Io : IO) = struct
                                 restored.start ~on_close:drop_instance ~observe
                                   context ~send
                             | None ->
-                                start_runner
-                                  ~log:(log t ~source:"silica.live")
-                                  ~on_close:drop_instance ?observe l
-                                  ~handlers:t.handlers ~context ~send
+                                let* runner, _, _ =
+                                  start_runner
+                                    ~log:(log t ~source:"silica.live")
+                                    ~on_close:drop_instance ?observe
+                                    ~shared:false l ~handlers:t.handlers
+                                    ~context ~send:(Some send)
+                                in
+                                Io.return runner
                           in
                           let inst =
                             {
@@ -2063,7 +2330,10 @@ module Make (Io : IO) = struct
                         fail_hello Protocol.close_hello
                     | Ok (Protocol.Event { id = event_id; event }), `Island inst
                       ->
-                        inst.runner.event event_id event
+                        inst.runner.event ~subscriber:solo event_id event
+                    | ( Ok (Protocol.Event { id = event_id; event }),
+                        `Shared runner ) ->
+                        runner.event ~subscriber:id event_id event
                     | Ok (Protocol.Event _), `Topic _ ->
                         log t ~source:"silica.live"
                           "dropped an event on a topic socket";
@@ -2093,6 +2363,8 @@ module Make (Io : IO) = struct
                           | None ->
                               ()
                         )
+                      | `Shared (runner : runner) ->
+                          runner.detach id
                       | `Waiting ->
                           ()
                   );

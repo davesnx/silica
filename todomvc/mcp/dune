@@ -1,5 +1,6 @@
-(executable
- (name todomvc_mcp)
+(library
+ (name silica_todomvc_tools)
+ (wrapped false)
  (modes native)
- (modules todomvc_mcp todomvc_tools)
- (libraries silica silica.memory silica_mcp silica_todomvc_app_native))
+ (modules todomvc_tools)
+ (libraries silica silica_mcp silica_todomvc_app_native))

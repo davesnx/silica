@@ -536,6 +536,7 @@ let live_tests =
         let r = start () in
         Server.receive r.session "garbage";
         Server.receive r.session {|{"t":"event","id":9,"event":"nope"}|};
+        r.next_id <- 9;
         send r Inc;
         check states_t "ignored" [ (0, []); (1, []) ] (states r)
     );
@@ -561,6 +562,7 @@ let live_tests =
               Server.receive r.session {|{"t":"event","id":9,"event":"nope"}|}
           )
         in
+        r.next_id <- 9;
         check_contains "logged" err "counter";
         check_contains "logged" err "nope";
         send r Inc;

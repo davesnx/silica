@@ -5,9 +5,9 @@ rankdir=LR;
 "todos.empty" [label="empty" shape=box];
 "todos.editing" [label="editing" shape=box];
 "todos.list" [label="list" shape=box];
-"todos.editing" -> "todos.empty" [label="clear completed, destroy, draft, save edit, toggle all"];
-"todos.editing" -> "todos.list" [label="add, cancel edit, clear completed, destroy, draft, save edit, toggle, toggle all"];
-"todos.empty" -> "todos.list" [label="add"];
+"todos.editing" -> "todos.empty" [label="add, add draft, clear completed, destroy, draft, save edit, toggle all"];
+"todos.editing" -> "todos.list" [label="add, add draft, cancel edit, clear completed, destroy, draft, save edit, toggle, toggle all"];
+"todos.empty" -> "todos.list" [label="add, add draft"];
 "todos.list" -> "todos.editing" [label="edit"];
 "todos.list" -> "todos.empty" [label="clear completed, destroy"];
 }

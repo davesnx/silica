@@ -1,5 +1,3 @@
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -27,32 +25,44 @@ const meta = {
   "io.modelcontextprotocol/clientCapabilities": {},
 };
 
-const executable = process.argv[2] ?? "_build/default/todomvc/mcp/todomvc_mcp.exe";
-const server = spawn(executable, [], { stdio: ["pipe", "pipe", "inherit"] });
-const lines = createInterface({ input: server.stdout });
-
-const waiting = new Map<number, (response: Response) => void>();
+const endpoint = process.argv[2] ?? "http://127.0.0.1:5000/mcp";
 const called = new Set<string>();
 let failures = 0;
 let nextId = 1;
 
-lines.on("line", (line) => {
-  console.log(`<- ${line}`);
-  const message = JSON.parse(line) as Response;
-  const resolve = waiting.get(message.id);
-  if (resolve === undefined) throw new Error(`an answer to no request: ${line}`);
-  waiting.delete(message.id);
-  resolve(message);
-});
+type Http = { status: number; contentType: string | null; body: string };
+
+async function post(body: string, headers: { [name: string]: string }): Promise<Http> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers },
+    body,
+  });
+  const answer = { status: response.status, contentType: response.headers.get("content-type"), body: await response.text() };
+  console.log(`-> ${body}\n<- ${answer.status} ${answer.body}`);
+  return answer;
+}
+
+function standardHeaders(method: string, params: { [key: string]: Json }): { [name: string]: string } {
+  const headers: { [name: string]: string } = { "MCP-Protocol-Version": version, "Mcp-Method": method };
+  if (method === "tools/call" && typeof params.name === "string") headers["Mcp-Name"] = params.name;
+  return headers;
+}
+
+async function rpc(method: string, params: { [key: string]: Json } = {}): Promise<{ http: Http; response: Response }> {
+  const id = nextId++;
+  const message = { jsonrpc: "2.0", id, method, params: { ...params, _meta: meta } };
+  const http = await post(JSON.stringify(message), standardHeaders(method, params));
+  const response = JSON.parse(http.body) as Response;
+  if (response.id !== id) throw new Error(`${method}: the answer has the id ${String(response.id)}, not ${id}`);
+  return { http, response };
+}
 
 async function request(method: string, params: { [key: string]: Json } = {}): Promise<{ [key: string]: Json }> {
-  const id = nextId++;
-  const answered = new Promise<Response>((resolve) => waiting.set(id, resolve));
-  const line = JSON.stringify({ jsonrpc: "2.0", id, method, params: { ...params, _meta: meta } });
-  console.log(`-> ${line}`);
-  server.stdin.write(line + "\n");
-  const response = await answered;
+  const { http, response } = await rpc(method, params);
   if ("error" in response) throw new Error(`${method}: ${response.error.message}`);
+  if (http.status !== 200 || http.contentType !== "application/json")
+    throw new Error(`${method}: status ${http.status}, content-type ${String(http.contentType)}`);
   return response.result;
 }
 
@@ -80,7 +90,7 @@ async function page(): Promise<{ url: Json | undefined; page: string }> {
 }
 
 function refusal(result: ToolResult, inState: string, tool: string): boolean {
-  return result.isError && text(result) === `todos at router/:todos is in the state ${inState}, which ignores ${tool}.`;
+  return result.isError && text(result) === `todos at shared is in the state ${inState}, which ignores ${tool}.`;
 }
 
 function todo(id: number, title: string, completed: boolean): string {
@@ -289,6 +299,118 @@ async function main(): Promise<void> {
   const destroyedAgain = await call("todo.destroy", { id: 1 });
   expect(refusal(destroyedAgain, "empty", "todo.destroy"), "todo.destroy of a deleted todo is refused");
 
+  await call("todo.add", { text: "Keep me" });
+  const before = await page();
+  const unchanged = async (what: string): Promise<void> => {
+    const after = await page();
+    expect(after.page === before.page && after.url === before.url, `${what} changes nothing`);
+  };
+
+  const missingId = await call("todo.toggle", {});
+  expect(missingId.isError && text(missingId).includes("id"), "todo.toggle with no id is refused and names the field id");
+  await unchanged("todo.toggle with no id");
+  const wrongType = await call("todo.toggle", { id: "2" });
+  expect(wrongType.isError && text(wrongType).includes("id"), "todo.toggle with a string id is refused and names the field id");
+  await unchanged("todo.toggle with a string id");
+  const extraField = await call("todo.add", { text: "x", priority: 1 });
+  expect(extraField.isError && text(extraField).includes("priority"), "todo.add with an unknown field is refused and names it");
+  await unchanged("todo.add with an unknown field");
+  const textNumber = await call("todo.add", { text: 5 });
+  expect(textNumber.isError && text(textNumber).includes("text"), "todo.add with a number for text is refused");
+  await unchanged("todo.add with a number for text");
+  const otherInstance = await call("todo.add", { text: "x", instance: "router/:todos" });
+  expect(
+    otherInstance.isError && text(otherInstance) === "No instance of todos runs at router/:todos. The running ones: shared.",
+    "a tool call with an unknown instance is refused and names the running one",
+  );
+  await unchanged("a tool call with an unknown instance");
+  const named = await call("todo.toggle", { id: 4, instance: "shared" });
+  expect(!named.isError && (await page()).page.includes(todo(4, "Keep me", true)), "a tool call with the instance shared works");
+  await call("todo.toggle", { id: 4 });
+
+  const unknown = await rpc("tools/call", { name: "todo.fly", arguments: {} });
+  expect(
+    "error" in unknown.response && unknown.response.error.code === -32602 && unknown.response.error.message === "Unknown tool: todo.fly",
+    "an unknown tool is a JSON-RPC error -32602 that names it",
+  );
+  await unchanged("an unknown tool");
+  const notObject = await rpc("tools/call", { name: "todo.add", arguments: ["milk"] });
+  expect("error" in notObject.response && notObject.response.error.code === -32602, "arguments that are not an object are refused");
+  await unchanged("arguments that are not an object");
+
+  const discover = await request("server/discover");
+  expect(
+    isDeepStrictEqual(discover.supportedVersions, [version]) && typeof discover.instructions === "string",
+    "server/discover gives the version 2026-07-28 and the instructions",
+  );
+  const noMethod = await rpc("resources/list");
+  expect(
+    noMethod.http.status === 404 && "error" in noMethod.response && noMethod.response.error.code === -32601,
+    "an unknown method answers 404 with -32601",
+  );
+
+  const body = (method: string, params: { [key: string]: Json }, metaVersion = version): string =>
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: nextId++,
+      method,
+      params: { ...params, _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": metaVersion } },
+    });
+  const errorCode = (http: Http): number | undefined => {
+    const parsed = JSON.parse(http.body) as Response;
+    return "error" in parsed ? parsed.error.code : undefined;
+  };
+  const addMilk = { name: "todo.add", arguments: { text: "milk" } };
+  const noVersion = await post(body("tools/call", addMilk), { "Mcp-Method": "tools/call", "Mcp-Name": "todo.add" });
+  expect(noVersion.status === 400 && errorCode(noVersion) === -32020, "a request with no MCP-Protocol-Version header: 400, -32020");
+  const otherVersion = await post(body("tools/call", addMilk), {
+    "MCP-Protocol-Version": "2025-11-25",
+    "Mcp-Method": "tools/call",
+    "Mcp-Name": "todo.add",
+  });
+  expect(otherVersion.status === 400 && errorCode(otherVersion) === -32020, "a version header that differs from _meta: 400, -32020");
+  const oldVersion = await post(body("tools/call", addMilk, "2025-11-25"), {
+    "MCP-Protocol-Version": "2025-11-25",
+    "Mcp-Method": "tools/call",
+    "Mcp-Name": "todo.add",
+  });
+  expect(oldVersion.status === 400 && errorCode(oldVersion) === -32022, "an unsupported version: 400, -32022");
+  const otherMethod = await post(body("tools/call", addMilk), { "MCP-Protocol-Version": version, "Mcp-Method": "tools/list", "Mcp-Name": "todo.add" });
+  expect(otherMethod.status === 400 && errorCode(otherMethod) === -32020, "an Mcp-Method header that differs from the method: 400, -32020");
+  const otherName = await post(body("tools/call", addMilk), { "MCP-Protocol-Version": version, "Mcp-Method": "tools/call", "Mcp-Name": "todo.destroy" });
+  expect(otherName.status === 400 && errorCode(otherName) === -32020, "an Mcp-Name header that differs from the tool: 400, -32020");
+  const noName = await post(body("tools/call", addMilk), { "MCP-Protocol-Version": version, "Mcp-Method": "tools/call" });
+  expect(noName.status === 400 && errorCode(noName) === -32020, "a tools/call with no Mcp-Name header: 400, -32020");
+  await unchanged("a request with bad headers");
+  const encodedName = await post(body("tools/call", { name: "read", arguments: {} }), {
+    "MCP-Protocol-Version": version,
+    "Mcp-Method": "tools/call",
+    "Mcp-Name": `=?base64?${Buffer.from("read").toString("base64")}?=`,
+  });
+  expect(encodedName.status === 200 && errorCode(encodedName) === undefined, "an Mcp-Name in Base64 form is taken");
+  const badJson = await post("{", standardHeaders("tools/list", {}));
+  expect(badJson.status === 400 && errorCode(badJson) === -32700, "a body that is not JSON: 400, -32700");
+  const batch = await post("[]", standardHeaders("tools/list", {}));
+  expect(batch.status === 400 && errorCode(batch) === -32600, "a body that is not one message: 400, -32600");
+  const notification = await post(JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: {} }), {});
+  expect(notification.status === 202 && notification.body === "", "a notification: 202 with no body");
+  const plain = await fetch(endpoint, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" });
+  expect(plain.status === 415, "a body that is not application/json: 415");
+  const get = await fetch(endpoint);
+  expect(get.status === 405, "GET: 405");
+  const foreign = await post(body("tools/call", addMilk), {
+    ...standardHeaders("tools/call", addMilk),
+    origin: "http://evil.example",
+  });
+  expect(foreign.status === 403, "a request from another origin: 403");
+  const local = await post(body("tools/call", { name: "read", arguments: {} }), {
+    ...standardHeaders("tools/call", { name: "read" }),
+    origin: new URL(endpoint).origin,
+  });
+  expect(local.status === 200, "a request from the origin of the server: 200");
+  await unchanged("the transport checks");
+  await call("todo.destroy", { id: 4 });
+
   const uncalled = Object.keys(annotations).filter((name) => !called.has(name));
   expect(uncalled.length === 0, `every published tool was called (not called: ${uncalled.join(", ") || "none"})`);
 }
@@ -299,7 +421,6 @@ main()
     failures++;
   })
   .finally(() => {
-    server.stdin.end();
     console.log(failures === 0 ? "ALL PASSED" : `${failures} FAILED`);
     process.exitCode = failures === 0 ? 0 : 1;
   });

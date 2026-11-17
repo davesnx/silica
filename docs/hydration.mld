@@ -101,9 +101,10 @@ Experimental: Live updates can change. The checker and the runtime do not
 agree yet on the order of the first update of a subscription.
 
 An island is a place in a view where a Live component runs. Its machine runs
-on the server, one instance for each connection. The client sends events and
-gets each new state. Declare the component in shared code with its channel and
-the codecs of its state and its events:
+on the server, one instance for each session and instance id of the page, or
+one shared instance for every socket (see {!page-data.islands}). The client
+sends events and gets each new state. Declare the component in shared code
+with its channel and the codecs of its state and its events:
 
 From [example/app/shared/example_counter.mlx]:
 {@ocaml skip[
@@ -132,7 +133,8 @@ let app =
 
 And the server lists them in [islands] (see {!page-server.islands}). Then:
 
-- The server render prints the view of the island at its initial state.
+- The server render prints the view of the island at its initial state, or,
+  for a shared island, at its current state.
 - In the browser, the island opens its socket when the element appears, and
   closes it when the element goes away. The browser never changes the
   children of the island element: the server HTML stays until the first state

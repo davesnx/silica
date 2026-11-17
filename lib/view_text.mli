@@ -33,7 +33,9 @@
     and a backslash are escaped with a backslash. Each line ends with a newline.
 *)
 
-val to_string : 'e Node.t -> string
+val to_string : ?island:(string -> unit Node.t option) -> 'e Node.t -> string
+(** With [island], an island whose channel gives [Some view] prints that view in
+    its place, as its own block; [None] prints [island <channel>]. *)
 
 val visible : 'e Node.t -> string
 (** The text of the view that the accessibility tree has: every text node, side

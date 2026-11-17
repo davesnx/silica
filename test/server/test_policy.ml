@@ -104,7 +104,8 @@ let files =
     ("", "top secret");
   ]
 
-let make ?(modify = Fun.id) ?(topics = true) ?observe_live () =
+let make ?(modify = Fun.id) ?(topics = true) ?observe_live
+    ?(islands = [ Server.Island live ]) ?mcp () =
   Queue.clear pending;
   logs := [];
   requests := [];
@@ -133,7 +134,7 @@ let make ?(modify = Fun.id) ?(topics = true) ?observe_live () =
   in
   Server.create config ~assets ?observe_live
     ~read:(fun name -> List.assoc_opt name files)
-    ~handlers ~islands:[ Server.Island live ]
+    ~handlers ~islands ?mcp
     ~topics:
       ( if topics then
           [
@@ -1592,6 +1593,281 @@ let random_tests =
     );
   ]
 
+let shared_machine =
+  Machine.make ~id:"shared" ~init:0
+    ~name:(fun _ -> "counting")
+    (fun count event ->
+      match event with
+      | "inc" ->
+          Machine.Go (count + 1)
+      | "focus" ->
+          Machine.Stay [ Action.Focus x ]
+      | "boom" ->
+          failwith "boom"
+      | _ ->
+          Machine.Ignore
+    )
+
+let shared_live =
+  Live.declare ~channel:"shared" ~state:Codec.int ~event:Codec.string
+    (Component.make shared_machine (fun count ->
+         Node.element "p" []
+           [ Node.text ("shared <" ^ string_of_int count ^ ">") ]
+     )
+    )
+
+let shared_island = Protocol.Island { channel = "shared"; instance = "tab" }
+let shared_event id text = Protocol.encode_event Codec.string ~id text
+
+let with_shared () =
+  let shared = Server.share shared_live in
+  let t =
+    make ~islands:[ Server.Island live; Server.Shared (shared_live, shared) ] ()
+  in
+  (t, shared)
+
+let joined t =
+  let client = visit t in
+  let socket = connect t client in
+  send socket (hello client shared_island);
+  socket
+
+let actions_of fake =
+  List.filter_map
+    (function
+      | Protocol.State { actions; _ } -> Some (List.length actions) | _ -> None
+      )
+    (messages fake)
+
+let shared_tests =
+  let open Alcotest in
+  [
+    test_case
+      "two sessions see one shared instance, and each socket has its own ack"
+      `Quick (fun () ->
+        let t, shared = with_shared () in
+        let first = joined t in
+        let second = joined t in
+        send first (shared_event 1 "inc");
+        send second (shared_event 1 "inc");
+        check (list shown_t) "first"
+          [ Hello_ok; State (1, 0, 0); State (3, 1, 1); State (4, 1, 2) ]
+          (shown first);
+        check (list shown_t) "second"
+          [ Hello_ok; State (2, 0, 0); State (3, 0, 1); State (4, 1, 2) ]
+          (shown second);
+        check int "snapshot" 2 (Server.snapshot shared)
+    );
+    test_case "a socket that sends an old id again changes nothing" `Quick
+      (fun () ->
+        let t, shared = with_shared () in
+        let first = joined t in
+        send first (shared_event 1 "inc");
+        send first (shared_event 1 "inc");
+        check int "one step" 1 (Server.snapshot shared)
+    );
+    test_case
+      "a state sent before a socket's event is handled does not ack that event"
+      `Quick (fun () ->
+        let t, _ = with_shared () in
+        let first = joined t in
+        let armed = ref false in
+        let second = ref None in
+        let socket =
+          {
+            Server.send =
+              (fun _ ->
+                if !armed then (
+                  armed := false;
+                  (Option.get !second).Server.receive (shared_event 2 "inc");
+                  send first (shared_event 1 "inc")
+                )
+              );
+            close = ignore;
+          }
+        in
+        let client = visit t in
+        ( match upgrade t (ws_headers (Some client)) with
+        | Server.Accepted attach ->
+            second := Some (attach socket)
+        | Server.Refused r ->
+            Alcotest.failf "refused with %d" r.status
+        );
+        (Option.get !second).Server.receive (hello client shared_island);
+        armed := true;
+        (Option.get !second).Server.receive (shared_event 1 "inc");
+        let acks =
+          List.filter_map
+            (function State (_, ack, n) -> Some (ack, n) | _ -> None)
+            (shown first)
+        in
+        check
+          (list (pair int int))
+          "first"
+          [ (0, 0); (0, 1); (0, 2); (1, 3) ]
+          acks
+    );
+    test_case "an event that does not decode is still acked" `Quick (fun () ->
+        let t, _ = with_shared () in
+        let first = joined t in
+        let second = joined t in
+        send first (Protocol.encode_event Codec.int ~id:5 7);
+        send second (shared_event 1 "inc");
+        match List.rev (shown first) with
+        | State (_, ack, count) :: _ ->
+            check (pair int int) "last state" (5, 1) (ack, count)
+        | _ ->
+            fail "no state"
+    );
+    test_case "host actions go only to the socket whose event made the step"
+      `Quick (fun () ->
+        let t, shared = with_shared () in
+        let first = joined t in
+        let second = joined t in
+        send first (shared_event 1 "focus");
+        check (list int) "first" [ 0; 1 ] (actions_of first);
+        check (list int) "second" [ 0; 0 ] (actions_of second);
+        ignore (Server.send shared "focus");
+        check (list int) "a server event sends no actions" [ 0; 1; 0 ]
+          (actions_of first)
+    );
+    test_case
+      "send steps the shared instance, every socket gets the state, and an \
+       ignored event is Ok false"
+      `Quick (fun () ->
+        let t, shared = with_shared () in
+        let first = joined t in
+        let second = joined t in
+        check (result bool string) "handled" (Ok true) (Server.send shared "inc");
+        check (result bool string) "ignored" (Ok false)
+          (Server.send shared "other");
+        check int "snapshot" 1 (Server.snapshot shared);
+        check (list shown_t) "first"
+          [ Hello_ok; State (1, 0, 0); State (3, 0, 1); State (4, 0, 1) ]
+          (shown first);
+        check (list shown_t) "second"
+          [ Hello_ok; State (2, 0, 0); State (3, 0, 1); State (4, 0, 1) ]
+          (shown second)
+    );
+    test_case
+      "a step that raises stops the shared instance: its sockets close, a new \
+       socket gets an error, and send fails"
+      `Quick (fun () ->
+        let t, shared = with_shared () in
+        let first = joined t in
+        ( match Server.send shared "boom" with
+        | Error message ->
+            check bool "names the failure" true (contains message "boom")
+        | Ok _ ->
+            fail "boom was taken"
+        );
+        check (option int) "closed" (Some Protocol.close_server_error)
+          first.closed_with;
+        let late = joined t in
+        check (list shown_t) "an error" [ Error "unavailable" ] (shown late);
+        check (option int) "late closed" (Some Protocol.close_server_error)
+          late.closed_with;
+        check bool "send fails" true (Result.is_error (Server.send shared "inc"))
+    );
+    test_case "create refuses a shared island whose machine is another" `Quick
+      (fun () ->
+        let shared = Server.share shared_live in
+        match
+          make
+            ~islands:
+              [
+                Server.Shared
+                  ( Live.declare ~channel:"other" ~state:Codec.int
+                      ~event:Codec.string
+                      (Component.make
+                         (Machine.make ~id:"another" ~init:0
+                            ~name:(fun _ -> "x")
+                            (fun _ (_ : string) -> Machine.Ignore)
+                         )
+                         (fun _ -> Node.text "")
+                      ),
+                    shared
+                  );
+              ]
+            ()
+        with
+        | _ ->
+            fail "created"
+        | exception Invalid_argument message ->
+            check bool "names both machines" true
+              (contains message "another" && contains message "shared")
+    );
+    test_case "the server HTML of a shared island is its current state" `Quick
+      (fun () ->
+        let shared = Server.share shared_live in
+        ignore (Server.send shared "inc");
+        let page =
+          Server.render_component
+            (Component.make
+               (Machine.make ~id:"page" ~init:()
+                  ~name:(fun () -> "page")
+                  (fun () (_ : unit) -> Machine.Ignore)
+               )
+               (fun () -> Live.slot shared_live)
+            )
+            ~title:"t" ~scripts:[]
+            ~islands:[ Server.Shared (shared_live, shared) ]
+            ()
+        in
+        check bool "count 1" true (contains page.body "shared &lt;1&gt;")
+    );
+  ]
+
+let mcp_tests =
+  let open Alcotest in
+  let answer (request : Silica_server.request) =
+    {
+      Silica_server.status = 200;
+      headers = [ ("content-type", "text/plain") ];
+      body = "mcp " ^ request.meth;
+    }
+  in
+  let status ?(headers = []) ?(body = "{}") ?(meth = "POST") t =
+    (Server.handle t (request ~meth ~headers ~body Silica_server.mcp_path))
+      .status
+  in
+  [
+    test_case "a request with no Origin reaches the MCP endpoint" `Quick
+      (fun () ->
+        let t = make ~mcp:answer () in
+        let response =
+          Server.handle t
+            (request ~meth:"POST" ~body:"{}" Silica_server.mcp_path)
+        in
+        check int "status" 200 response.status;
+        check string "body" "mcp POST" response.body;
+        check int "GET too" 200 (status ~meth:"GET" t)
+    );
+    test_case "an allowed Origin passes, another one is 403" `Quick (fun () ->
+        let t = make ~mcp:answer () in
+        check int "allowed" 200 (status ~headers:[ ("origin", origin) ] t);
+        check int "other" 403
+          (status ~headers:[ ("origin", "http://evil.test") ] t)
+    );
+    test_case "cross-site fetch metadata is 403" `Quick (fun () ->
+        let t = make ~mcp:answer () in
+        check int "cross-site" 403
+          (status ~headers:[ ("sec-fetch-site", "cross-site") ] t)
+    );
+    test_case "a body above max_body is 413" `Quick (fun () ->
+        let t =
+          make
+            ~modify:(fun config -> { config with max_body = 4 })
+            ~mcp:answer ()
+        in
+        check int "too big" 413 (status ~body:"{\"a\":1}" t)
+    );
+    test_case "with no mcp, a POST to /mcp is 404" `Quick (fun () ->
+        let t = make () in
+        check int "not found" 404 (status t)
+    );
+  ]
+
 let () =
   if Array.mem "--without-descriptors" Sys.argv then
     without_descriptors ()
@@ -1606,4 +1882,6 @@ let () =
         ("upgrade", upgrade_tests);
         ("islands", island_tests);
         ("topics", topic_tests);
+        ("shared islands", shared_tests);
+        ("mcp", mcp_tests);
       ]

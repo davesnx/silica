@@ -40,6 +40,18 @@
     {
       "from": "editing",
       "target": "empty",
+      "event": "add",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "empty",
+      "event": "add draft",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "empty",
       "event": "clear completed",
       "kept": false
     },
@@ -71,6 +83,12 @@
       "from": "editing",
       "target": "list",
       "event": "add",
+      "kept": false
+    },
+    {
+      "from": "editing",
+      "target": "list",
+      "event": "add draft",
       "kept": false
     },
     {
@@ -118,6 +136,12 @@
     {
       "from": "empty",
       "target": "empty",
+      "event": "add draft",
+      "kept": true
+    },
+    {
+      "from": "empty",
+      "target": "empty",
       "event": "draft",
       "kept": true
     },
@@ -125,6 +149,12 @@
       "from": "empty",
       "target": "list",
       "event": "add",
+      "kept": false
+    },
+    {
+      "from": "empty",
+      "target": "list",
+      "event": "add draft",
       "kept": false
     },
     {
@@ -149,6 +179,12 @@
       "from": "list",
       "target": "list",
       "event": "add",
+      "kept": true
+    },
+    {
+      "from": "list",
+      "target": "list",
+      "event": "add draft",
       "kept": true
     },
     {

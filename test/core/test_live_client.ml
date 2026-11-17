@@ -141,4 +141,78 @@ let tests =
     );
   ]
 
-let () = Alcotest.run "live client" [ ("held events", tests) ]
+let painted () =
+  let fake = fake () in
+  let states = ref [] in
+  let client =
+    Live_client.start ~io:(io fake)
+      ~sub:(Protocol.Island { channel = "counter"; instance = "i" })
+      ~on_state:(fun ~seq:_ ~state ~actions ->
+        states :=
+          !states @ [ (Silica_json.Json.to_string state, List.length actions) ]
+      )
+      ~on_down:ignore ~on_fatal:ignore ()
+  in
+  (fake, client, states)
+
+let state_message ~seq ~ack ~state ~focus =
+  Printf.sprintf {|{"t":"state","seq":%d,"ack":%d,"state":%S,"actions":[%s]}|}
+    seq ack state
+    ( if focus then
+        {|{"focus":"field"}|}
+      else
+        ""
+    )
+
+let stale =
+  let open Alcotest in
+  [
+    test_case
+      "a state that lacks an event the client sent is not painted; its actions \
+       run with the next state"
+      `Quick (fun () ->
+        let fake, client, states = painted () in
+        welcome (last fake) ~ack:0;
+        Live_client.send_event client Codec.string "B";
+        Live_client.send_event client Codec.string "Bu";
+        (last fake).events.on_message
+          (state_message ~seq:2 ~ack:1 ~state:"B" ~focus:true);
+        check
+          (list (pair string int))
+          "only the first state"
+          [ ("0", 0) ]
+          !states;
+        (last fake).events.on_message
+          (state_message ~seq:3 ~ack:2 ~state:"Bu" ~focus:false);
+        check
+          (list (pair string int))
+          "the state with every event, and the held action"
+          [ ("0", 0); ({|"Bu"|}, 1) ]
+          !states
+    );
+    test_case "a state from the server alone is painted when nothing is sent"
+      `Quick (fun () ->
+        let fake, _client, states = painted () in
+        welcome (last fake) ~ack:0;
+        (last fake).events.on_message
+          (state_message ~seq:2 ~ack:0 ~state:"other tab" ~focus:false);
+        check
+          (list (pair string int))
+          "both"
+          [ ("0", 0); ({|"other tab"|}, 0) ]
+          !states
+    );
+    test_case "a new socket paints its first state whatever the old one sent"
+      `Quick (fun () ->
+        let fake, client, states = painted () in
+        welcome (last fake) ~ack:0;
+        Live_client.send_event client Codec.string "lost";
+        (last fake).events.on_close 1006;
+        advance fake 200;
+        welcome (last fake) ~ack:0;
+        check int "two paints" 2 (List.length !states)
+    );
+  ]
+
+let () =
+  Alcotest.run "live client" [ ("held events", tests); ("stale states", stale) ]

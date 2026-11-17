@@ -81,7 +81,7 @@ silica draws the statechart of this component from the code:
 Every state of the app is encoded, so silica can be more than a view framework:
 
 - **A contract for AI agents**: an agent writes the machine, the model checker judges it, and you review the statechart diff, not the code.
-- **An app that agents can use**: silica can expose the events of a machine and the routes of the router as MCP tools, so an agent uses the app through its states and not through the screen.
+- **An app that agents can use**: silica can expose the events of a machine and the routes of the router as MCP tools, so an agent uses the app through its states and not through the screen. The MCP server runs the app in memory over stdio, or on the silica server over streamable HTTP at `/mcp`.
 - **Design conformance**: check that the code follows the statechart of a design or a spec.
 - **Client and server monitoring**: a transition that the spec does not allow is an alert, and a funnel is a path in the graph.
 - **Whole-app diagrams**: the statechart of every component and route, drawn from the code, so it is never out of date.

@@ -1871,7 +1871,7 @@ val start :
   t
 ```
 
-Connect with `io.connect` and keep the connection. `on_state` runs for each state with a `seq` higher than the last one of the same socket. After a loss, the client first schedules the next connect with `io.schedule` (the `Backoff` delay), so that connect is the first task that the loss schedules; then `on_down` runs, once for a socket that had no loss before. The next state runs `on_state`. `on_fatal` runs once, and the client does not connect again. After a close with `Protocol.close_session`, `io.session_gone` runs first. After `stop`, no callback runs.
+Connect with `io.connect` and keep the connection. `on_state` runs for each state with a `seq` higher than the last one of the same socket. After a loss, the client first schedules the next connect with `io.schedule` (the `Backoff` delay), so that connect is the first task that the loss schedules; then `on_down` runs, once for a socket that had no loss before. The next state runs `on_state`. A state whose `ack` is below the id of an event that the client sent on the same socket does not run `on_state`: it lacks that event, and painting it would undo input that the server has not seen, such as the text typed into a field. Its actions wait, and run with the next state that has every event sent. `on_fatal` runs once, and the client does not connect again. After a close with `Protocol.close_session`, `io.session_gone` runs first. After `stop`, no callback runs.
 
 ```ocaml
 val send_event : t -> 'e Codec.t -> 'e -> unit
@@ -4592,8 +4592,10 @@ Other elements are left out and their children move up. The text that is not in 
 A component node prints as `component <id>`, an island as `island <channel>`, a chunk that loads as `loading`. Hidden elements (see `Accessibility.hidden`) and their children are left out. The children of a portal print at the place of the portal. In a quoted string, a double quote and a backslash are escaped with a backslash. Each line ends with a newline.
 
 ```ocaml
-val to_string : 'e Node.t -> string
+val to_string : ?island:(string -> unit Node.t option) -> 'e Node.t -> string
 ```
+
+With `island`, an island whose channel gives `Some view` prints that view in its place, as its own block; `None` prints `island <channel>`.
 
 ```ocaml
 val visible : 'e Node.t -> string

@@ -24,6 +24,8 @@ server:
 - [handlers]: the Remote endpoints. They are given here once: the page render
   and the Live islands use the same list.
 - [islands] and [topics]: the Live components and topics.
+- [mcp] (optional): the MCP endpoint at {!Silica_server.mcp_path} ([/mcp]),
+  such as [Silica_mcp.http] (see {!page-machines.tools}).
 - [page]: the function that renders a page for a [GET].
 
 [Server.handle server request] answers one HTTP request.
@@ -154,6 +156,11 @@ Every request that is not a [GET] must pass these checks, in this order:
 + [content-type] starts with [application/json], else 415.
 + [x-silica-csrf] is the token of the session, else 403.
 
+A request to [/mcp], when the server has [mcp], passes only the first two
+checks and one more: [origin], when present, is allowed, else 403. A request
+without [origin] is accepted, because an MCP client is not a browser and has
+no cookie or token.
+
 {@ocaml[
 # (Doc_server.call "/api/greeting" {|"Ada"|}).body;;
 - : string = "\"Hello, Ada\""
@@ -271,10 +278,16 @@ agree yet on the order of the first update of a subscription.
 {2:islands Islands}
 
 An island is a Live component ({!Silica.Live.t}) whose machine runs on the
-server, one instance for each connection. Give it to the server in
-[islands], as [Server.Island live]. The server runs its Remote calls against
-the handlers directly and its timers with [Io.sleep]. See
-{!page-hydration.islands}.
+server. Give it to the server in [islands]:
+
+- [Server.Island live]: one instance for each session and instance id of the
+  page.
+- [Server.Shared (live, shared)]: one instance for every socket of every
+  session. [Server.share live] starts it; [Server.snapshot] reads its state
+  and [Server.send] steps it from the server. See {!page-data.islands}.
+
+The server runs its Remote calls against the handlers directly and its timers
+with [Io.sleep]. See {!page-hydration.islands}.
 
 {2:publish Topics and publish}
 

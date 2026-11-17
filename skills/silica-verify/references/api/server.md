@@ -181,6 +181,12 @@ val live_path : string
 `"/_silica/live"`.
 
 ```ocaml
+val mcp_path : string
+```
+
+`"/mcp"`: the MCP endpoint of `create ?mcp`.
+
+```ocaml
 val health_path : string
 ```
 
@@ -212,7 +218,27 @@ module Make (Io : IO) : sig
       ["internal error"]; the detail goes to the [silica.remote] log. An input
       that does not decode gives status 400. *)
 
-  type island = Island : ('s, 'e) Silica.Live.t -> island
+  type ('s, 'e) shared
+  (** One instance of a machine that the server runs for every visitor: each
+      socket of a {!Shared} island, in any session, sees it and sends events to
+      it, and {!val-send} sends events to it from the server. It runs until
+      {!shutdown}, and keeps nothing across a restart. *)
+
+  type island =
+    | Island : ('s, 'e) Silica.Live.t -> island
+        (** One instance for each session and instance id of the page. *)
+    | Shared : ('s, 'e) Silica.Live.t * ('s, 'e) shared -> island
+        (** The channel of the Live component shows the shared instance. Several
+            channels can show one shared instance, each with its own view, such
+            as one view for each filter of a list. The machine of the component
+            must be the machine of the shared instance; {!create} raises
+            [Invalid_argument] otherwise.
+
+            Each socket keeps its own event ids, and each state message has the
+            [ack] of that socket. The host actions of a step (such as [Focus])
+            go only to the socket whose event made the step; a step made by
+            {!val-send}, a timer or a call sends its state with no actions. The
+            server HTML of the island is the view of the current state. *)
 
   (** {2 Rendering} *)
 
@@ -398,6 +424,26 @@ module Make (Io : IO) : sig
   val close : runner -> unit
   (** Later events, timers and call results are dropped. *)
 
+  val share :
+    ?handlers:handler list -> ('s, 'e) Silica.Live.t -> ('s, 'e) shared Io.t
+  (** Start the machine of the Live component as a shared instance (see
+      {!island.Shared}). It encodes states and decodes events with the codecs of
+      that component. Its [Start_call] actions run against [handlers] (default
+      none) with a context that no visitor made: the request [GET /] with no
+      headers, and a session whose id is empty. A step that raises is logged,
+      the instance stops, and its sockets close with
+      {!Silica.Protocol.close_server_error}; a new socket gets an [Error]
+      message. *)
+
+  val snapshot : ('s, 'e) shared -> 's
+  (** The state of the shared instance now. *)
+
+  val send : ('s, 'e) shared -> 'e -> (bool, string) result Io.t
+  (** Step the shared instance with the event, after the events before it, and
+      send the new state to every socket. [Ok false] when the state ignored the
+      event. [Error] when the instance stopped after an error, failed on this
+      event, or did not take the event within 10 seconds. *)
+
   (** {2 The server} *)
 
   type topic_def =
@@ -422,6 +468,7 @@ module Make (Io : IO) : sig
     handlers:handler list ->
     islands:island list ->
     topics:topic_def list ->
+    ?mcp:(request -> response Io.t) ->
     page:(page -> response Io.t) ->
     unit ->
     t
@@ -429,6 +476,9 @@ module Make (Io : IO) : sig
       [None]. The server only asks for names without [..], a leading slash or
       control characters. Raises [Invalid_argument] when [config.secret] has
       fewer than 16 bytes.
+
+      [mcp] answers the requests for {!mcp_path} (see {!handle}), such as
+      [Silica_mcp.http].
 
       [observe_live context ~channel] is the hook of each island instance that a
       socket starts (see {!val-live}), for example a
@@ -472,8 +522,15 @@ module Make (Io : IO) : sig
       [SameSite=Lax], [Path=/], and [Secure] when configured, no [Max-Age]), and
       the response has [cache-control: private, no-store].
 
-      Every request that is not [GET] must pass, in this order: the body is at
-      most [max_body] (else 413); [sec-fetch-site], when present, is
+      With [mcp], every request for {!mcp_path} goes to it after these checks:
+      the body is at most [max_body] (else 413); [sec-fetch-site], when present,
+      is [same-origin] or [none] (else 403); [origin], when present, is allowed
+      (else 403). An MCP client is not a browser and sends no [origin], cookie
+      or CSRF token; a browser always sends [origin] with a [POST], so a page of
+      another site cannot reach it.
+
+      Every other request that is not [GET] must pass, in this order: the body
+      is at most [max_body] (else 413); [sec-fetch-site], when present, is
       [same-origin] or [none] (else 403); [origin] is present and allowed (else
       403); the cookie names a live session (else 403); [content-type] starts
       with [application/json] (else 415); [x-silica-csrf] is the token of the

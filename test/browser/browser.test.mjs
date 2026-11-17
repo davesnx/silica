@@ -725,7 +725,7 @@ test("live renders server state, sends events, runs host actions", () => {
     { t: "event", id: 1, event: "inc" },
   ]);
   assert.equal(text("n"), "3");
-  ws.state(2, 4);
+  ws.state(2, 4, [], 1);
   assert.equal(text("n"), "4");
   assert.equal(ws.binaryType, "arraybuffer");
   ws.receive(

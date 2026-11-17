@@ -91,8 +91,9 @@ let answer request =
 
 let server () =
   saved := [];
-  Silica_mcp.make ~name:"test" ~version:"1.0.0" ~instructions:"Count." ~answer
-    publications (Memory.mount panel)
+  Silica_mcp.make ~name:"test" ~version:"1.0.0" ~instructions:"Count."
+    publications
+    (Silica_mcp.memory ~answer (Memory.mount panel))
 
 let json text =
   match Json.of_string text with
@@ -197,7 +198,7 @@ let version () =
     )
 
 let tools_json =
-  {|"tools":[{"name":"read","description":"The current URL, the running instances of the published machines with their states, the timers that wait (delays in ms), and the text of the page.","inputSchema":{"type":"object","additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"panel.split","description":"Show two counters","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"The instance path of the running instance of panel that gets the event. Leave it out when one instance runs."}},"additionalProperties":false}},{"name":"counter.add","description":"Add to the count","inputSchema":{"type":"object","properties":{"amount":{"type":"integer","minimum":-4611686018427387904,"maximum":4611686018427387903,"description":"How much to add"},"instance":{"type":"string","description":"The instance path of the running instance of counter that gets the event. Leave it out when one instance runs."}},"required":["amount"],"additionalProperties":false}},{"name":"counter.save","description":"Save","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"The instance path of the running instance of counter that gets the event. Leave it out when one instance runs."}},"additionalProperties":false}}]|}
+  {|"tools":[{"name":"read","description":"The current URL, the running instances of the published machines with their states, and the text of the page; an app that runs in memory also gives the timers that wait (delays in ms).","inputSchema":{"type":"object","additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"panel.split","description":"Show two counters","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"The instance path of the running instance of panel that gets the event. Leave it out when one instance runs."}},"additionalProperties":false}},{"name":"counter.add","description":"Add to the count","inputSchema":{"type":"object","properties":{"amount":{"type":"integer","minimum":-4611686018427387904,"maximum":4611686018427387903,"description":"How much to add"},"instance":{"type":"string","description":"The instance path of the running instance of counter that gets the event. Leave it out when one instance runs."}},"required":["amount"],"additionalProperties":false}},{"name":"counter.save","description":"Save","inputSchema":{"type":"object","properties":{"instance":{"type":"string","description":"The instance path of the running instance of counter that gets the event. Leave it out when one instance runs."}},"additionalProperties":false}}]|}
 
 let list () =
   let server = server () in
@@ -319,7 +320,7 @@ let several () =
 let names () =
   let app = Memory.mount panel in
   match
-    Silica_mcp.make ~name:"test" ~version:"1.0.0" ~answer
+    Silica_mcp.make ~name:"test" ~version:"1.0.0"
       [
         Mcp.tools panel_machine
           [
@@ -328,7 +329,7 @@ let names () =
               Fun.id;
           ];
       ]
-      app
+      (Silica_mcp.memory ~answer app)
   with
   | _ ->
       Alcotest.fail "a second tool named read"
@@ -371,6 +372,253 @@ let serve () =
       Alcotest.failf "%d lines: %s" (List.length lines)
         (String.concat "\n" lines)
 
+type tally = int
+
+let tally_machine =
+  Machine.make ~id:"tally" ~init:0
+    ~name:(fun count ->
+      if count < 3 then
+        "low"
+      else
+        "high"
+    )
+    (fun (count : tally) amount ->
+      if count + amount > 5 then
+        Ignore
+      else
+        Go (count + amount)
+    )
+
+let tally_live =
+  Live.declare ~channel:"tally" ~state:Codec.int ~event:Codec.int
+    (Component.make tally_machine (fun count ->
+         Node.element "p" [] [ Node.text (Printf.sprintf "tally %d" count) ]
+     )
+    )
+
+let tally_add =
+  Mcp.make ~name:"tally.add" ~description:"Add to the tally"
+    Mcp.Input.(field "amount" ~description:"How much" int)
+
+let page_machine =
+  Machine.make ~id:"page" ~init:()
+    ~name:(fun () -> "page")
+    (fun () (_ : unit) -> Ignore)
+
+let shared_app url =
+  Component.make page_machine (fun () ->
+      Node.list
+        [
+          Node.element "h1" [] [ Node.text ("at " ^ Url.to_string url) ];
+          Live.slot tally_live;
+        ]
+  )
+
+type remote = { mutable count : int; mutable sends : int; mutable fail : bool }
+
+let remote_server ?(race = false) remote =
+  let snapshot () = remote.count in
+  let send amount =
+    remote.sends <- remote.sends + 1;
+    if remote.fail then
+      Error "The machine tally stopped after an error."
+    else (
+      if race then remote.count <- 5;
+      let next, _, how = Machine.step tally_machine remote.count amount in
+      remote.count <- next;
+      Ok (how <> Machine.Unhandled)
+    )
+  in
+  Silica_mcp.make ~name:"test" ~version:"1.0.0"
+    ~routes:
+      (Silica_mcp.routes
+         (Router.routes
+            [
+              Router.route Route.rest (fun path -> path) (fun path -> Some path);
+            ]
+         )
+         ~published:(fun path -> path <> "/hidden")
+         ~patterns:"/anything"
+      )
+    [ Mcp.tools tally_machine [ Mcp.on tally_add Fun.id ] ]
+    (Silica_mcp.server ~app:shared_app
+       ~islands:[ Silica_mcp.island tally_live snapshot ]
+       [
+         Silica_mcp.instance tally_machine ~path:"shared" ~props:() ~snapshot
+           ~send;
+       ]
+    )
+
+let structured_string field answer =
+  let rec find = function
+    | [] ->
+        None
+    | json :: rest -> (
+        match Json.classify json with
+        | `Assoc fields -> (
+            match List.assoc_opt field fields with
+            | Some value -> (
+                match Json.classify value with
+                | `String text ->
+                    Some text
+                | _ ->
+                    find (List.map snd fields @ rest)
+              )
+            | None ->
+                find (List.map snd fields @ rest)
+          )
+        | `List items ->
+            find (items @ rest)
+        | _ ->
+            find rest
+      )
+  in
+  find [ json answer ]
+
+let shared_host () =
+  let remote = { count = 0; sends = 0; fail = false } in
+  let server = remote_server remote in
+  let added = call server "tally.add" {|{"amount":2}|} in
+  Alcotest.(check (option string))
+    "the state after the call" (Some "low")
+    (structured_string "state" added);
+  Alcotest.(check int) "the instance got the event" 2 remote.count;
+  let page = call server "read" "{}" in
+  Alcotest.(check (option string))
+    "the page shows the app at the URL and the island at its state"
+    (Some "heading \"at /\" level=1\ntext \"tally 2\"\n")
+    (structured_string "page" page);
+  let moved = call server "navigate" {|{"url":"/other"}|} in
+  Alcotest.(check (option string))
+    "navigate sets the URL of the agent" (Some "/other")
+    (structured_string "url" moved);
+  Alcotest.(check (option string))
+    "read shows the new URL"
+    (Some "heading \"at /other\" level=1\ntext \"tally 2\"\n")
+    (structured_string "page" (call server "read" "{}"));
+  let hidden = call server "navigate" {|{"url":"/hidden"}|} in
+  Alcotest.(check bool)
+    "a route that is not published is refused" true
+    (String.length hidden > 0 && structured_string "url" hidden = None);
+  let refused = call server "tally.add" {|{"amount":9}|} in
+  Alcotest.(check string)
+    "a state that ignores the event refuses it before it is sent"
+    (result
+       {|"content":[{"type":"text","text":"tally at shared is in the state low, which ignores tally.add."}],"isError":true|}
+    )
+    refused;
+  Alcotest.(check int) "not sent" 1 remote.sends;
+  remote.fail <- true;
+  let failed = call server "tally.add" {|{"amount":1}|} in
+  Alcotest.(check string)
+    "an Error of send is the sentence of the result"
+    (result
+       {|"content":[{"type":"text","text":"The machine tally stopped after an error."}],"isError":true|}
+    )
+    failed
+
+let shared_race () =
+  let remote = { count = 0; sends = 0; fail = false } in
+  let server = remote_server ~race:true remote in
+  Alcotest.(check string)
+    "an event that the state ignores when it arrives is refused with that state"
+    (result
+       {|"content":[{"type":"text","text":"tally at shared is in the state high, which ignores tally.add."}],"isError":true|}
+    )
+    (call server "tally.add" {|{"amount":1}|})
+
+let post ?(headers = []) ?(meth = "POST") ?(content_type = "application/json")
+    body =
+  Silica_mcp.http (server ())
+    {
+      Silica_server.meth;
+      path = "/mcp";
+      query = [];
+      headers = ("Content-Type", content_type) :: headers;
+      body;
+    }
+
+let standard meth ?name () =
+  [ ("MCP-Protocol-Version", "2026-07-28"); ("Mcp-Method", meth) ]
+  @ match name with Some name -> [ ("Mcp-Name", name) ] | None -> []
+
+let rpc ?(version = "2026-07-28") meth params =
+  Printf.sprintf
+    {|{"jsonrpc":"2.0","id":3,"method":%S,"params":{%s"_meta":{"io.modelcontextprotocol/protocolVersion":%S,"io.modelcontextprotocol/clientCapabilities":{}}}}|}
+    meth params version
+
+let code (response : Silica_server.response) =
+  match Json.classify (json response.body) with
+  | `Assoc fields -> (
+      match Option.map Json.classify (List.assoc_opt "error" fields) with
+      | Some (`Assoc error) -> (
+          match Option.map Json.classify (List.assoc_opt "code" error) with
+          | Some (`Int code) ->
+              Some code
+          | _ ->
+              None
+        )
+      | _ ->
+          None
+    )
+  | _ ->
+      None
+
+let http () =
+  let check name status expected_code (response : Silica_server.response) =
+    Alcotest.(check (pair int (option int)))
+      name (status, expected_code)
+      (response.status, code response)
+  in
+  let read = rpc "tools/call" {|"name":"read","arguments":{},|} in
+  check "a call with every header" 200 None
+    (post ~headers:(standard "tools/call" ~name:"read" ()) read);
+  check "Mcp-Name in Base64" 200 None
+    (post ~headers:(standard "tools/call" ~name:"=?base64?cmVhZA==?=" ()) read);
+  check "no MCP-Protocol-Version" 400 (Some (-32020))
+    (post ~headers:[ ("Mcp-Method", "tools/call"); ("Mcp-Name", "read") ] read);
+  check "a version header that is not the one of _meta" 400 (Some (-32020))
+    (post
+       ~headers:
+         [
+           ("MCP-Protocol-Version", "2025-11-25");
+           ("Mcp-Method", "tools/call");
+           ("Mcp-Name", "read");
+         ]
+       read
+    );
+  check "an unsupported version" 400 (Some (-32022))
+    (post
+       ~headers:
+         [
+           ("MCP-Protocol-Version", "2025-11-25");
+           ("Mcp-Method", "tools/call");
+           ("Mcp-Name", "read");
+         ]
+       (rpc ~version:"2025-11-25" "tools/call" {|"name":"read","arguments":{},|})
+    );
+  check "no Mcp-Method" 400 (Some (-32020))
+    (post ~headers:[ ("MCP-Protocol-Version", "2026-07-28") ] read);
+  check "another Mcp-Method" 400 (Some (-32020))
+    (post ~headers:(standard "tools/list" ~name:"read" ()) read);
+  check "no Mcp-Name" 400 (Some (-32020))
+    (post ~headers:(standard "tools/call" ()) read);
+  check "another Mcp-Name" 400 (Some (-32020))
+    (post ~headers:(standard "tools/call" ~name:"counter.save" ()) read);
+  check "an unknown method" 404 (Some (-32601))
+    (post ~headers:(standard "resources/list" ()) (rpc "resources/list" ""));
+  check "a body that is not JSON" 400 (Some (-32700)) (post "{");
+  check "a batch" 400 (Some (-32600)) (post "[]");
+  let notification =
+    post {|{"jsonrpc":"2.0","method":"notifications/cancelled"}|}
+  in
+  Alcotest.(check (pair int string))
+    "a notification" (202, "")
+    (notification.status, notification.body);
+  Alcotest.(check int) "GET" 405 (post ~meth:"GET" "").status;
+  Alcotest.(check int)
+    "not JSON" 415 (post ~content_type:"text/plain" read).status
+
 let () =
   let case name f = Alcotest.test_case name `Quick f in
   Alcotest.run "silica_mcp"
@@ -393,4 +641,11 @@ let () =
           case "two tools with one name" names;
         ]
       );
+      ( "server host",
+        [
+          case "read, navigate and calls of a shared instance" shared_host;
+          case "an event ignored when it arrives" shared_race;
+        ]
+      );
+      ("http", [ case "the streamable HTTP binding" http ]);
     ]

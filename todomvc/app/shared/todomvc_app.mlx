@@ -3,7 +3,7 @@ open Todomvc_routes
 
 let render : route -> Router.event Node.t = function
   | Todos filter ->
-      <Todomvc_todos filter />
+      Live.slot (Todomvc_live.island filter)
   | Not_found path ->
       <section class_="todoapp">
         <header class_="header"><h1>"todos"</h1></header>

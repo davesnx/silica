@@ -2,7 +2,12 @@
  (name silica_todomvc_server)
  (wrapped false)
  (modules todomvc_server)
- (libraries silica_todomvc_app_native silica.server silica.adapter))
+ (libraries
+  silica_todomvc_app_native
+  silica_todomvc_tools
+  silica_mcp
+  silica.server
+  silica.adapter))
 
 (executable
  (name main)

@@ -6,7 +6,8 @@ let id =
     field "id"
       ~description:
         "The number of the todo: read shows it in the name of its checkbox, \
-         such as checkbox \"Todo 1: Buy milk\"."
+         such as checkbox \"Todo 1: Buy milk\". A number that no todo has is \
+         refused."
       int
   )
 
@@ -100,3 +101,27 @@ let todos =
     ]
 
 let publications = [ todos ]
+
+let routes =
+  Silica_mcp.routes Todomvc_routes.routes
+    ~published:(function
+      | Todomvc_routes.Todos _ -> true | Todomvc_routes.Not_found _ -> false
+      )
+    ~patterns:
+      (String.concat "\n"
+         Todomvc_routes.
+           [
+             Router.name routes (Todos All) ^ " - every todo";
+             Router.name routes (Todos Active)
+             ^ " - the todos that are not completed";
+             Router.name routes (Todos Completed) ^ " - the completed todos";
+           ]
+      )
+
+let instructions =
+  "TodoMVC, a list of todos that every browser tab of this server shows: a \
+   change appears at once in each open tab. read shows the page: each todo is \
+   a checkbox named \"Todo <number>: <text>\", checked when completed. \
+   navigate opens /, /active or /completed, which filter the list that read \
+   shows; the todos stay, and no tab changes. Each todo tool sends one event \
+   to the todos machine; a state that ignores the event refuses the call."

@@ -1,3 +1,9 @@
 (test
  (name test_silica_mcp)
- (libraries silica silica.json silica.memory silica_mcp alcotest))
+ (libraries
+  silica
+  silica.json
+  silica.memory
+  silica.server
+  silica_mcp
+  alcotest))

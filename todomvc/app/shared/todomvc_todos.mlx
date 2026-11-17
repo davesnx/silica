@@ -16,6 +16,7 @@ type state = {
 type event =
   | Draft of string
   | Add of string
+  | Add_draft
   | Toggle of int
   | Toggle_all
   | Destroy of int
@@ -31,6 +32,8 @@ let event_name = function
       "draft"
   | Add _ ->
       "add"
+  | Add_draft ->
+      "add draft"
   | Toggle _ ->
       "toggle"
   | Toggle_all ->
@@ -90,24 +93,32 @@ let commit state =
           }
     )
 
-let rec update filter state event : (state, event) Machine.next =
+let add text state : (state, event) Machine.next =
+  match String.trim text with
+  | "" ->
+      Ignore
+  | title ->
+      Go
+        {
+          state with
+          todos =
+            state.todos @ [ { id = state.next_id; title; completed = false } ];
+          draft = "";
+          next_id = state.next_id + 1;
+        }
+
+let rec update state event : (state, event) Machine.next =
   match (state.editing, event) with
   | None, Draft draft ->
       Go { state with draft }
-  | None, Add text -> (
-      match String.trim text with
-      | "" ->
-          Ignore
-      | title ->
-          Go
-            {
-              state with
-              todos =
-                state.todos
-                @ [ { id = state.next_id; title; completed = false } ];
-              draft = "";
-              next_id = state.next_id + 1;
-            }
+  | None, Add text ->
+      add text state
+  | None, Add_draft -> (
+      match add state.draft state with
+      | Ignore ->
+          Go { state with draft = "" }
+      | next ->
+          next
     )
   | None, Toggle id when has id state ->
       Go
@@ -163,17 +174,14 @@ let rec update filter state event : (state, event) Machine.next =
   | ( Some _,
       ( Draft _
       | Add _
+      | Add_draft
       | Toggle _
       | Toggle_all
       | Destroy _
       | Clear_completed
       | Edit _ ) ) -> (
       let committed = commit state in
-      match update filter committed event with
-      | Ignore ->
-          Go committed
-      | next ->
-          next
+      match update committed event with Ignore -> Go committed | next -> next
     )
   | ( None,
       ( Toggle _
@@ -186,7 +194,7 @@ let rec update filter state event : (state, event) Machine.next =
       Ignore
 
 let machine =
-  Machine.make_with_props ~id:"todos" ~init ~name
+  Machine.make ~id:"todos" ~init ~name
     ~states:[ "empty"; "list"; "editing" ]
     ~event_name update
 
@@ -317,9 +325,9 @@ let footer filter state =
     )
   </footer>
 
-let add_key state key =
-  if Key.equal key Key.enter && String.trim state.draft <> "" then
-    Some (Add state.draft)
+let add_key key =
+  if Key.equal key Key.enter then
+    Some Add_draft
   else
     None
 
@@ -336,7 +344,7 @@ let view filter state =
             autofocus=true
             value=state.draft
             on_input=(fun draft -> Draft draft)
-            on_key_down=(add_key state)
+            on_key_down=add_key
           />
         </header>
         ( match state.todos with
@@ -375,6 +383,3 @@ let view filter state =
         <p>"Part of " <a href="http://todomvc.com">"TodoMVC"</a></p>
       </footer>;
     ]
-
-let component = Component.make_with_props machine view
-let make ~filter () = Component.node_with_props ~props:filter component

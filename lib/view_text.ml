@@ -175,10 +175,14 @@ let describe element role handlers =
   in
   String.concat " " ((head :: name) @ states element @ handlers)
 
-let rec pieces depth ~skip_text items =
-  List.concat_map (piece depth ~skip_text) items
+let rec pieces :
+    'e. island:_ -> int -> skip_text:bool -> 'e Accessibility.item list -> _ =
+ fun ~island depth ~skip_text items ->
+  List.concat_map (piece ~island depth ~skip_text) items
 
-and piece depth ~skip_text = function
+and piece : 'e. island:_ -> int -> skip_text:bool -> 'e Accessibility.item -> _
+    =
+ fun ~island depth ~skip_text -> function
   | Accessibility.Text text ->
       if skip_text then
         []
@@ -193,8 +197,15 @@ and piece depth ~skip_text = function
         []
       else
         match Accessibility.attribute element "data-silica-live" with
-        | Some channel ->
-            [ Line (depth, "island " ^ channel) ]
+        | Some channel -> (
+            match island channel with
+            | Some view ->
+                Break
+                :: pieces ~island depth ~skip_text (Accessibility.items view)
+                @ [ Break ]
+            | None ->
+                [ Line (depth, "island " ^ channel) ]
+          )
         | None -> (
             let role = Accessibility.role element in
             let handlers = handlers element in
@@ -207,7 +218,7 @@ and piece depth ~skip_text = function
                   else
                     Words (depth, " ")
                 in
-                (edge :: pieces depth ~skip_text children) @ [ edge ]
+                (edge :: pieces ~island depth ~skip_text children) @ [ edge ]
             | _ ->
                 let skip_text =
                   match role with
@@ -217,7 +228,7 @@ and piece depth ~skip_text = function
                       false
                 in
                 Line (depth, describe element role handlers)
-                :: pieces (depth + 1) ~skip_text children
+                :: pieces ~island (depth + 1) ~skip_text children
           )
     )
 
@@ -233,7 +244,7 @@ let collapse text =
        )
     )
 
-let to_string node =
+let to_string ?(island = fun _ -> None) node =
   let buffer = Buffer.create 256 in
   let line depth text =
     Buffer.add_string buffer (String.make (2 * depth) ' ');
@@ -270,7 +281,7 @@ let to_string node =
         flush pending;
         emit None rest
   in
-  emit None (pieces 0 ~skip_text:false (Accessibility.items node));
+  emit None (pieces ~island 0 ~skip_text:false (Accessibility.items node));
   Buffer.contents buffer
 
 let visible node =

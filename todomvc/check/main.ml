@@ -20,12 +20,11 @@ let editing_exists =
     )
 
 let todos =
-  Check.component
-    ~props:Todomvc_routes.[ All; Active; Completed ]
-    ~texts:[ "milk"; " " ]
+  Check.component ~texts:[ "milk"; " " ]
+    ~inputs:(fun _ -> [ Add "milk"; Add " " ])
     ~within:(fun state -> state.next_id <= 3)
     ~properties:[ ids_unique; editing_exists ]
-    component
+    Todomvc_live.all.component
 
 let () =
   Todomvc_codecs.register ();

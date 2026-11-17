@@ -3,11 +3,11 @@ initial empty
 state empty
 state editing
 state list
-edge editing -> empty on "clear completed" destroy draft "save edit" "toggle all"
-edge editing -> list on add "cancel edit" "clear completed" destroy draft "save edit" toggle "toggle all"
-edge empty -> list on add
+edge editing -> empty on add "add draft" "clear completed" destroy draft "save edit" "toggle all"
+edge editing -> list on add "add draft" "cancel edit" "clear completed" destroy draft "save edit" toggle "toggle all"
+edge empty -> list on add "add draft"
 edge list -> editing on edit
 edge list -> empty on "clear completed" destroy
-stay empty on draft
+stay empty on "add draft" draft
 stay editing on edit "edit draft"
-stay list on add "clear completed" destroy draft toggle "toggle all"
+stay list on add "add draft" "clear completed" destroy draft toggle "toggle all"

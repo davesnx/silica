@@ -127,5 +127,6 @@ let () =
          "An example app. navigate opens a page and read shows it. Each tool \
           of a machine sends one event to a running instance; a state that \
           ignores the event refuses the call."
-       ~answer ~routes Example_tools.publications app
+       ~routes Example_tools.publications
+       (Silica_mcp.memory ~answer app)
     )
