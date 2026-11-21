@@ -31,13 +31,10 @@ type event = Toggle
 type state = Unchecked | Checked
 
 val machine : (props, state, event) Silica.Machine.t
-(** The machine of the component. The checker reads it. *)
 
 val component : (props, state, event) Silica.Component.t
-(** The machine with its view. *)
 
 val view : props -> state -> event Silica.Node.t
-(** The view of a state. *)
 
 val props :
   id:string ->

@@ -11,7 +11,7 @@ type error =
       (** No answer: the network failed or the call timed out. *)
 
 type ('o, 'x) answer =
-  | Ok of 'o  (** The output. *)
+  | Ok of 'o
   | Rejected of 'x
       (** The handler answered [Error x]: an application error, such as a failed
           validation. *)

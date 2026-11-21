@@ -45,7 +45,6 @@ val query :
     [default] is not printed. *)
 
 val string_query : string -> default:string -> string query
-(** A text query parameter. *)
 
 val int_query : string -> default:int -> int query
 (** An integer query parameter. Text that is not an integer gives [default]. *)

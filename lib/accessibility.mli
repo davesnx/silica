@@ -140,7 +140,6 @@ val elements : 'e Node.t -> 'e element list
     before the portal around it. *)
 
 val tag : 'e element -> string
-(** The tag name. *)
 
 val ancestors : 'e element -> 'e element list
 (** The elements above it in the page, nearest first. A child of a portal has

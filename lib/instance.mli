@@ -158,7 +158,6 @@ val inspect : observed -> inspected
 (** The values of the step. Call it while the observer runs. *)
 
 val cell_path : ('p, 's, 'e) cell -> string
-(** The instance path of a cell. *)
 
 type ('p, 's, 'e) asked
 (** An instance that starts (see {!asked_path}, {!asked_component} and

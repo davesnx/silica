@@ -51,13 +51,10 @@ type model = { selected : string; focused : string  (** The tab stop. *) }
 type state = Ready of model
 
 val machine : (props, state, event) Silica.Machine.t
-(** The machine of the component. The checker reads it. *)
 
 val component : (props, state, event) Silica.Component.t
-(** The machine with its view. *)
 
 val view : props -> state -> event Silica.Node.t
-(** The view of a state. *)
 
 val tab : ?disabled:bool -> value:string -> string -> tab
 (** [tab ~value label]. [disabled] defaults to [false]. *)

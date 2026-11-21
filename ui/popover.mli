@@ -52,7 +52,6 @@ type state = Closed | Open
 
 type ('content, 'ce) t = {
   component : (('content, 'ce) props, state, 'ce event) Silica.Component.t;
-      (** The machine with its view. The checker reads it. *)
   closes : 'ce -> bool;
 }
 (** A popover for one kind of content. *)
@@ -77,7 +76,6 @@ val view :
   ('content, 'ce) props ->
   state ->
   'ce event Silica.Node.t
-(** The view of a state. *)
 
 val props :
   id:string ->

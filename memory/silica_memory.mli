@@ -168,7 +168,6 @@ val attribute : element -> string -> string option
 (** The value of an attribute; [Some ""] for a [true] boolean attribute. *)
 
 val tag : element -> string
-(** The tag name. *)
 
 (** {1 Roles and names}
 
@@ -206,10 +205,8 @@ val all_by_name : ?within:element -> _ t -> string -> element list
 *)
 
 val role : element -> Accessibility.role option
-(** The role of the element. *)
 
 val accessible_name : element -> string
-(** The accessible name of the element. *)
 
 val disabled : element -> bool
 (** The element is disabled: [aria-disabled="true"] or [disabled] on it (see
@@ -365,7 +362,6 @@ type request
 (** A Remote call request. *)
 
 val path : request -> string
-(** The path of the request. *)
 
 val body : request -> string
 (** The JSON body of the request. *)

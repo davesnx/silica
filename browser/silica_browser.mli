@@ -215,9 +215,7 @@ val recorder :
     ]}
 
     Read the trace with {!Silica.Trace.Recorder.val-trace} and send
-    {!Silica.Trace.to_jsonl} through an endpoint of the app. The observer is a
-    value, not the recorder, so an app that makes no recorder carries no
-    recorder code. *)
+    {!Silica.Trace.to_jsonl} through an endpoint of the app. *)
 
 val mount_with_props :
   ?live_config:live_config ->

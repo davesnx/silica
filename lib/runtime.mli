@@ -50,7 +50,6 @@ type 'p event =
   | Suspend
 
 type 'p t
-(** A runtime that runs a root with props ['p]. *)
 
 val start :
   ?dev:bool ->
@@ -89,7 +88,5 @@ val start :
     after the error page shows. *)
 
 val send : 'p t -> 'p event -> unit
-(** Give the runtime an event of its lifecycle. *)
 
 val state : 'p t -> state
-(** The state of the lifecycle now. *)

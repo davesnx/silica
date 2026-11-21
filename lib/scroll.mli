@@ -11,4 +11,3 @@ type t = {
 }
 
 val zero : t
-(** All six values are [0.]. *)

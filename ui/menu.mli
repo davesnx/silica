@@ -53,13 +53,10 @@ type state =
   | Open of int option  (** The position of the highlighted item. *)
 
 val machine : (props, state, event) Silica.Machine.t
-(** The machine of the component. The checker reads it. *)
 
 val component : (props, state, event) Silica.Component.t
-(** The machine with its view. *)
 
 val view : props -> state -> event Silica.Node.t
-(** The view of a state. *)
 
 val item_id : string -> int -> string
 (** [item_id id i] is the element id and ref name of the item at position [i] of

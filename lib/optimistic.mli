@@ -67,7 +67,6 @@ module type OPTIMISTIC = sig
       that makes one Remote call for each. *)
 
   val is_pending : id:int -> t -> bool
-  (** The change [id] is pending. *)
 end
 
 module Make (Change : CHANGE) :

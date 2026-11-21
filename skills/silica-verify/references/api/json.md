@@ -23,22 +23,14 @@ type view =
 val classify : t -> view
 ```
 
-The value as a variant to match on.
-
 ```ocaml
 val declassify : view -> t
 ```
-
-Make a value from a variant.
 
 ```ocaml
 val to_string : t -> string
 ```
 
-The JSON text of the value.
-
 ```ocaml
 val of_string : string -> (t, string) result
 ```
-
-Parse JSON text. `Error` holds the reason.

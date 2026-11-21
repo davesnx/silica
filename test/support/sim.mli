@@ -8,7 +8,6 @@ val mount : ?dev:bool -> (unit, 's, 'e) Silica.Component.t -> (unit, 's, 'e) t
 
 val mount_with_props :
   ?dev:bool -> props:'p -> ('p, 's, 'e) Silica.Component.t -> ('p, 's, 'e) t
-(** Mount a component that has props. *)
 
 val set_props : ('p, 's, 'e) t -> 'p -> unit
 (** Give the component new props, as a parent does, and run the actions that
@@ -86,7 +85,6 @@ val attribute : ('p, 's, 'e) t -> id:string -> string -> string option
     boolean attribute. [None] when there is no such element or attribute. *)
 
 val exists : ('p, 's, 'e) t -> id:string -> bool
-(** An element with this id is in the view. *)
 
 val fire : ('p, 's, 'e) t -> string -> unit
 (** The timer with this id fires.

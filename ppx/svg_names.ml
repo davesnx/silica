@@ -1,7 +1,3 @@
-(* SVG attribute names with upper-case letters that the SVG specification
-   writes in camelCase. Source: https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute
-   (SVG 2 and the SVG 1.1 names that browsers still accept). Every other
-   multi-word SVG attribute is dashed, for example [clip-path]. *)
 let camel_case_allow_list =
   [
     "allowReorder";

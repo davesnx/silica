@@ -11,7 +11,6 @@
 type 'a t
 
 val ready : 'a -> 'a t
-(** A chunk whose value is here. *)
 
 val deferred : ((('a, string) result -> unit) -> unit) -> 'a t
 (** A chunk that a loader brings. The loader runs at the first {!load}, at most
@@ -19,7 +18,6 @@ val deferred : ((('a, string) result -> unit) -> unit) -> 'a t
     message. After an error, the next {!load} runs the loader again. *)
 
 val get : 'a t -> 'a option
-(** The value, when it is here. *)
 
 val load : 'a t -> (unit -> unit) -> unit
 (** Start the loader, or join the load in progress, and call the function once

@@ -43,8 +43,6 @@ let strings json =
   | `Null | `Bool _ | `Int _ | `Float _ | `String _ | `Assoc _ ->
       Alcotest.failf "not a list: %s" (Json.to_string json)
 
-(* JSON Schema 2020-12 for the keywords that Input writes; another keyword
-   fails the test until it has a rule here. *)
 let rec validates schema json =
   let keywords = fields schema in
   let object_fields =

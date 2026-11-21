@@ -10,8 +10,7 @@
     [{"t":"error","code":...}] from the server, and [{"t":"ping"}] from the
     client, answered by [{"t":"pong"}].
 
-    Experimental: Live updates can change. The checker and the runtime do not
-    agree yet on the order of the first update of a subscription. *)
+    Experimental: Live updates can change. *)
 
 val version : int
 (** The protocol version, [2]. A hello with another version closes the socket.
@@ -45,10 +44,8 @@ val host_to_action : host -> 'e Action.t
 (** The action that a host message stands for. *)
 
 val encode_host : host -> Silica_json.Json.t
-(** The JSON form of a host action. *)
 
 val decode_host : Silica_json.Json.t -> (host, string) result
-(** Read a host action from JSON. *)
 
 type subscription =
   | Island of { channel : string; instance : string }
@@ -76,16 +73,12 @@ type server =
   | Pong
 
 val encode_client : client -> string
-(** The JSON text of a client message. *)
 
 val decode_client : string -> (client, string) result
-(** Read a client message. [Error] holds the reason. *)
 
 val encode_server : server -> string
-(** The JSON text of a server message. *)
 
 val decode_server : string -> (server, string) result
-(** Read a server message. [Error] holds the reason. *)
 
 val encode_event : 'e Codec.t -> id:int -> 'e -> string
 (** [encode_client (Event ...)] with the event encoded by the codec. *)
@@ -116,9 +109,8 @@ val close_unknown : close_code
 
 val close_session : close_code
 (** 4005: the request has no live session, for example after the server
-    restarted. The server accepts the upgrade and closes at once, because a
-    browser cannot read the status of a refused upgrade. The client does not
-    connect again: it reloads the page to get a new session and token. *)
+    restarted. The client does not connect again: it reloads the page to get a
+    new session and token. *)
 
 val close_idle : close_code
 (** 4008: no traffic for two heartbeats. *)

@@ -4,10 +4,7 @@ type entry = {
   info : Site_components.info;
   chart : Silica.Statechart_layout.t option;
   stories : (string * Story.t) list;
-      (** The file name of each story in [site/stories/], and the story. *)
   grid : Story.t option;
-      (** The story shown in every theme. A story with fixed element ids can
-          show only once in a page, so it is never the grid story. *)
 }
 
 let sides default =

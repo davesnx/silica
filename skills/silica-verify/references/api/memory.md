@@ -185,8 +185,6 @@ The value of an attribute; `Some ""` for a `true` boolean attribute.
 val tag : element -> string
 ```
 
-The tag name.
-
 **Roles and names**
 
 Find elements as a screen reader does: by their role and accessible name, as `Silica.Accessibility` computes them. Hidden elements are left out.
@@ -229,13 +227,9 @@ Every element with no role that has the accessible name, in document order.
 val role : element -> Accessibility.role option
 ```
 
-The role of the element.
-
 ```ocaml
 val accessible_name : element -> string
 ```
-
-The accessible name of the element.
 
 ```ocaml
 val disabled : element -> bool
@@ -417,8 +411,6 @@ A Remote call request.
 ```ocaml
 val path : request -> string
 ```
-
-The path of the request.
 
 ```ocaml
 val body : request -> string

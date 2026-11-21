@@ -15,7 +15,6 @@ val machine : (unit, state, event) Silica.Machine.t
     codecs (see {!register}). *)
 
 val register : unit -> unit
-(** Registers the codecs of {!machine}. *)
 
 val component : (unit, state, event) Silica.Component.t
 (** A [<input type="password">] with the id ["password"] and the label

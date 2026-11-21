@@ -9,7 +9,6 @@ val make :
   encode:('a -> Silica_json.Json.t) ->
   decode:(Silica_json.Json.t -> ('a, string) result) ->
   'a t
-(** A codec from an encoder and a decoder. *)
 
 val string : string t
 (** A JSON string. *)
@@ -37,7 +36,6 @@ val pair : 'a t -> 'b t -> ('a * 'b) t
 (** A JSON array of two items. *)
 
 val to_string : 'a t -> 'a -> string
-(** The JSON text of the value. *)
 
 val of_string : 'a t -> string -> ('a, string) result
 (** Parse JSON text and decode it. [Error] holds the parse or decode error. *)

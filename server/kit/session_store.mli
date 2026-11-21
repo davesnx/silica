@@ -65,4 +65,3 @@ type ops = {
     [save = fun () -> "[]"] and a [load] that returns [Ok 0]. *)
 
 val ops : t -> ops
-(** The store as {!type-ops}. *)

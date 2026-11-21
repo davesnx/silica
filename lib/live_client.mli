@@ -3,8 +3,7 @@
     states, and connects again after a loss. It reaches the platform only
     through {!Platform.type-io}.
 
-    Experimental: Live updates can change. The checker and the runtime do not
-    agree yet on the order of the first update of a subscription. *)
+    Experimental: Live updates can change. *)
 
 type config = { ping_ms : int; pong_ms : int }
 (** [ping_ms] is the wait before each ping. [pong_ms] is the wait for the pong

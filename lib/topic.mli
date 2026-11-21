@@ -2,8 +2,7 @@
     the full state under a key; every subscriber of that name and key gets it
     with a sequence number. The server holds no machine for a topic.
 
-    Experimental: Live updates can change. The checker and the runtime do not
-    agree yet on the order of the first update of a subscription. *)
+    Experimental: Live updates can change. *)
 
 type 's t = 's Live_topic.t
 
@@ -12,10 +11,8 @@ val declare : name:string -> state:'s Codec.t -> 's t
     browser. *)
 
 val name : 's t -> string
-(** The name of the topic. *)
 
 val state : 's t -> 's Codec.t
-(** The codec of the topic state. *)
 
 val state_id : 's t -> 's Type.Id.t
 (** A type id made by [declare], one for each topic. The checker uses it to find
@@ -34,8 +31,7 @@ val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Host.t
     server publishes, for every loss of the connection (the old data,
     [stale = true]) and for every failure. The client reconnects by itself.
 
-    Experimental: Live updates can change. The checker and the runtime do not
-    agree yet on the order of the first update of a subscription. *)
+    Experimental: Live updates can change. *)
 
 val update_codec : 's Codec.t -> 's update Codec.t
 (** [update_codec state] writes [{"seq": n, "status": ..}], the status by
