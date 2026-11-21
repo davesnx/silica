@@ -85,9 +85,7 @@ val routes :
     calls that the page of a route makes when it starts, so that a link can
     fetch them early (see {!link}). [chunked] tells the lazy routes: those whose
     page is a {!Node.val-chunk}. A link to one of them preloads its code (the
-    [chunks] of {!make}) as it preloads the calls. The code itself is named in
-    {!make}, at the app root, because a page links to routes and so depends on
-    [routes]. *)
+    [chunks] of {!make}) as it preloads the calls. *)
 
 val parse : 'r routes -> Url.t -> ('r, string) result
 (** The route of a URL. [Error] when the path does not start with the [base] of

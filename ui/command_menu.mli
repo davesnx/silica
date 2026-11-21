@@ -1,6 +1,5 @@
 (** A command menu (command palette): a modal {!Dialog} that holds an inline
-    {!Combobox} with the first match always highlighted. Base UI has no such
-    component; this is the composition that its documentation suggests.
+    {!Combobox} with the first match always highlighted.
 
     The parent opens it with [open_] (for example from a global shortcut such as
     Ctrl+K, with {!Silica.Host.keys}) and follows [on_open_change]. When it

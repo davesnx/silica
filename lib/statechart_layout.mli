@@ -73,12 +73,8 @@ val layout : ?observed:(string * string) list -> Spec.t -> t
     spec is drawn as a [drift] edge, and a state that the spec lacks as a
     [drift] node.
 
-    Layers by longest path after the back edges of a depth first search from the
-    initial state are turned around. Edge labels and long edges get places of
-    their own in the columns between the layers, so labels and edges do not
-    cover nodes. The order in each column comes from barycenter sweeps and
-    adjacent swaps that reduce crossings; heights come from the median of the
-    neighbours. *)
+    Edge labels and long edges get places of their own in the columns between
+    the layers, so labels and edges do not cover nodes. *)
 
 val to_string : t -> string
 (** One line for the size, each node and each edge, with positions rounded to

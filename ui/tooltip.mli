@@ -20,8 +20,6 @@ type classes = { trigger : string; popup : string }
 val no_classes : classes
 (** All empty. *)
 
-(** A delay of the tooltip. A timer of a state has a fixed duration, so the
-    delays are a fixed set. *)
 type delay =
   | Instant  (** 0 ms: at once. *)
   | Short  (** 300 ms. *)
@@ -59,13 +57,10 @@ type state =
   | Closing  (** Shown; waits for [close_delay]. *)
 
 val machine : (props, state, event) Silica.Machine.t
-(** The machine of the component. The checker reads it. *)
 
 val component : (props, state, event) Silica.Component.t
-(** The machine with its view. *)
 
 val view : props -> state -> event Silica.Node.t
-(** The view of a state. *)
 
 val props :
   id:string ->

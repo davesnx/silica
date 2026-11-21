@@ -2,7 +2,6 @@
     through {!Topic}. *)
 
 type 's t
-(** A topic with state ['s]. *)
 
 val declare : name:string -> state:'s Codec.t -> 's t
 val name : 's t -> string

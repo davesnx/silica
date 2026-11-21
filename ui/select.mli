@@ -56,13 +56,10 @@ type state =
       (** The selected value and the position of the highlighted option. *)
 
 val machine : (props, state, event) Silica.Machine.t
-(** The machine of the component. The checker reads it. *)
 
 val component : (props, state, event) Silica.Component.t
-(** The machine with its view. *)
 
 val view : props -> state -> event Silica.Node.t
-(** The view of a state. *)
 
 val option_id : string -> int -> string
 (** [option_id id i] is the element id and ref name of the option at position

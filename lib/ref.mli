@@ -7,4 +7,3 @@ val make : string -> t
     it to the [data-silica-ref] attribute. *)
 
 val name : t -> string
-(** The name given to {!make}. *)

@@ -61,7 +61,6 @@ type state = Closed | Open
 ```ocaml
 type ('content, 'ce) t = {
   component : (('content, 'ce) props, state, 'ce event) Silica.Component.t;
-      (** The machine with its view. The checker reads it. *)
   closes : 'ce -> bool;
 }
 ```
@@ -86,8 +85,6 @@ val view :
   state ->
   'ce event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val props :
@@ -176,7 +173,6 @@ type state = Closed | Open
 ```ocaml
 type ('content, 'ce) t = {
   component : (('content, 'ce) props, state, 'ce event) Silica.Component.t;
-      (** The machine with its view. The checker reads it. *)
   closes : 'ce -> bool;
 }
 ```
@@ -201,8 +197,6 @@ val view :
   state ->
   'ce event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val props :
@@ -257,8 +251,6 @@ type delay =
   | Long
 ```
 
-A delay of the tooltip. A timer of a state has a fixed duration, so the delays are a fixed set.
-
 ```ocaml
 val delay_ms : delay -> int
 ```
@@ -302,19 +294,13 @@ type state =
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val props :
@@ -409,19 +395,13 @@ type state =
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val item_id : string -> int -> string
@@ -515,19 +495,13 @@ type state =
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val option_id : string -> int -> string
@@ -657,19 +631,13 @@ type state =
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val props :
@@ -694,7 +662,7 @@ The node. `on_value_change` hears the value of each option the user chose.
 
 ## Silica_ui.Command_menu
 
-A command menu (command palette): a modal `Dialog` that holds an inline `Combobox` with the first match always highlighted. Base UI has no such component; this is the composition that its documentation suggests.
+A command menu (command palette): a modal `Dialog` that holds an inline `Combobox` with the first match always highlighted.
 
 The parent opens it with `open_` (for example from a global shortcut such as Ctrl+K, with `Silica.Host.keys`) and follows `on_open_change`. When it opens, focus goes to the search input, with empty text. Enter or a press on an option runs the option: the menu reports its value and closes. Escape (with empty text; with text, the first Escape clears it) and a press outside close it. On close, focus goes back to the element that had it.
 
@@ -806,19 +774,13 @@ type state = Unchecked | Checked | Indeterminate
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val props :
@@ -885,19 +847,13 @@ type state = Unchecked | Checked
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val props :
@@ -989,19 +945,13 @@ type state = Ready of model
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val tab : ?disabled:bool -> value:string -> string -> tab
@@ -1125,19 +1075,13 @@ The step of the time: 100.
 val machine : (props, state, event) Silica.Machine.t
 ```
 
-The machine of the component. The checker reads it.
-
 ```ocaml
 val component : (props, state, event) Silica.Component.t
 ```
 
-The machine with its view.
-
 ```ocaml
 val view : props -> state -> event Silica.Node.t
 ```
-
-The view of a state.
 
 ```ocaml
 val toast :
@@ -1214,7 +1158,7 @@ type tokens = {
 }
 ```
 
-The tokens of silica-ui. Each one is a CSS value, such as `"#ffffff"` or `"0.5rem"`. A theme must give all of them, so a new token is a compile error in each theme that does not have it. Tailwind names: `ui-<token>` for colours (`bg-ui-surface`, `text-ui-accent-text`), `rounded-ui`, `shadow-ui`, `font-ui`; `spacing` is the Tailwind `--spacing`.
+The tokens of silica-ui. Each one is a CSS value, such as `"#ffffff"` or `"0.5rem"`. Tailwind names: `ui-<token>` for colours (`bg-ui-surface`, `text-ui-accent-text`), `rounded-ui`, `shadow-ui`, `font-ui`; `spacing` is the Tailwind `--spacing`.
 
 ```ocaml
 type t
@@ -1551,61 +1495,41 @@ Classes for a plain button.
 val dialog : Dialog.classes
 ```
 
-Classes for `Dialog`.
-
 ```ocaml
 val popover : Popover.classes
 ```
-
-Classes for `Popover`.
 
 ```ocaml
 val tooltip : Tooltip.classes
 ```
 
-Classes for `Tooltip`.
-
 ```ocaml
 val menu : Menu.classes
 ```
-
-Classes for `Menu`.
 
 ```ocaml
 val select : Select.classes
 ```
 
-Classes for `Select`.
-
 ```ocaml
 val combobox : Combobox.classes
 ```
-
-Classes for `Combobox`.
 
 ```ocaml
 val command_menu : Command_menu.classes
 ```
 
-Classes for `Command_menu`.
-
 ```ocaml
 val checkbox : Checkbox.classes
 ```
-
-Classes for `Checkbox`.
 
 ```ocaml
 val switch : Switch.classes
 ```
 
-Classes for `Switch`.
-
 ```ocaml
 val tabs : Tabs.classes
 ```
-
-Classes for `Tabs`.
 
 ```ocaml
 val tab_panel : string
@@ -1616,8 +1540,6 @@ Classes for a panel of `Tabs`.
 ```ocaml
 val toast : Toast.classes
 ```
-
-Classes for `Toast`.
 
 ## Silica_ui.Story
 

@@ -139,16 +139,12 @@ val make_with_props :
     change. *)
 
 val id : ('p, 's, 'e) t -> string
-(** The id of the machine, as given to {!make}. *)
 
 val init : ('p, 's, 'e) t -> 's
-(** The snapshot that the machine starts in. *)
 
 val name : ('p, 's, 'e) t -> 's -> string
-(** The name of the state of the snapshot. *)
 
 val states : ('p, 's, 'e) t -> string list option
-(** The [states] given to {!make}. *)
 
 val event_name : ('p, 's, 'e) t -> 'e -> string option
 (** The name of the event by the [event_name] given to {!make}, or [None] when
@@ -170,11 +166,10 @@ val register_codecs :
     snapshot and the new code decodes it (see {!Handoff}). A machine with no
     state codec starts again, unless it is at the snapshot it starts in.
 
-    The codecs are not part of the machine definition on purpose: only the code
-    that calls [register_codecs] references them. Call it from development entry
-    points (tests, the checker suite, a development client), and a release
-    bundle that never calls it carries no codec. Leave out a codec when the
-    values hold closures or other data that is not plain data. *)
+    Call it from development entry points (tests, the checker suite, a
+    development client), and a release bundle that never calls it carries no
+    codec. Leave out a codec when the values hold closures or other data that is
+    not plain data. *)
 
 val props_codec : ('p, 's, 'e) t -> ('p Codec.t, string) result
 (** The props codec given to {!register_codecs}, or an [Error] as for
@@ -228,21 +223,18 @@ val active : (unit, 's, 'e) t -> 's -> resource list
     only if its id was started and not stopped. *)
 
 val active_with_props : ('p, 's, 'e) t -> 'p -> 's -> resource list
-(** {!active} with the props. *)
 
 val held : (unit, 's, 'e) t -> 's -> 'e Action.held list
 (** The held resources (see {!Host.focus_trap}) that run during the snapshot.
     The checker reads them to know which presses can happen. *)
 
 val held_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.held list
-(** {!held} with the props. *)
 
 val can : (unit, 's, 'e) t -> 's -> 'e -> bool
 (** The machine handles the event in this snapshot: it is not final and the
     update does not give [Ignore]. A view can disable a button with it. *)
 
 val can_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
-(** {!can} with the props. *)
 
 type how = Unhandled | Kept | Entered
 
@@ -266,7 +258,6 @@ val resume : (unit, 's, 'e) t -> 's -> 'e Action.host list
     it, the actions and {!active} agree, as after {!start}. *)
 
 val resume_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
-(** {!resume} with the props. *)
 
 val step :
   ?finished:string ->
@@ -297,7 +288,6 @@ val step_with_props :
   's ->
   'e ->
   's * 'e Action.host list * how
-(** {!step} with the props. *)
 
 val set_props :
   ('p, 's, 'e) t -> previous:'p -> 'p -> 's -> 's * 'e Action.host list * how
@@ -309,4 +299,3 @@ val exit : (unit, 's, 'e) t -> 's -> 'e Action.host list
     resources. *)
 
 val exit_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
-(** {!exit} with the props. *)

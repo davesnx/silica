@@ -23,7 +23,6 @@ type cancel = unit -> unit
 (** Stops what was started. Calling it again, or after the end, does nothing. *)
 
 type reply = { status : int; body : string }
-(** An HTTP answer. *)
 
 type socket = { send : string -> unit; close : int -> unit }
 (** An open Live socket: send a text message, close with a code. *)

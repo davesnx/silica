@@ -1,5 +1,3 @@
-(** Attribute constructors. *)
-
 val string : string -> string -> 'e Node.attr
 (** [string name value] sets the attribute [name] to [value]. *)
 

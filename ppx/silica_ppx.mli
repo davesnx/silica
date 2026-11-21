@@ -1,5 +1,4 @@
-(** Registers the Silica JSX transformation with ppxlib. The only API is the SVG
-    attribute name rule and its table, exposed for the test in test/ppx. *)
+(** Registers the Silica JSX transformation with ppxlib. *)
 
 module Svg_names : sig
   val camel_case_allow_list : string list

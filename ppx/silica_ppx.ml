@@ -4,7 +4,6 @@ module List = ListLabels
 
 let issues_url = "https://github.com/davesnx/silica/issues"
 
-(* There's no pexp_list on Ppxlib since is not a constructor of the Parsetree *)
 let pexp_list ~loc xs =
   List.fold_left (List.rev xs) ~init:[%expr []] ~f:(fun xs x ->
       [%expr [%e x] :: [%e xs]]
@@ -494,27 +493,20 @@ let rewrite_jsx =
               split_args ~mapper:self#expression args
             in
             match tag.pexp_desc with
-            (* div() [@JSX] *)
             | Pexp_ident { txt = Lident name; loc = name_loc }
               when Html.is_html_element name || Html.is_svg_element name ->
                 rewrite_node ~loc:name_loc name rest_of_args children
-            (* Reason adds `createElement` as default when an uppercase is found,
-               we change it back to make *)
-            (* Foo.createElement() [@JSX] *)
             | Pexp_ident
                 { txt = Ldot (modulePath, ("createElement" | "make")); loc } ->
                 let id = { loc; txt = Ldot (modulePath, "make") } in
                 rewrite_component ~loc:tag.pexp_loc id rest_of_args children
-            (* local_function() [@JSX] *)
             | Pexp_ident id ->
                 rewrite_component ~loc:tag.pexp_loc id rest_of_args children
             | _ ->
                 assert false
           )
-        (* div() [@JSX] *)
         | Pexp_apply (_tag, _props) when has_jsx_attr expr.pexp_attributes ->
             raise_errorf ~loc:expr.pexp_loc "tag should be an identifier"
-        (* <> </> is represented as a list in the Parsetree with [@JSX] *)
         | Pexp_construct
             ({ txt = Lident "::"; loc }, Some { pexp_desc = Pexp_tuple _; _ })
         | Pexp_construct ({ txt = Lident "[]"; loc }, None) -> (

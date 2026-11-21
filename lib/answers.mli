@@ -6,7 +6,6 @@
 type t
 
 val empty : t
-(** A table with no answers. *)
 
 val add : t -> path:string -> input:string -> output:string -> t
 (** [input] and [output] are the encoded JSON bodies of the call (see
@@ -14,7 +13,6 @@ val add : t -> path:string -> input:string -> output:string -> t
     answer. *)
 
 val is_empty : t -> bool
-(** [true] when the table has no answers. *)
 
 val find : t -> path:string -> input:string -> string option
 (** The encoded output of a call. *)
@@ -23,7 +21,6 @@ val to_list : t -> (string * string * string) list
 (** The answers as [(path, input, output)], in the order they were added. *)
 
 val remove : t -> path:string -> input:string -> t
-(** The client uses each answer once. *)
 
 val to_script : ?nonce:string -> t -> string
 (** An HTML element [<script type="application/json" id="silica-answers">] with

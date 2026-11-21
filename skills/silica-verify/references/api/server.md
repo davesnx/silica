@@ -154,7 +154,7 @@ val dev_of_env : unit -> dev option
 val secret_of_env : origins:origins -> dev:dev option -> (string, string) result
 ```
 
-The secret from the environment variable `SILICA_SECRET`, which needs at least 16 bytes. When it is not set: an `Error` for a server with `Origins` (a public server, where a random secret would end the sessions at each restart and deploy) or with `dev` (whose sessions outlive the process); with `Localhost` and no `dev`, a random secret, and a line on stderr says so, or the `Error` of `Silica_server_kit.Random_source.hex_id` when no random bytes can be read. The `Error` message of a missing or short secret says what to do.
+The secret from the environment variable `SILICA_SECRET`, which needs at least 16 bytes. When it is not set: an `Error` for a server with `Origins` or with `dev`; with `Localhost` and no `dev`, a random secret, and a line on stderr says so, or the `Error` of `Silica_server_kit.Random_source.hex_id` when no random bytes can be read. The `Error` message of a missing or short secret says what to do.
 
 ```ocaml
 val cookie : request -> string -> string option
@@ -367,8 +367,7 @@ module Make (Io : IO) : sig
 
   (** {2 One island}
 
-      Experimental: Live updates can change. The checker and the runtime do not
-      agree yet on the order of the first update of a subscription. *)
+      Experimental: Live updates can change. *)
 
   type runner
   (** The machine of one island and the queue of its events. {!val-upgrade}
@@ -454,9 +453,7 @@ module Make (Io : IO) : sig
         -> topic_def
         (** [init] makes the first state of a key that nobody has published yet.
 
-            Experimental: Live updates can change. The checker and the runtime
-            do not agree yet on the order of the first update of a subscription.
-        *)
+            Experimental: Live updates can change. *)
 
   type t
 
@@ -525,9 +522,7 @@ module Make (Io : IO) : sig
       With [mcp], every request for {!mcp_path} goes to it after these checks:
       the body is at most [max_body] (else 413); [sec-fetch-site], when present,
       is [same-origin] or [none] (else 403); [origin], when present, is allowed
-      (else 403). An MCP client is not a browser and sends no [origin], cookie
-      or CSRF token; a browser always sends [origin] with a [POST], so a page of
-      another site cannot reach it.
+      (else 403).
 
       Every other request that is not [GET] must pass, in this order: the body
       is at most [max_body] (else 413); [sec-fetch-site], when present, is
@@ -554,24 +549,22 @@ module Make (Io : IO) : sig
       allowed, or [sec-fetch-site] is present and not [same-origin]. When the
       cookie names no live session (for example after a restart), the upgrade is
       accepted and the socket is closed at once with
-      {!Silica.Protocol.close_session}: a browser cannot read the status of a
-      refused upgrade, so a refusal would look like a lost network. The first
-      message of the connection must be a {!Silica.Protocol.Hello} with the
-      version {!Silica.Protocol.version}, the CSRF token of the session and an
-      island or a topic that the server knows; the server answers with
-      [Hello_ok] and then a state. Otherwise it closes the socket with the close
-      code of {!Silica.Protocol}. An island with the same session, channel and
-      instance that is still held (see [live_keep]) is attached again and sent
-      its state; the event ids go on. A message above [max_message] gets an
-      [error] message and is dropped. A step that raises closes the socket with
-      {!Silica.Protocol.close_server_error} and ends the island. *)
+      {!Silica.Protocol.close_session}. The first message of the connection must
+      be a {!Silica.Protocol.Hello} with the version {!Silica.Protocol.version},
+      the CSRF token of the session and an island or a topic that the server
+      knows; the server answers with [Hello_ok] and then a state. Otherwise it
+      closes the socket with the close code of {!Silica.Protocol}. An island
+      with the same session, channel and instance that is still held (see
+      [live_keep]) is attached again and sent its state; the event ids go on. A
+      message above [max_message] gets an [error] message and is dropped. A step
+      that raises closes the socket with {!Silica.Protocol.close_server_error}
+      and ends the island. *)
 
   val publish : t -> 's Silica.Topic.t -> key:string -> 's -> unit Io.t
   (** The new full state of a topic key. Its [seq] is one higher than the last
       one, and every subscriber gets it. Call it from a handler.
 
-      Experimental: Live updates can change. The checker and the runtime do not
-      agree yet on the order of the first update of a subscription. *)
+      Experimental: Live updates can change. *)
 
   val sweep : t -> unit
   (** Housekeeping, called now and then by the adapter (about every 5 seconds):

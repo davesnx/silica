@@ -110,10 +110,8 @@ val make :
     {!Input.both}). *)
 
 val name : 'a t -> string
-(** The name of the tool. *)
 
 val input : 'a t -> 'a Input.t
-(** The arguments of the tool. *)
 
 val definition : 'a t -> Silica_json.Json.t
 (** The tool as [tools/list] gives it: [name], [title], [description],

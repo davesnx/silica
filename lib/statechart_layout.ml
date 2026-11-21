@@ -539,10 +539,6 @@ let layout ?(observed = []) (spec : Spec.t) =
     set_rank rank initial;
     if rank > 0 then sort_rank left_neighbors rank initial
   done;
-  (* ponytail: crossings are counted over all segment pairs and again after
-     each trial swap, O(segments^2) per count. Fine for the 12 states and about
-     40 edges of today's machines; past a few hundred edges, count with the
-     bilayer method of Barth, Juenger and Mutzel and update it per swap. *)
   let crossings () =
     let total = ref 0 in
     List.iter

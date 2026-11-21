@@ -52,10 +52,9 @@ type tokens = {
       (** The unit of the spacing scale: Tailwind [p-4] is 4 times it. *)
 }
 (** The tokens of silica-ui. Each one is a CSS value, such as ["#ffffff"] or
-    ["0.5rem"]. A theme must give all of them, so a new token is a compile error
-    in each theme that does not have it. Tailwind names: [ui-<token>] for
-    colours ([bg-ui-surface], [text-ui-accent-text]), [rounded-ui], [shadow-ui],
-    [font-ui]; [spacing] is the Tailwind [--spacing]. *)
+    ["0.5rem"]. Tailwind names: [ui-<token>] for colours ([bg-ui-surface],
+    [text-ui-accent-text]), [rounded-ui], [shadow-ui], [font-ui]; [spacing] is
+    the Tailwind [--spacing]. *)
 
 type t
 (** A theme. *)

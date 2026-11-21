@@ -131,8 +131,6 @@ Every element of the view in document order: first the elements outside portals,
 val tag : 'e element -> string
 ```
 
-The tag name.
-
 ```ocaml
 val ancestors : 'e element -> 'e element list
 ```
@@ -466,8 +464,6 @@ type t
 val empty : t
 ```
 
-A table with no answers.
-
 ```ocaml
 val add : t -> path:string -> input:string -> output:string -> t
 ```
@@ -477,8 +473,6 @@ val add : t -> path:string -> input:string -> output:string -> t
 ```ocaml
 val is_empty : t -> bool
 ```
-
-`true` when the table has no answers.
 
 ```ocaml
 val find : t -> path:string -> input:string -> string option
@@ -495,8 +489,6 @@ The answers as `(path, input, output)`, in the order they were added.
 ```ocaml
 val remove : t -> path:string -> input:string -> t
 ```
-
-The client uses each answer once.
 
 ```ocaml
 val to_script : ?nonce:string -> t -> string
@@ -517,8 +509,6 @@ val of_string : string -> (t, string) result
 Read the JSON text that `to_script` put into the element.
 
 ## Silica.Attr
-
-Attribute constructors.
 
 ```ocaml
 val string : string -> string -> 'e Node.attr
@@ -652,8 +642,6 @@ type 'a t
 val ready : 'a -> 'a t
 ```
 
-A chunk whose value is here.
-
 ```ocaml
 val deferred : ((('a, string) result -> unit) -> unit) -> 'a t
 ```
@@ -663,8 +651,6 @@ A chunk that a loader brings. The loader runs at the first `load`, at most once 
 ```ocaml
 val get : 'a t -> 'a option
 ```
-
-The value, when it is here.
 
 ```ocaml
 val load : 'a t -> (unit -> unit) -> unit
@@ -718,8 +704,6 @@ val make :
   'a t
 ```
 
-A codec from an encoder and a decoder.
-
 ```ocaml
 val string : string t
 ```
@@ -771,8 +755,6 @@ A JSON array of two items.
 ```ocaml
 val to_string : 'a t -> 'a -> string
 ```
-
-The JSON text of the value.
 
 ```ocaml
 val of_string : 'a t -> string -> ('a, string) result
@@ -891,7 +873,7 @@ type error =
 
 ```ocaml
 type ('o, 'x) answer =
-  | Ok of 'o  (** The output. *)
+  | Ok of 'o
   | Rejected of 'x
       (** The handler answered [Error x]: an application error, such as a failed
           validation. *)
@@ -1556,8 +1538,6 @@ The values of the step. Call it while the observer runs.
 val cell_path : ('p, 's, 'e) cell -> string
 ```
 
-The instance path of a cell.
-
 ```ocaml
 type ('p, 's, 'e) asked
 ```
@@ -1749,31 +1729,21 @@ A key with no modifier unless given.
 val escape : t
 ```
 
-The Escape key with no modifier.
-
 ```ocaml
 val enter : t
 ```
-
-The Enter key with no modifier.
 
 ```ocaml
 val tab : t
 ```
 
-The Tab key with no modifier.
-
 ```ocaml
 val arrow_up : t
 ```
 
-The Up arrow key with no modifier.
-
 ```ocaml
 val arrow_down : t
 ```
-
-The Down arrow key with no modifier.
 
 ```ocaml
 val equal : t -> t -> bool
@@ -1797,7 +1767,7 @@ The inverse of `to_string`: `of_string (to_string key)` is `key` when `repeat` i
 
 A component whose state lives on the server, one instance per connection. The client sends encoded events and receives encoded state.
 
-Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+Experimental: Live updates can change.
 
 ```ocaml
 type ('s, 'e) t = {
@@ -1831,7 +1801,7 @@ An island: an empty `div` with `data-silica-live` set to the channel. It has no 
 
 One live subscription over a WebSocket, as the Live protocol describes it (`Protocol`). The client sends the hello, keeps the heartbeat, drops old states, and connects again after a loss. It reaches the platform only through `Platform.io`.
 
-Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+Experimental: Live updates can change.
 
 ```ocaml
 type config = { ping_ms : int; pong_ms : int }
@@ -1905,8 +1875,6 @@ The types of `Topic`, in a module below `Host` and `Action`. Use them through `T
 ```ocaml
 type 's t
 ```
-
-A topic with state `'s`.
 
 ```ocaml
 val declare : name:string -> state:'s Codec.t -> 's t
@@ -2055,25 +2023,17 @@ Like `make`, for a component with props: the parent gives them with `Component.n
 val id : ('p, 's, 'e) t -> string
 ```
 
-The id of the machine, as given to `make`.
-
 ```ocaml
 val init : ('p, 's, 'e) t -> 's
 ```
-
-The snapshot that the machine starts in.
 
 ```ocaml
 val name : ('p, 's, 'e) t -> 's -> string
 ```
 
-The name of the state of the snapshot.
-
 ```ocaml
 val states : ('p, 's, 'e) t -> string list option
 ```
-
-The `states` given to `make`.
 
 ```ocaml
 val event_name : ('p, 's, 'e) t -> 'e -> string option
@@ -2095,7 +2055,7 @@ val register_codecs :
 
 The state codec also lets a machine keep its snapshot across a hot reload and a restart of the server under `silica dev`: the old code encodes the snapshot and the new code decodes it (see `Handoff`). A machine with no state codec starts again, unless it is at the snapshot it starts in.
 
-The codecs are not part of the machine definition on purpose: only the code that calls `register_codecs` references them. Call it from development entry points (tests, the checker suite, a development client), and a release bundle that never calls it carries no codec. Leave out a codec when the values hold closures or other data that is not plain data.
+Call it from development entry points (tests, the checker suite, a development client), and a release bundle that never calls it carries no codec. Leave out a codec when the values hold closures or other data that is not plain data.
 
 ```ocaml
 val props_codec : ('p, 's, 'e) t -> ('p Codec.t, string) result
@@ -2161,8 +2121,6 @@ The resources that run during the snapshot. After `start`, `step` or `set_props`
 val active_with_props : ('p, 's, 'e) t -> 'p -> 's -> resource list
 ```
 
-`active` with the props.
-
 ```ocaml
 val held : (unit, 's, 'e) t -> 's -> 'e Action.held list
 ```
@@ -2173,8 +2131,6 @@ The held resources (see `Host.focus_trap`) that run during the snapshot. The che
 val held_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.held list
 ```
 
-`held` with the props.
-
 ```ocaml
 val can : (unit, 's, 'e) t -> 's -> 'e -> bool
 ```
@@ -2184,8 +2140,6 @@ The machine handles the event in this snapshot: it is not final and the update d
 ```ocaml
 val can_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e -> bool
 ```
-
-`can` with the props.
 
 ```ocaml
 type how = Unhandled | Kept | Entered
@@ -2215,8 +2169,6 @@ It gives no `start` actions, no `entry` and no `on_props`: the snapshot entered 
 val resume_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
 ```
 
-`resume` with the props.
-
 ```ocaml
 val step :
   ?finished:string ->
@@ -2240,8 +2192,6 @@ val step_with_props :
   's * 'e Action.host list * how
 ```
 
-`step` with the props.
-
 ```ocaml
 val set_props :
   ('p, 's, 'e) t -> previous:'p -> 'p -> 's -> 's * 'e Action.host list * how
@@ -2258,8 +2208,6 @@ The actions of leaving the snapshot: `exit`, then the stops of its resources.
 ```ocaml
 val exit_with_props : ('p, 's, 'e) t -> 'p -> 's -> 'e Action.host list
 ```
-
-`exit` with the props.
 
 ## Silica.Mcp
 
@@ -2375,13 +2323,9 @@ val make :
 val name : 'a t -> string
 ```
 
-The name of the tool.
-
 ```ocaml
 val input : 'a t -> 'a Input.t
 ```
-
-The arguments of the tool.
 
 ```ocaml
 val definition : 'a t -> Silica_json.Json.t
@@ -2698,7 +2642,6 @@ module type OPTIMISTIC = sig
       that makes one Remote call for each. *)
 
   val is_pending : id:int -> t -> bool
-  (** The change [id] is pending. *)
 end
 ```
 
@@ -2789,8 +2732,6 @@ Stops what was started. Calling it again, or after the end, does nothing.
 type reply = { status : int; body : string }
 ```
 
-An HTTP answer.
-
 ```ocaml
 type socket = { send : string -> unit; close : int -> unit }
 ```
@@ -2860,7 +2801,7 @@ Live protocol, version 2. Wire messages between a live client and the server, sh
 
 The client sends first `{"t":"hello","v":2,"csrf":...,"sub":...}` where `sub` is `{"island":channel,"id":instance}` or `{"topic":name,"key":key}`. The server answers `{"t":"hello","v":2}`, or closes the socket with a close code. Then: `{"t":"state","seq":n,"ack":n,"state":...,"actions":[...]}` from the server, `{"t":"event","id":n,"event":...}` from the client, `{"t":"error","code":...}` from the server, and `{"t":"ping"}` from the client, answered by `{"t":"pong"}`.
 
-Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+Experimental: Live updates can change.
 
 ```ocaml
 val version : int
@@ -2897,13 +2838,9 @@ The action that a host message stands for.
 val encode_host : host -> Silica_json.Json.t
 ```
 
-The JSON form of a host action.
-
 ```ocaml
 val decode_host : Silica_json.Json.t -> (host, string) result
 ```
-
-Read a host action from JSON.
 
 ```ocaml
 type subscription =
@@ -2940,25 +2877,17 @@ type server =
 val encode_client : client -> string
 ```
 
-The JSON text of a client message.
-
 ```ocaml
 val decode_client : string -> (client, string) result
 ```
-
-Read a client message. `Error` holds the reason.
 
 ```ocaml
 val encode_server : server -> string
 ```
 
-The JSON text of a server message.
-
 ```ocaml
 val decode_server : string -> (server, string) result
 ```
-
-Read a server message. `Error` holds the reason.
 
 ```ocaml
 val encode_event : 'e Codec.t -> id:int -> 'e -> string
@@ -3017,7 +2946,7 @@ val close_unknown : close_code
 val close_session : close_code
 ```
 
-4005: the request has no live session, for example after the server restarted. The server accepts the upgrade and closes at once, because a browser cannot read the status of a refused upgrade. The client does not connect again: it reloads the page to get a new session and token.
+4005: the request has no live session, for example after the server restarted. The client does not connect again: it reloads the page to get a new session and token.
 
 ```ocaml
 val close_idle : close_code
@@ -3098,8 +3027,6 @@ type t = { x : float; y : float; width : float; height : float }
 val zero : t
 ```
 
-All four values are `0.`.
-
 ## Silica.Ref
 
 Names for nodes that actions can target (focus, blur, scroll).
@@ -3117,8 +3044,6 @@ A ref with this name. Use a name that is unique in the page. The host writes it 
 ```ocaml
 val name : t -> string
 ```
-
-The name given to `make`.
 
 ## Silica.Remote
 
@@ -3139,7 +3064,7 @@ type error = Endpoint.error =
 
 ```ocaml
 type ('o, 'x) answer = ('o, 'x) Endpoint.answer =
-  | Ok of 'o  (** The output. *)
+  | Ok of 'o
   | Rejected of 'x
       (** The handler answered [Error x]: an application error, such as a failed
           validation. The server answers it with status 422, not 500. *)
@@ -3167,19 +3092,13 @@ The URL path of the endpoint.
 val input : ('i, 'o, 'x) endpoint -> 'i Codec.t
 ```
 
-The codec of the input.
-
 ```ocaml
 val output : ('i, 'o, 'x) endpoint -> 'o Codec.t
 ```
 
-The codec of the output.
-
 ```ocaml
 val rejected : ('i, 'o, 'x) endpoint -> 'x Codec.t
 ```
-
-The codec of the application error.
 
 ```ocaml
 val answer_id : ('i, 'o, 'x) endpoint -> ('o * 'x) Type.Id.t
@@ -3418,8 +3337,6 @@ A value that `parse` cannot read falls back to `default`. A value equal to `defa
 val string_query : string -> default:string -> string query
 ```
 
-A text query parameter.
-
 ```ocaml
 val int_query : string -> default:int -> int query
 ```
@@ -3549,7 +3466,7 @@ val routes :
   'r routes
 ```
 
-The listed routes, in the order they are tried. `base`, such as `"/app"`, is the path that every URL of the app starts with: `parse` needs it and takes it off, `print` puts it first. `not_found` tells the route that `is_not_found` and the server status refer to. A route in `reenter` starts its page again when only its parameters change; any other route keeps its page, which gets the new parameters as new props. `preload` gives the Remote calls that the page of a route makes when it starts, so that a link can fetch them early (see `link`). `chunked` tells the lazy routes: those whose page is a `Node.chunk`. A link to one of them preloads its code (the `chunks` of `make`) as it preloads the calls. The code itself is named in `make`, at the app root, because a page links to routes and so depends on `routes`.
+The listed routes, in the order they are tried. `base`, such as `"/app"`, is the path that every URL of the app starts with: `parse` needs it and takes it off, `print` puts it first. `not_found` tells the route that `is_not_found` and the server status refer to. A route in `reenter` starts its page again when only its parameters change; any other route keeps its page, which gets the new parameters as new props. `preload` gives the Remote calls that the page of a route makes when it starts, so that a link can fetch them early (see `link`). `chunked` tells the lazy routes: those whose page is a `Node.chunk`. A link to one of them preloads its code (the `chunks` of `make`) as it preloads the calls.
 
 ```ocaml
 val parse : 'r routes -> Url.t -> ('r, string) result
@@ -3710,8 +3627,6 @@ type 'p event =
 type 'p t
 ```
 
-A runtime that runs a root with props `'p`.
-
 ```ocaml
 val start :
   ?dev:bool ->
@@ -3741,13 +3656,9 @@ Errors. The runtime is a top-level boundary: an exception that no `Node.boundary
 val send : 'p t -> 'p event -> unit
 ```
 
-Give the runtime an event of its lifecycle.
-
 ```ocaml
 val state : 'p t -> state
 ```
-
-The state of the lifecycle now.
 
 ## Silica.Scroll
 
@@ -3767,8 +3678,6 @@ type t = {
 ```ocaml
 val zero : t
 ```
-
-All six values are `0.`.
 
 ## Silica.Secret
 
@@ -4099,7 +4008,7 @@ val layout : ?observed:(string * string) list -> Spec.t -> t
 
 `observed` are the `(from, target)` of steps that entered a state at run time, such as the transition log gives. A pair that is not an arrow of the spec is drawn as a `drift` edge, and a state that the spec lacks as a `drift` node.
 
-Layers by longest path after the back edges of a depth first search from the initial state are turned around. Edge labels and long edges get places of their own in the columns between the layers, so labels and edges do not cover nodes. The order in each column comes from barycenter sweeps and adjacent swaps that reduce crossings; heights come from the median of the neighbours.
+Edge labels and long edges get places of their own in the columns between the layers, so labels and edges do not cover nodes.
 
 ```ocaml
 val to_string : t -> string
@@ -4173,7 +4082,7 @@ The status as `[@@deriving json]` writes a variant, with the codec of the data: 
 
 A named, keyed piece of server data with a state type. The server publishes the full state under a key; every subscriber of that name and key gets it with a sequence number. The server holds no machine for a topic.
 
-Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+Experimental: Live updates can change.
 
 ```ocaml
 type 's t = 's Live_topic.t
@@ -4189,13 +4098,9 @@ Declare a topic in shared code. `name` is the same on the server and in the brow
 val name : 's t -> string
 ```
 
-The name of the topic.
-
 ```ocaml
 val state : 's t -> 's Codec.t
 ```
-
-The codec of the topic state.
 
 ```ocaml
 val state_id : 's t -> 's Type.Id.t
@@ -4215,7 +4120,7 @@ val subscribe : 's t -> string -> ('s update -> 'e) -> 'e Host.t
 
 Subscribe to the topic under the key, as a resource that runs during a state (see the `during` list of `Machine.make`). The event is raised once with `Loading None` while the socket connects, and again for every state the server publishes, for every loss of the connection (the old data, `stale = true`) and for every failure. The client reconnects by itself.
 
-Experimental: Live updates can change. The checker and the runtime do not agree yet on the order of the first update of a subscription.
+Experimental: Live updates can change.
 
 ```ocaml
 val update_codec : 's Codec.t -> 's update Codec.t
@@ -4517,7 +4422,7 @@ val learn : Secret.t -> Instance.observed -> unit
 type pending
 ```
 
-A record whose element may not be known yet. The role and name of the element of a handler are computed from the view, which costs a walk of it, so they wait until the record is read. At the input the observer only finds the element and its path; the record keeps that element and the tag and attributes of the elements above it, which are immutable data, so the answer is the same later. When the name depends on other parts of the page (`aria-labelledby` in the element, or a field with an `id` or inside a `label`), the record keeps the whole view.
+A record whose element may not be known yet.
 
 ```ocaml
 val resolve : pending -> t

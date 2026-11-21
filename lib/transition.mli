@@ -174,14 +174,7 @@ val learn : Secret.t -> Instance.observed -> unit
     {!Secret.scrub}). *)
 
 type pending
-(** A record whose element may not be known yet. The role and name of the
-    element of a handler are computed from the view, which costs a walk of it,
-    so they wait until the record is read. At the input the observer only finds
-    the element and its path; the record keeps that element and the tag and
-    attributes of the elements above it, which are immutable data, so the answer
-    is the same later. When the name depends on other parts of the page
-    ([aria-labelledby] in the element, or a field with an [id] or inside a
-    [label]), the record keeps the whole view. *)
+(** A record whose element may not be known yet. *)
 
 val resolve : pending -> t
 (** The record, with its element. The first call does the work. *)

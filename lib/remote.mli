@@ -10,7 +10,7 @@ type error = Endpoint.error =
       (** No answer: the network failed or the call timed out. *)
 
 type ('o, 'x) answer = ('o, 'x) Endpoint.answer =
-  | Ok of 'o  (** The output. *)
+  | Ok of 'o
   | Rejected of 'x
       (** The handler answered [Error x]: an application error, such as a failed
           validation. The server answers it with status 422, not 500. *)
@@ -30,13 +30,10 @@ val path : ('i, 'o, 'x) endpoint -> string
 (** The URL path of the endpoint. *)
 
 val input : ('i, 'o, 'x) endpoint -> 'i Codec.t
-(** The codec of the input. *)
 
 val output : ('i, 'o, 'x) endpoint -> 'o Codec.t
-(** The codec of the output. *)
 
 val rejected : ('i, 'o, 'x) endpoint -> 'x Codec.t
-(** The codec of the application error. *)
 
 val answer_id : ('i, 'o, 'x) endpoint -> ('o * 'x) Type.Id.t
 (** A type id made by [declare], one for each endpoint. The checker uses it to
